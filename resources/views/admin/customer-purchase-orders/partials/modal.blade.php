@@ -169,7 +169,8 @@
                                                     @endphp
                                                     <option value="{{ $quote->id }}"
                                                         data-customer-id="{{ $quote->customer_id }}"
-                                                        data-currency-id="{{ $quote->currency_id }}">
+                                                        data-currency-id="{{ $quote->currency_id }}"
+                                                        data-status="{{ $quote->status }}">
                                                         {{ $quote->quote_number }} | {{ $quoteCustomer }} |
                                                         {{ optional($quote->created_at)->format('d/m/Y') }}
                                                     </option>

@@ -101,7 +101,7 @@ beforeEach(function () {
         'currency_id' => $this->currencyId,
         'billing_type' => 'local',
         'affect_igv' => true,
-        'status' => 'approved',
+        'status' => 'sent',
         'created_by' => $this->user->id,
         'created_at' => $now,
         'updated_at' => $now,
@@ -125,6 +125,20 @@ beforeEach(function () {
 
 test('customer purchase order backend flow works', function () {
     $this->actingAs($this->user);
+
+    $expiredQuoteId = DB::table('quotes')->insertGetId([
+        'quote_number' => 'COT-EXPIRED',
+        'customer_id' => $this->customerId,
+        'company_id' => $this->companyId,
+        'currency_id' => $this->currencyId,
+        'status' => 'expired',
+        'created_by' => $this->user->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->getJson(route('admin.customer-purchase-orders.quoteItems', $expiredQuoteId))
+        ->assertUnprocessable();
 
     $this->getJson(route('admin.customer-purchase-orders.generateCode'))
         ->assertOk()
@@ -162,6 +176,19 @@ test('customer purchase order backend flow works', function () {
         ]],
     ];
 
+    $invalidPayload = $payload;
+    $invalidPayload['items'] = [];
+
+    $this->postJson(
+        route('admin.customer-purchase-orders.store'),
+        $invalidPayload
+    )->assertUnprocessable();
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'sent',
+    ]);
+
     $storeResponse = $this->postJson(
         route('admin.customer-purchase-orders.store'),
         $payload
@@ -174,7 +201,9 @@ test('customer purchase order backend flow works', function () {
 
     $this->get(route('admin.customer-purchase-orders.index'))
         ->assertOk()
-        ->assertSee('tableCustomerPurchaseOrder');
+        ->assertSee('tableCustomerPurchaseOrder')
+        ->assertSee('COT-000001')
+        ->assertDontSee('COT-EXPIRED');
 
     $this->getJson(route('admin.customer-purchase-orders.list', [
         'draw' => 1,
@@ -191,6 +220,11 @@ test('customer purchase order backend flow works', function () {
         'subtotal_taxed' => 60,
         'igv' => 10.80,
         'grand_total' => 70.80,
+    ]);
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'approved',
     ]);
 
     $this->getJson(route('admin.customer-purchase-orders.show', $orderId))
@@ -215,4 +249,106 @@ test('customer purchase order backend flow works', function () {
     $this->assertSoftDeleted('customer_purchase_orders', [
         'id' => $orderId,
     ]);
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'sent',
+    ]);
 });
+
+test('deleting one of multiple active orders keeps quote approved', function () {
+    $this->actingAs($this->user);
+
+    DB::table('quotes')
+        ->where('id', $this->quoteId)
+        ->update(['status' => 'approved']);
+
+    $firstOrderId = createCustomerPurchaseOrderForDestroyTest(
+        $this,
+        'P00001'
+    );
+
+    createCustomerPurchaseOrderForDestroyTest(
+        $this,
+        'P00002'
+    );
+
+    $this->deleteJson(
+        route('admin.customer-purchase-orders.destroy', $firstOrderId)
+    )->assertOk();
+
+    $this->assertSoftDeleted('customer_purchase_orders', [
+        'id' => $firstOrderId,
+    ]);
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'approved',
+    ]);
+});
+
+test('deleting last order marks an expired quote as expired', function () {
+    $this->actingAs($this->user);
+
+    DB::table('quotes')
+        ->where('id', $this->quoteId)
+        ->update([
+            'status' => 'approved',
+            'validity_date' => today()->subDay()->toDateString(),
+        ]);
+
+    $orderId = createCustomerPurchaseOrderForDestroyTest(
+        $this,
+        'P00001'
+    );
+
+    $this->deleteJson(
+        route('admin.customer-purchase-orders.destroy', $orderId)
+    )->assertOk();
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'expired',
+    ]);
+});
+
+test('deleting an order does not overwrite protected quote statuses', function () {
+    $this->actingAs($this->user);
+
+    DB::table('quotes')
+        ->where('id', $this->quoteId)
+        ->update(['status' => 'rejected']);
+
+    $orderId = createCustomerPurchaseOrderForDestroyTest(
+        $this,
+        'P00001'
+    );
+
+    $this->deleteJson(
+        route('admin.customer-purchase-orders.destroy', $orderId)
+    )->assertOk();
+
+    $this->assertDatabaseHas('quotes', [
+        'id' => $this->quoteId,
+        'status' => 'rejected',
+    ]);
+});
+
+function createCustomerPurchaseOrderForDestroyTest(
+    object $test,
+    string $code
+): int {
+    return DB::table('customer_purchase_orders')->insertGetId([
+        'code' => $code,
+        'company_id' => $test->companyId,
+        'quote_id' => $test->quoteId,
+        'customer_id' => $test->customerId,
+        'customer_branch_id' => $test->branchId,
+        'order_type' => 'articles',
+        'currency_id' => $test->currencyId,
+        'status' => 'draft',
+        'created_by' => $test->user->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+}

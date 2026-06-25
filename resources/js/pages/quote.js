@@ -902,7 +902,7 @@ function resetQuoteForm() {
 
     $('#quote_id').val('');
 
-    $('#status').val('draft');
+    $('#status').val('sent');
 
     $('#quote_number').val('');
 
@@ -973,7 +973,7 @@ function fillQuoteForm(quote) {
 
     $('#quote_id').val(quote.id || '');
     $('#quote_number').val(quote.quote_number || '');
-    $('#status').val(quote.status || 'draft');
+    $('#status').val(quote.status || 'sent');
 
     $('#customer_id')
         .val(quote.customer_id || '')

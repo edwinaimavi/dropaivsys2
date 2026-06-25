@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
 
 class CustomerPurchaseOrderController extends Controller
@@ -38,6 +39,10 @@ class CustomerPurchaseOrderController extends Controller
 
         $quotes = Quote::query()
             ->with('customer:id,business_name,full_name,first_name,last_name')
+            ->whereIn('status', [
+                Quote::STATUS_SENT,
+                Quote::STATUS_APPROVED,
+            ])
             ->orderByDesc('created_at')
             ->get();
 
@@ -183,6 +188,15 @@ class CustomerPurchaseOrderController extends Controller
 
     public function quoteItems(Quote $quote)
     {
+        if (!in_array($quote->status, [
+            Quote::STATUS_SENT,
+            Quote::STATUS_APPROVED,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'quote_id' => 'La cotización seleccionada no está disponible para generar una orden de compra.',
+            ]);
+        }
+
         $quote->load([
             'items.article',
             'items.unit',
@@ -280,12 +294,62 @@ class CustomerPurchaseOrderController extends Controller
 
     public function destroy(CustomerPurchaseOrder $customerPurchaseOrder)
     {
-        $customerPurchaseOrder->delete();
+        try {
+            DB::transaction(function () use ($customerPurchaseOrder) {
+                $order = CustomerPurchaseOrder::query()
+                    ->whereKey($customerPurchaseOrder->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Orden de compra de cliente eliminada correctamente.',
-        ]);
+                $quoteId = $order->quote_id;
+
+                $order->delete();
+
+                if (!$quoteId) {
+                    return;
+                }
+
+                $quote = Quote::query()
+                    ->whereKey($quoteId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$quote || $quote->status !== Quote::STATUS_APPROVED) {
+                    return;
+                }
+
+                $hasOtherActiveOrders = CustomerPurchaseOrder::query()
+                    ->where('quote_id', $quoteId)
+                    ->exists();
+
+                if ($hasOtherActiveOrders) {
+                    return;
+                }
+
+                $isExpired = $quote->validity_date
+                    && today()->gt($quote->validity_date);
+
+                $quote->update([
+                    'status' => $isExpired
+                        ? Quote::STATUS_EXPIRED
+                        : Quote::STATUS_SENT,
+                ]);
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Orden de compra de cliente eliminada correctamente.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error(
+                'Error deleting customer purchase order: ' . $e->getMessage()
+            );
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No se pudo eliminar la orden de compra de cliente.',
+            ], 500);
+        }
     }
 
     private function saveOrder(
@@ -298,6 +362,10 @@ class CustomerPurchaseOrderController extends Controller
                 'nullable',
                 Rule::exists('quotes', 'id')
                     ->where('customer_id', $request->input('customer_id'))
+                    ->whereIn('status', [
+                        Quote::STATUS_SENT,
+                        Quote::STATUS_APPROVED,
+                    ])
                     ->whereNull('deleted_at'),
             ],
             'customer_id' => ['required', 'exists:customers,id'],
@@ -354,9 +422,29 @@ class CustomerPurchaseOrderController extends Controller
 
         try {
             return DB::transaction(function () use ($validated, $order) {
+                $isCreating = $order === null;
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems, $affectIgv);
+
+                $relatedQuote = null;
+
+                if ($isCreating && !empty($validated['quote_id'])) {
+                    $relatedQuote = Quote::query()
+                        ->whereKey($validated['quote_id'])
+                        ->whereIn('status', [
+                            Quote::STATUS_SENT,
+                            Quote::STATUS_APPROVED,
+                        ])
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$relatedQuote) {
+                        throw ValidationException::withMessages([
+                            'quote_id' => 'La cotización ya no está disponible para generar una orden de compra.',
+                        ]);
+                    }
+                }
 
                 $orderData = [
                     'company_id' => $validated['company_id'],
@@ -406,6 +494,12 @@ class CustomerPurchaseOrderController extends Controller
                     $order->items()->create($item);
                 }
 
+                if ($relatedQuote && $relatedQuote->status === Quote::STATUS_SENT) {
+                    $relatedQuote->update([
+                        'status' => Quote::STATUS_APPROVED,
+                    ]);
+                }
+
                 return response()->json([
                     'status' => 'success',
                     'message' => $order->wasRecentlyCreated
@@ -414,6 +508,8 @@ class CustomerPurchaseOrderController extends Controller
                     'data' => $order->fresh(['items']),
                 ], $order->wasRecentlyCreated ? 201 : 200);
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Error saving customer purchase order: ' . $e->getMessage());
 

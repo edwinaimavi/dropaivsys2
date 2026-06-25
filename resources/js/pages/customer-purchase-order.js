@@ -268,6 +268,7 @@ function resetCustomerPurchaseOrderForm() {
     $('#purchase_order_company_id').val('').trigger('change.select2');
 
     setDefaultPurchaseOrderCurrency();
+    configurePurchaseOrderQuoteOptions();
     resetPurchaseOrderCustomerBranches();
 
     $('#purchaseOrderSideCustomer').text('Seleccione cliente');
@@ -632,6 +633,7 @@ function fillCustomerPurchaseOrderForm(order) {
     $('#purchase_order_type').val(order.order_type || 'articles').trigger('change.select2');
     $('#purchase_order_number').val(order.purchase_order_number || '');
     $('#purchase_order_quote_id').val(order.quote_id || '').trigger('change.select2');
+    configurePurchaseOrderQuoteOptions(order.quote_id || null);
     $('#purchase_order_currency_id').val(order.currency_id || '').trigger('change');
     $('#purchase_order_customer_id').val(order.customer_id || '').trigger('change.select2');
     $('#purchase_order_notification_date').val(formatPurchaseOrderDate(order.notification_date));
@@ -827,6 +829,28 @@ function setDefaultPurchaseOrderCurrency() {
     $('#purchase_order_currency_id')
         .val(option.length ? option.val() : '')
         .trigger('change');
+}
+
+function configurePurchaseOrderQuoteOptions(selectedQuoteId = null) {
+    const quoteSelect = $('#purchase_order_quote_id');
+
+    quoteSelect.find('option').each(function () {
+        const option = $(this);
+        const status = String(option.data('status') || '');
+        const isCurrentQuote = selectedQuoteId
+            && String(option.val()) === String(selectedQuoteId);
+
+        option.prop(
+            'disabled',
+            status === 'approved' && !isCurrentQuote
+        );
+    });
+
+    if (selectedQuoteId) {
+        quoteSelect.val(String(selectedQuoteId));
+    }
+
+    quoteSelect.trigger('change.select2');
 }
 
 function customerPurchaseOrderName(customer) {

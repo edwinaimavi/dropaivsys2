@@ -57,7 +57,7 @@
                     @csrf
 
                     <input type="hidden" id="quote_id" name="quote_id">
-                    <input type="hidden" id="status" name="status" value="draft">
+                    <input type="hidden" id="status" name="status" value="sent">
 
                     <!-- PANEL IZQUIERDO -->
                     <div class="col-lg-3 mb-2">
@@ -117,7 +117,7 @@
                                     </small>
 
                                     <div class="badge badge-primary py-1 px-2 mt-1 text-white">
-                                        Borrador
+                                        Emitida
                                     </div>
 
                                     <small class="text-muted d-block mt-2">

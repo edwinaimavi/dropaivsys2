@@ -75,7 +75,7 @@ class QuoteController extends Controller
                         'icon' => 'fas fa-pencil-alt',
                     ],
                     Quote::STATUS_SENT => [
-                        'label' => 'Enviada',
+                        'label' => 'Emitida',
                         'class' => 'badge-info text-white',
                         'icon' => 'fas fa-paper-plane',
                     ],
@@ -429,7 +429,17 @@ class QuoteController extends Controller
             'delivery_days' => ['nullable', 'integer', 'min:0'],
             'delivery_time' => ['nullable', 'string', 'max:255'],
             'observations' => ['nullable', 'string'],
-            'status' => ['required', Rule::in(['draft', 'sent', 'approved', 'rejected', 'expired', 'awarded'])],
+            'status' => [
+                'nullable',
+                Rule::in([
+                    Quote::STATUS_DRAFT,
+                    Quote::STATUS_SENT,
+                    Quote::STATUS_APPROVED,
+                    Quote::STATUS_REJECTED,
+                    Quote::STATUS_EXPIRED,
+                    Quote::STATUS_AWARDED,
+                ]),
+            ],
             'items' => ['required', 'array', 'min:1'],
             'items.*.market_study_item_id' => ['nullable', 'exists:market_study_items,id'],
             'items.*.article_id' => ['required', 'exists:articles,id'],
@@ -484,7 +494,9 @@ class QuoteController extends Controller
                 'subtotal_taxed' => $totals['subtotal_taxed'],
                 'igv' => $totals['igv'],
                 'grand_total' => $totals['grand_total'],
-                'status' => $validated['status'],
+                'status' => $quote
+                    ? ($validated['status'] ?? $quote->status)
+                    : Quote::STATUS_SENT,
                 'updated_by' => Auth::id(),
             ];
 
