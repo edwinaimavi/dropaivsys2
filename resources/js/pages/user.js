@@ -16,9 +16,16 @@ document.addEventListener("DOMContentLoaded", function () {
     // GUARDAR / ACTUALIZAR
     $('#userForm').on('submit', function (e) {
         e.preventDefault();
+        $('#error-messages').addClass('d-none').empty();
         divLoading.style.display = "flex"; // Mostrar el loading
         const $form = $(this);
         const id = $form.attr('data-id'); 
+        const btn = $('#btnSaveUser');
+
+        btn.prop('disabled', true).html(`
+            <span class="spinner-border spinner-border-sm mr-1"></span>
+            Guardando...
+        `);
  
         let url = '';
         let type = '';
@@ -43,6 +50,10 @@ document.addEventListener("DOMContentLoaded", function () {
             contentType: false, // necesario para enviar FormData
             success: function (response) {
                 divLoading.style.display = "none"; // Ocultar el loading
+                btn.prop('disabled', false).html(`
+                    <i class="fas fa-save mr-1"></i>
+                    Guardar Usuario
+                `);
                 $('#userModal').modal('hide');
                 tableUser.ajax.reload(null, false);
                 Swal.fire({
@@ -62,6 +73,10 @@ document.addEventListener("DOMContentLoaded", function () {
             },
             error: function (xhr) {
                 divLoading.style.display = "none"; // Ocultar el loading
+                btn.prop('disabled', false).html(`
+                    <i class="fas fa-save mr-1"></i>
+                    Guardar Usuario
+                `);
                 if (xhr.status === 422) {
                     const errors = xhr.responseJSON.errors;
                     let errorList = '<ul>';
@@ -70,6 +85,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     });
                     errorList += '</ul>';
                     $('#error-messages').removeClass('d-none').html(errorList);
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: xhr.responseJSON?.message || 'No se pudo guardar el usuario.'
+                    });
                 }
             }
         });
@@ -102,8 +123,54 @@ document.addEventListener("DOMContentLoaded", function () {
         $('select[name="status"]').val(status);
         $('#role').val($(this).data('role'));
         $('#imgPreview').attr('src', validImage);
+        $('#password').prop('required', false);
+        $('#password_confirmation').prop('required', false);
+        $('#btnSaveUser').html('<i class="fas fa-save mr-1"></i> Actualizar Usuario');
         $('#exampleModalLabel').text('Editar Usuario');       
         $('#userModal').modal('show'); 
+    });
+
+    $(document).on('click', '.viewUser', function () {
+        const button = $(this);
+        const name = button.data('name') || '';
+        const lastname = button.data('lastname') || '';
+        const fullName = `${name} ${lastname}`.trim() || 'Sin nombre';
+        const isActive = Number(button.data('status')) === 1;
+        const photo = button.data('photo');
+        const hasPhoto = photo && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(photo);
+
+        $('#vu_name').text(fullName);
+        $('#vu_dni').text(button.data('dni') || '—');
+        $('#vu_email').text(button.data('email') || '—');
+        $('#vu_phone').text(button.data('phone') || '—');
+        $('#vu_address').text(button.data('address') || 'Sin dirección registrada');
+        const roleName = button.attr('data-role-name') || 'Sin rol';
+
+        $('#vu_role_summary').text(roleName);
+        $('#vu_role_detail').text(roleName);
+        $('#vu_created_at').text(button.attr('data-created-at') || '—');
+        $('#vu_updated_at').text(button.attr('data-updated-at') || '—');
+
+        $('#vu_status')
+            .text(isActive ? 'ACTIVO' : 'INACTIVO')
+            .toggleClass('badge-success', isActive)
+            .toggleClass('badge-danger', !isActive);
+
+        $('#vu_status_text')
+            .text(isActive ? 'Activo' : 'Inactivo')
+            .toggleClass('text-success', isActive)
+            .toggleClass('text-danger', !isActive);
+
+        $('#vu_photo').toggleClass('d-none', !hasPhoto);
+        $('#vu_photo_placeholder').toggleClass('d-none', hasPhoto);
+
+        if (hasPhoto) {
+            $('#vu_photo').attr('src', photo);
+        } else {
+            $('#vu_photo').removeAttr('src');
+        }
+
+        $('#viewUserModal').modal('show');
     });
 
     // LIMPIAR AL CERRAR MODAL
@@ -112,6 +179,9 @@ document.addEventListener("DOMContentLoaded", function () {
         $form[0].reset();
         $form.removeAttr('data-id');
         $('#exampleModalLabel').text('Nuevo Usuario');
+        $('#btnSaveUser').prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar Usuario');
+        $('#password').prop('required', true);
+        $('#password_confirmation').prop('required', true);
         $('#error-messages').addClass('d-none').empty();
 
         const defaultImage = 'https://www.shutterstock.com/image-vector/default-avatar-profile-icon-social-600nw-1906669723.jpg';
@@ -121,7 +191,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
-    // CARGAR DATOS PARA EDITAR
+    $(document).on('click', '#btnCreateUser', function () {
+        $('#password').prop('required', true);
+        $('#password_confirmation').prop('required', true);
+        $('#btnSaveUser').html('<i class="fas fa-save mr-1"></i> Guardar Usuario');
+    });
+
+    // DATATABLE USUARIOS
         tableUser = $('#tableUser').DataTable({
         processing: true,
         serverSide: true,
@@ -137,9 +213,46 @@ document.addEventListener("DOMContentLoaded", function () {
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],       
         responsive: true,
+        autoWidth: false,
          language: {
             url: "/vendor/datatables/js/i18n/es-ES.json"
-        }
+        },
+        dom: `
+        <'row mb-3'
+            <'col-sm-12 col-md-6'l>
+            <'col-sm-12 col-md-6 text-md-end'f>
+        >
+
+        <'row'
+            <'col-sm-12'tr>
+        >
+
+        <'row mt-3'
+            <'col-sm-12 col-md-5'i>
+            <'col-sm-12 col-md-7 d-flex justify-content-center justify-content-md-end'p>
+        >
+
+        <'row mt-3'
+            <'col-sm-12 text-center'B>
+        >
+        `,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success btn-sm',
+                text: '<i class="fas fa-file-excel"></i> Excel'
+            },
+            {
+                extend: 'pdf',
+                className: 'btn btn-danger btn-sm',
+                text: '<i class="fas fa-file-pdf"></i> PDF'
+            },
+            {
+                extend: 'print',
+                className: 'btn btn-secondary btn-sm',
+                text: '<i class="fas fa-print"></i> Print'
+            }
+        ]
         
     });
 

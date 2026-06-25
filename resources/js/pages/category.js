@@ -813,7 +813,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     },
 
-                    error: function () {
+                    error: function (xhr) {
 
                         Swal.fire({
 
@@ -821,7 +821,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
                             title: 'Error',
 
-                            text: 'No se pudo eliminar.'
+                            text: xhr.responseJSON?.message || 'No se pudo eliminar la subcategoría.'
 
                         });
 

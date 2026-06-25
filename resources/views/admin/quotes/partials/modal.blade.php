@@ -545,12 +545,16 @@
                                             OBSERVACIONES
                                         </label>
 
-                                        <textarea id="observations" name="observations" rows="4" class="form-control form-control-sm text-uppercase"
-                                            placeholder="Ingrese observaciones de la cotización">SE ADJUNTAN FICHA TECNICA PARA SU VALIDACION.
+                                        <textarea id="observations" name="observations" rows="6" class="form-control form-control-sm text-uppercase"
+                                            placeholder="Escriba cada condición en una línea">SE ADJUNTAN FICHA TECNICA PARA SU VALIDACION.
 VIGENCIA DE OFERTA: 07 DIAS O HASTA AGOTAR STOCK, LO QUE OCURRA PRIMERO.
 TIEMPO DE ENTREGA: 15 DIAS CALENDARIOS POST. APROBACION Y CONF. OC
 MONTO MINIMO DE ATENCIÓN: S/2,500.00
 GARANTÍA : 12 MESES</textarea>
+
+                                        <small class="form-text text-muted">
+                                            Escribe cada condición en una línea. En el PDF se mostrará como viñetas.
+                                        </small>
 
                                         <span class="invalid-feedback" id="observations-error"></span>
 

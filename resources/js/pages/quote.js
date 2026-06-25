@@ -210,6 +210,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /*
     |--------------------------------------------------------------------------
+    | EDITAR COTIZACION
+    |--------------------------------------------------------------------------
+    */
+    $(document).on('click', '.editQuote', function () {
+
+        let id = $(this).data('id');
+
+        clearQuoteErrors();
+
+        $.ajax({
+
+            url: `${window.routes.showQuote}/${id}/edit`,
+
+            type: 'GET',
+
+            success: function (response) {
+
+                fillQuoteForm(response.data);
+
+                $('#quoteModalLabel').text('Editar Cotizacion');
+
+                $('#btnSaveQuote')
+                    .prop('disabled', false)
+                    .html('<i class="fas fa-save mr-1"></i> Actualizar Cotizacion');
+
+                $('#quoteModal').modal('show');
+
+            },
+
+            error: function (xhr) {
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: xhr.responseJSON?.message || 'No se pudo cargar la cotizacion.'
+                });
+
+            }
+
+        });
+
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | GUARDAR COTIZACIÓN
     |--------------------------------------------------------------------------
     */
@@ -225,6 +270,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         let quoteId = $('#quote_id').val();
 
+        let btn = $('#btnSaveQuote');
+
+        let saveButtonText = quoteId
+            ? 'Actualizar Cotizacion'
+            : 'Guardar Cotizacion';
+
         let url = quoteId
             ? window.routes.updateQuote + '/' + quoteId
             : window.routes.storeQuote;
@@ -234,6 +285,9 @@ document.addEventListener('DOMContentLoaded', function () {
             formData.append('_method', 'PUT');
 
         }
+
+        btn.prop('disabled', true)
+            .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
 
         $.ajax({
 
@@ -267,7 +321,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 });
 
+                if (response.pdf_url) {
+                    window.open(response.pdf_url, '_blank');
+                }
+
                 $('#quoteModal').modal('hide');
+
+                resetQuoteForm();
 
                 tableQuote.ajax.reload(null, false);
 
@@ -275,9 +335,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
             error: function (xhr) {
 
+                btn.prop('disabled', false)
+                    .html('<i class="fas fa-save mr-1"></i> ' + saveButtonText);
+
                 if (xhr.status === 422) {
 
                     showQuoteErrors(xhr.responseJSON.errors);
+
+                    Swal.fire({
+
+                        icon: 'warning',
+
+                        title: 'Revisa el formulario',
+
+                        text: xhr.responseJSON?.message
+                            || 'Hay campos obligatorios o con formato incorrecto.'
+
+                    });
 
                     return;
 
@@ -296,6 +370,92 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
 
             }
+
+        });
+
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | ELIMINAR COTIZACIÓN
+    |--------------------------------------------------------------------------
+    */
+    $(document).on('click', '.deleteQuote', function () {
+
+        let id = $(this).data('id');
+
+        Swal.fire({
+
+            title: '¿Eliminar cotización?',
+
+            text: 'Esta acción no se puede deshacer.',
+
+            icon: 'warning',
+
+            showCancelButton: true,
+
+            confirmButtonColor: '#d33',
+
+            cancelButtonColor: '#6c757d',
+
+            confirmButtonText: 'Sí, eliminar',
+
+            cancelButtonText: 'Cancelar'
+
+        }).then((result) => {
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            $.ajax({
+
+                url: `${window.routes.deleteQuote}/${id}`,
+
+                type: 'POST',
+
+                data: {
+                    _method: 'DELETE'
+                },
+
+                success: function (response) {
+
+                    Swal.fire({
+
+                        icon: 'success',
+
+                        title: response.message || 'Cotización eliminada correctamente',
+
+                        toast: true,
+
+                        position: 'top-end',
+
+                        showConfirmButton: false,
+
+                        timer: 2500
+
+                    });
+
+                    tableQuote.ajax.reload(null, false);
+
+                },
+
+                error: function (xhr) {
+
+                    Swal.fire({
+
+                        icon: 'error',
+
+                        title: 'Error',
+
+                        text: xhr.responseJSON?.message
+                            || 'No se pudo eliminar la cotización.'
+
+                    });
+
+                }
+
+            });
 
         });
 
@@ -746,6 +906,10 @@ function resetQuoteForm() {
 
     $('#quote_number').val('');
 
+    $('#btnSaveQuote')
+        .prop('disabled', false)
+        .html('<i class="fas fa-save mr-1"></i> Guardar Cotizacion');
+
     $('#quoteItemsTbody').html(`
         <tr id="quoteItemsEmptyRow">
 
@@ -795,6 +959,98 @@ function resetQuoteForm() {
         setDefaultCurrency('PEN');
 
     }
+
+}
+
+/*
+|--------------------------------------------------------------------------
+| LLENAR FORMULARIO PARA EDICION
+|--------------------------------------------------------------------------
+*/
+function fillQuoteForm(quote) {
+
+    resetQuoteForm();
+
+    $('#quote_id').val(quote.id || '');
+    $('#quote_number').val(quote.quote_number || '');
+    $('#status').val(quote.status || 'draft');
+
+    $('#customer_id')
+        .val(quote.customer_id || '')
+        .trigger('change.select2');
+
+    $('#company_id')
+        .val(quote.company_id || '')
+        .trigger('change.select2');
+
+    $('#currency_id')
+        .val(quote.currency_id || '')
+        .trigger('change');
+
+    $('#payment_condition')
+        .val(quote.payment_condition || '')
+        .trigger('change.select2');
+
+    $('#delivery_address').val(quote.delivery_address || '');
+    $('#show_code_type').val(quote.show_code_type || 'internal');
+
+    $('#orientation')
+        .val(quote.orientation || 'vertical')
+        .trigger('change.select2');
+
+    $('#billing_type')
+        .val(quote.billing_type || 'local')
+        .trigger('change.select2');
+
+    $('#affect_igv')
+        .val(quote.affect_igv ? '1' : '0')
+        .trigger('change.select2');
+
+    $('#validity_date').val(formatDateForInput(quote.validity_date));
+    $('#delivery_days').val(quote.delivery_days || '');
+    $('#delivery_time').val(quote.delivery_time || '');
+    $('#market_study_id')
+        .val(quote.market_study_id || '')
+        .trigger('change.select2');
+    $('#observations').val(quote.observations || '');
+
+    $('#quoteSideCustomer').text(getSelectedText('#customer_id', 'Seleccione cliente'));
+    $('#quoteSideBranch').text('Seleccione sucursal');
+
+    if (quote.customer_id) {
+        loadCustomerBranches(quote.customer_id, {
+            autoSelectSingle: false
+        });
+    }
+
+    $('#quoteItemsTbody').empty();
+    quoteItemIndex = 0;
+
+    (quote.items || []).forEach(function (item) {
+        addQuoteItemRow({
+            market_study_item_id: item.market_study_item_id,
+            article_id: item.article_id,
+            article_code: item.article_code,
+            billing_name_snapshot: item.billing_name_snapshot,
+            note: item.note,
+            unit_id: item.unit_id,
+            presentation_id: item.presentation_id,
+            brand_id: item.brand_id,
+            origin: item.origin,
+            expiration_date: formatDateForInput(item.expiration_date),
+            cost_type: item.cost_type || 'PESO',
+            cost_price: item.cost_price || 0,
+            quantity: item.quantity || 1,
+            unit_price: item.unit_price || 0,
+            discount_percentage: item.discount_percentage || 0,
+            discount_amount: item.discount_amount || 0,
+            line_total: item.line_total || 0,
+            is_winner: item.is_winner ? 1 : 0,
+        });
+    });
+
+    showEmptyQuoteItemsRow();
+    calculateQuoteTotals();
 
 }
 
@@ -1010,6 +1266,24 @@ function formatMoney(value) {
 
 }
 
+function formatDateForInput(value) {
+
+    if (!value) {
+        return '';
+    }
+
+    return String(value).substring(0, 10);
+
+}
+
+function getSelectedText(selector, fallback = '') {
+
+    let text = $(selector).find('option:selected').text().trim();
+
+    return text || fallback;
+
+}
+
 
 /*
 |--------------------------------------------------------------------------
@@ -1047,7 +1321,12 @@ function resetCustomerBranches() {
 | CARGAR SUCURSALES DEL CLIENTE
 |--------------------------------------------------------------------------
 */
-function loadCustomerBranches(customerId) {
+function loadCustomerBranches(customerId, options = {}) {
+
+    let settings = Object.assign({
+        selectedBranchId: null,
+        autoSelectSingle: true,
+    }, options);
 
     let url = window.routes.quoteCustomerBranches.replace(':id', customerId);
 
@@ -1127,7 +1406,17 @@ function loadCustomerBranches(customerId) {
             | SI SOLO TIENE UNA SUCURSAL, SELECCIONAR AUTOMÁTICAMENTE
             |--------------------------------------------------------------------------
             */
-            if (branches.length === 1) {
+            if (settings.selectedBranchId) {
+
+                $('#customer_branch_id')
+                    .val(settings.selectedBranchId)
+                    .trigger('change');
+
+                return;
+
+            }
+
+            if (settings.autoSelectSingle && branches.length === 1) {
 
                 $('#customer_branch_id')
                     .val(branches[0].id)

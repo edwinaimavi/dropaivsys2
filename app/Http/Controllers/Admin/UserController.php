@@ -31,15 +31,18 @@ class UserController extends Controller
     }
 
     public function list(){
-        $users = User::where('status', '!=', -1)->orderBy('id','desc')->get();
+        $users = User::with('roles')
+            ->where('status', '!=', -1)
+            ->orderBy('id','desc')
+            ->get();
 
         ////si te sale un erro ejecunta en la rais del proyecto esto   composer require yajra/laravel-datatables-oracle 
         return DataTables::of($users)
             ->addIndexColumn()
             ->editColumn('status', function ($user) {
                 return $user->status == 1
-                    ? '<span class="badge badge-success">Activo</span>'
-                    : '<span class="badge badge-danger">Inactivo</span>';
+                    ? '<span class="badge bg-success text-light rounded-pill px-3 py-2 shadow-sm">ACTIVO</span>'
+                    : '<span class="badge bg-danger text-light rounded-pill px-3 py-2 shadow-sm">INACTIVO</span>';
             })
             ->addColumn('acciones',function($user){
                 $statusOriginal = $user->status;
@@ -82,7 +85,7 @@ class UserController extends Controller
         $user->roles()->sync([$request->input('role')]);
 
 
-        return response()->json(['message' => 'Vehículo registrado correctamente']);
+        return response()->json(['message' => 'Usuario registrado correctamente']);
         
     }
 

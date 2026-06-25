@@ -126,7 +126,7 @@ Route::put(
 
 Route::delete(
     'categories/subcategories/{subcategory}',
-    [CategoryController::class, 'deleteSubcategory']
+    [CategoryController::class, 'destroySubcategory']
 )->name('categories.subcategories.delete');
 
 //RUTAS PARA UNIDADES DE MEDIDA 

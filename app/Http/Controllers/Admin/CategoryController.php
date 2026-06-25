@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 
+use App\Models\Article;
 use App\Models\Category;
 use App\Models\Subcategory;
 use Illuminate\Http\Request;
@@ -703,6 +704,21 @@ class CategoryController extends Controller
         try {
 
             DB::beginTransaction();
+
+            $hasArticles = Article::where('subcategory_id', $subcategory->id)
+                ->exists();
+
+            if ($hasArticles) {
+                DB::rollBack();
+
+                return response()->json([
+
+                    'status' => 'error',
+
+                    'message' => 'No se puede eliminar la subcategoría porque tiene artículos asociados.'
+
+                ], 422);
+            }
 
             if (Auth::check()) {
 
