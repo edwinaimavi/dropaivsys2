@@ -422,6 +422,14 @@ return [
                     /* "can" => 'admin.categories.index' */
 
                 ],
+                     [
+                    'text' => 'O. Compra Cliente',
+                    'icon' => 'fas fa-clipboard-check',
+                    'icon_color' => 'primary',
+                    'url' => 'admin/customer-purchase-orders',
+                    /* "can" => 'admin.categories.index' */
+
+                ],
 
 
 

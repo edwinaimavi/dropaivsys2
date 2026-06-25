@@ -9,6 +9,18 @@ class Quote extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_SENT = 'sent';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_REJECTED = 'rejected';
+    public const STATUS_EXPIRED = 'expired';
+    public const STATUS_AWARDED = 'awarded';
+
+    public const EXPIRABLE_STATUSES = [
+        self::STATUS_DRAFT,
+        self::STATUS_SENT,
+    ];
+
     protected $fillable = [
 
         'quote_number',
@@ -44,6 +56,23 @@ class Quote extends Model
         'updated_by'
     ];
 
+    protected $casts = [
+        'affect_igv' => 'boolean',
+        'validity_date' => 'date',
+    ];
+
+    public static function dismissExpiredQuotes(): int
+    {
+        return static::query()
+            ->whereNotNull('validity_date')
+            ->whereDate('validity_date', '<', today())
+            ->whereIn('status', self::EXPIRABLE_STATUSES)
+            ->whereDoesntHave('customerPurchaseOrders')
+            ->update([
+                'status' => self::STATUS_EXPIRED,
+            ]);
+    }
+
     public function marketStudy()
     {
         return $this->belongsTo(MarketStudy::class);
@@ -72,5 +101,10 @@ class Quote extends Model
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function customerPurchaseOrders()
+    {
+        return $this->hasMany(CustomerPurchaseOrder::class);
     }
 }

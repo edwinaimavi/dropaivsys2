@@ -28,6 +28,8 @@ class QuoteController extends Controller
 {
     public function list()
     {
+        Quote::dismissExpiredQuotes();
+
         $quotes = Quote::query()
             ->with([
                 'customer:id,business_name,full_name,first_name,last_name',
@@ -66,18 +68,57 @@ class QuoteController extends Controller
                 return trim($symbol . ' ' . number_format((float) $quote->grand_total, 2));
             })
             ->editColumn('status', function (Quote $quote) {
-                $labels = [
-                    'draft' => ['Borrador', 'secondary'],
-                    'sent' => ['Enviada', 'info'],
-                    'approved' => ['Aprobada', 'success'],
-                    'rejected' => ['Rechazada', 'danger'],
-                    'expired' => ['Vencida', 'warning'],
-                    'awarded' => ['Adjudicada', 'primary'],
+                $statuses = [
+                    Quote::STATUS_DRAFT => [
+                        'label' => 'Borrador',
+                        'class' => 'badge-secondary text-white',
+                        'icon' => 'fas fa-pencil-alt',
+                    ],
+                    Quote::STATUS_SENT => [
+                        'label' => 'Enviada',
+                        'class' => 'badge-info text-white',
+                        'icon' => 'fas fa-paper-plane',
+                    ],
+                    Quote::STATUS_APPROVED => [
+                        'label' => 'Aprobada',
+                        'class' => 'badge-success text-white',
+                        'icon' => 'fas fa-check-circle',
+                    ],
+                    Quote::STATUS_REJECTED => [
+                        'label' => 'Rechazada',
+                        'class' => 'badge-danger text-white',
+                        'icon' => 'fas fa-times-circle',
+                    ],
+                    Quote::STATUS_EXPIRED => [
+                        'label' => 'Desestimado',
+                        'class' => 'badge-warning text-dark',
+                        'icon' => 'fas fa-ban',
+                    ],
+                    Quote::STATUS_AWARDED => [
+                        'label' => 'Adjudicada',
+                        'class' => 'badge-primary text-white',
+                        'icon' => 'fas fa-award',
+                    ],
                 ];
 
-                [$text, $color] = $labels[$quote->status] ?? [$quote->status, 'secondary'];
+                $status = $statuses[$quote->status] ?? [
+                    'label' => ucfirst((string) $quote->status),
+                    'class' => 'badge-light text-dark border',
+                    'icon' => 'fas fa-info-circle',
+                ];
 
-                return '<span class="badge badge-' . $color . '">' . e($text) . '</span>';
+                return sprintf(
+                    '<div class="d-flex justify-content-center">
+                        <span class="badge %s rounded-pill px-3 py-2 shadow-sm font-weight-bold"
+                            style="min-width:120px;font-size:11px;letter-spacing:.2px;">
+                            <i class="%s mr-1" aria-hidden="true"></i>
+                            %s
+                        </span>
+                    </div>',
+                    $status['class'],
+                    $status['icon'],
+                    e($status['label'])
+                );
             })
             ->editColumn('created_at', function (Quote $quote) {
                 return $quote->created_at
@@ -101,6 +142,8 @@ class QuoteController extends Controller
 
     public function index()
     {
+        Quote::dismissExpiredQuotes();
+
         $customers = Customer::query()
             ->orderBy('business_name')
             ->orderBy('full_name')

@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\SupplierAccountController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\CustomerBranchController;
+use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
@@ -302,3 +303,29 @@ Route::get('quotes/market-study/{marketStudy}/winners', [QuoteController::class,
     ->name('quotes.marketStudyWinners');
 
 Route::resource('quotes', QuoteController::class)->except(['create', 'show']);
+
+// RUTAS PARA ÓRDENES DE COMPRA DE CLIENTES
+Route::get(
+    'customer-purchase-orders/list',
+    [CustomerPurchaseOrderController::class, 'list']
+)->name('customer-purchase-orders.list');
+
+Route::get(
+    'customer-purchase-orders/generate-code',
+    [CustomerPurchaseOrderController::class, 'generateCode']
+)->name('customer-purchase-orders.generateCode');
+
+Route::get(
+    'customer-purchase-orders/quote/{quote}/items',
+    [CustomerPurchaseOrderController::class, 'quoteItems']
+)->name('customer-purchase-orders.quoteItems');
+
+Route::get(
+    'customer-purchase-orders/customer/{customer}/branches',
+    [CustomerPurchaseOrderController::class, 'customerBranches']
+)->name('customer-purchase-orders.customerBranches');
+
+Route::resource(
+    'customer-purchase-orders',
+    CustomerPurchaseOrderController::class
+)->except(['create']);
