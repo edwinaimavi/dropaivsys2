@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\RoleController;
 
 use App\Http\Controllers\Admin\SupplierAccountController;
 use App\Http\Controllers\Admin\SupplierController;
+use App\Http\Controllers\Admin\SupplierPurchaseOrderController;
 use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
@@ -328,4 +329,35 @@ Route::get(
 Route::resource(
     'customer-purchase-orders',
     CustomerPurchaseOrderController::class
+)->except(['create']);
+
+// RUTAS PARA ORDENES DE COMPRA A PROVEEDORES
+Route::get(
+    'supplier-purchase-orders/list',
+    [SupplierPurchaseOrderController::class, 'list']
+)->name('supplier-purchase-orders.list');
+
+Route::get(
+    'supplier-purchase-orders/generate-code',
+    [SupplierPurchaseOrderController::class, 'generateCode']
+)->name('supplier-purchase-orders.generateCode');
+
+Route::get(
+    'supplier-purchase-orders/supplier/{supplier}/accounts',
+    [SupplierPurchaseOrderController::class, 'supplierAccounts']
+)->name('supplier-purchase-orders.supplierAccounts');
+
+Route::get(
+    'supplier-purchase-orders/customer-purchase-order/{customerPurchaseOrder}/items',
+    [SupplierPurchaseOrderController::class, 'customerPurchaseOrderItems']
+)->name('supplier-purchase-orders.customerPurchaseOrderItems');
+
+Route::post(
+    'supplier-purchase-orders/load-customer-order-items',
+    [SupplierPurchaseOrderController::class, 'loadCustomerOrderItems']
+)->name('supplier-purchase-orders.loadCustomerOrderItems');
+
+Route::resource(
+    'supplier-purchase-orders',
+    SupplierPurchaseOrderController::class
 )->except(['create']);

@@ -77,6 +77,14 @@ class CustomerPurchaseOrder extends Model
         return $this->hasMany(CustomerPurchaseOrderItem::class);
     }
 
+    public function supplierPurchaseOrders()
+    {
+        return $this->belongsToMany(
+            SupplierPurchaseOrder::class,
+            'supplier_purchase_order_customer_purchase_order'
+        )->withTimestamps();
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
