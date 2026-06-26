@@ -26,7 +26,7 @@
                                 </div>
                                 <h5 id="vpo_code" class="font-weight-bold mb-1">—</h5>
                                 <div id="vpo_purchase_order_number" class="text-muted small mb-2">—</div>
-                                <span id="vpo_status" class="badge badge-secondary px-3 py-2">BORRADOR</span>
+                                <span id="vpo_status" class="badge badge-secondary px-3 py-2">REGISTRADA</span>
 
                                 <hr>
 

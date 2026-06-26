@@ -246,7 +246,7 @@ function resetCustomerPurchaseOrderForm() {
 
     $('#customer_purchase_order_id').val('');
     $('#purchase_order_code').val('');
-    $('#purchase_order_status').val('draft');
+    $('#purchase_order_status').val('registered');
     $('#customerPurchaseOrderModalLabel').text('Registrar Orden de Compra del Cliente');
     $('#btnSaveCustomerPurchaseOrder')
         .prop('disabled', false)
@@ -628,7 +628,7 @@ function fillCustomerPurchaseOrderForm(order) {
 
     $('#customer_purchase_order_id').val(order.id || '');
     $('#purchase_order_code').val(order.code || '');
-    $('#purchase_order_status').val(order.status || 'draft');
+    $('#purchase_order_status').val(order.status || 'registered');
     $('#purchase_order_company_id').val(order.company_id || '').trigger('change.select2');
     $('#purchase_order_type').val(order.order_type || 'articles').trigger('change.select2');
     $('#purchase_order_number').val(order.purchase_order_number || '');
@@ -681,10 +681,10 @@ function fillCustomerPurchaseOrderDetail(order) {
     const currencyCode = order.currency?.code || '';
     const currencySymbol = order.currency?.symbol || '';
     const statuses = {
-        draft: ['BORRADOR', 'badge-secondary'],
-        approved: ['APROBADA', 'badge-primary'],
-        cancelled: ['ANULADA', 'badge-danger'],
-        delivered: ['ENTREGADA', 'badge-success'],
+        registered: ['REGISTRADA', 'badge-secondary'],
+        approved: ['APROBADA', 'badge-success'],
+        cancelled: ['CANCELADA', 'badge-danger'],
+        delivered: ['ENTREGADA', 'badge-primary'],
         invoiced: ['FACTURADA', 'badge-info']
     };
     const status = statuses[order.status] || [String(order.status || '').toUpperCase(), 'badge-secondary'];

@@ -24,6 +24,12 @@ use Yajra\DataTables\Facades\DataTables;
 
 class CustomerPurchaseOrderController extends Controller
 {
+    private const STATUS_REGISTERED = 'registered';
+    private const STATUS_APPROVED = 'approved';
+    private const STATUS_CANCELLED = 'cancelled';
+    private const STATUS_DELIVERED = 'delivered';
+    private const STATUS_INVOICED = 'invoiced';
+
     public function index()
     {
         $companies = Company::query()
@@ -129,19 +135,51 @@ class CustomerPurchaseOrderController extends Controller
             })
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
                 $statuses = [
-                    'draft' => ['Borrador', 'secondary'],
-                    'approved' => ['Aprobada', 'primary'],
-                    'cancelled' => ['Anulada', 'danger'],
-                    'delivered' => ['Entregada', 'success'],
-                    'invoiced' => ['Facturada', 'info'],
+                    self::STATUS_REGISTERED => [
+                        'label' => 'Registrada',
+                        'class' => 'badge-secondary text-white',
+                        'icon' => 'fas fa-clipboard-check',
+                    ],
+                    self::STATUS_APPROVED => [
+                        'label' => 'Aprobada',
+                        'class' => 'badge-success text-white',
+                        'icon' => 'fas fa-check-circle',
+                    ],
+                    self::STATUS_CANCELLED => [
+                        'label' => 'Cancelada',
+                        'class' => 'badge-danger text-white',
+                        'icon' => 'fas fa-times-circle',
+                    ],
+                    self::STATUS_DELIVERED => [
+                        'label' => 'Entregada',
+                        'class' => 'badge-primary text-white',
+                        'icon' => 'fas fa-truck',
+                    ],
+                    self::STATUS_INVOICED => [
+                        'label' => 'Facturada',
+                        'class' => 'badge-info text-white',
+                        'icon' => 'fas fa-file-invoice-dollar',
+                    ],
                 ];
 
-                [$label, $color] = $statuses[$order->status]
-                    ?? [$order->status, 'secondary'];
+                $status = $statuses[$order->status] ?? [
+                    'label' => ucfirst((string) $order->status),
+                    'class' => 'badge-light text-dark border',
+                    'icon' => 'fas fa-info-circle',
+                ];
 
-                return '<span class="badge badge-' . $color . ' px-2 py-1">'
-                    . e($label)
-                    . '</span>';
+                return sprintf(
+                    '<div class="d-flex justify-content-center">
+                        <span class="badge %s rounded-pill px-3 py-2 shadow-sm font-weight-bold"
+                            style="min-width:120px;font-size:11px;letter-spacing:.2px;">
+                            <i class="%s mr-1" aria-hidden="true"></i>
+                            %s
+                        </span>
+                    </div>',
+                    $status['class'],
+                    $status['icon'],
+                    e($status['label'])
+                );
             })
             ->editColumn('created_at', function (CustomerPurchaseOrder $order) {
                 return $order->created_at?->format('d/m/Y H:i') ?? '-';
@@ -356,6 +394,10 @@ class CustomerPurchaseOrderController extends Controller
         Request $request,
         ?CustomerPurchaseOrder $order = null
     ) {
+        if ($order === null) {
+            $request->merge(['status' => self::STATUS_REGISTERED]);
+        }
+
         $validated = $request->validate([
             'company_id' => ['required', 'exists:companies,id'],
             'quote_id' => [
@@ -388,7 +430,7 @@ class CustomerPurchaseOrderController extends Controller
             'observations' => ['nullable', 'string'],
             'status' => [
                 'nullable',
-                Rule::in(['draft', 'approved', 'cancelled', 'delivered', 'invoiced']),
+                Rule::in($this->customerPurchaseOrderStatuses()),
             ],
             'items' => ['required', 'array', 'min:1'],
             'items.*.quote_item_id' => [
@@ -477,7 +519,9 @@ class CustomerPurchaseOrderController extends Controller
                     'subtotal_taxed' => $totals['subtotal_taxed'],
                     'igv' => $totals['igv'],
                     'grand_total' => $totals['grand_total'],
-                    'status' => $validated['status'] ?? 'draft',
+                    'status' => $isCreating
+                        ? self::STATUS_REGISTERED
+                        : ($validated['status'] ?? $order->status ?? self::STATUS_REGISTERED),
                     'updated_by' => Auth::id(),
                 ];
 
@@ -619,6 +663,17 @@ class CustomerPurchaseOrderController extends Controller
         );
 
         return $code;
+    }
+
+    private function customerPurchaseOrderStatuses(): array
+    {
+        return [
+            self::STATUS_REGISTERED,
+            self::STATUS_APPROVED,
+            self::STATUS_CANCELLED,
+            self::STATUS_DELIVERED,
+            self::STATUS_INVOICED,
+        ];
     }
 
     private function upperOrNull(?string $value): ?string

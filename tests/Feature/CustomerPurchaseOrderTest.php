@@ -195,6 +195,7 @@ test('customer purchase order backend flow works', function () {
     )
         ->assertCreated()
         ->assertJsonPath('data.code', 'P00001')
+        ->assertJsonPath('data.status', 'registered')
         ->assertJsonPath('data.grand_total', '70.80');
 
     $orderId = $storeResponse->json('data.id');
@@ -220,6 +221,7 @@ test('customer purchase order backend flow works', function () {
         'subtotal_taxed' => 60,
         'igv' => 10.80,
         'grand_total' => 70.80,
+        'status' => 'registered',
     ]);
 
     $this->assertDatabaseHas('quotes', [
@@ -232,6 +234,7 @@ test('customer purchase order backend flow works', function () {
         ->assertJsonPath('data.items.0.quantity', '3.00');
 
     $payload['affect_igv'] = 0;
+    $payload['status'] = 'registered';
     $payload['items'][0]['quantity'] = 2;
     $payload['items'][0]['line_total'] = 40;
 
@@ -346,7 +349,7 @@ function createCustomerPurchaseOrderForDestroyTest(
         'customer_branch_id' => $test->branchId,
         'order_type' => 'articles',
         'currency_id' => $test->currencyId,
-        'status' => 'draft',
+        'status' => 'registered',
         'created_by' => $test->user->id,
         'created_at' => now(),
         'updated_at' => now(),

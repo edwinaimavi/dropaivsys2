@@ -30,7 +30,7 @@
                     @csrf
 
                     <input type="hidden" id="customer_purchase_order_id" name="customer_purchase_order_id">
-                    <input type="hidden" id="purchase_order_status" name="status" value="draft">
+                    <input type="hidden" id="purchase_order_status" name="status" value="registered">
 
                     <div class="col-12">
                         <div id="customerPurchaseOrderErrors" class="alert alert-danger d-none mb-2"></div>
@@ -58,7 +58,7 @@
                                     <div class="font-weight-600 mb-2">{{ now()->format('d/m/Y') }}</div>
 
                                     <small class="text-muted d-block">Estado inicial</small>
-                                    <span class="badge badge-primary px-2 py-1 mb-2">Borrador</span>
+                                    <span class="badge badge-secondary px-2 py-1 mb-2">Registrada</span>
 
                                     <small class="text-muted d-block">Cliente</small>
                                     <div class="font-weight-600 mb-2 text-break" id="purchaseOrderSideCustomer">
