@@ -105,7 +105,7 @@ Route::get(
     [CategoryController::class, 'generateCode']
 )->name('categories.generateCode');
 
-Route::resource('categories', CategoryController::class)->except(['create', 'show']);
+Route::resource('categories', CategoryController::class)->except(['create']);
 
 // ======================================================
 // RUTAS PARA SUBCATEGORÍAS

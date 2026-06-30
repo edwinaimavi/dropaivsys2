@@ -118,7 +118,7 @@
 
                             <th>DESCRIPCIÓN</th>
 
-                            <th>DECIMAL</th>
+                        {{--     <th>DECIMAL</th> --}}
 
                             <th>ESTADO</th>
 

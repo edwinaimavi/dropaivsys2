@@ -212,7 +212,7 @@
 
                                         </tr>
 
-                                        <tr>
+                                {{--         <tr>
 
                                             <th class="text-muted py-2"
                                                 style="
@@ -234,7 +234,7 @@
 
                                             </td>
 
-                                        </tr>
+                                        </tr> --}}
 
                                         <tr>
 

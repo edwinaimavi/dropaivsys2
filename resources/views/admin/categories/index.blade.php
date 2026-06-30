@@ -344,6 +344,8 @@
 
             deleteCategory: "{{ url('admin/categories') }}",
 
+            showCategory: "{{ url('admin/categories') }}",
+
             generateCode: "{{ route('admin.categories.generateCode') }}",
 
             subcategoryList: "{{ url('admin/categories') }}",

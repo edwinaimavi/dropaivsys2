@@ -56,10 +56,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 name: 'description'
             },
 
-            {
+        /*     {
                 data: 'decimal_quantity',
                 name: 'decimal_quantity'
-            },
+            }, */
 
             {
                 data: 'status',

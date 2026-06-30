@@ -54,8 +54,8 @@
                     @csrf
 
                     <input type="hidden" id="unit_id">
-
-                    <!-- PANEL IZQUIERDO -->
+                    <input type="hidden" id="decimal_quantity" name="decimal_quantity" value="1" <!-- PANEL
+                        IZQUIERDO -->
                     <div class="col-lg-3 mb-2">
 
                         <div class="card border-0 rounded-lg shadow-sm h-100">
@@ -169,7 +169,7 @@
                                 <div class="form-row">
 
                                     <!-- ABREVIATURA -->
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-3">
 
                                         <label for="abbreviation" class="small font-weight-bold text-secondary">
 
@@ -186,7 +186,7 @@
                                     </div>
 
                                     <!-- DESCRIPCIÓN -->
-                                    <div class="form-group col-md-8">
+                                    <div class="form-group col-md-5">
 
                                         <label for="description" class="small font-weight-bold text-secondary">
 
@@ -203,42 +203,7 @@
 
                                     </div>
 
-                                </div>
-
-                                <!-- FILA 2 -->
-                                <div class="form-row">
-
-                                    <!-- DECIMALES -->
-                                    <div class="form-group col-md-6">
-
-                                        <label for="decimal_quantity" class="small font-weight-bold text-secondary">
-
-                                            ¿PERMITE DECIMALES?
-                                            <span class="text-danger">*</span>
-
-                                        </label>
-
-                                        <select id="decimal_quantity" name="decimal_quantity"
-                                            class="form-control form-control-sm">
-
-                                            <option value="1">
-
-                                                SI
-
-                                            </option>
-
-                                            <option value="0">
-
-                                                NO
-
-                                            </option>
-
-                                        </select>
-
-                                    </div>
-
-                                    <!-- ESTADO -->
-                                    <div class="form-group col-md-6">
+                                    <div class="form-group col-md-4">
 
                                         <label for="status" class="small font-weight-bold text-secondary">
 
@@ -266,6 +231,8 @@
                                     </div>
 
                                 </div>
+
+
 
                                 <!-- OBSERVACIÓN -->
                                 <div class="form-row">

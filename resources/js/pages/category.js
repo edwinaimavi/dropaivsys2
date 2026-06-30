@@ -1,6 +1,7 @@
 var divLoading = document.getElementById('divLoading');
 
 let tableCategory;
+let currentViewedCategoryId = null;
 
 $(function () {
 
@@ -356,6 +357,10 @@ document.addEventListener("DOMContentLoaded", function () {
     $(document).on('click', '.viewCategory', function () {
 
         const button = $(this);
+        const id = button.data('id');
+
+        loadCategoryDetail(id, true);
+        return;
 
         // HEADER
         $('#vc_description').text(button.data('description') || '—');
@@ -678,6 +683,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 $('#subcategory_id').val('');
 
                 tableSubcategory.ajax.reload(null, false);
+                tableCategory.ajax.reload(null, false);
+
+                const categoryId = Number($('#subcategory_category_id').val());
+
+                if ($('#viewCategoryModal').hasClass('show') && currentViewedCategoryId === categoryId) {
+                    loadCategoryDetail(categoryId, false);
+                }
 
                 Swal.fire({
 
@@ -794,6 +806,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     success: function (response) {
 
                         tableSubcategory.ajax.reload(null, false);
+                        tableCategory.ajax.reload(null, false);
+
+                        const categoryId = Number($('#subcategory_category_id').val());
+
+                        if ($('#viewCategoryModal').hasClass('show') && currentViewedCategoryId === categoryId) {
+                            loadCategoryDetail(categoryId, false);
+                        }
 
                         Swal.fire({
 
@@ -931,3 +950,103 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 });
+
+function loadCategoryDetail(id, openModal = false) {
+    if (!id) {
+        return;
+    }
+
+    currentViewedCategoryId = Number(id);
+
+    $('#vc_subcategories_table').html(`
+        <tr>
+            <td colspan="3" class="text-center text-muted py-3">
+                Cargando subcategorias...
+            </td>
+        </tr>
+    `);
+
+    $.get(`${window.routes.showCategory}/${id}`)
+        .done(function (response) {
+            renderCategoryDetail(response.data || {});
+
+            if (openModal) {
+                $('#viewCategoryModal').modal('show');
+            }
+        })
+        .fail(function (xhr) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message || 'No se pudo cargar el detalle actualizado de la categoria.'
+            });
+        });
+}
+
+function renderCategoryDetail(category) {
+    const empty = '-';
+
+    $('#vc_description').text(category.description || empty);
+    $('#vc_type').text(category.type || empty);
+    $('#vc_id').text(category.id || empty);
+    $('#vc_description_detail').text(category.description || empty);
+    $('#vc_code').text(category.code || empty);
+    $('#vc_type_detail').text(category.type || empty);
+    $('#vc_status_text').text(category.status || empty);
+    $('#vc_observation').text(category.observation || 'Sin observaciones');
+    $('#vc_created_by').text(category.created_by || 'No registrado');
+    $('#vc_created_by_user').text(category.created_by || 'No registrado');
+    $('#vc_updated_by_user').text(category.updated_by || 'No registrado');
+    $('#vc_created_at').text(category.created_at || empty);
+    $('#vc_updated_at').text(category.updated_at || empty);
+    $('#vc_updated_at_footer').text(category.updated_at || empty);
+
+    const status = category.status || '';
+    const badgeClass = status === 'ACTIVE'
+        ? 'badge-success'
+        : (status === 'INACTIVE' ? 'badge-danger' : 'badge-secondary');
+
+    $('#vc_status')
+        .removeClass('badge-success badge-danger badge-secondary')
+        .addClass(badgeClass)
+        .text(status || empty);
+
+    renderCategorySubcategories(category.subcategories || []);
+}
+
+function renderCategorySubcategories(subcategories) {
+    const rows = (subcategories || []).map(function (item, index) {
+        const badge = item.status === 'ACTIVE'
+            ? '<span class="badge badge-success px-2 py-1">ACTIVO</span>'
+            : '<span class="badge badge-danger px-2 py-1">INACTIVO</span>';
+
+        return `
+            <tr>
+                <td style="font-size:12px;">${index + 1}</td>
+                <td style="font-size:12px;font-weight:500;">
+                    ${escapeCategoryHtml(item.description || '-')}
+                </td>
+                <td>${badge}</td>
+            </tr>
+        `;
+    }).join('');
+
+    $('#vc_subcategories_table').html(rows || `
+        <tr>
+            <td colspan="3" class="text-center text-muted py-3">
+                No hay subcategorias registradas
+            </td>
+        </tr>
+    `);
+
+    $('#vc_total_subcategories').text(subcategories ? subcategories.length : 0);
+}
+
+function escapeCategoryHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}

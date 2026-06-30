@@ -273,6 +273,44 @@ class CategoryController extends Controller
     }
 
     /**
+     * SHOW
+     */
+    public function show(Category $category)
+    {
+        $category->load([
+            'creator',
+            'editor',
+            'subcategories' => function ($query) {
+                $query->orderBy('id', 'desc');
+            },
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $category->id,
+                'description' => $category->description,
+                'code' => $category->code,
+                'type' => $category->type,
+                'status' => $category->status,
+                'observation' => $category->observation,
+                'created_at' => $category->created_at?->format('d/m/Y H:i'),
+                'updated_at' => $category->updated_at?->format('d/m/Y H:i'),
+                'created_by' => $category->creator?->name,
+                'updated_by' => $category->editor?->name,
+                'subcategories' => $category->subcategories->map(fn ($subcategory) => [
+                    'id' => $subcategory->id,
+                    'description' => $subcategory->description,
+                    'status' => $subcategory->status,
+                    'observation' => $subcategory->observation,
+                    'created_at' => $subcategory->created_at?->format('d/m/Y H:i'),
+                    'updated_at' => $subcategory->updated_at?->format('d/m/Y H:i'),
+                ])->values(),
+            ],
+        ]);
+    }
+
+    /**
      * UPDATE
      */
     public function update(Request $request, $id)
