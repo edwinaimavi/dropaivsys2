@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             e.preventDefault();
 
+            clearArticleValidationErrors();
+
             let formData =
                 new FormData();
 
@@ -253,7 +255,49 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 error: function (xhr) {
 
-                    console.log(xhr.responseText);
+                    if (xhr.status === 422) {
+
+                        const errors =
+                            xhr.responseJSON?.errors || {};
+
+                        let hasFieldError = false;
+
+                        $.each(errors, function (key, messages) {
+
+                            const input = $('#' + key);
+                            const feedback = $('#' + key + '-error');
+
+                            if (!input.length || !feedback.length) {
+                                return;
+                            }
+
+                            input.addClass('is-invalid');
+
+                            feedback.text(messages[0]);
+
+                            hasFieldError = true;
+
+                        });
+
+                        if (!hasFieldError) {
+
+                            Swal.fire({
+
+                                icon: 'error',
+
+                                title: 'Error',
+
+                                text:
+                                    Object.values(errors)[0]?.[0]
+                                    || xhr.responseJSON?.message
+                                    || 'Error al guardar'
+
+                            });
+
+                        }
+
+                        return;
+                    }
 
                     Swal.fire({
 
@@ -284,6 +328,8 @@ document.addEventListener('DOMContentLoaded', function () {
         $('#article_id').val('');
 
         $('#code').val('');
+
+        clearArticleValidationErrors();
 
         /*
         |--------------------------------------------------------------------------
@@ -343,6 +389,18 @@ document.addEventListener('DOMContentLoaded', function () {
         );
 
     });
+
+    function clearArticleValidationErrors() {
+
+        $('#articleForm')
+            .find('.is-invalid')
+            .removeClass('is-invalid');
+
+        $('#articleForm')
+            .find('.invalid-feedback')
+            .text('');
+
+    }
 
 
 

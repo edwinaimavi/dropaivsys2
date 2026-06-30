@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use App\Models\Category;
 use App\Models\Subcategory;
 use App\Models\Presentation;
@@ -175,6 +176,8 @@ class ArticleController extends Controller
      */
     public function store(Request $request)
     {
+        $this->normalizeArticleNames($request);
+
         $validated = $request->validate([
 
             'code' => [
@@ -268,19 +271,11 @@ class ArticleController extends Controller
 
         ]);
 
+        $this->validateDuplicateArticleName($validated);
+
         try {
 
             DB::beginTransaction();
-
-            $validated['legal_name'] =
-                mb_strtoupper($validated['legal_name']);
-
-            $validated['commercial_name'] =
-                mb_strtoupper($validated['commercial_name']);
-
-            $validated['billing_name'] =
-                mb_strtoupper($validated['billing_name']);
-
 
             if ($request->filled('institutional_code')) {
 
@@ -544,6 +539,8 @@ class ArticleController extends Controller
             ], 404);
         }
 
+        $this->normalizeArticleNames($request);
+
         $validated = $request->validate([
 
             'code' => [
@@ -582,15 +579,18 @@ class ArticleController extends Controller
             ],
 
             'legal_name' => [
-                'required'
+                'required',
+                'max:255'
             ],
 
             'commercial_name' => [
-                'required'
+                'required',
+                'max:255'
             ],
 
             'billing_name' => [
-                'required'
+                'required',
+                'max:255'
             ],
 
             'status' => [
@@ -606,18 +606,11 @@ class ArticleController extends Controller
             ]
         ]);
 
+        $this->validateDuplicateArticleName($validated, $article->id);
+
         try {
 
             DB::beginTransaction();
-
-            $validated['legal_name'] =
-                mb_strtoupper($validated['legal_name']);
-
-            $validated['commercial_name'] =
-                mb_strtoupper($validated['commercial_name']);
-
-            $validated['billing_name'] =
-                mb_strtoupper($validated['billing_name']);
 
             $validated['institutional_code'] =
                 $request->institutional_code
@@ -869,6 +862,102 @@ class ArticleController extends Controller
 
             ], 500);
         }
+    }
+
+    private function normalizeArticleNames(Request $request): void
+    {
+        $request->merge([
+            'legal_name' => $this->normalizeArticleText(
+                $request->input('legal_name')
+            ),
+            'commercial_name' => $this->normalizeArticleText(
+                $request->input('commercial_name')
+            ),
+            'billing_name' => $this->normalizeArticleText(
+                $request->input('billing_name')
+            ),
+        ]);
+    }
+
+    private function normalizeArticleText($value): string
+    {
+        return mb_strtoupper(trim((string) $value), 'UTF-8');
+    }
+
+    private function validateDuplicateArticleName(
+        array $validated,
+        ?int $ignoreId = null
+    ): void {
+        $nameFields = [
+            'legal_name',
+            'commercial_name',
+            'billing_name',
+        ];
+
+        $names = collect($nameFields)
+            ->mapWithKeys(fn ($field) => [
+                $field => $this->normalizeArticleText(
+                    $validated[$field] ?? ''
+                ),
+            ])
+            ->filter()
+            ->all();
+
+        if (empty($names)) {
+            return;
+        }
+
+        $query = Article::query()
+            ->where('brand_id', $validated['brand_id'])
+            ->where('status', 'ACTIVE');
+
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        $query->where(function ($query) use ($names) {
+            foreach ($names as $name) {
+                $query->orWhereRaw(
+                    'UPPER(TRIM(legal_name)) = ?',
+                    [$name]
+                )
+                    ->orWhereRaw(
+                        'UPPER(TRIM(commercial_name)) = ?',
+                        [$name]
+                    )
+                    ->orWhereRaw(
+                        'UPPER(TRIM(billing_name)) = ?',
+                        [$name]
+                    );
+            }
+        });
+
+        $duplicate = $query->first([
+            'legal_name',
+            'commercial_name',
+            'billing_name',
+        ]);
+
+        if (!$duplicate) {
+            return;
+        }
+
+        $existingNames = collect($nameFields)
+            ->map(fn ($field) => $this->normalizeArticleText(
+                $duplicate->{$field}
+            ))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $field = collect($names)
+            ->search(fn ($name) => $existingNames->contains($name));
+
+        throw ValidationException::withMessages([
+            $field ?: 'legal_name' => [
+                'Ya existe un art\u{00ED}culo registrado con ese nombre para la misma marca.',
+            ],
+        ]);
     }
 
     /**

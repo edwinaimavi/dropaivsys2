@@ -13,6 +13,7 @@ use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 
 class BrandController extends Controller
@@ -96,6 +97,13 @@ class BrandController extends Controller
      */
     public function store(Request $request)
     {
+        $request->merge([
+            'description' => mb_strtoupper(
+                trim((string) $request->input('description')),
+                'UTF-8'
+            ),
+        ]);
+
         $validated = $request->validate([
 
             'code' => [
@@ -108,7 +116,9 @@ class BrandController extends Controller
             'description' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
+                Rule::unique('brands', 'description')
+                    ->whereNull('deleted_at')
             ],
 
             'observation' => [
@@ -131,6 +141,9 @@ class BrandController extends Controller
 
             'description.required' =>
             'La descripción es obligatoria.',
+
+            'description.unique' =>
+            "La marca ya est\u{00E1} registrada.",
 
             'status.required' =>
             'Debe seleccionar un estado.',
@@ -246,6 +259,13 @@ class BrandController extends Controller
             ], 404);
         }
 
+        $request->merge([
+            'description' => mb_strtoupper(
+                trim((string) $request->input('description')),
+                'UTF-8'
+            ),
+        ]);
+
         $validated = $request->validate([
 
             'code' => [
@@ -258,7 +278,10 @@ class BrandController extends Controller
             'description' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
+                Rule::unique('brands', 'description')
+                    ->ignore($brand->id)
+                    ->whereNull('deleted_at')
             ],
 
             'observation' => [
@@ -281,6 +304,9 @@ class BrandController extends Controller
 
             'description.required' =>
             'La descripción es obligatoria.',
+
+            'description.unique' =>
+            "La marca ya est\u{00E1} registrada.",
 
             'status.required' =>
             'Debe seleccionar un estado.',

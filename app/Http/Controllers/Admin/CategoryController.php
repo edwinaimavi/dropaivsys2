@@ -14,6 +14,7 @@ use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
@@ -31,25 +32,20 @@ class CategoryController extends Controller
      */
     public function generateCode()
     {
-        $lastCategory = Category::latest('id')->first();
+        $lastNumber = Category::withTrashed()
+            ->where('code', 'like', 'CAT%')
+            ->pluck('code')
+            ->map(function ($code) {
+                preg_match('/^CAT(\d+)$/i', trim($code), $matches);
 
-        if ($lastCategory) {
-
-            // Extrae número del código
-            $number = intval(
-                preg_replace('/[^0-9]/', '', $lastCategory->code)
-            );
-
-            $next = $number + 1;
-        } else {
-
-            $next = 1;
-        }
-
-        $code = 'CAT' . str_pad($next, 3, '0', STR_PAD_LEFT);
+                return isset($matches[1])
+                    ? (int) $matches[1]
+                    : 0;
+            })
+            ->max();
 
         return response()->json([
-            'code' => $code
+            'code' => 'CAT' . str_pad(($lastNumber ?? 0) + 1, 3, '0', STR_PAD_LEFT)
         ]);
     }
 
@@ -119,19 +115,28 @@ class CategoryController extends Controller
      */
     public function store(Request $request)
     {
+        $request->merge([
+            'description' => mb_strtoupper(
+                trim((string) $request->input('description')),
+                'UTF-8'
+            ),
+        ]);
+
         $validated = $request->validate([
 
             'description' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
+                Rule::unique('categories', 'description')
+                    ->whereNull('deleted_at')
             ],
 
             'code' => [
                 'required',
                 'string',
                 'max:20',
-                'unique:categories,code'
+                Rule::unique('categories', 'code')
             ],
 
             'type' => [
@@ -158,6 +163,9 @@ class CategoryController extends Controller
 
             'description.max' =>
             'La descripción no puede superar 255 caracteres.',
+
+            'description.unique' =>
+            "La categor\u{00ED}a ya est\u{00E1} registrada.",
 
             // CODE
             'code.required' =>
@@ -187,7 +195,8 @@ class CategoryController extends Controller
             DB::beginTransaction();
 
             // VALIDACIÓN EXTRA DE SEGURIDAD
-            $exists = Category::where('code', $validated['code'])
+            $exists = Category::withTrashed()
+                ->where('code', $validated['code'])
                 ->exists();
 
             if ($exists) {
@@ -328,19 +337,30 @@ class CategoryController extends Controller
             ], 404);
         }
 
+        $request->merge([
+            'description' => mb_strtoupper(
+                trim((string) $request->input('description')),
+                'UTF-8'
+            ),
+        ]);
+
         $validated = $request->validate([
 
             'description' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
+                Rule::unique('categories', 'description')
+                    ->ignore($category->id)
+                    ->whereNull('deleted_at')
             ],
 
             'code' => [
                 'required',
                 'string',
                 'max:20',
-                'unique:categories,code,' . $category->id
+                Rule::unique('categories', 'code')
+                    ->ignore($category->id)
             ],
 
             'type' => [
@@ -367,6 +387,9 @@ class CategoryController extends Controller
 
             'description.max' =>
             'La descripción no puede superar 255 caracteres.',
+
+            'description.unique' =>
+            "La categor\u{00ED}a ya est\u{00E1} registrada.",
 
             // CODE
             'code.required' =>
@@ -396,7 +419,8 @@ class CategoryController extends Controller
             DB::beginTransaction();
 
             // VALIDACIÓN EXTRA
-            $exists = Category::where('code', $validated['code'])
+            $exists = Category::withTrashed()
+                ->where('code', $validated['code'])
                 ->where('id', '!=', $category->id)
                 ->exists();
 

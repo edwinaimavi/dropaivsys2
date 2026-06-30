@@ -413,18 +413,21 @@
                                             <label>Nombre Legal</label>
                                             <input type="text" class="form-control form-control-sm"
                                                 id="legal_name">
+                                            <span class="invalid-feedback" id="legal_name-error"></span>
                                         </div>
 
                                         <div class="col-md-4">
                                             <label>Nombre Comercial</label>
                                             <input type="text" class="form-control form-control-sm"
                                                 id="commercial_name">
+                                            <span class="invalid-feedback" id="commercial_name-error"></span>
                                         </div>
 
                                         <div class="col-md-4">
                                             <label>Nombre Facturación</label>
                                             <input type="text" class="form-control form-control-sm"
                                                 id="billing_name">
+                                            <span class="invalid-feedback" id="billing_name-error"></span>
                                         </div>
 
                                     </div>
