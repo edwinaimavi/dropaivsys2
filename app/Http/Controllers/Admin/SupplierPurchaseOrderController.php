@@ -25,11 +25,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
 
 class SupplierPurchaseOrderController extends Controller
 {
-    private const STATUS_DRAFT = 'draft';
+    private const STATUS_REGISTERED = 'registered';
     private const STATUS_SENT = 'sent';
     private const STATUS_APPROVED = 'approved';
     private const STATUS_RECEIVED = 'received';
@@ -211,14 +212,22 @@ class SupplierPurchaseOrderController extends Controller
         return response()->json(['accounts' => $accounts]);
     }
 
-    public function customerPurchaseOrderItems(CustomerPurchaseOrder $customerPurchaseOrder)
+    public function customerPurchaseOrderItems(Request $request, CustomerPurchaseOrder $customerPurchaseOrder)
     {
-        return $this->customerPurchaseOrderItemsResponse(collect([$customerPurchaseOrder]));
+        $validated = $request->validate([
+            'supplier_id' => ['required', 'exists:suppliers,id'],
+        ]);
+
+        return $this->customerPurchaseOrderItemsResponse(
+            collect([$customerPurchaseOrder]),
+            (int) $validated['supplier_id']
+        );
     }
 
     public function loadCustomerOrderItems(Request $request)
     {
         $validated = $request->validate([
+            'supplier_id' => ['required', 'exists:suppliers,id'],
             'customer_purchase_order_ids' => ['required', 'array', 'min:1'],
             'customer_purchase_order_ids.*' => [
                 'distinct',
@@ -238,7 +247,10 @@ class SupplierPurchaseOrderController extends Controller
             ->sortBy(fn (CustomerPurchaseOrder $order) => $ids->search($order->id))
             ->values();
 
-        return $this->customerPurchaseOrderItemsResponse($orders);
+        return $this->customerPurchaseOrderItemsResponse(
+            $orders,
+            (int) $validated['supplier_id']
+        );
     }
 
     public function store(Request $request)
@@ -341,7 +353,7 @@ class SupplierPurchaseOrderController extends Controller
             'document_type' => ['nullable', Rule::in($this->documentTypeOptions())],
             'affect_igv' => ['nullable', 'boolean'],
             'observations' => ['nullable', 'string'],
-            'status' => ['nullable', Rule::in(array_keys($this->statusPresentation()))],
+            'status' => ['nullable', Rule::in($this->statusValues())],
             'items' => ['required', 'array', 'min:1'],
             'items.*.article_id' => ['required', 'exists:articles,id'],
             'items.*.market_study_item_id' => ['nullable', 'exists:market_study_items,id'],
@@ -385,6 +397,11 @@ class SupplierPurchaseOrderController extends Controller
                     ->values()
                     ->all();
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
+                $validated['items'] = $this->applySupplierAwardDataToItems(
+                    (int) $validated['supplier_id'],
+                    $customerOrderIds,
+                    $validated['items']
+                );
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
 
@@ -414,7 +431,13 @@ class SupplierPurchaseOrderController extends Controller
                     'subtotal' => $totals['subtotal'],
                     'igv' => $totals['igv'],
                     'grand_total' => $totals['grand_total'],
-                    'status' => $validated['status'] ?? $order?->status ?? self::STATUS_DRAFT,
+                    'status' => $order
+                        ? ($validated['status'] ?? (
+                            $order->status === 'draft'
+                                ? self::STATUS_REGISTERED
+                                : $order->status
+                        ))
+                        : ($validated['status'] ?? self::STATUS_REGISTERED),
                     'updated_by' => Auth::id(),
                 ];
 
@@ -470,6 +493,8 @@ class SupplierPurchaseOrderController extends Controller
                     'pdf_error' => $pdfError,
                 ], $wasRecentlyCreated ? 201 : 200);
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             if ($generatedPdfPath && Storage::disk('public')->exists($generatedPdfPath)) {
                 Storage::disk('public')->delete($generatedPdfPath);
@@ -536,11 +561,12 @@ class SupplierPurchaseOrderController extends Controller
         ];
     }
 
-    private function customerPurchaseOrderItemsResponse($orders)
+    private function customerPurchaseOrderItemsResponse($orders, ?int $supplierId = null)
     {
         $orders->each(function (CustomerPurchaseOrder $order) {
             $order->load([
                 'customer:id,business_name,full_name,first_name,last_name',
+                'items.quoteItem',
                 'items.article',
                 'items.unit',
                 'items.presentation',
@@ -549,6 +575,10 @@ class SupplierPurchaseOrderController extends Controller
         });
 
         $firstOrder = $orders->first();
+        $awardMap = $supplierId
+            ? $this->awardedQuoteItemsForSupplier($orders, $supplierId)
+            : collect();
+
         $items = $orders->flatMap(function (CustomerPurchaseOrder $order) {
             $customerName = $order->customer?->business_name
                 ?? $order->customer?->full_name
@@ -558,39 +588,223 @@ class SupplierPurchaseOrderController extends Controller
                 )
                 ?: null;
 
-            return $order->items
-                ->reject(fn (CustomerPurchaseOrderItem $item) => strtolower((string) $item->status) === 'deleted')
-                ->map(function (CustomerPurchaseOrderItem $item) use ($order, $customerName) {
+            return $order->items->map(function (CustomerPurchaseOrderItem $item) use ($order, $customerName) {
+                return [
+                    'item' => $item,
+                    'order' => $order,
+                    'customer_name' => $customerName,
+                ];
+            });
+        })
+            ->filter(function (array $row) use ($awardMap, $supplierId) {
+                /** @var CustomerPurchaseOrderItem $item */
+                $item = $row['item'];
+
+                if (strtolower((string) $item->status) === 'deleted') {
+                    return false;
+                }
+
+                if (!$supplierId) {
+                    return true;
+                }
+
+                $marketStudyItemId = $item->market_study_item_id
+                    ?? $item->quoteItem?->market_study_item_id;
+
+                return $marketStudyItemId
+                    && $awardMap->has((int) $marketStudyItemId);
+            })
+            ->map(function (array $row) use ($awardMap, $supplierId) {
+                /** @var CustomerPurchaseOrderItem $item */
+                $item = $row['item'];
+                /** @var CustomerPurchaseOrder $order */
+                $order = $row['order'];
+                $customerName = $row['customer_name'];
+                $marketStudyItemId = $item->market_study_item_id
+                    ?? $item->quoteItem?->market_study_item_id;
+                $award = $supplierId && $marketStudyItemId
+                    ? $awardMap->get((int) $marketStudyItemId)
+                    : null;
+
                 return array_merge(
-                    $this->sourceItemPayload($item, 'customer_purchase_order_item_id'),
+                    $this->sourceItemPayload(
+                        $item,
+                        'customer_purchase_order_item_id',
+                        $award
+                    ),
                     [
                         'customer_purchase_order_id' => $order->id,
                         'customer_purchase_order_code' => $order->code,
                         'customer_name' => $customerName,
                     ]
                 );
-            });
-        })->values();
+            })
+            ->values();
 
         return response()->json([
             'customer_purchase_order_ids' => $orders->pluck('id')->values(),
             'company_id' => $firstOrder?->company_id,
             'currency_id' => $firstOrder?->currency_id,
             'quote_id' => $firstOrder?->quote_id,
+            'supplier_id' => $supplierId,
             'items' => $items,
         ]);
     }
 
-    private function sourceItemPayload(Model $item, string $sourceKey): array
+    private function awardedQuoteItemsForSupplier($orders, int $supplierId)
+    {
+        $marketStudyItemIds = $orders
+            ->flatMap(fn (CustomerPurchaseOrder $order) => $order->items)
+            ->map(fn (CustomerPurchaseOrderItem $item) => $item->market_study_item_id
+                ?? $item->quoteItem?->market_study_item_id)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($marketStudyItemIds->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table('market_study_item_winners as winners')
+            ->join(
+                'market_study_quote_items as quote_items',
+                'quote_items.id',
+                '=',
+                'winners.market_study_quote_item_id'
+            )
+            ->join(
+                'market_study_quotes as quotes',
+                'quotes.id',
+                '=',
+                'quote_items.market_study_quote_id'
+            )
+            ->where('quotes.supplier_id', $supplierId)
+            ->whereIn('winners.market_study_item_id', $marketStudyItemIds)
+            ->whereNull('quote_items.deleted_at')
+            ->whereNull('quotes.deleted_at')
+            ->select([
+                'winners.market_study_item_id',
+                'winners.market_study_quote_item_id',
+                'quote_items.article_id',
+                'quote_items.brand_id',
+                'quote_items.unit_id',
+                'quote_items.presentation_id',
+                'quote_items.origin',
+                'quote_items.expiration_date',
+                'quote_items.quantity',
+                'quote_items.unit_price',
+                'quote_items.subtotal',
+                'quote_items.tax_amount',
+                'quote_items.total',
+            ])
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->market_study_item_id);
+    }
+
+    private function applySupplierAwardDataToItems(
+        int $supplierId,
+        array $customerOrderIds,
+        array $items
+    ): array {
+        $customerOrderItems = CustomerPurchaseOrderItem::query()
+            ->with('quoteItem')
+            ->whereIn(
+                'id',
+                collect($items)
+                    ->pluck('customer_purchase_order_item_id')
+                    ->filter()
+                    ->all()
+            )
+            ->get()
+            ->keyBy('id');
+
+        $orders = CustomerPurchaseOrder::query()
+            ->with('items.quoteItem')
+            ->whereIn('id', $customerOrderIds)
+            ->get();
+
+        $awardMap = $this->awardedQuoteItemsForSupplier($orders, $supplierId);
+
+        foreach ($items as $index => $item) {
+            $customerItemId = $item['customer_purchase_order_item_id'] ?? null;
+
+            $customerItem = null;
+
+            if ($customerItemId) {
+                $customerItem = $customerOrderItems->get($customerItemId);
+
+                if (!$customerItem) {
+                    throw ValidationException::withMessages([
+                        "items.$index.customer_purchase_order_item_id" =>
+                        'El item de orden cliente no existe.',
+                    ]);
+                }
+
+                if (!in_array((int) $customerItem->customer_purchase_order_id, $customerOrderIds, true)) {
+                    throw ValidationException::withMessages([
+                        "items.$index.customer_purchase_order_item_id" =>
+                        'El item no pertenece a las ordenes cliente seleccionadas.',
+                    ]);
+                }
+            }
+
+            $marketStudyItemId = $item['market_study_item_id']
+                ?? $customerItem?->market_study_item_id
+                ?? $customerItem?->quoteItem?->market_study_item_id;
+
+            if (!$customerItemId && !$marketStudyItemId) {
+                continue;
+            }
+
+            if (!$marketStudyItemId || !$awardMap->has((int) $marketStudyItemId)) {
+                throw ValidationException::withMessages([
+                    "items.$index.article_id" =>
+                    'El item no esta adjudicado al proveedor seleccionado.',
+                ]);
+            }
+
+            $award = $awardMap->get((int) $marketStudyItemId);
+            $winnerPrice = round((float) ($award->unit_price ?? 0), 2);
+
+            $items[$index]['market_study_item_id'] = (int) $marketStudyItemId;
+            $items[$index]['unit_price'] = $winnerPrice;
+            $items[$index]['reference_purchase_price'] = $winnerPrice;
+
+            if (!empty($award->article_id)) {
+                $items[$index]['article_id'] = $award->article_id;
+            }
+
+            $items[$index]['brand_id'] = $award->brand_id ?? ($items[$index]['brand_id'] ?? null);
+            $items[$index]['unit_id'] = $award->unit_id ?? ($items[$index]['unit_id'] ?? null);
+            $items[$index]['presentation_id'] = $award->presentation_id ?? ($items[$index]['presentation_id'] ?? null);
+            $items[$index]['origin'] = $award->origin ?? ($items[$index]['origin'] ?? null);
+            $items[$index]['expiration_date'] = $award->expiration_date ?? ($items[$index]['expiration_date'] ?? null);
+        }
+
+        return $items;
+    }
+
+    private function sourceItemPayload(
+        Model $item,
+        string $sourceKey,
+        ?object $award = null
+    ): array
     {
         $article = $item->article;
         $quantity = round((float) ($item->quantity ?? 1), 2);
-        $unitPrice = round((float) ($item->unit_price ?? $item->cost_price ?? 0), 2);
+        $unitPrice = round(
+            (float) ($award->unit_price ?? $item->unit_price ?? $item->cost_price ?? 0),
+            2
+        );
 
         return [
             $sourceKey => $item->id,
-            'article_id' => $item->article_id,
-            'market_study_item_id' => $item->market_study_item_id ?? null,
+            'article_id' => $award->article_id ?? $item->article_id,
+            'market_study_item_id' => $award->market_study_item_id
+                ?? $item->market_study_item_id
+                ?? $item->quoteItem?->market_study_item_id
+                ?? null,
             'quote_item_id' => $sourceKey === 'quote_item_id' ? $item->id : ($item->quote_item_id ?? null),
             'customer_purchase_order_item_id' => $sourceKey === 'customer_purchase_order_item_id'
                 ? $item->id
@@ -602,11 +816,13 @@ class SupplierPurchaseOrderController extends Controller
                 ?? $article?->billing_name
                 ?? 'ARTICULO',
             'note' => $item->note ?? null,
-            'unit_id' => $item->unit_id ?? $article?->unit_id,
-            'presentation_id' => $item->presentation_id ?? $article?->presentation_id,
-            'brand_id' => $item->brand_id ?? $article?->brand_id,
-            'origin' => $item->origin ?? null,
-            'expiration_date' => $item->expiration_date ? (string) $item->expiration_date : null,
+            'unit_id' => $award->unit_id ?? $item->unit_id ?? $article?->unit_id,
+            'presentation_id' => $award->presentation_id ?? $item->presentation_id ?? $article?->presentation_id,
+            'brand_id' => $award->brand_id ?? $item->brand_id ?? $article?->brand_id,
+            'origin' => $award->origin ?? $item->origin ?? null,
+            'expiration_date' => ($award->expiration_date ?? $item->expiration_date)
+                ? (string) ($award->expiration_date ?? $item->expiration_date)
+                : null,
             'cost_type' => $item->cost_type ?? $item->cost_condition_snapshot ?? 'PESO',
             'reference_purchase_price' => $unitPrice,
             'quantity' => $quantity > 0 ? $quantity : 1,
@@ -716,36 +932,53 @@ class SupplierPurchaseOrderController extends Controller
     private function statusPresentation(): array
     {
         return [
-            self::STATUS_DRAFT => [
-                'label' => 'Borrador',
-                'class' => 'badge-secondary text-white',
-                'icon' => 'fas fa-pencil-alt',
+            self::STATUS_REGISTERED => [
+                'label' => 'Registrado',
+                'class' => 'badge-primary text-white',
+                'icon' => 'fas fa-clipboard-check',
+            ],
+            'draft' => [
+                'label' => 'Registrado',
+                'class' => 'badge-primary text-white',
+                'icon' => 'fas fa-clipboard-check',
             ],
             self::STATUS_SENT => [
-                'label' => 'Enviada al proveedor',
+                'label' => 'Enviado',
                 'class' => 'badge-info text-white',
                 'icon' => 'fas fa-paper-plane',
             ],
             self::STATUS_APPROVED => [
-                'label' => 'Aprobada',
+                'label' => 'Aprobado',
                 'class' => 'badge-success text-white',
                 'icon' => 'fas fa-check-circle',
             ],
             self::STATUS_RECEIVED => [
-                'label' => 'Recibida',
+                'label' => 'Recibido',
                 'class' => 'badge-primary text-white',
                 'icon' => 'fas fa-box',
             ],
             self::STATUS_CANCELLED => [
-                'label' => 'Cancelada',
+                'label' => 'Cancelado',
                 'class' => 'badge-danger text-white',
                 'icon' => 'fas fa-times-circle',
             ],
             self::STATUS_INVOICED => [
-                'label' => 'Facturada',
+                'label' => 'Facturado',
                 'class' => 'badge-warning text-dark',
                 'icon' => 'fas fa-file-invoice-dollar',
             ],
+        ];
+    }
+
+    private function statusValues(): array
+    {
+        return [
+            self::STATUS_REGISTERED,
+            self::STATUS_SENT,
+            self::STATUS_APPROVED,
+            self::STATUS_RECEIVED,
+            self::STATUS_CANCELLED,
+            self::STATUS_INVOICED,
         ];
     }
 

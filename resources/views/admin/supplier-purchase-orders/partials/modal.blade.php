@@ -58,7 +58,7 @@
                                     <div class="font-weight-600 mb-2">{{ now()->format('d/m/Y') }}</div>
 
                                     <small class="text-muted d-block">Estado inicial</small>
-                                    <span class="badge badge-secondary px-2 py-1 mb-2">Borrador</span>
+                                    <span class="badge badge-primary px-2 py-1 mb-2">Registrado</span>
 
                                     <small class="text-muted d-block">Proveedor</small>
                                     <div class="font-weight-600 mb-2 text-break" id="supplierOrderSideSupplier">

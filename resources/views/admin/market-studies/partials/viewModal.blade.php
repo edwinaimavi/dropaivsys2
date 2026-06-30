@@ -264,22 +264,27 @@
 
                         <div class="row text-center">
 
-                            <div class="col-md-3">
+                            <div class="col">
+                                <small>Base gravada</small>
+                                <h4 id="view_gravada">S/ 0.00</h4>
+                            </div>
+
+                            <div class="col">
                                 <small>Inafecta</small>
                                 <h4 id="view_inafecta">S/ 0.00</h4>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col">
                                 <small>Exonerada</small>
                                 <h4 id="view_exonerada">S/ 0.00</h4>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col">
                                 <small>IGV</small>
                                 <h4 id="view_igv">S/ 0.00</h4>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col">
                                 <small>Total</small>
                                 <h3 class="text-success" id="view_total">S/ 0.00</h3>
                             </div>

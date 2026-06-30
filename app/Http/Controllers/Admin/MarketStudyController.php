@@ -555,10 +555,64 @@ class MarketStudyController extends Controller
 
         ]);
 
+        $marketStudy->setAttribute(
+            'economic_summary',
+            $this->calculateWinnerEconomicSummary($marketStudy)
+        );
+
         return response()->json([
             'success' => true,
             'data' => $marketStudy
         ]);
+    }
+
+    private function calculateWinnerEconomicSummary(MarketStudy $marketStudy): array
+    {
+        $gravada = 0;
+        $exonerada = 0;
+        $inafecta = 0;
+        $igv = 0;
+        $total = 0;
+
+        foreach ($marketStudy->winners as $winner) {
+            $quoteItem = $winner->quoteItem;
+
+            if (!$quoteItem) {
+                continue;
+            }
+
+            $quantity = (float) ($quoteItem->quantity ?? 0);
+            $unitPrice = (float) ($quoteItem->unit_price ?? 0);
+            $lineTotal = round($quantity * $unitPrice, 2);
+
+            if ($lineTotal <= 0) {
+                $lineTotal = round((float) ($quoteItem->total ?? 0), 2);
+            }
+
+            $taxType = strtoupper($quoteItem->tax_type ?? 'GRAVADA');
+
+            if ($taxType === 'GRAVADA') {
+                $tax = round($lineTotal * 0.18, 2);
+
+                $gravada += $lineTotal;
+                $igv += $tax;
+                $total += $lineTotal + $tax;
+            } elseif ($taxType === 'EXONERADA') {
+                $exonerada += $lineTotal;
+                $total += $lineTotal;
+            } else {
+                $inafecta += $lineTotal;
+                $total += $lineTotal;
+            }
+        }
+
+        return [
+            'gravada' => round($gravada, 2),
+            'exonerada' => round($exonerada, 2),
+            'inafecta' => round($inafecta, 2),
+            'igv' => round($igv, 2),
+            'total' => round($total, 2),
+        ];
     }
 
     public function winners()

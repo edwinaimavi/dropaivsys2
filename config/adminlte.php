@@ -442,6 +442,27 @@ return [
 
 
 
+
+            ],
+        ],
+        [
+            'text' => 'Almacen',
+            'icon' => 'fas fa-warehouse',
+
+            'submenu' => [
+
+                [
+                    'text' => 'Ingresos de Almacén',
+                    'icon' => 'fas fa-warehouse',
+                    'icon_color' => 'info',
+                    'url' => 'admin/warehouse-entries',
+                    /* "can" => 'admin.categories.index' */
+
+                ],
+
+
+
+
             ],
         ],
 

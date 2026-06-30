@@ -70,7 +70,7 @@
                 <!-- TABLA -->
                 <div class="picker-table-card">
 
-                    <div class="picker-table-header">
+                    <div class="picker-table-header d-flex flex-column flex-md-row justify-content-between align-items-md-center">
 
                         <div>
 
@@ -87,15 +87,32 @@
 
                         </div>
 
+                        <div class="mt-3 mt-md-0 d-flex align-items-center">
+
+                            <span class="badge badge-light border text-muted mr-2">
+                                <span id="articlePickerSelectedCount">0</span> seleccionados
+                            </span>
+
+                            <button type="button" id="btnAddSelectedArticles" class="btn btn-success btn-sm">
+                                <i class="fas fa-check-square mr-1"></i>
+                                Agregar seleccionados
+                            </button>
+
+                        </div>
+
                     </div>
 
                     <div class="table-responsive">
 
-                        <table id="tableArticlePicker" class="table table-hover align-middle w-100 mb-0">
+                        <table id="tableMarketStudyArticlePicker" class="table table-hover align-middle w-100 mb-0">
 
                             <thead>
 
                                 <tr>
+
+                                    <th width="44" class="text-center">
+                                        <input type="checkbox" id="checkAllArticlePicker" title="Seleccionar visibles">
+                                    </th>
 
                                     <th width="70">ID</th>
 
@@ -108,8 +125,6 @@
                                     <th>SUBCATEGORÍA</th>
 
                                     <th>PRESENTACIÓN</th>
-
-                                    <th width="120">ACCIÓN</th>
 
                                 </tr>
 
@@ -132,6 +147,13 @@
 
                     <i class="fas fa-times mr-1"></i>
                     Cerrar
+
+                </button>
+
+                <button type="button" id="btnAddSelectedArticlesFooter" class="btn btn-success px-3">
+
+                    <i class="fas fa-plus mr-1"></i>
+                    Agregar seleccionados
 
                 </button>
 
@@ -257,7 +279,7 @@
     }
 
     /* TABLA */
-    #tableArticlePicker thead th {
+    #tableMarketStudyArticlePicker thead th {
 
         background: #f8f9fa;
 
@@ -271,14 +293,14 @@
         text-transform: uppercase;
     }
 
-    #tableArticlePicker tbody td {
+    #tableMarketStudyArticlePicker tbody td {
 
         padding: 14px 10px;
         vertical-align: middle;
         font-size: 12px;
     }
 
-    #tableArticlePicker tbody tr:hover {
+    #tableMarketStudyArticlePicker tbody tr:hover {
 
         background: #f8fff9;
         font-size: 12px;
@@ -296,6 +318,13 @@
     #articlePickerModal .dataTables_length select {
 
         border-radius: 10px !important;
+    }
+
+    #tableMarketStudyArticlePicker .form-check-input,
+    #checkAllArticlePicker {
+        cursor: pointer;
+        margin-top: 0;
+        transform: scale(1.05);
     }
 
     /* ANIMACIÓN */

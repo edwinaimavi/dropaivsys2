@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\SupplierAccountController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierPurchaseOrderController;
 use App\Http\Controllers\Admin\UnitController;
+use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
@@ -360,4 +361,25 @@ Route::post(
 Route::resource(
     'supplier-purchase-orders',
     SupplierPurchaseOrderController::class
+)->except(['create']);
+
+// RUTAS PARA INGRESOS DE ALMACEN
+Route::get(
+    'warehouse-entries/list',
+    [WarehouseEntryController::class, 'list']
+)->name('warehouse-entries.list');
+
+Route::get(
+    'warehouse-entries/generate-number',
+    [WarehouseEntryController::class, 'generateNumber']
+)->name('warehouse-entries.generateNumber');
+
+Route::post(
+    'warehouse-entries/load-supplier-order-items',
+    [WarehouseEntryController::class, 'loadSupplierPurchaseOrderItems']
+)->name('warehouse-entries.loadSupplierOrderItems');
+
+Route::resource(
+    'warehouse-entries',
+    WarehouseEntryController::class
 )->except(['create']);

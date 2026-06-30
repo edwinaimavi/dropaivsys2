@@ -9,6 +9,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/js/pages/customer-purchase-order.js',
                 'resources/js/pages/supplier-purchase-order.js',
+                'resources/js/pages/warehouse-entry.js',
             ],
             refresh: true,
         }),

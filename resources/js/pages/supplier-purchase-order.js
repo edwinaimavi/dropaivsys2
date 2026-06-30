@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         loadSupplierAccounts(supplierId);
+        scheduleSupplierOrderSourceAutoLoad();
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
@@ -382,6 +383,7 @@ function scheduleSupplierOrderSourceAutoLoad() {
 
 function loadSupplierOrderSourceItems(options = {}) {
     const orderIds = $('#supplier_order_customer_purchase_order_ids').val() || [];
+    const supplierId = $('#supplier_order_supplier_id').val();
     const isSilent = Boolean(options.silent);
 
     if (!orderIds.length) {
@@ -400,6 +402,21 @@ function loadSupplierOrderSourceItems(options = {}) {
         return;
     }
 
+    if (!supplierId) {
+        clearSupplierOrderItemRows();
+        showEmptySupplierOrderItemsRow();
+        calculateSupplierOrderTotals();
+
+        if (!isSilent) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Seleccione un proveedor para cargar los articulos adjudicados.'
+            });
+        }
+
+        return;
+    }
+
     if (supplierOrderSourceLoadRequest) {
         supplierOrderSourceLoadRequest.abort();
     }
@@ -408,6 +425,7 @@ function loadSupplierOrderSourceItems(options = {}) {
         url: window.routes.supplierPurchaseOrderLoadCustomerItems,
         type: 'POST',
         data: {
+            supplier_id: supplierId,
             customer_purchase_order_ids: orderIds
         }
     })
@@ -426,15 +444,23 @@ function loadSupplierOrderSourceItems(options = {}) {
             calculateSupplierOrderTotals();
 
             if (!isSilent) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Origen cargado',
-                    text: 'Items cargados desde las ordenes de compra del cliente.',
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 2500
-                });
+                if ((response.items || []).length) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Origen cargado',
+                        text: 'Items adjudicados al proveedor cargados correctamente.',
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 2500
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Sin articulos adjudicados',
+                        text: 'El proveedor seleccionado no tiene articulos adjudicados en las ordenes cliente seleccionadas.'
+                    });
+                }
             }
         })
         .fail(function (xhr) {
@@ -647,12 +673,13 @@ function loadSupplierPurchaseOrderDetail(id) {
 
 function fillSupplierPurchaseOrderDetail(order) {
     const statuses = {
-        draft: ['BORRADOR', 'badge-secondary'],
-        sent: ['ENVIADA AL PROVEEDOR', 'badge-info'],
-        approved: ['APROBADA', 'badge-success'],
-        received: ['RECIBIDA', 'badge-primary'],
-        cancelled: ['CANCELADA', 'badge-danger'],
-        invoiced: ['FACTURADA', 'badge-warning text-dark']
+        registered: ['REGISTRADO', 'badge-primary'],
+        draft: ['REGISTRADO', 'badge-primary'],
+        sent: ['ENVIADO', 'badge-info'],
+        approved: ['APROBADO', 'badge-success'],
+        received: ['RECIBIDO', 'badge-primary'],
+        cancelled: ['CANCELADO', 'badge-danger'],
+        invoiced: ['FACTURADO', 'badge-warning text-dark']
     };
     const status = statuses[order.status] || [String(order.status || '').toUpperCase(), 'badge-secondary'];
     const currencyCode = order.currency?.code || '';

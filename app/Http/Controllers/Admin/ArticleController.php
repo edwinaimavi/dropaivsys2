@@ -1090,7 +1090,9 @@ class ArticleController extends Controller
         $articles = Article::with([
             'category',
             'subcategory',
-            'presentation'
+            'presentation',
+            'unit',
+            'brand'
         ])
             ->where('status', 1)
             ->orderBy('billing_name');
@@ -1107,6 +1109,14 @@ class ArticleController extends Controller
 
             ->addColumn('presentation_name', function ($article) {
                 return $article->presentation?->description;
+            })
+
+            ->addColumn('unit_name', function ($article) {
+                return $article->unit?->description;
+            })
+
+            ->addColumn('brand_name', function ($article) {
+                return $article->brand?->description;
             })
 
             ->addColumn('action', function ($article) {

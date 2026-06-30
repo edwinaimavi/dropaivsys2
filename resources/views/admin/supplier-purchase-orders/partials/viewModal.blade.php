@@ -32,7 +32,7 @@
                                 <small class="text-muted text-uppercase font-weight-bold">C&oacute;digo interno</small>
                                 <h3 id="vspo_code" class="font-weight-bold mb-2 text-dark">-</h3>
                                 <span id="vspo_status"
-                                    class="badge badge-secondary rounded-pill px-3 py-2">BORRADOR</span>
+                                    class="badge badge-primary rounded-pill px-3 py-2">REGISTRADO</span>
 
                                 <hr class="my-3">
 

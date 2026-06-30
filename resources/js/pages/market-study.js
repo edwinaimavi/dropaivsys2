@@ -2,6 +2,7 @@
 let tableMarketStudy;
 let tableArticlePicker = null;
 let marketStudyArticles = [];
+let selectedArticlePickerItems = {};
 let deletedMarketStudyDocuments = [];
 
 let quoteItems = [];
@@ -334,6 +335,14 @@ document.addEventListener('DOMContentLoaded', function () {
     window.addMarketStudyArticleToStudy = function (article) {
         const normalized = normalizeMarketStudyArticle(article);
 
+        const exists = marketStudyArticles.find(
+            item => parseInt(item.article_id) === parseInt(normalized.article_id)
+        );
+
+        if (exists) {
+            return false;
+        }
+
         marketStudyArticles.push(normalized);
         renderMarketStudyArticles();
 
@@ -387,9 +396,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         };
 
-        marketStudyArticles.push(article);
-
-        renderMarketStudyArticles();
+        window.addMarketStudyArticleToStudy(article);
 
         $('#articlePickerModal').modal('hide');
 
@@ -571,12 +578,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
 $('#articlePickerModal').on('shown.bs.modal', function () {
 
-    if ($.fn.DataTable.isDataTable('#tableArticlePicker')) {
+    selectedArticlePickerItems = {};
+    updateArticlePickerSelectionState();
+
+    if ($.fn.DataTable.isDataTable('#tableMarketStudyArticlePicker')) {
         tableArticlePicker.ajax.reload();
         return;
     }
 
-    tableArticlePicker = $('#tableArticlePicker').DataTable({
+    tableArticlePicker = $('#tableMarketStudyArticlePicker').DataTable({
 
         processing: true,
         serverSide: true,
@@ -590,6 +600,37 @@ $('#articlePickerModal').on('shown.bs.modal', function () {
         },
 
         columns: [
+
+            {
+                data: null,
+                orderable: false,
+                searchable: false,
+                className: 'text-center',
+                render: function (data, type, row) {
+                    const articleId = parseInt(row.id);
+                    const alreadyAdded = marketStudyArticles.some(
+                        item => parseInt(item.article_id) === articleId
+                    );
+                    const checked = selectedArticlePickerItems[articleId]
+                        ? 'checked'
+                        : '';
+                    const disabled = alreadyAdded
+                        ? 'disabled'
+                        : '';
+                    const title = alreadyAdded
+                        ? 'Agregado'
+                        : 'Seleccionar';
+
+                    return `
+                        <input type="checkbox"
+                            class="form-check-input article-picker-check"
+                            value="${articleId}"
+                            title="${title}"
+                            ${checked}
+                            ${disabled}>
+                    `;
+                }
+            },
 
             {
                 data: 'id'
@@ -618,14 +659,136 @@ $('#articlePickerModal').on('shown.bs.modal', function () {
                 orderable: false
             },
 
-            {
-                data: 'action',
-                orderable: false,
-                searchable: false
-            }
-
         ]
 
+    }).on('draw', function () {
+        updateArticlePickerSelectionState();
+    });
+
+});
+
+function buildArticlePickerItem(row) {
+    return {
+        article_id: row.id,
+        article_code_snapshot: row.code,
+        billing_name_snapshot: row.billing_name,
+        category_snapshot: row.category_name,
+        subcategory_snapshot: row.subcategory_name,
+        presentation_snapshot: row.presentation_name,
+        unit_snapshot: row.unit_name,
+        brand_snapshot: row.brand_name,
+        weight_snapshot: row.weight ?? '',
+        cost_condition_snapshot: row.cost_condition ?? '',
+        status: 1
+    };
+}
+
+function updateArticlePickerSelectionState() {
+    const selectedCount = Object.keys(selectedArticlePickerItems).length;
+
+    $('#articlePickerSelectedCount').text(selectedCount);
+
+    const visibleChecks = $('#tableMarketStudyArticlePicker tbody .article-picker-check:not(:disabled)');
+    const checkedVisible = visibleChecks.filter(':checked');
+
+    $('#checkAllArticlePicker').prop(
+        'checked',
+        visibleChecks.length > 0 && visibleChecks.length === checkedVisible.length
+    );
+}
+
+$(document).on('change', '#tableMarketStudyArticlePicker .article-picker-check', function () {
+    const articleId = parseInt($(this).val());
+    const rowData = tableArticlePicker
+        ? tableArticlePicker.row($(this).closest('tr')).data()
+        : null;
+
+    if (!rowData) {
+        return;
+    }
+
+    if ($(this).is(':checked')) {
+        selectedArticlePickerItems[articleId] = buildArticlePickerItem(rowData);
+    } else {
+        delete selectedArticlePickerItems[articleId];
+    }
+
+    updateArticlePickerSelectionState();
+});
+
+$(document).on('change', '#checkAllArticlePicker', function () {
+    const checked = $(this).is(':checked');
+
+    $('#tableMarketStudyArticlePicker tbody .article-picker-check:not(:disabled)').each(function () {
+        const checkbox = $(this);
+        const articleId = parseInt(checkbox.val());
+        const rowData = tableArticlePicker
+            ? tableArticlePicker.row(checkbox.closest('tr')).data()
+            : null;
+
+        checkbox.prop('checked', checked);
+
+        if (!rowData) {
+            return;
+        }
+
+        if (checked) {
+            selectedArticlePickerItems[articleId] = buildArticlePickerItem(rowData);
+        } else {
+            delete selectedArticlePickerItems[articleId];
+        }
+    });
+
+    updateArticlePickerSelectionState();
+});
+
+$(document).on('click', '#btnAddSelectedArticles, #btnAddSelectedArticlesFooter', function () {
+    const selected = Object.values(selectedArticlePickerItems);
+
+    if (!selected.length) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Seleccione al menos un art\u00EDculo.'
+        });
+
+        return;
+    }
+
+    let addedCount = 0;
+
+    selected.forEach(function (article) {
+        if (window.addMarketStudyArticleToStudy(article)) {
+            addedCount++;
+        }
+    });
+
+    selectedArticlePickerItems = {};
+    $('#checkAllArticlePicker').prop('checked', false);
+
+    if (tableArticlePicker) {
+        tableArticlePicker.ajax.reload(null, false);
+    }
+
+    updateArticlePickerSelectionState();
+
+    if (!addedCount) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Los art\u00EDculos seleccionados ya fueron agregados.'
+        });
+
+        return;
+    }
+
+    $('#articlePickerModal').modal('hide');
+
+    Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: 'Art\u00EDculos agregados correctamente.',
+        showConfirmButton: false,
+        timer: 2500
     });
 
 });
@@ -3256,19 +3419,28 @@ function loadMarketStudyView(data) {
     // ==========================
     // RESUMEN ECONÓMICO
     // ==========================
-    let totalInafecta = 0;
-    let totalExonerada = 0;
-    let totalIgv = 0;
-    let total = 0;
+    const economicSummary =
+        data.economic_summary ||
+        calculateWinnerEconomicSummary(data.winners || []);
 
-    (data.quotes || []).forEach(function (quote) {
+    const totalGravada =
+        parseFloat(economicSummary.gravada || 0);
 
-        totalInafecta += parseFloat(quote.inafecta || 0);
-        totalExonerada += parseFloat(quote.exonerada || 0);
-        totalIgv += parseFloat(quote.igv || 0);
-        total += parseFloat(quote.grand_total || 0);
+    const totalInafecta =
+        parseFloat(economicSummary.inafecta || 0);
 
-    });
+    const totalExonerada =
+        parseFloat(economicSummary.exonerada || 0);
+
+    const totalIgv =
+        parseFloat(economicSummary.igv || 0);
+
+    const total =
+        parseFloat(economicSummary.total || economicSummary.grand_total || 0);
+
+    $('#view_gravada').text(
+        'S/ ' + totalGravada.toFixed(2)
+    );
 
     $('#view_inafecta').text(
         'S/ ' + totalInafecta.toFixed(2)
@@ -3285,5 +3457,64 @@ function loadMarketStudyView(data) {
     $('#view_total').text(
         'S/ ' + total.toFixed(2)
     );
+}
+
+function calculateWinnerEconomicSummary(winners) {
+    let gravada = 0;
+    let exonerada = 0;
+    let inafecta = 0;
+    let igv = 0;
+    let total = 0;
+
+    (winners || []).forEach(function (winner) {
+        const quoteItem =
+            winner?.quote_item ??
+            winner?.quoteItem ??
+            null;
+
+        if (!quoteItem) {
+            return;
+        }
+
+        const quantity =
+            parseFloat(quoteItem.quantity || 0) || 0;
+
+        const unitPrice =
+            parseFloat(quoteItem.unit_price || 0) || 0;
+
+        let lineTotal =
+            Math.round(quantity * unitPrice * 100) / 100;
+
+        if (lineTotal <= 0) {
+            lineTotal =
+                parseFloat(quoteItem.total || 0) || 0;
+        }
+
+        const taxType =
+            String(quoteItem.tax_type || 'GRAVADA').toUpperCase();
+
+        if (taxType === 'GRAVADA') {
+            const tax =
+                Math.round(lineTotal * 0.18 * 100) / 100;
+
+            gravada += lineTotal;
+            igv += tax;
+            total += lineTotal + tax;
+        } else if (taxType === 'EXONERADA') {
+            exonerada += lineTotal;
+            total += lineTotal;
+        } else {
+            inafecta += lineTotal;
+            total += lineTotal;
+        }
+    });
+
+    return {
+        gravada: Math.round(gravada * 100) / 100,
+        exonerada: Math.round(exonerada * 100) / 100,
+        inafecta: Math.round(inafecta * 100) / 100,
+        igv: Math.round(igv * 100) / 100,
+        total: Math.round(total * 100) / 100
+    };
 }
 
