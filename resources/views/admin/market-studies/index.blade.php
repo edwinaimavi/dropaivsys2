@@ -25,6 +25,7 @@
 
             <div>
 
+                @can('admin.market-studies.store')
                 <button id="btnCreateMarketStudy" class="btn btn-success shadow-sm px-4" type="button" data-toggle="modal"
                     data-target="#marketStudyModal">
 
@@ -32,6 +33,7 @@
                     Nuevo Estudio
 
                 </button>
+                @endcan
 
             </div>
 

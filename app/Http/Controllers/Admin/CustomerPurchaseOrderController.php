@@ -30,6 +30,16 @@ class CustomerPurchaseOrderController extends Controller
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_INVOICED = 'invoiced';
 
+    public function __construct()
+    {
+        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'customerBranches']);
+        $this->middleware('can:admin.customer-purchase-orders.load-items')->only(['quoteItems']);
+        $this->middleware('can:admin.customer-purchase-orders.store')->only(['store']);
+        $this->middleware('can:admin.customer-purchase-orders.update')->only(['update']);
+        $this->middleware('can:admin.customer-purchase-orders.destroy')->only(['destroy']);
+        $this->middleware('can:admin.customer-purchase-orders.show')->only(['show']);
+    }
+
     public function index()
     {
         $companies = Company::query()

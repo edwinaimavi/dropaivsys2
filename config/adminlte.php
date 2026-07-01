@@ -351,7 +351,7 @@ return [
                     'icon' => 'fas fa-tags',
                     'icon_color' => 'success',
                     'url' => 'admin/categories',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.categories.index'
 
                 ],
                 [
@@ -359,42 +359,42 @@ return [
                     'icon' => 'fas fa-balance-scale',
                     'icon_color' => 'primary',
                     'url' => 'admin/units',
-                    /* "can" => 'admin.users.index' */
+                    "can" => 'admin.units.index'
                 ],
                 [
                     'text' => 'Presentación',
                     'icon' => 'fas fa-box-open',
                     'icon_color' => 'yellow',
                     'url' => 'admin/presentations',
-                    /*   "can" => 'admin.users.index' */
+                    "can" => 'admin.presentations.index'
                 ],
                 [
                     'text' => 'Proveedores',
                     'icon' => 'fas  fa-truck',
                     'icon_color' => 'info',
                     'url' => 'admin/suppliers',
-                    /*   "can" => 'admin.users.index' */
+                    "can" => 'admin.suppliers.index'
                 ],
                 [
                     'text' => 'Marcas',
                     'icon' => 'fas  fa-tags',
                     'icon_color' => 'secondary',
                     'url' => 'admin/brands',
-                    /*   "can" => 'admin.users.index' */
+                    "can" => 'admin.brands.index'
                 ],
                 [
                     'text' => 'Artículos',
                     'icon' => 'fas  fa-boxes',
                     'icon_color' => 'primary',
                     'url' => 'admin/articles',
-                    /*   "can" => 'admin.users.index' */
+                    "can" => 'admin.articles.index'
                 ],
                 [
                     'text' => 'Clientes',
                     'icon' => 'fas  fa-users',
                     'icon_color' => 'danger',
                     'url' => 'admin/customers',
-                    /*   "can" => 'admin.users.index' */
+                    "can" => 'admin.customers.index'
                 ],
 
 
@@ -411,7 +411,7 @@ return [
                     'icon' => 'fas fa-chart-line',
                     'icon_color' => 'success',
                     'url' => 'admin/market-studies',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.market-studies.index'
 
                 ],
                 [
@@ -419,7 +419,7 @@ return [
                     'icon' => 'fas fa-file-invoice-dollar',
                     'icon_color' => 'primary',
                     'url' => 'admin/quotes',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.quotes.index'
 
                 ],
                 [
@@ -427,7 +427,7 @@ return [
                     'icon' => 'fas fa-clipboard-check',
                     'icon_color' => 'primary',
                     'url' => 'admin/customer-purchase-orders',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.customer-purchase-orders.index'
 
                 ],
                 [
@@ -435,7 +435,7 @@ return [
                     'icon' => 'fas fa-truck-loading',
                     'icon_color' => 'success',
                     'url' => 'admin/supplier-purchase-orders',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.supplier-purchase-orders.index'
 
                 ],
 
@@ -456,7 +456,7 @@ return [
                     'icon' => 'fas fa-warehouse',
                     'icon_color' => 'info',
                     'url' => 'admin/warehouse-entries',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.warehouse-entries.index'
 
                 ],
                 [
@@ -464,7 +464,7 @@ return [
                     'icon' => 'fas fa-clipboard-list',
                     'icon_color' => 'success',
                     'url' => 'admin/kardex',
-                    /* "can" => 'admin.categories.index' */
+                    "can" => 'admin.kardex.index'
 
                 ],
 
@@ -489,6 +489,7 @@ return [
             'text' => 'profile',
             'url' => 'admin/settings',
             'icon' => 'fas fa-fw fa-user',
+            'can' => 'admin.profile.index',
         ],
 
         [

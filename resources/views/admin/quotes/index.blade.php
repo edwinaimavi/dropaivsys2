@@ -25,12 +25,14 @@
 
             <div>
 
+                @can('admin.quotes.store')
                 <button id="btnCreateQuote" class="btn btn-primary shadow-sm px-4" type="button">
 
                     <i class="fas fa-plus-circle mr-1"></i>
                     Nueva Cotización
 
                 </button>
+                @endcan
 
             </div>
 

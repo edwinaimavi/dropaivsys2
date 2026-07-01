@@ -26,6 +26,14 @@ use Yajra\DataTables\Facades\DataTables;
 
 class QuoteController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.quotes.index')->only(['index', 'list', 'generateNumber', 'customerBranches', 'marketStudyWinners']);
+        $this->middleware('can:admin.quotes.store')->only(['store']);
+        $this->middleware('can:admin.quotes.update')->only(['update']);
+        $this->middleware('can:admin.quotes.destroy')->only(['destroy']);
+    }
+
     public function list()
     {
         Quote::dismissExpiredQuotes();

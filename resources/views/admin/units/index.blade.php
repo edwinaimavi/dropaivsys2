@@ -25,12 +25,14 @@
 
             <div>
 
+                @can('admin.units.store')
                 <button class="btn btn-primary shadow-sm px-4" type="button" data-toggle="modal" data-target="#unitModal">
 
                     <i class="fas fa-plus-circle mr-1"></i>
                     Nueva Unidad
 
                 </button>
+                @endcan
 
             </div>
 

@@ -10,7 +10,11 @@ use Illuminate\Support\Facades\DB;
 
 class MarketStudyComparisonController extends Controller
 {
-    //
+    public function __construct()
+    {
+        $this->middleware('can:admin.market-study-comparisons.show')->only(['show']);
+        $this->middleware('can:admin.market-study-comparisons.save')->only(['save']);
+    }
 
     public function show(MarketStudy $marketStudy)
     {

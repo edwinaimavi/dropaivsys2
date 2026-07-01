@@ -18,6 +18,18 @@ use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.categories.index')->only(['index', 'list', 'generateCode', 'subcategoryList']);
+        $this->middleware('can:admin.categories.store')->only(['store']);
+        $this->middleware('can:admin.categories.update')->only(['update']);
+        $this->middleware('can:admin.categories.destroy')->only(['destroy']);
+        $this->middleware('can:admin.categories.show')->only(['show']);
+        $this->middleware('can:admin.subcategories.store')->only(['storeSubcategory']);
+        $this->middleware('can:admin.subcategories.update')->only(['updateSubcategory']);
+        $this->middleware('can:admin.subcategories.destroy')->only(['destroySubcategory']);
+    }
+
     /**
      * INDEX
      */

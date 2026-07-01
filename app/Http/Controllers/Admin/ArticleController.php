@@ -25,6 +25,15 @@ use App\Models\Image;
 
 class ArticleController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.articles.index')->only(['index', 'list', 'generateCode', 'getSubcategories', 'listPicker']);
+        $this->middleware('can:admin.articles.store')->only(['store']);
+        $this->middleware('can:admin.articles.update')->only(['update']);
+        $this->middleware('can:admin.articles.destroy')->only(['destroy']);
+        $this->middleware('can:admin.articles.show')->only(['show', 'showData']);
+    }
+
     /**
      * Display a listing of the resource.
      */

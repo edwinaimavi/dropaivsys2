@@ -20,6 +20,23 @@ use App\Models\MarketStudyItem;
 
 class MarketStudyQuoteController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.market-studies.quotes')->only([
+            'suppliers',
+            'currencies',
+            'exchangeRate',
+            'supplierDetail',
+            'studyItems',
+            'generateNumber',
+            'listByStudy',
+        ]);
+        $this->middleware('can:admin.market-study-quotes.index')->only(['index']);
+        $this->middleware('can:admin.market-study-quotes.store')->only(['store']);
+        $this->middleware('can:admin.market-study-quotes.update')->only(['update']);
+        $this->middleware('can:admin.market-study-quotes.destroy')->only(['destroy']);
+        $this->middleware('can:admin.market-study-quotes.show')->only(['show']);
+    }
 
 
 

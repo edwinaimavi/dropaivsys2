@@ -18,6 +18,15 @@ use Illuminate\Support\Facades\Log;
 
 class SupplierController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.suppliers.index')->only(['index', 'list', 'searchUbigeo', 'consultarRuc']);
+        $this->middleware('can:admin.suppliers.store')->only(['store']);
+        $this->middleware('can:admin.suppliers.update')->only(['update']);
+        $this->middleware('can:admin.suppliers.destroy')->only(['destroy']);
+        $this->middleware('can:admin.suppliers.accounts')->only(['accounts']);
+    }
+
     /**
      * =========================================================
      * INDEX

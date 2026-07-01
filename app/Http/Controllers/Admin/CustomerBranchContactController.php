@@ -14,6 +14,14 @@ use Yajra\DataTables\Facades\DataTables;
 
 class CustomerBranchContactController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.customer-branch-contacts.index')->only(['list', 'branchesByCustomer']);
+        $this->middleware('can:admin.customer-branch-contacts.store')->only(['store']);
+        $this->middleware('can:admin.customer-branch-contacts.update')->only(['update']);
+        $this->middleware('can:admin.customer-branch-contacts.destroy')->only(['destroy']);
+    }
+
     public function list(CustomerBranch $branch)
     {
         $contacts = CustomerBranchContact::query()

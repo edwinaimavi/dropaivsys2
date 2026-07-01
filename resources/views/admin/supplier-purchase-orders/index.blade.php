@@ -15,10 +15,12 @@
                 </small>
             </div>
 
+            @can('admin.supplier-purchase-orders.store')
             <button id="btnCreateSupplierPurchaseOrder" class="btn btn-success shadow-sm px-4" type="button">
                 <i class="fas fa-plus-circle mr-1"></i>
                 Nueva Orden
             </button>
+            @endcan
         </div>
 
         <nav aria-label="breadcrumb">

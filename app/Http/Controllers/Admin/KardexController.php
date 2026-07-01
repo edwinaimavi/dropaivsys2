@@ -12,6 +12,13 @@ use Yajra\DataTables\Facades\DataTables;
 
 class KardexController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.kardex.index')->only(['index', 'list', 'articleHistory']);
+        $this->middleware('can:admin.kardex.show')->only(['show']);
+        $this->middleware('can:admin.kardex.stock')->only(['stock']);
+    }
+
     public function index()
     {
         $warehouses = Warehouse::query()

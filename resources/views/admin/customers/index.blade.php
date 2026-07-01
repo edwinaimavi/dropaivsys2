@@ -20,11 +20,13 @@
             </div>
 
             <div>
+                @can('admin.customers.store')
                 <button class="btn btn-primary shadow-sm px-4" type="button" data-toggle="modal" data-target="#customerModal">
 
                     <i class="fas fa-plus-circle mr-1"></i>
                     Nuevo Cliente
                 </button>
+                @endcan
 
 
             </div>

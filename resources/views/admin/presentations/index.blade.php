@@ -25,6 +25,7 @@
 
             <div>
 
+                @can('admin.presentations.store')
                 <button class="btn btn-primary shadow-sm px-4" type="button" data-toggle="modal"
                     data-target="#presentationModal">
 
@@ -32,6 +33,7 @@
                     Nueva Presentación
 
                 </button>
+                @endcan
 
             </div>
 

@@ -25,12 +25,14 @@
 
             <div>
 
+                @can('admin.categories.store')
                 <button class="btn btn-success shadow-sm px-4" type="button" data-toggle="modal" data-target="#categoryModal">
 
                     <i class="fas fa-plus-circle mr-1"></i>
                     Nueva Categoría
 
                 </button>
+                @endcan
 
             </div>
 

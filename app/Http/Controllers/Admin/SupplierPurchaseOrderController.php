@@ -37,6 +37,16 @@ class SupplierPurchaseOrderController extends Controller
     private const STATUS_CANCELLED = 'cancelled';
     private const STATUS_INVOICED = 'invoiced';
 
+    public function __construct()
+    {
+        $this->middleware('can:admin.supplier-purchase-orders.index')->only(['index', 'list', 'generateCode', 'supplierAccounts', 'customerPurchaseOrderItems']);
+        $this->middleware('can:admin.supplier-purchase-orders.load-items')->only(['loadCustomerOrderItems']);
+        $this->middleware('can:admin.supplier-purchase-orders.store')->only(['store']);
+        $this->middleware('can:admin.supplier-purchase-orders.update')->only(['update']);
+        $this->middleware('can:admin.supplier-purchase-orders.destroy')->only(['destroy']);
+        $this->middleware('can:admin.supplier-purchase-orders.show')->only(['show']);
+    }
+
     public function index()
     {
         $companies = Company::query()

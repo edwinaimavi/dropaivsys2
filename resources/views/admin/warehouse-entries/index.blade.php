@@ -13,10 +13,12 @@
                 <small class="text-muted">Registro f&iacute;sico y documental de mercader&iacute;a ingresada</small>
             </div>
 
+            @can('admin.warehouse-entries.store')
             <button id="btnCreateWarehouseEntry" class="btn btn-info shadow-sm px-4" type="button">
                 <i class="fas fa-plus-circle mr-1"></i>
                 Nuevo Ingreso
             </button>
+            @endcan
         </div>
 
         <nav aria-label="breadcrumb">

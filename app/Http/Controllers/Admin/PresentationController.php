@@ -18,6 +18,14 @@ use Illuminate\Support\Facades\Log;
 
 class PresentationController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.presentations.index')->only(['index', 'list', 'search']);
+        $this->middleware('can:admin.presentations.store')->only(['store']);
+        $this->middleware('can:admin.presentations.update')->only(['update']);
+        $this->middleware('can:admin.presentations.destroy')->only(['destroy']);
+    }
+
     /**
      * =========================================================
      * INDEX

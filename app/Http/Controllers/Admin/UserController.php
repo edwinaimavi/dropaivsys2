@@ -22,6 +22,7 @@ class UserController extends Controller
         $this->middleware('can:admin.users.store')->only('store');
         $this->middleware('can:admin.users.update')->only('update');
         $this->middleware('can:admin.users.destroy')->only('destroy');
+        $this->middleware('can:admin.users.show')->only('show');
     }
     public function index()
     {

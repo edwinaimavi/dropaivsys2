@@ -12,7 +12,13 @@ use Yajra\DataTables\Facades\DataTables;
 
 class SupplierAccountController extends Controller
 {
-    //
+    public function __construct()
+    {
+        $this->middleware('can:admin.supplier-accounts.index')->only(['list']);
+        $this->middleware('can:admin.supplier-accounts.store')->only(['store']);
+        $this->middleware('can:admin.supplier-accounts.update')->only(['update']);
+        $this->middleware('can:admin.supplier-accounts.destroy')->only(['destroy']);
+    }
 
     public function list(Supplier $supplier)
     {

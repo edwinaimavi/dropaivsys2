@@ -13,6 +13,14 @@ use Yajra\DataTables\Facades\DataTables;
 
 class CustomerBranchController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.customer-branches.index')->only(['list', 'branchesByCustomer']);
+        $this->middleware('can:admin.customer-branches.store')->only(['store']);
+        $this->middleware('can:admin.customer-branches.update')->only(['update']);
+        $this->middleware('can:admin.customer-branches.destroy')->only(['destroy']);
+    }
+
     public function list(Customer $customer)
     {
         $branches = CustomerBranch::with(['ubigeo'])

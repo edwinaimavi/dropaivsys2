@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\Auth;
 
 class CustomerController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.customers.index')->only(['index', 'list', 'searchUbigeo', 'consultarDocumento']);
+        $this->middleware('can:admin.customers.store')->only(['store']);
+        $this->middleware('can:admin.customers.update')->only(['update']);
+        $this->middleware('can:admin.customers.destroy')->only(['destroy']);
+    }
+
     public function index()
     {
         return view('admin.customers.index');

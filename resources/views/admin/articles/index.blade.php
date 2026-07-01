@@ -25,6 +25,7 @@
 
             <div>
 
+                @can('admin.articles.store')
                 <button id="btnCreateArticle" class="btn btn-primary shadow-sm px-4" type="button" data-toggle="modal"
                     data-target="#articleModal">
 
@@ -32,6 +33,7 @@
                     Nuevo Artículo
 
                 </button>
+                @endcan
 
             </div>
 

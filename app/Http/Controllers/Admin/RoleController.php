@@ -17,6 +17,7 @@ class RoleController extends Controller
         $this->middleware('can:admin.roles.store')->only('store');
         $this->middleware('can:admin.roles.update')->only('update');
         $this->middleware('can:admin.roles.destroy')->only('destroy');
+        $this->middleware('can:admin.roles.show')->only(['show', 'getPermissions']);
     }
     public function index()
     {

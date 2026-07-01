@@ -25,12 +25,14 @@
 
             <div>
 
+                @can('admin.suppliers.store')
                 <button class="btn btn-primary shadow-sm px-4" type="button" data-toggle="modal" data-target="#supplierModal">
 
                     <i class="fas fa-plus-circle mr-1"></i>
                     Nuevo Proveedor
 
                 </button>
+                @endcan
 
             </div>
 

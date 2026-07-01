@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Log;
 
 class UnitController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.units.index')->only(['index', 'list', 'search']);
+        $this->middleware('can:admin.units.store')->only(['store']);
+        $this->middleware('can:admin.units.update')->only(['update']);
+        $this->middleware('can:admin.units.destroy')->only(['destroy']);
+    }
+
     /**
      * =========================================================
      * INDEX

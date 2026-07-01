@@ -16,6 +16,15 @@ use Yajra\DataTables\Facades\DataTables;
 
 class MarketStudyController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.market-studies.index')->only(['index', 'list', 'generateCode']);
+        $this->middleware('can:admin.market-studies.store')->only(['store']);
+        $this->middleware('can:admin.market-studies.update')->only(['update']);
+        $this->middleware('can:admin.market-studies.destroy')->only(['destroy']);
+        $this->middleware('can:admin.market-studies.show')->only(['show']);
+    }
+
     /**
      * =========================================================
      * INDEX

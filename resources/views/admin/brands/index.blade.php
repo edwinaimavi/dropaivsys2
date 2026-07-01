@@ -25,6 +25,7 @@
 
             <div>
 
+                @can('admin.brands.store')
                 <button id="btnCreateBrand" class="btn btn-secondary shadow-sm px-4" type="button" data-toggle="modal"
                     data-target="#brandModal">
 
@@ -32,6 +33,7 @@
                     Nueva Marca
 
                 </button>
+                @endcan
 
             </div>
 

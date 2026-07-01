@@ -18,6 +18,14 @@ use Illuminate\Validation\Rule;
 
 class BrandController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:admin.brands.index')->only(['index', 'list', 'generateCode', 'search']);
+        $this->middleware('can:admin.brands.store')->only(['store']);
+        $this->middleware('can:admin.brands.update')->only(['update']);
+        $this->middleware('can:admin.brands.destroy')->only(['destroy']);
+    }
+
     /**
      * =========================================================
      * INDEX

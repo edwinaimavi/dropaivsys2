@@ -29,6 +29,16 @@ class WarehouseEntryController extends Controller
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_CANCELLED = 'cancelled';
 
+    public function __construct()
+    {
+        $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
+        $this->middleware('can:admin.warehouse-entries.load-items')->only(['loadSupplierPurchaseOrderItems']);
+        $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
+        $this->middleware('can:admin.warehouse-entries.update')->only(['update']);
+        $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
+        $this->middleware('can:admin.warehouse-entries.show')->only(['show']);
+    }
+
     public function index()
     {
         $supplierPurchaseOrders = SupplierPurchaseOrder::query()
