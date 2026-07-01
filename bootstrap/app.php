@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
             ->group(base_path('routes/admin.php'));
         }
     )
+    ->withCommands([
+        __DIR__.'/../app/Console/Commands',
+    ])
     ->withMiddleware(function (Middleware $middleware) {
         //
     })

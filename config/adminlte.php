@@ -459,6 +459,14 @@ return [
                     /* "can" => 'admin.categories.index' */
 
                 ],
+                [
+                    'text' => 'Kardex',
+                    'icon' => 'fas fa-clipboard-list',
+                    'icon_color' => 'success',
+                    'url' => 'admin/kardex',
+                    /* "can" => 'admin.categories.index' */
+
+                ],
 
 
 

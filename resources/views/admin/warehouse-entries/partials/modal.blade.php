@@ -96,7 +96,7 @@
                                     <div class="form-group col-md-3">
                                         <label>ALMAC&Eacute;N</label>
                                         <select id="warehouse_entry_warehouse_id" name="warehouse_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select">
+                                            class="form-control form-control-sm js-warehouse-entry-select" required>
                                             <option value="">Seleccione almac&eacute;n</option>
                                             @foreach ($warehouses as $warehouse)
                                                 <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
@@ -133,27 +133,23 @@
 
                                     <div class="form-group col-md-4">
                                         <label>PROVEEDOR</label>
+                                        <input type="hidden" id="warehouse_entry_supplier_id_hidden" name="supplier_id" disabled>
                                         <select id="warehouse_entry_supplier_id" name="supplier_id"
                                             class="form-control form-control-sm js-warehouse-entry-select" required>
                                             <option value="">Seleccione proveedor</option>
                                             @foreach ($suppliers as $supplier)
-                                                <option value="{{ $supplier->id }}">{{ $supplier->short_name ?? $supplier->business_name }}</option>
+                                                <option value="{{ $supplier->id }}" data-ruc="{{ $supplier->ruc }}">
+                                                    {{ $supplier->short_name ?? $supplier->business_name }}
+                                                </option>
                                             @endforeach
                                         </select>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
                                     <div class="form-group col-md-4">
-                                        <label>CLIENTE</label>
-                                        <select id="warehouse_entry_customer_id" name="customer_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select">
-                                            <option value="">Sin cliente</option>
-                                            @foreach ($customers as $customer)
-                                                <option value="{{ $customer->id }}">
-                                                    {{ $customer->business_name ?? $customer->full_name ?? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) }}
-                                                </option>
-                                            @endforeach
-                                        </select>
+                                        <label>RUC PROVEEDOR</label>
+                                        <input type="text" id="warehouse_entry_supplier_ruc"
+                                            class="form-control form-control-sm" readonly>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -173,8 +169,11 @@
 
                                     <div class="form-group col-md-3">
                                         <label>TIPO DOCUMENTO</label>
-                                        <input type="text" id="warehouse_entry_document_type" name="document_type"
-                                            class="form-control form-control-sm text-uppercase" placeholder="FACTURA">
+                                        <select id="warehouse_entry_document_type" name="document_type"
+                                            class="form-control form-control-sm text-uppercase" required>
+                                            <option value="FACTURA">FACTURA</option>
+                                            <option value="BOLETA">BOLETA</option>
+                                        </select>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -236,7 +235,7 @@
                                     <div class="form-group col-md-3">
                                         <label>MONTO</label>
                                         <input type="number" step="0.01" min="0" id="warehouse_entry_payable_amount"
-                                            name="payable_amount" class="form-control form-control-sm text-right" value="0.00">
+                                            name="payable_amount" class="form-control form-control-sm text-right" value="0.00" readonly>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -247,21 +246,21 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-4">
                                         <label>SERIE GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_series" name="guide_series"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-4">
                                         <label>N&deg; GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_number" name="guide_number"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-4">
                                         <label>RUC GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_ruc" name="guide_ruc"
                                             class="form-control form-control-sm text-uppercase">

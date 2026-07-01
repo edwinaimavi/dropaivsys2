@@ -74,8 +74,20 @@
                                     </div>
                                     <div class="col-md-4">
                                         <div class="warehouse-entry-detail-field">
-                                            <small>Cliente</small>
-                                            <strong id="vwe_customer">-</strong>
+                                            <small>Empresa</small>
+                                            <strong id="vwe_detail_company">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="warehouse-entry-detail-field">
+                                            <small>Proveedor</small>
+                                            <strong id="vwe_detail_supplier">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="warehouse-entry-detail-field">
+                                            <small>Almac&eacute;n</small>
+                                            <strong id="vwe_detail_warehouse">-</strong>
                                         </div>
                                     </div>
                                     <div class="col-md-4">
@@ -86,20 +98,20 @@
                                     </div>
                                     <div class="col-md-4">
                                         <div class="warehouse-entry-detail-field">
-                                            <small>Documento</small>
-                                            <strong id="vwe_document">-</strong>
+                                            <small>Tipo documento</small>
+                                            <strong id="vwe_document_type">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="warehouse-entry-detail-field">
+                                            <small>Serie / N&deg; comprobante</small>
+                                            <strong id="vwe_document_number">-</strong>
                                         </div>
                                     </div>
                                     <div class="col-md-4">
                                         <div class="warehouse-entry-detail-field">
                                             <small>Fecha documento</small>
                                             <strong id="vwe_document_date">-</strong>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="warehouse-entry-detail-field">
-                                            <small>Gu&iacute;a remisi&oacute;n</small>
-                                            <strong id="vwe_guide">-</strong>
                                         </div>
                                     </div>
                                     <div class="col-md-4">
@@ -118,6 +130,18 @@
                                         <div class="warehouse-entry-detail-field">
                                             <small>Cuenta por pagar</small>
                                             <strong id="vwe_payable">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="warehouse-entry-detail-field">
+                                            <small>Monto</small>
+                                            <strong id="vwe_payable_amount">0.00</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="warehouse-entry-detail-field">
+                                            <small>Gu&iacute;a remisi&oacute;n</small>
+                                            <strong id="vwe_guide">-</strong>
                                         </div>
                                     </div>
                                     <div class="col-md-12">

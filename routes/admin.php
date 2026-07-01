@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
+use App\Http\Controllers\Admin\KardexController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
@@ -383,3 +384,11 @@ Route::resource(
     'warehouse-entries',
     WarehouseEntryController::class
 )->except(['create']);
+
+// RUTAS PARA KARDEX DE ALMACEN
+Route::get('kardex/list', [KardexController::class, 'list'])->name('kardex.list');
+Route::get('kardex/stock/list', [KardexController::class, 'stock'])->name('kardex.stock');
+Route::get('kardex/article/{article}/history', [KardexController::class, 'articleHistory'])
+    ->name('kardex.article-history');
+Route::get('kardex/{movement}', [KardexController::class, 'show'])->name('kardex.show');
+Route::get('kardex', [KardexController::class, 'index'])->name('kardex.index');

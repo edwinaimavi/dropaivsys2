@@ -15,6 +15,7 @@ use App\Models\SupplierPurchaseOrderItem;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Services\WarehouseKardexService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +32,7 @@ class WarehouseEntryController extends Controller
     public function index()
     {
         $supplierPurchaseOrders = SupplierPurchaseOrder::query()
-            ->with('supplier:id,business_name,short_name', 'company:id,business_name,trade_name')
+            ->with('supplier:id,business_name,short_name,ruc', 'company:id,business_name,trade_name')
             ->orderByDesc('id')
             ->get();
 
@@ -157,14 +158,18 @@ class WarehouseEntryController extends Controller
         return $this->saveEntry($request, $warehouseEntry);
     }
 
-    public function destroy(WarehouseEntry $warehouseEntry)
+    public function destroy(WarehouseEntry $warehouseEntry, WarehouseKardexService $kardexService)
     {
         try {
-            $warehouseEntry->update([
-                'status' => self::STATUS_CANCELLED,
-                'updated_by' => Auth::id(),
-            ]);
-            $warehouseEntry->delete();
+            DB::transaction(function () use ($warehouseEntry, $kardexService) {
+                $kardexService->reverseWarehouseEntry($warehouseEntry, 'Ingreso de almacen anulado');
+
+                $warehouseEntry->update([
+                    'status' => self::STATUS_CANCELLED,
+                    'updated_by' => Auth::id(),
+                ]);
+                $warehouseEntry->delete();
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -195,7 +200,7 @@ class WarehouseEntryController extends Controller
         $order = SupplierPurchaseOrder::query()
             ->with([
                 'company:id,business_name,trade_name',
-                'supplier:id,business_name,short_name',
+                'supplier:id,business_name,short_name,ruc',
                 'currency:id,code,symbol,description',
                 'customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
                 'items.article',
@@ -228,9 +233,13 @@ class WarehouseEntryController extends Controller
         return response()->json([
             'supplier_purchase_order_id' => $order->id,
             'company_id' => $order->company_id,
+            'company_name' => $order->company?->trade_name ?? $order->company?->business_name,
             'supplier_id' => $order->supplier_id,
+            'supplier_name' => $order->supplier?->short_name ?? $order->supplier?->business_name,
+            'supplier_ruc' => $order->supplier?->ruc,
             'customer_id' => $customer?->id,
             'currency_id' => $order->currency_id,
+            'currency_name' => trim(($order->currency?->code ?? '') . ' - ' . ($order->currency?->description ?? '')),
             'purchase_order_number' => $order->code,
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
@@ -241,18 +250,23 @@ class WarehouseEntryController extends Controller
 
     private function saveEntry(Request $request, ?WarehouseEntry $entry = null)
     {
+        $request->merge([
+            'document_type' => $this->normalizeDocumentType($request->input('document_type')),
+        ]);
+        $hasSupplierPurchaseOrder = $request->filled('supplier_purchase_order_id');
+
         $validated = $request->validate([
             'supplier_purchase_order_id' => ['nullable', 'exists:supplier_purchase_orders,id'],
             'warehouse_id' => [
-                'nullable',
+                'required',
                 Rule::exists('warehouses', 'id')->where('status', 'ACTIVE'),
             ],
-            'company_id' => ['required', 'exists:companies,id'],
-            'supplier_id' => ['required', 'exists:suppliers,id'],
+            'company_id' => [Rule::requiredIf(! $hasSupplierPurchaseOrder), 'nullable', 'exists:companies,id'],
+            'supplier_id' => [Rule::requiredIf(! $hasSupplierPurchaseOrder), 'nullable', 'exists:suppliers,id'],
             'customer_id' => ['nullable', 'exists:customers,id'],
-            'currency_id' => ['required', 'exists:currencies,id'],
+            'currency_id' => [Rule::requiredIf(! $hasSupplierPurchaseOrder), 'nullable', 'exists:currencies,id'],
             'purchase_order_number' => ['nullable', 'string', 'max:50'],
-            'document_type' => ['nullable', 'string', 'max:100'],
+            'document_type' => ['required', 'string', Rule::in(['FACTURA', 'BOLETA'])],
             'document_series' => ['nullable', 'string', 'max:20'],
             'document_number' => ['nullable', 'string', 'max:50'],
             'document_date' => ['nullable', 'date'],
@@ -292,28 +306,39 @@ class WarehouseEntryController extends Controller
 
         try {
             return DB::transaction(function () use ($validated, $entry) {
-                $affectIgv = (bool) ($validated['affect_igv'] ?? false);
+                $supplierPurchaseOrder = ! empty($validated['supplier_purchase_order_id'])
+                    ? SupplierPurchaseOrder::query()
+                        ->with('supplier:id,ruc')
+                        ->findOrFail($validated['supplier_purchase_order_id'])
+                    : null;
+                $supplier = $supplierPurchaseOrder?->supplier
+                    ?? Supplier::query()->find($validated['supplier_id'] ?? null);
+                $affectIgv = $supplierPurchaseOrder
+                    ? (bool) $supplierPurchaseOrder->affect_igv
+                    : (bool) ($validated['affect_igv'] ?? false);
                 $this->validatePendingQuantities($validated['items'], $entry?->id);
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
                 $generateAccountPayable = (bool) ($validated['generate_account_payable'] ?? false);
+                $guideRuc = $this->upperOrNull($validated['guide_ruc'] ?? null)
+                    ?? $supplier?->ruc;
 
                 $entryData = [
-                    'supplier_purchase_order_id' => $validated['supplier_purchase_order_id'] ?? null,
+                    'supplier_purchase_order_id' => $supplierPurchaseOrder?->id,
                     'warehouse_id' => $validated['warehouse_id'] ?? null,
-                    'company_id' => $validated['company_id'],
-                    'supplier_id' => $validated['supplier_id'],
+                    'company_id' => $supplierPurchaseOrder?->company_id ?? $validated['company_id'],
+                    'supplier_id' => $supplierPurchaseOrder?->supplier_id ?? $validated['supplier_id'],
                     'customer_id' => $validated['customer_id'] ?? null,
-                    'currency_id' => $validated['currency_id'],
-                    'purchase_order_number' => $this->upperOrNull($validated['purchase_order_number'] ?? null),
-                    'document_type' => $this->upperOrNull($validated['document_type'] ?? null),
+                    'currency_id' => $supplierPurchaseOrder?->currency_id ?? $validated['currency_id'],
+                    'purchase_order_number' => $this->upperOrNull($supplierPurchaseOrder?->code ?? ($validated['purchase_order_number'] ?? null)),
+                    'document_type' => $validated['document_type'] ?? 'FACTURA',
                     'document_series' => $this->upperOrNull($validated['document_series'] ?? null),
                     'document_number' => $this->upperOrNull($validated['document_number'] ?? null),
                     'document_date' => $validated['document_date'] ?? null,
-                    'payment_method' => $validated['payment_method'] ?? null,
-                    'payment_condition' => $validated['payment_condition'] ?? null,
+                    'payment_method' => $supplierPurchaseOrder?->payment_method ?? ($validated['payment_method'] ?? null),
+                    'payment_condition' => $supplierPurchaseOrder?->payment_condition ?? ($validated['payment_condition'] ?? null),
                     'generate_account_payable' => $generateAccountPayable,
-                    'payable_amount' => $generateAccountPayable ? $totals['grand_total'] : 0,
+                    'payable_amount' => $totals['grand_total'],
                     'expected_payment_date' => $generateAccountPayable
                         ? ($validated['expected_payment_date'] ?? null)
                         : null,
@@ -321,7 +346,7 @@ class WarehouseEntryController extends Controller
                     'affect_igv' => $affectIgv,
                     'guide_series' => $this->upperOrNull($validated['guide_series'] ?? null),
                     'guide_number' => $this->upperOrNull($validated['guide_number'] ?? null),
-                    'guide_ruc' => $this->upperOrNull($validated['guide_ruc'] ?? null),
+                    'guide_ruc' => $guideRuc,
                     'observations' => $this->upperOrNull($validated['observations'] ?? null),
                     'subtotal' => $totals['subtotal'],
                     'igv' => $totals['igv'],
@@ -331,6 +356,8 @@ class WarehouseEntryController extends Controller
                         : self::STATUS_REGISTERED,
                     'updated_by' => Auth::id(),
                 ];
+
+                $isUpdate = (bool) $entry;
 
                 if ($entry) {
                     $entry->update($entryData);
@@ -343,6 +370,21 @@ class WarehouseEntryController extends Controller
 
                 foreach ($preparedItems as $item) {
                     $entry->items()->create($item);
+                }
+
+                $freshEntry = $entry->fresh([
+                    'supplier',
+                    'currency',
+                    'items.article',
+                    'items.unit',
+                    'items.presentation',
+                    'items.brand',
+                ]);
+
+                if ($isUpdate) {
+                    app(WarehouseKardexService::class)->rebuildEntryMovements($freshEntry);
+                } else {
+                    app(WarehouseKardexService::class)->registerEntryFromWarehouseEntry($freshEntry);
                 }
 
                 return response()->json([
@@ -556,5 +598,12 @@ class WarehouseEntryController extends Controller
         return $value === ''
             ? null
             : mb_strtoupper($value, 'UTF-8');
+    }
+
+    private function normalizeDocumentType(?string $value): string
+    {
+        $value = mb_strtoupper(trim((string) $value), 'UTF-8');
+
+        return $value === '' ? 'FACTURA' : $value;
     }
 }

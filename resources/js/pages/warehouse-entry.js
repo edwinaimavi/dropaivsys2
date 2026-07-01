@@ -52,8 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#warehouse_entry_supplier_id', function () {
-        const text = $(this).find('option:selected').text().trim();
-        $('#warehouseEntrySideSupplier').text($(this).val() ? text : 'Seleccione proveedor');
+        syncWarehouseEntrySupplierFields();
     });
 
     $(document).on('change', '#warehouse_entry_warehouse_id', function () {
@@ -181,9 +180,13 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_subtotal, #warehouse_entry_igv, #warehouse_entry_grand_total').val('0.00');
 
     form.find('select').val('').trigger('change.select2');
+    $('#warehouse_entry_document_type').val('FACTURA');
     $('#warehouse_entry_affect_igv').val('1');
     $('#warehouse_entry_generate_account_payable').val('0');
     $('#warehouse_entry_payable_amount').val('0.00');
+    $('#warehouse_entry_supplier_ruc').val('');
+    $('#warehouse_entry_guide_ruc').val('');
+    setWarehouseEntrySupplierLocked(false);
     syncWarehouseEntryPayableAmount();
 }
 
@@ -194,6 +197,7 @@ function clearWarehouseEntryValidation() {
 
 function saveWarehouseEntry(form) {
     clearWarehouseEntryValidation();
+    syncWarehouseEntryPayableAmount();
 
     if (!$('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length) {
         Swal.fire({
@@ -260,12 +264,16 @@ function applySelectedSupplierOrderHeader() {
     const orderId = option.val();
 
     if (!orderId) {
+        setWarehouseEntrySupplierLocked(false);
+        $('#warehouse_entry_supplier_ruc').val('');
+        $('#warehouse_entry_guide_ruc').val('');
         return;
     }
 
+    setWarehouseEntrySupplierLocked(true);
     $('#warehouse_entry_purchase_order_number').val(option.data('code') || '');
     $('#warehouse_entry_company_id').val(option.data('company-id') || '').trigger('change.select2');
-    $('#warehouse_entry_supplier_id').val(option.data('supplier-id') || '').trigger('change.select2').trigger('change');
+    setWarehouseEntrySupplier(option.data('supplier-id') || '');
     $('#warehouse_entry_currency_id').val(option.data('currency-id') || '').trigger('change.select2').trigger('change');
 }
 
@@ -306,8 +314,8 @@ function loadWarehouseEntrySourceItems(options = {}) {
     })
         .done(function (response) {
             $('#warehouse_entry_company_id').val(response.company_id || '').trigger('change.select2');
-            $('#warehouse_entry_supplier_id').val(response.supplier_id || '').trigger('change.select2').trigger('change');
-            $('#warehouse_entry_customer_id').val(response.customer_id || '').trigger('change.select2');
+            setWarehouseEntrySupplier(response.supplier_id || '', response.supplier_ruc || '');
+            setWarehouseEntrySupplierLocked(true);
             $('#warehouse_entry_currency_id').val(response.currency_id || '').trigger('change.select2').trigger('change');
             $('#warehouse_entry_purchase_order_number').val(response.purchase_order_number || '');
             $('#warehouse_entry_payment_method').val(response.payment_method || '');
@@ -458,21 +466,49 @@ function calculateWarehouseEntryTotals() {
 }
 
 function syncWarehouseEntryPayableAmount(total = null) {
-    const generatePayable = $('#warehouse_entry_generate_account_payable').val() === '1';
     const grandTotal = total !== null
         ? total
         : parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val());
     const payable = $('#warehouse_entry_payable_amount');
 
     payable.prop('readonly', true);
-    payable.prop('disabled', !generatePayable);
-    payable.val(formatWarehouseEntryMoney(generatePayable ? grandTotal : 0));
+    payable.val(formatWarehouseEntryMoney(grandTotal));
 }
 
 function updateWarehouseEntryCurrency() {
     const option = $('#warehouse_entry_currency_id option:selected');
     const symbol = option.data('symbol') || option.text().split('-')[0]?.trim() || 'S/';
     $('.warehouse-entry-currency-symbol').text(symbol);
+}
+
+function setWarehouseEntrySupplier(supplierId, supplierRuc = null) {
+    $('#warehouse_entry_supplier_id').val(supplierId || '').trigger('change.select2');
+    $('#warehouse_entry_supplier_id_hidden').val(supplierId || '');
+    syncWarehouseEntrySupplierFields(supplierRuc);
+}
+
+function syncWarehouseEntrySupplierFields(supplierRuc = null) {
+    const supplier = $('#warehouse_entry_supplier_id');
+    const option = supplier.find('option:selected');
+    const supplierId = supplier.val() || '';
+    const supplierName = option.text().trim();
+    const ruc = supplierRuc !== null ? supplierRuc : (option.data('ruc') || '');
+
+    $('#warehouse_entry_supplier_id_hidden').val(supplierId);
+    $('#warehouseEntrySideSupplier').text(supplierId ? supplierName : 'Seleccione proveedor');
+    $('#warehouse_entry_supplier_ruc').val(ruc || '');
+    $('#warehouse_entry_guide_ruc').val(ruc || '');
+}
+
+function setWarehouseEntrySupplierLocked(locked) {
+    const supplier = $('#warehouse_entry_supplier_id');
+
+    supplier.prop('disabled', locked);
+    $('#warehouse_entry_supplier_id_hidden').prop('disabled', !locked);
+
+    if ($.fn.select2 && supplier.data('select2')) {
+        supplier.trigger('change.select2');
+    }
 }
 
 function loadWarehouseEntryForEdit(id) {
@@ -496,11 +532,11 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_supplier_purchase_order_id').val(entry.supplier_purchase_order_id || '').trigger('change.select2');
     $('#warehouse_entry_warehouse_id').val(entry.warehouse_id || '').trigger('change.select2').trigger('change');
     $('#warehouse_entry_company_id').val(entry.company_id || '').trigger('change.select2');
-    $('#warehouse_entry_supplier_id').val(entry.supplier_id || '').trigger('change.select2').trigger('change');
-    $('#warehouse_entry_customer_id').val(entry.customer_id || '').trigger('change.select2');
+    setWarehouseEntrySupplier(entry.supplier_id || '', entry.supplier?.ruc || '');
+    setWarehouseEntrySupplierLocked(Boolean(entry.supplier_purchase_order_id));
     $('#warehouse_entry_currency_id').val(entry.currency_id || '').trigger('change.select2').trigger('change');
     $('#warehouse_entry_purchase_order_number').val(entry.purchase_order_number || '');
-    $('#warehouse_entry_document_type').val(entry.document_type || '');
+    $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(entry.document_type));
     $('#warehouse_entry_document_series').val(entry.document_series || '');
     $('#warehouse_entry_document_number').val(entry.document_number || '');
     $('#warehouse_entry_document_date').val(formatWarehouseEntryDate(entry.document_date));
@@ -513,7 +549,7 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_affect_igv').val(entry.affect_igv ? '1' : '0');
     $('#warehouse_entry_guide_series').val(entry.guide_series || '');
     $('#warehouse_entry_guide_number').val(entry.guide_number || '');
-    $('#warehouse_entry_guide_ruc').val(entry.guide_ruc || '');
+    $('#warehouse_entry_guide_ruc').val(entry.guide_ruc || entry.supplier?.ruc || '');
     $('#warehouse_entry_observations').val(entry.observations || '');
 
     clearWarehouseEntryItemRows();
@@ -548,18 +584,20 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     $('#vwe_currency_symbol').text(currencySymbol);
     $('#vwe_grand_total').text(formatWarehouseEntryMoney(entry.grand_total || 0));
     $('#vwe_purchase_order').text(entry.supplier_purchase_order?.code || entry.purchase_order_number || '-');
-    $('#vwe_customer').text(entry.customer?.business_name || entry.customer?.full_name || '-');
+    $('#vwe_detail_company').text(entry.company?.trade_name || entry.company?.business_name || '-');
+    $('#vwe_detail_supplier').text(entry.supplier?.short_name || entry.supplier?.business_name || '-');
+    $('#vwe_detail_warehouse').text(warehouseName || 'SIN ALMACEN');
     $('#vwe_currency').text(entry.currency?.code || '-');
-    $('#vwe_document').text(
-        [entry.document_type, entry.document_series, entry.document_number].filter(Boolean).join(' ') || '-'
-    );
+    $('#vwe_document_type').text(normalizeWarehouseEntryDocumentType(entry.document_type));
+    $('#vwe_document_number').text([entry.document_series, entry.document_number].filter(Boolean).join(' ') || '-');
     $('#vwe_document_date').text(formatWarehouseEntryDisplayDate(entry.document_date));
     $('#vwe_guide').text([entry.guide_series, entry.guide_number, entry.guide_ruc].filter(Boolean).join(' / ') || '-');
     $('#vwe_payment_method').text(entry.payment_method || '-');
     $('#vwe_payment_condition').text(entry.payment_condition || '-');
     $('#vwe_payable').text(entry.generate_account_payable
-        ? `${formatWarehouseEntryMoney(entry.payable_amount || 0)} - ${formatWarehouseEntryDisplayDate(entry.expected_payment_date)}`
+        ? `Si - ${formatWarehouseEntryDisplayDate(entry.expected_payment_date)}`
         : 'No');
+    $('#vwe_payable_amount').text(formatWarehouseEntryMoney(entry.payable_amount || 0));
     $('#vwe_observations').text(entry.observations || '-');
     $('#vwe_subtotal').text(formatWarehouseEntryMoney(entry.subtotal || 0));
     $('#vwe_igv').text(formatWarehouseEntryMoney(entry.igv || 0));
@@ -644,6 +682,12 @@ function formatWarehouseEntryDisplayDate(value) {
 
     const parts = date.split('-');
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+}
+
+function normalizeWarehouseEntryDocumentType(value) {
+    const documentType = String(value || 'FACTURA').toUpperCase();
+
+    return documentType === 'BOLETA' ? 'BOLETA' : 'FACTURA';
 }
 
 function escapeWarehouseEntryHtml(value) {

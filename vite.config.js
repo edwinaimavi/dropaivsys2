@@ -10,6 +10,7 @@ export default defineConfig({
                 'resources/js/pages/customer-purchase-order.js',
                 'resources/js/pages/supplier-purchase-order.js',
                 'resources/js/pages/warehouse-entry.js',
+                'resources/js/pages/kardex.js',
             ],
             refresh: true,
         }),
