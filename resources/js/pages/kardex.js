@@ -49,18 +49,18 @@ function initKardexTable() {
         columns: [
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'movement_date', name: 'movement_date' },
-            { data: 'movement_number', name: 'movement_number' },
+            { data: 'movement_number', name: 'movement_number', render: renderKardexMovementNumber },
             { data: 'warehouse', name: 'warehouse.name', orderable: false },
-            { data: 'article', name: 'article.billing_name', orderable: false },
+            { data: 'article', name: 'article.billing_name', orderable: false, render: renderKardexArticleCell },
             { data: 'lot_number', name: 'lot_number', defaultContent: '-' },
             { data: 'expiration_date', name: 'expiration_date' },
             { data: 'movement_type', name: 'movement_type' },
-            { data: 'document', name: 'document', orderable: false, searchable: false },
-            { data: 'quantity_in', name: 'quantity_in', className: 'text-right' },
-            { data: 'quantity_out', name: 'quantity_out', className: 'text-right' },
-            { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right' },
-            { data: 'unit_cost', name: 'unit_cost', className: 'text-right' },
-            { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right' },
+            { data: 'document', name: 'document', orderable: false, searchable: false, render: renderKardexDocumentPill },
+            { data: 'quantity_in', name: 'quantity_in', className: 'text-right', render: renderKardexEntryNumber },
+            { data: 'quantity_out', name: 'quantity_out', className: 'text-right', render: renderKardexExitNumber },
+            { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right', render: renderKardexBalanceNumber },
+            { data: 'unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
+            { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'status', name: 'status' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],
@@ -137,28 +137,102 @@ function renderKardexMovementDetail(response) {
 
 function kardexMovementBadge(type) {
     const map = {
-        entry: ['Entrada', 'badge-success'],
-        exit: ['Salida', 'badge-danger'],
-        adjustment_in: ['Ajuste Entrada', 'badge-primary'],
-        adjustment_out: ['Ajuste Salida', 'badge-warning text-dark'],
-        transfer_in: ['Transferencia Entrada', 'badge-info'],
-        transfer_out: ['Transferencia Salida', 'badge-purple'],
-        reversal: ['Reversa', 'badge-secondary']
+        entry: ['Entrada', 'kardex-badge-entry', 'fa-sign-in-alt'],
+        exit: ['Salida', 'kardex-badge-exit', 'fa-sign-out-alt'],
+        adjustment_in: ['Ajuste Entrada', 'kardex-badge-adjustment-in', 'fa-plus-circle'],
+        adjustment_out: ['Ajuste Salida', 'kardex-badge-adjustment-out', 'fa-minus-circle'],
+        transfer_in: ['Transferencia Entrada', 'kardex-badge-transfer-in', 'fa-exchange-alt'],
+        transfer_out: ['Transferencia Salida', 'kardex-badge-transfer-out', 'fa-exchange-alt'],
+        reversal: ['Reversa', 'kardex-badge-reversal', 'fa-undo-alt']
     };
-    const item = map[type] || [type || '-', 'badge-light text-dark border'];
+    const item = map[type] || [type || '-', 'kardex-badge-reversal', 'fa-circle'];
 
-    return `<span class="badge ${item[1]} rounded-pill px-3 py-2">${escapeKardexHtml(item[0])}</span>`;
+    return `<span class="kardex-badge ${item[1]}"><i class="fas ${item[2]}"></i>${escapeKardexHtml(item[0])}</span>`;
 }
 
 function kardexStatusBadge(status) {
     const map = {
-        registered: ['Registrado', 'badge-success'],
-        cancelled: ['Anulado', 'badge-danger'],
-        reversed: ['Revertido', 'badge-secondary']
+        registered: ['Registrado', 'kardex-badge-registered', 'fa-check-circle'],
+        cancelled: ['Anulado', 'kardex-badge-cancelled', 'fa-ban'],
+        reversed: ['Revertido', 'kardex-badge-reversed', 'fa-history']
     };
-    const item = map[status] || [status || '-', 'badge-light text-dark border'];
+    const item = map[status] || [status || '-', 'kardex-badge-reversed', 'fa-circle'];
 
-    return `<span class="badge ${item[1]} rounded-pill px-3 py-2">${escapeKardexHtml(item[0])}</span>`;
+    return `<span class="kardex-badge ${item[1]}"><i class="fas ${item[2]}"></i>${escapeKardexHtml(item[0])}</span>`;
+}
+
+function renderKardexMovementNumber(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    const value = escapeKardexHtml(data || '-');
+
+    return `<span class="kardex-movement-pill">${value}</span>`;
+}
+
+function renderKardexArticleCell(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    const value = String(data || '-');
+    const parts = value.split('|');
+    const code = escapeKardexHtml((parts[0] || '').trim());
+    const name = escapeKardexHtml((parts.slice(1).join('|') || parts[0] || '-').trim());
+
+    if (!code || code === name) {
+        return `<div class="kardex-article-cell"><span class="kardex-article-name">${name}</span></div>`;
+    }
+
+    return `
+        <div class="kardex-article-cell">
+            <span class="kardex-article-code">${code}</span>
+            <span class="kardex-article-name">${name}</span>
+        </div>
+    `;
+}
+
+function renderKardexDocumentPill(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    const value = escapeKardexHtml(data || '-');
+
+    return `<span class="kardex-document-pill"><i class="fas fa-file-invoice mr-1"></i>${value}</span>`;
+}
+
+function renderKardexEntryNumber(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    return `<span class="kardex-num-in">${escapeKardexHtml(data || '0.00')}</span>`;
+}
+
+function renderKardexExitNumber(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    return `<span class="kardex-num-out">${escapeKardexHtml(data || '0.00')}</span>`;
+}
+
+function renderKardexBalanceNumber(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    return `<span class="kardex-num-balance">${escapeKardexHtml(data || '0.00')}</span>`;
+}
+
+function renderKardexMoneyCell(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    return `<span class="kardex-money">${escapeKardexHtml(data || '0.00')}</span>`;
 }
 
 function formatKardexOperation(value) {

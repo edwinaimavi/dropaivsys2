@@ -715,4 +715,5 @@
             }
         }
     </style>
+    @vite(['resources/css/admin-modern.css'])
 @endpush

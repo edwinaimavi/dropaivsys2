@@ -190,13 +190,13 @@ return [
     |
     */
     'classes_body' => 'layout-fixed layout-navbar-fixed',
-    'classes_brand' => 'bg-gray-dark',
-    'classes_brand_text' => 'text-success font-weight-bold',
-    'classes_content_wrapper' => 'bg-light',
+    'classes_brand' => 'bg-transparent',
+    'classes_brand_text' => 'font-weight-bold',
+    'classes_content_wrapper' => 'dp-content-wrapper',
     'classes_content_header' => '',
     'classes_content' => '',
-    'classes_sidebar' => 'sidebar-dark-success elevation-4',
-    'classes_sidebar_nav' => 'nav-flat nav-child-indent',
+    'classes_sidebar' => 'sidebar-dark-success dp-sidebar elevation-4',
+    'classes_sidebar_nav' => 'nav-flat nav-child-indent nav-compact dp-sidebar-nav',
     'classes_topnav' => 'navbar-white navbar-light',
     'classes_topnav_nav' => 'navbar-expand',
     'classes_topnav_container' => 'container-fluid',

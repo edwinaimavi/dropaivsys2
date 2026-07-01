@@ -13,16 +13,16 @@
             <div class="modal-body bg-light">
                 <div class="row">
                     <div class="col-lg-3 mb-3">
-                        <div class="card border-0 shadow-sm h-100">
+                        <div class="card border-0 shadow-sm h-100 kardex-modal-side-card">
                             <div class="card-body text-center">
                                 <div class="kardex-view-icon mx-auto mb-2">
                                     <i class="fas fa-clipboard-list"></i>
                                 </div>
                                 <small class="text-muted d-block font-weight-bold">N&deg; Movimiento</small>
-                                <h4 id="vk_movement_number" class="font-weight-bold text-dark">-</h4>
+                                <h4 id="vk_movement_number" class="font-weight-bold text-dark kardex-modal-movement-number">-</h4>
                                 <div id="vk_status" class="mb-2">-</div>
                                 <hr>
-                                <div class="text-left small">
+                                <div class="text-left small kardex-modal-summary">
                                     <small class="text-muted d-block">Tipo movimiento</small>
                                     <strong id="vk_movement_type" class="d-block mb-2">-</strong>
                                     <small class="text-muted d-block">Almac&eacute;n</small>
@@ -30,7 +30,7 @@
                                     <small class="text-muted d-block">Art&iacute;culo</small>
                                     <strong id="vk_article" class="d-block mb-2">-</strong>
                                     <small class="text-muted d-block">Saldo despu&eacute;s del movimiento</small>
-                                    <strong id="vk_balance_quantity" class="text-info h5 d-block">0.00</strong>
+                                    <strong id="vk_balance_quantity" class="h5 d-block kardex-modal-balance">0.00</strong>
                                 </div>
                             </div>
                         </div>
@@ -90,7 +90,7 @@
                             </div>
                             <div class="card-body py-2">
                                 <div class="table-responsive">
-                                    <table class="table table-sm mb-0">
+                                    <table class="table table-sm mb-0 kardex-trace-table">
                                         <tbody>
                                             <tr>
                                                 <th>Origen</th>
