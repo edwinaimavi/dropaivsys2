@@ -41,16 +41,29 @@ class UserController extends Controller
             ->addIndexColumn()
             ->editColumn('status', function ($user) {
                 return $user->status == 1
-                    ? '<span class="badge bg-success text-light rounded-pill px-3 py-2 shadow-sm">ACTIVO</span>'
-                    : '<span class="badge bg-danger text-light rounded-pill px-3 py-2 shadow-sm">INACTIVO</span>';
+                    ? '<span class="users-status-badge users-status-active"><i class="fas fa-check-circle"></i>ACTIVO</span>'
+                    : '<span class="users-status-badge users-status-inactive"><i class="fas fa-ban"></i>INACTIVO</span>';
+            })
+            ->addColumn('roles_display', function ($user) {
+                $roles = $user->roles->pluck('name');
+
+                if ($roles->isEmpty()) {
+                    return '<span class="users-role-chip users-role-chip-empty"><i class="fas fa-user-slash"></i>Sin rol</span>';
+                }
+
+                return $roles->map(function ($role) {
+                    return '<span class="users-role-chip"><i class="fas fa-user-tag"></i>' . e($role) . '</span>';
+                })->implode(' ');
             })
             ->addColumn('acciones',function($user){
                 $statusOriginal = $user->status;
-                $rutaFoto = Storage::url($user->photo);
+                $rutaFoto = $user->photo
+                    ? Storage::url($user->photo)
+                    : 'https://www.shutterstock.com/image-vector/default-avatar-profile-icon-social-600nw-1906669723.jpg';
                  $rol = $user->roles->first()?->id ?? ''; 
                 return view('admin.users.partials.acciones', compact('user','statusOriginal','rutaFoto','rol'))->render();
             })
-            ->rawColumns(['status','acciones'])
+            ->rawColumns(['status','roles_display','acciones'])
             ->make(true);
     }
     public function create()
@@ -74,15 +87,19 @@ class UserController extends Controller
             'address'=> 'nullable|min:3|max:150',
             'image'=> 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'status'=> 'required',
+            'role'=> 'required|exists:roles,id',
 
         ]);
 
         if ($request->hasFile('image')) {         
              $data['photo'] = $request->file('image')->store('users');
           }
+        $roleId = $data['role'];
+        unset($data['role']);
+
         $user=User::create($data);
 
-        $user->roles()->sync([$request->input('role')]);
+        $user->roles()->sync([$roleId]);
 
 
         return response()->json(['message' => 'Usuario registrado correctamente']);
@@ -120,6 +137,7 @@ class UserController extends Controller
             'address'=> 'nullable|min:3|max:150',
             'image'=> 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'status'=> 'required',
+            'role'=> 'required|exists:roles,id',
 
         ]);
         //VALIDAMOS LA CONTRASEÑA
@@ -138,8 +156,11 @@ class UserController extends Controller
             $data['photo'] = $request->file('image')->store('users');  
         }
 
+         $roleId = $data['role'];
+         unset($data['role']);
+
          $user->update($data);
-         $role = Role::findById($request->input('role'));
+         $role = Role::findById($roleId);
         $user->syncRoles([$role->name]);
 
         return response()->json(['message' => 'Usuario actualizado correctamente']);

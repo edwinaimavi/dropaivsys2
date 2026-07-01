@@ -36,7 +36,7 @@ class RoleController extends Controller
         {
             /* $permissions = Permission::all(); */
             
-            $roles = Role::orderBy('id', 'desc')->get();
+            $roles = Role::withCount('permissions')->orderBy('id', 'desc')->get();
 
             return DataTables::of($roles)
             ->addIndexcolumn()
@@ -125,6 +125,16 @@ class RoleController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        $role = Role::findOrFail($id);
+
+        if ($role->users()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar este rol porque esta asignado a uno o mas usuarios.',
+            ], 409);
+        }
+
+        $role->delete();
+
+        return response()->json(['message' => 'Rol eliminado correctamente.']);
     }
 }
