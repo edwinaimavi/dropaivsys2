@@ -20,12 +20,14 @@ use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\KardexController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
 use App\Http\Controllers\Admin\QuoteController;
 use Illuminate\Support\Facades\Route;
+Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
 
 //Rutas para la gestión de usuarios en el panel de administración|
