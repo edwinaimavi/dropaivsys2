@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DroPaivSys | Gestión de abastecimiento en salud</title>
+    <link rel="icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img.png') }}">
 
     <link rel="stylesheet" href="{{ asset('vendor/fontawesome-free/css/all.min.css') }}">
 

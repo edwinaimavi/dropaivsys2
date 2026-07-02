@@ -8,6 +8,12 @@
     @endif
 @stop
 
+@section('meta_tags')
+    <link rel="icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img.png') }}">
+@stop
+
 @php
     use Illuminate\Support\Facades\Auth;
     use Illuminate\Support\Facades\Storage;

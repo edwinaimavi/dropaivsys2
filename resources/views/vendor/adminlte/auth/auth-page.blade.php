@@ -1,5 +1,11 @@
 @extends('adminlte::master')
 
+@section('meta_tags')
+    <link rel="icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img.png') }}">
+@stop
+
 @php
     $authType = $authType ?? 'login';
     $dashboardUrl = View::getSection('dashboard_url') ?? config('adminlte.dashboard_url', 'home');
