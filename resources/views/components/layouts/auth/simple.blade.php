@@ -15,6 +15,10 @@
                 <div class="flex flex-col gap-6">
                     {{ $slot }}
                 </div>
+
+                <footer class="pt-2 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                    Creado por: <a href="https://www.facebook.com/cicoperu" target="_blank" rel="noopener noreferrer" class="font-semibold text-emerald-700 transition hover:text-emerald-800 hover:underline dark:text-emerald-400 dark:hover:text-emerald-300">CiCo Ingenieros</a>
+                </footer>
             </div>
         </div>
         @fluxScripts

@@ -125,7 +125,15 @@
             </flux:dropdown>
         </flux:header>
 
-        {{ $slot }}
+        <div class="flex min-h-screen flex-col">
+            <div class="flex-1">
+                {{ $slot }}
+            </div>
+
+            <footer class="px-6 py-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                Creado por: <a href="https://www.facebook.com/cicoperu" target="_blank" rel="noopener noreferrer" class="font-semibold text-emerald-700 transition hover:text-emerald-800 hover:underline dark:text-emerald-400 dark:hover:text-emerald-300">CiCo Ingenieros</a>
+            </footer>
+        </div>
 
         @fluxScripts
     </body>
