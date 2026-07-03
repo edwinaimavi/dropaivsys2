@@ -677,9 +677,11 @@ function fillSupplierPurchaseOrderDetail(order) {
         draft: ['REGISTRADO', 'badge-primary'],
         sent: ['ENVIADO', 'badge-info'],
         approved: ['APROBADO', 'badge-success'],
-        received: ['RECIBIDO', 'badge-primary'],
+        received: ['INGRESADO', 'badge-success'],
+        partial_entered: ['INGRESO PARCIAL', 'badge-warning text-dark'],
+        entered: ['INGRESADO', 'badge-success'],
         cancelled: ['CANCELADO', 'badge-danger'],
-        invoiced: ['FACTURADO', 'badge-warning text-dark']
+        invoiced: ['FACTURADO', 'badge-info']
     };
     const status = statuses[order.status] || [String(order.status || '').toUpperCase(), 'badge-secondary'];
     const currencyCode = order.currency?.code || '';
@@ -732,6 +734,11 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_total').text(`${currencyCode} ${formatSupplierOrderMoney(order.grand_total)}`);
 
     const rows = (order.items || []).map(function (item, index) {
+        const orderedQuantity = item.ordered_quantity ?? item.quantity ?? 0;
+        const enteredQuantity = item.entered_quantity ?? 0;
+        const pendingQuantity = item.pending_quantity ?? orderedQuantity;
+        const entryStatus = supplierOrderEntryStatusPresentation(item.entry_status, enteredQuantity, pendingQuantity);
+
         return `
             <tr>
                 <td class="text-center">${index + 1}</td>
@@ -744,7 +751,14 @@ function fillSupplierPurchaseOrderDetail(order) {
                 <td>${escapeSupplierOrderHtml(item.presentation?.description || '-')}</td>
                 <td>${escapeSupplierOrderHtml(item.brand?.description || '-')}</td>
                 <td>${escapeSupplierOrderHtml(item.origin || '-')}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.quantity)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(orderedQuantity)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(enteredQuantity)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(pendingQuantity)}</td>
+                <td class="text-center">
+                    <span class="supplier-order-entry-status ${entryStatus.className}">
+                        <i class="${entryStatus.icon} mr-1"></i>${entryStatus.label}
+                    </span>
+                </td>
                 <td class="text-right">${formatSupplierOrderMoney(item.reference_purchase_price)}</td>
                 <td class="text-right">${formatSupplierOrderMoney(item.unit_price)}</td>
                 <td class="text-right">${formatSupplierOrderMoney(item.tax_amount)}</td>
@@ -754,7 +768,7 @@ function fillSupplierPurchaseOrderDetail(order) {
     }).join('');
 
     $('#vspo_items_body').html(
-        rows || '<tr><td colspan="12" class="text-center text-muted py-3">Sin items registrados</td></tr>'
+        rows || '<tr><td colspan="15" class="text-center text-muted py-3">Sin items registrados</td></tr>'
     );
 }
 
@@ -930,6 +944,30 @@ function supplierOrderOptionLabel(value) {
     const normalized = normalizeSupplierOrderOption(value);
 
     return labels[normalized] || value || '';
+}
+
+function supplierOrderEntryStatusPresentation(status, enteredQuantity, pendingQuantity) {
+    if (status === 'entered' || (parseFloat(pendingQuantity) || 0) <= 0) {
+        return {
+            label: 'Ingresado',
+            className: 'status-entered',
+            icon: 'fas fa-check-circle'
+        };
+    }
+
+    if (status === 'partial_entered' || (parseFloat(enteredQuantity) || 0) > 0) {
+        return {
+            label: 'Parcial',
+            className: 'status-partial',
+            icon: 'fas fa-hourglass-half'
+        };
+    }
+
+    return {
+        label: 'Pendiente',
+        className: 'status-pending',
+        icon: 'fas fa-clock'
+    };
 }
 
 function setSupplierOrderValue(selector, value) {

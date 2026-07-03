@@ -34,6 +34,8 @@ class SupplierPurchaseOrderController extends Controller
     private const STATUS_SENT = 'sent';
     private const STATUS_APPROVED = 'approved';
     private const STATUS_RECEIVED = 'received';
+    private const STATUS_PARTIAL_ENTERED = 'partial_entered';
+    private const STATUS_ENTERED = 'entered';
     private const STATUS_CANCELLED = 'cancelled';
     private const STATUS_INVOICED = 'invoiced';
 
@@ -292,6 +294,7 @@ class SupplierPurchaseOrderController extends Controller
             'items.presentation',
             'items.brand',
         ]);
+        $this->appendEntryProgress($supplierPurchaseOrder);
 
         return response()->json([
             'status' => 'success',
@@ -467,6 +470,7 @@ class SupplierPurchaseOrderController extends Controller
                 }
 
                 $order->customerPurchaseOrders()->sync($customerOrderIds);
+                $order->refreshEntryStatus();
 
                 try {
                     $pdfData = $this->generateSupplierPurchaseOrderPdf($order->fresh([
@@ -963,9 +967,19 @@ class SupplierPurchaseOrderController extends Controller
                 'icon' => 'fas fa-check-circle',
             ],
             self::STATUS_RECEIVED => [
-                'label' => 'Recibido',
-                'class' => 'badge-primary text-white',
+                'label' => 'Ingresado',
+                'class' => 'badge-success text-white',
                 'icon' => 'fas fa-box',
+            ],
+            self::STATUS_PARTIAL_ENTERED => [
+                'label' => 'Ingreso parcial',
+                'class' => 'badge-warning text-dark',
+                'icon' => 'fas fa-hourglass-half',
+            ],
+            self::STATUS_ENTERED => [
+                'label' => 'Ingresado',
+                'class' => 'badge-success text-white',
+                'icon' => 'fas fa-warehouse',
             ],
             self::STATUS_CANCELLED => [
                 'label' => 'Cancelado',
@@ -974,7 +988,7 @@ class SupplierPurchaseOrderController extends Controller
             ],
             self::STATUS_INVOICED => [
                 'label' => 'Facturado',
-                'class' => 'badge-warning text-dark',
+                'class' => 'badge-info text-white',
                 'icon' => 'fas fa-file-invoice-dollar',
             ],
         ];
@@ -987,6 +1001,8 @@ class SupplierPurchaseOrderController extends Controller
             self::STATUS_SENT,
             self::STATUS_APPROVED,
             self::STATUS_RECEIVED,
+            self::STATUS_PARTIAL_ENTERED,
+            self::STATUS_ENTERED,
             self::STATUS_CANCELLED,
             self::STATUS_INVOICED,
         ];
@@ -1044,5 +1060,44 @@ class SupplierPurchaseOrderController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? mb_strtoupper($value) : null;
+    }
+
+    private function appendEntryProgress(SupplierPurchaseOrder $order): void
+    {
+        $itemIds = $order->items
+            ->where('status', '!=', 'deleted')
+            ->pluck('id')
+            ->all();
+
+        if (empty($itemIds)) {
+            return;
+        }
+
+        $receivedByItem = DB::table('warehouse_entry_items as items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
+            ->where('entries.supplier_purchase_order_id', $order->id)
+            ->whereNull('entries.deleted_at')
+            ->where('entries.status', 'registered')
+            ->whereIn('items.supplier_purchase_order_item_id', $itemIds)
+            ->where('items.status', '!=', 'deleted')
+            ->groupBy('items.supplier_purchase_order_item_id')
+            ->selectRaw('items.supplier_purchase_order_item_id, SUM(items.quantity) as received_quantity')
+            ->pluck('received_quantity', 'supplier_purchase_order_item_id');
+
+        $order->items->each(function (SupplierPurchaseOrderItem $item) use ($receivedByItem) {
+            $ordered = round((float) $item->quantity, 2);
+            $received = round((float) ($receivedByItem[$item->id] ?? 0), 2);
+            $pending = max(round($ordered - $received, 2), 0);
+            $status = match (true) {
+                $received <= 0 => 'pending',
+                $pending <= 0 => 'entered',
+                default => 'partial_entered',
+            };
+
+            $item->setAttribute('ordered_quantity', $ordered);
+            $item->setAttribute('entered_quantity', $received);
+            $item->setAttribute('pending_quantity', $pending);
+            $item->setAttribute('entry_status', $status);
+        });
     }
 }

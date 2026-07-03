@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 class SupplierPurchaseOrder extends Model
 {
@@ -110,5 +111,57 @@ class SupplierPurchaseOrder extends Model
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function warehouseEntries()
+    {
+        return $this->hasMany(WarehouseEntry::class);
+    }
+
+    public function refreshEntryStatus(): void
+    {
+        if (in_array($this->status, ['cancelled', 'invoiced'], true)) {
+            return;
+        }
+
+        $orderedByItem = $this->items()
+            ->where('status', '!=', 'deleted')
+            ->select('id', 'quantity')
+            ->get()
+            ->mapWithKeys(fn (SupplierPurchaseOrderItem $item) => [
+                $item->id => round((float) $item->quantity, 2),
+            ]);
+
+        if ($orderedByItem->isEmpty()) {
+            $this->forceFill(['status' => 'registered'])->save();
+            return;
+        }
+
+        $receivedByItem = DB::table('warehouse_entry_items as items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
+            ->where('entries.supplier_purchase_order_id', $this->id)
+            ->whereNull('entries.deleted_at')
+            ->where('entries.status', 'registered')
+            ->whereIn('items.supplier_purchase_order_item_id', $orderedByItem->keys()->all())
+            ->where('items.status', '!=', 'deleted')
+            ->groupBy('items.supplier_purchase_order_item_id')
+            ->selectRaw('items.supplier_purchase_order_item_id, SUM(items.quantity) as received_quantity')
+            ->pluck('received_quantity', 'supplier_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $totalReceived = round((float) $receivedByItem->sum(), 2);
+        $isComplete = $orderedByItem->every(function (float $ordered, $itemId) use ($receivedByItem) {
+            return round((float) ($receivedByItem[$itemId] ?? 0), 2) >= $ordered;
+        });
+
+        $status = match (true) {
+            $totalReceived <= 0 => 'registered',
+            $isComplete => 'entered',
+            default => 'partial_entered',
+        };
+
+        if ($this->status !== $status) {
+            $this->forceFill(['status' => $status])->save();
+        }
     }
 }

@@ -146,7 +146,10 @@
                                     <th>PRESENT.</th>
                                     <th>MARCA</th>
                                     <th>PROCED.</th>
-                                    <th class="text-right">CANT.</th>
+                                    <th class="text-right">CANT. ORDENADA</th>
+                                    <th class="text-right">CANT. INGRESADA</th>
+                                    <th class="text-right">PENDIENTE</th>
+                                    <th class="text-center">ESTADO</th>
                                     <th class="text-right">P. REF.</th>
                                     <th class="text-right">PRECIO</th>
                                     <th class="text-right">IGV</th>
@@ -313,6 +316,33 @@
     #viewSupplierPurchaseOrderModal .supplier-order-item-name {
         min-width: 210px;
         font-weight: 700;
+    }
+
+    #viewSupplierPurchaseOrderModal .supplier-order-entry-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 104px;
+        padding: 5px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    #viewSupplierPurchaseOrderModal .supplier-order-entry-status.status-pending {
+        color: #1f5f9e;
+        background: #e7f3ff;
+    }
+
+    #viewSupplierPurchaseOrderModal .supplier-order-entry-status.status-partial {
+        color: #916000;
+        background: #fff3cd;
+    }
+
+    #viewSupplierPurchaseOrderModal .supplier-order-entry-status.status-entered {
+        color: #166534;
+        background: #dcfce7;
     }
 
     #viewSupplierPurchaseOrderModal .supplier-order-view-totals {

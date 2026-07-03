@@ -208,6 +208,8 @@ class WarehouseEntryController extends Controller
     {
         try {
             DB::transaction(function () use ($warehouseEntry, $kardexService) {
+                $supplierPurchaseOrderId = $warehouseEntry->supplier_purchase_order_id;
+
                 $kardexService->reverseWarehouseEntry($warehouseEntry, 'Ingreso de almacen anulado');
 
                 $warehouseEntry->update([
@@ -215,6 +217,8 @@ class WarehouseEntryController extends Controller
                     'updated_by' => Auth::id(),
                 ]);
                 $warehouseEntry->delete();
+
+                $this->refreshSupplierPurchaseOrderStatus($supplierPurchaseOrderId);
             });
 
             return response()->json([
@@ -356,6 +360,7 @@ class WarehouseEntryController extends Controller
 
         try {
             return DB::transaction(function () use ($request, $validated, $entry) {
+                $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
                 $supplierPurchaseOrder = ! empty($validated['supplier_purchase_order_id'])
                     ? SupplierPurchaseOrder::query()
                         ->with('supplier:id,ruc')
@@ -438,6 +443,14 @@ class WarehouseEntryController extends Controller
                 } else {
                     app(WarehouseKardexService::class)->registerEntryFromWarehouseEntry($freshEntry);
                 }
+
+                collect([
+                    $previousSupplierPurchaseOrderId,
+                    $entry->supplier_purchase_order_id,
+                ])
+                    ->filter()
+                    ->unique()
+                    ->each(fn ($supplierPurchaseOrderId) => $this->refreshSupplierPurchaseOrderStatus((int) $supplierPurchaseOrderId));
 
                 return response()->json([
                     'status' => 'success',
@@ -523,7 +536,7 @@ class WarehouseEntryController extends Controller
 
             if ($quantity > $pending) {
                 throw ValidationException::withMessages([
-                    "items.$index.quantity" => 'La cantidad ingresada no puede superar el pendiente.',
+                    "items.$index.quantity" => 'La cantidad ingresada supera la cantidad pendiente de la orden.',
                 ]);
             }
         }
@@ -590,7 +603,9 @@ class WarehouseEntryController extends Controller
         return DB::table('warehouse_entry_items as items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
             ->whereNull('entries.deleted_at')
+            ->where('entries.status', self::STATUS_REGISTERED)
             ->whereIn('items.supplier_purchase_order_item_id', $orderItemIds)
+            ->where('items.status', '!=', 'deleted')
             ->when($exceptEntryId, fn ($query) => $query->where('entries.id', '!=', $exceptEntryId))
             ->groupBy('items.supplier_purchase_order_item_id')
             ->selectRaw('items.supplier_purchase_order_item_id, SUM(items.quantity) as received_quantity')
@@ -657,6 +672,18 @@ class WarehouseEntryController extends Controller
         $value = mb_strtoupper(trim((string) $value), 'UTF-8');
 
         return $value === '' ? 'FACTURA' : $value;
+    }
+
+    private function refreshSupplierPurchaseOrderStatus(?int $supplierPurchaseOrderId): void
+    {
+        if (! $supplierPurchaseOrderId) {
+            return;
+        }
+
+        SupplierPurchaseOrder::query()
+            ->with('items:id,supplier_purchase_order_id,quantity,status')
+            ->find($supplierPurchaseOrderId)
+            ?->refreshEntryStatus();
     }
 
     private function storeEntryDocuments(WarehouseEntry $entry, array $documentData, array $documentFiles): void
