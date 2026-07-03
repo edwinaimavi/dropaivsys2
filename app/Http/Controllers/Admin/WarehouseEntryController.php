@@ -19,6 +19,7 @@ use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
 use App\Services\WarehouseKardexService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class WarehouseEntryController extends Controller
 {
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_CANCELLED = 'cancelled';
+    private const PDF_OBSERVATION = 'PDF_GENERATED_WAREHOUSE_ENTRY';
 
     public function __construct()
     {
@@ -41,6 +43,7 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.update')->only(['update', 'destroyDocument']);
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
         $this->middleware('can:admin.warehouse-entries.show')->only(['show', 'downloadDocument']);
+        $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
     }
 
     public function index()
@@ -89,6 +92,12 @@ class WarehouseEntryController extends Controller
                 'currency:id,code,symbol,description',
                 'supplierPurchaseOrder:id,code',
                 'warehouse:id,code,name,description',
+                'documents' => function ($query) {
+                    $query->where('observation', self::PDF_OBSERVATION)
+                        ->where('status', 'ACTIVE')
+                        ->where('mime_type', 'application/pdf')
+                        ->latest('id');
+                },
             ])
             ->orderByDesc('id');
 
@@ -127,8 +136,11 @@ class WarehouseEntryController extends Controller
             })
             ->editColumn('created_at', fn (WarehouseEntry $entry) =>
                 $entry->created_at?->format('d/m/Y H:i') ?? '-')
-            ->addColumn('acciones', fn (WarehouseEntry $entry) =>
-                view('admin.warehouse-entries.partials.acciones', compact('entry'))->render())
+            ->addColumn('acciones', function (WarehouseEntry $entry) {
+                $pdfUrl = route('admin.warehouse-entries.pdf', $entry);
+
+                return view('admin.warehouse-entries.partials.acciones', compact('entry', 'pdfUrl'))->render();
+            })
             ->rawColumns(['status', 'acciones'])
             ->make(true);
     }
@@ -152,7 +164,12 @@ class WarehouseEntryController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
-            'documents.documentType',
+            'documents' => function ($query) {
+                $query->where(function ($innerQuery) {
+                    $innerQuery->whereNull('observation')
+                        ->orWhere('observation', '!=', self::PDF_OBSERVATION);
+                })->with('documentType');
+            },
         ]);
 
         return response()->json([
@@ -170,6 +187,25 @@ class WarehouseEntryController extends Controller
     public function update(Request $request, WarehouseEntry $warehouseEntry)
     {
         return $this->saveEntry($request, $warehouseEntry);
+    }
+
+    public function pdf(WarehouseEntry $warehouseEntry)
+    {
+        $document = $this->generatedPdfDocument($warehouseEntry);
+
+        if (! $document) {
+            $pdfData = $this->generateWarehouseEntryPdf($this->warehouseEntryForPdf($warehouseEntry));
+            $document = $pdfData['document'];
+        }
+
+        if (! $document->file_path || ! Storage::disk('public')->exists($document->file_path)) {
+            abort(404);
+        }
+
+        return response()->file(Storage::disk('public')->path($document->file_path), [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
+        ]);
     }
 
     public function downloadDocument(WarehouseEntry $warehouseEntry, Document $document)
@@ -303,6 +339,11 @@ class WarehouseEntryController extends Controller
 
     private function saveEntry(Request $request, ?WarehouseEntry $entry = null)
     {
+        $generatedPdfPath = null;
+        $generatedPdfUrl = null;
+        $generatedDocumentId = null;
+        $pdfError = null;
+
         $request->merge([
             'document_type' => $this->normalizeDocumentType($request->input('document_type')),
         ]);
@@ -362,7 +403,15 @@ class WarehouseEntryController extends Controller
         ]);
 
         try {
-            return DB::transaction(function () use ($request, $validated, $entry) {
+            return DB::transaction(function () use (
+                $request,
+                $validated,
+                $entry,
+                &$generatedPdfPath,
+                &$generatedPdfUrl,
+                &$generatedDocumentId,
+                &$pdfError
+            ) {
                 $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
                 $previousCustomerPurchaseOrderIds = $entry
                     ? $this->customerPurchaseOrderIdsForWarehouseEntry($entry)
@@ -467,17 +516,36 @@ class WarehouseEntryController extends Controller
                         ->values()
                 );
 
+                try {
+                    $pdfData = $this->generateWarehouseEntryPdf($this->warehouseEntryForPdf($entry));
+                    $generatedPdfPath = $pdfData['path'];
+                    $generatedPdfUrl = route('admin.warehouse-entries.pdf', $entry);
+                    $generatedDocumentId = $pdfData['document']->id;
+                } catch (\Throwable $pdfException) {
+                    $pdfError = 'El ingreso se guardo, pero no se pudo generar el PDF.';
+
+                    Log::error('Error generating warehouse entry PDF: ' . $pdfException->getMessage());
+                }
+
                 return response()->json([
                     'status' => 'success',
                     'message' => $entry->wasRecentlyCreated
                         ? 'Ingreso de almacen registrado correctamente.'
                         : 'Ingreso de almacen actualizado correctamente.',
                     'data' => $entry->fresh(['items']),
+                    'pdf_path' => $generatedPdfPath,
+                    'pdf_url' => $generatedPdfUrl,
+                    'document_id' => $generatedDocumentId,
+                    'pdf_error' => $pdfError,
                 ], $entry->wasRecentlyCreated ? 201 : 200);
             });
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
+            if ($generatedPdfPath && Storage::disk('public')->exists($generatedPdfPath)) {
+                Storage::disk('public')->delete($generatedPdfPath);
+            }
+
             Log::error('Error saving warehouse entry: ' . $e->getMessage());
 
             return response()->json([
@@ -801,6 +869,108 @@ class WarehouseEntryController extends Controller
             ->whereIn('id', collect($customerPurchaseOrderIds)->filter()->unique()->values()->all())
             ->get()
             ->each(fn (CustomerPurchaseOrder $order) => $order->refreshSupplyStatus());
+    }
+
+    private function warehouseEntryForPdf(WarehouseEntry $entry): WarehouseEntry
+    {
+        return $entry->fresh([
+            'supplierPurchaseOrder',
+            'company',
+            'supplier',
+            'currency',
+            'warehouse',
+            'creator',
+            'items.article',
+            'items.supplierPurchaseOrderItem',
+            'items.unit',
+            'items.presentation',
+            'items.brand',
+        ]);
+    }
+
+    private function generatedPdfDocument(WarehouseEntry $entry): ?Document
+    {
+        return $entry->documents()
+            ->where('observation', self::PDF_OBSERVATION)
+            ->where('status', 'ACTIVE')
+            ->where('mime_type', 'application/pdf')
+            ->latest('id')
+            ->get()
+            ->first(fn (Document $document) => $document->file_path
+                && Storage::disk('public')->exists($document->file_path));
+    }
+
+    private function generateWarehouseEntryPdf(WarehouseEntry $entry): array
+    {
+        $fileName = 'ingreso_almacen_' . $this->sanitizeFileName($entry->entry_number) . '.pdf';
+        $storedPath = 'warehouse_entries/pdfs/' . $fileName;
+
+        $pdf = Pdf::loadView('admin.warehouse-entries.pdf', [
+            'entry' => $entry,
+            'logoUrl' => $this->warehouseEntryLogoUrl(),
+        ])
+            ->setPaper('a4', 'landscape')
+            ->setOption(['isRemoteEnabled' => true]);
+
+        Storage::disk('public')->put($storedPath, $pdf->output());
+
+        $this->deletePreviousGeneratedWarehouseEntryPdfs($entry, $storedPath);
+
+        $document = Document::create([
+            'documentable_type' => WarehouseEntry::class,
+            'documentable_id' => $entry->id,
+            'document_type_id' => null,
+            'original_name' => $fileName,
+            'stored_name' => $fileName,
+            'file_path' => $storedPath,
+            'mime_type' => 'application/pdf',
+            'extension' => 'pdf',
+            'file_size' => Storage::disk('public')->size($storedPath) ?: 0,
+            'issue_date' => now()->toDateString(),
+            'expiration_date' => null,
+            'observation' => self::PDF_OBSERVATION,
+            'status' => 'ACTIVE',
+            'created_by' => Auth::id(),
+            'updated_by' => Auth::id(),
+        ]);
+
+        return [
+            'path' => $storedPath,
+            'url' => route('admin.warehouse-entries.pdf', $entry),
+            'document' => $document,
+        ];
+    }
+
+    private function deletePreviousGeneratedWarehouseEntryPdfs(WarehouseEntry $entry, string $currentPath): void
+    {
+        $entry->documents()
+            ->where('observation', self::PDF_OBSERVATION)
+            ->get()
+            ->each(function (Document $document) use ($currentPath) {
+                if (
+                    $document->file_path
+                    && $document->file_path !== $currentPath
+                    && Storage::disk('public')->exists($document->file_path)
+                ) {
+                    Storage::disk('public')->delete($document->file_path);
+                }
+
+                $document->delete();
+            });
+    }
+
+    private function sanitizeFileName(string $value): string
+    {
+        return preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
+    }
+
+    private function warehouseEntryLogoUrl(): ?string
+    {
+        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
+
+        return file_exists($logoPath)
+            ? url('vendor/adminlte/dist/img/logo_img.png')
+            : null;
     }
 
     private function storeEntryDocuments(WarehouseEntry $entry, array $documentData, array $documentFiles): void

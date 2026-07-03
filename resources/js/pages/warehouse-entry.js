@@ -291,6 +291,10 @@ function saveWarehouseEntry(form) {
             tableWarehouseEntry.ajax.reload(null, false);
             warehouseEntryPendingDocuments = [];
 
+            if (!id && response.pdf_url) {
+                window.open(response.pdf_url, '_blank');
+            }
+
             Swal.fire({
                 icon: 'success',
                 title: response.message || 'Ingreso guardado correctamente.',

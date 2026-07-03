@@ -392,6 +392,11 @@ Route::delete(
     [WarehouseEntryController::class, 'destroyDocument']
 )->name('warehouse-entries.documents.destroy');
 
+Route::get(
+    'warehouse-entries/{warehouseEntry}/pdf',
+    [WarehouseEntryController::class, 'pdf']
+)->name('warehouse-entries.pdf');
+
 Route::resource(
     'warehouse-entries',
     WarehouseEntryController::class
