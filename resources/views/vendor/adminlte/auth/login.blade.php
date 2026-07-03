@@ -57,7 +57,7 @@
         .login-box {
             position: relative;
             z-index: 1;
-            width: 460px;
+            width: 430px;
             max-width: calc(100% - 28px);
             animation: loginEnter .45s ease both;
         }
@@ -69,8 +69,8 @@
         .login-box .card {
             border: 1px solid rgba(255, 255, 255, .58) !important;
             border-radius: 26px !important;
-            background: rgba(255, 255, 255, .72) !important;
-            box-shadow: 0 28px 90px rgba(15, 23, 42, .16) !important;
+            background: rgba(255, 255, 255, .76) !important;
+            box-shadow: 0 24px 72px rgba(15, 23, 42, .15) !important;
             overflow: hidden;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -87,7 +87,7 @@
         }
 
         .login-box .card-header {
-            padding: 28px 30px 18px;
+            padding: 26px 32px 18px;
             border-bottom: 1px solid rgba(226, 232, 240, .7) !important;
             background: transparent !important;
         }
@@ -97,12 +97,12 @@
         }
 
         .login-card-body {
-            padding: 24px 30px 28px !important;
+            padding: 22px 32px 28px !important;
             background: transparent !important;
         }
 
         .login-box .card-footer {
-            padding: 0 30px 28px;
+            padding: 0 32px 28px;
             border-top: 0 !important;
             background: transparent !important;
         }
@@ -129,14 +129,14 @@
         .login-title {
             margin: 0;
             color: var(--dp-text);
-            font-size: 28px;
+            font-size: 27px;
             font-weight: 900;
             line-height: 1.05;
             letter-spacing: 0;
         }
 
         .login-kicker {
-            margin: 7px 0 0;
+            margin: 8px 0 0;
             color: var(--dp-primary);
             font-size: 14px;
             font-weight: 850;
@@ -144,54 +144,32 @@
         }
 
         .login-subtitle {
-            max-width: 345px;
-            margin: 10px auto 0;
+            max-width: 300px;
+            margin: 9px auto 0;
             color: var(--dp-muted);
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 650;
-            line-height: 1.55;
-        }
-
-        .login-badges {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 8px;
-            margin-top: 16px;
-        }
-
-        .login-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 7px 10px;
-            border: 1px solid rgba(15, 118, 110, .16);
-            border-radius: 999px;
-            color: var(--dp-primary);
-            background: rgba(15, 118, 110, .08);
-            font-size: 11px;
-            font-weight: 850;
-            white-space: nowrap;
+            line-height: 1.45;
         }
 
         .login-label {
             display: block;
-            margin-bottom: 7px;
+            margin-bottom: 8px;
             color: #263b45;
             font-size: 12px;
             font-weight: 900;
         }
 
         .modern-input-group {
-            margin-bottom: 16px;
+            margin-bottom: 17px;
         }
 
         .modern-input {
-            height: 50px !important;
+            height: 48px !important;
             border: 1px solid #dbe3ea !important;
             border-right: 0 !important;
             border-radius: 15px 0 0 15px !important;
-            background: rgba(255, 255, 255, .88) !important;
+            background: rgba(255, 255, 255, .9) !important;
             color: var(--dp-text) !important;
             font-size: 14px;
             font-weight: 700;
@@ -215,13 +193,27 @@
         }
 
         .modern-input-group .input-group-text {
-            min-width: 50px;
+            min-width: 48px;
             justify-content: center;
             border: 1px solid #dbe3ea !important;
             border-left: 0 !important;
             border-radius: 0 15px 15px 0 !important;
             color: var(--dp-primary);
             background: rgba(255, 255, 255, .9) !important;
+        }
+
+        .password-toggle {
+            width: 48px;
+            padding: 0;
+            cursor: pointer;
+            transition: color .18s ease, background .18s ease;
+        }
+
+        .password-toggle:hover,
+        .password-toggle:focus {
+            color: var(--dp-primary-dark);
+            background: rgba(240, 253, 250, .96) !important;
+            outline: none;
         }
 
         .modern-input-group .invalid-feedback {
@@ -236,8 +228,8 @@
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            margin-top: 2px;
-            margin-bottom: 18px;
+            margin-top: 1px;
+            margin-bottom: 20px;
         }
 
         .login-options-row label {
@@ -255,15 +247,15 @@
         .btn-login-modern {
             display: inline-flex;
             width: 100%;
-            height: 50px;
+            height: 49px;
             align-items: center;
             justify-content: center;
             gap: 8px;
             border: 0 !important;
             border-radius: 15px !important;
             color: #fff !important;
-            background: linear-gradient(135deg, var(--dp-primary), var(--dp-accent)) !important;
-            box-shadow: 0 16px 34px rgba(15, 118, 110, .26);
+            background: linear-gradient(135deg, var(--dp-primary-dark), var(--dp-primary), var(--dp-accent)) !important;
+            box-shadow: 0 14px 30px rgba(15, 118, 110, .28);
             font-size: 14px;
             font-weight: 900;
             transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
@@ -273,7 +265,7 @@
         .btn-login-modern:focus {
             color: #fff !important;
             transform: translateY(-1px);
-            box-shadow: 0 20px 40px rgba(15, 118, 110, .32);
+            box-shadow: 0 18px 36px rgba(15, 118, 110, .34);
             filter: saturate(1.08);
         }
 
@@ -376,15 +368,7 @@
         </div>
         <h1 class="login-title">DroPaivSys</h1>
         <div class="login-kicker">Gesti&oacute;n de abastecimiento en salud</div>
-        <p class="login-subtitle">
-            Plataforma segura para administrar cotizaciones, &oacute;rdenes de compra,
-            ingresos de almac&eacute;n, Kardex y trazabilidad documental.
-        </p>
-        <div class="login-badges">
-            <span class="login-badge"><i class="fas fa-file-contract"></i>Proveedor del Estado</span>
-            <span class="login-badge"><i class="fas fa-hospital"></i>Salud &amp; Bienestar</span>
-            <span class="login-badge"><i class="fas fa-warehouse"></i>Gesti&oacute;n log&iacute;stica</span>
-        </div>
+        <p class="login-subtitle">Acceso seguro a la plataforma empresarial.</p>
     </div>
 @stop
 
@@ -418,9 +402,10 @@
                 placeholder="Ingresa tu contrase&ntilde;a" autocomplete="current-password">
 
             <div class="input-group-append">
-                <div class="input-group-text">
-                    <span class="fas fa-lock {{ config('adminlte.classes_auth_icon', '') }}"></span>
-                </div>
+                <button type="button" class="input-group-text password-toggle" id="togglePassword"
+                    aria-label="Mostrar contrase&ntilde;a" aria-pressed="false">
+                    <span class="fas fa-eye"></span>
+                </button>
             </div>
 
             @error('password')
@@ -455,3 +440,30 @@
         @endif
     </div>
 @stop
+
+@push('js')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const passwordInput = document.getElementById('password');
+            const toggleButton = document.getElementById('togglePassword');
+
+            if (!passwordInput || !toggleButton) {
+                return;
+            }
+
+            toggleButton.addEventListener('click', function () {
+                const isHidden = passwordInput.getAttribute('type') === 'password';
+                const icon = toggleButton.querySelector('.fas');
+
+                passwordInput.setAttribute('type', isHidden ? 'text' : 'password');
+                toggleButton.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+                toggleButton.setAttribute('aria-label', isHidden ? 'Ocultar contrasena' : 'Mostrar contrasena');
+
+                if (icon) {
+                    icon.classList.toggle('fa-eye', !isHidden);
+                    icon.classList.toggle('fa-eye-slash', isHidden);
+                }
+            });
+        });
+    </script>
+@endpush
