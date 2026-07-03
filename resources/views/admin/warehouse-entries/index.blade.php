@@ -381,6 +381,172 @@
             padding: 10px 14px;
         }
 
+        .warehouse-entry-documents-card {
+            border: 1px solid #e6f0f1 !important;
+        }
+
+        .warehouse-entry-document-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .warehouse-entry-document-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #e6f6f4;
+            color: #11867a;
+            flex: 0 0 auto;
+        }
+
+        .warehouse-entry-document-counter {
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: #eef8f7;
+            color: #11867a;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .warehouse-entry-document-form {
+            padding: 12px;
+            border: 1px solid #edf1f2;
+            border-radius: 10px;
+            background: #fbfdfd;
+        }
+
+        .warehouse-entry-document-file .custom-file-label {
+            height: 30px;
+            padding: 4px 75px 4px 8px;
+            border-color: #dfe6e8;
+            border-radius: 6px;
+            color: #7b8790;
+            font-size: 11.5px;
+            line-height: 20px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .warehouse-entry-document-file .custom-file-label::after {
+            height: 28px;
+            padding: 4px 10px;
+            color: #11867a;
+            background: #e6f6f4;
+            border-left-color: #dfe6e8;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 20px;
+            content: "Buscar";
+        }
+
+        .warehouse-entry-document-add {
+            height: 30px;
+            border: 0;
+            background: linear-gradient(135deg, #11867a, #159f93);
+            box-shadow: 0 8px 18px rgba(17, 134, 122, .16);
+        }
+
+        .warehouse-entry-document-add:hover {
+            background: linear-gradient(135deg, #0f766e, #11867a);
+        }
+
+        .warehouse-entry-documents-table-wrap {
+            margin-top: 12px;
+            border: 1px solid #edf1f2;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .warehouse-entry-documents-table {
+            font-size: 11.5px;
+        }
+
+        .warehouse-entry-documents-table thead th {
+            padding: 8px 7px;
+            border-bottom: 1px solid #e9eef0 !important;
+            background: #f8fafb;
+            color: #59636d;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: .15px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-documents-table tbody td {
+            padding: 7px;
+            border-top: 1px solid #f0f3f4;
+            color: #3d4650;
+            vertical-align: middle !important;
+        }
+
+        .warehouse-entry-document-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 8px;
+            border-radius: 999px;
+            font-size: 10.5px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-document-badge.badge-doc-green {
+            background: #e8f8ef;
+            color: #16733c;
+        }
+
+        .warehouse-entry-document-badge.badge-doc-blue {
+            background: #e7f3ff;
+            color: #1f6fb2;
+        }
+
+        .warehouse-entry-document-badge.badge-doc-teal {
+            background: #e6f6f4;
+            color: #11867a;
+        }
+
+        .warehouse-entry-document-badge.badge-doc-yellow {
+            background: #fff7df;
+            color: #9a6a00;
+        }
+
+        .warehouse-entry-document-badge.badge-doc-gray {
+            background: #eef1f4;
+            color: #59636d;
+        }
+
+        .warehouse-entry-document-file-name {
+            display: block;
+            max-width: 230px;
+            color: #26323b;
+            font-weight: 700;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .warehouse-entry-document-actions {
+            display: inline-flex;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .warehouse-entry-document-actions .btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         #warehouseEntryModal .warehouse-entry-card > .p-3 {
             padding: 12px 14px !important;
             background: #fff !important;

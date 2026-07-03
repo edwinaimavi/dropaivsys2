@@ -209,6 +209,39 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div class="card border-0 shadow-sm mt-3 warehouse-entry-card warehouse-entry-documents-card">
+                            <div class="card-header border-0 py-2 warehouse-entry-section-header">
+                                <h6 class="mb-0 font-weight-bold">
+                                    <i class="fas fa-folder-open text-info mr-1"></i>
+                                    Documentos adjuntos
+                                </h6>
+                                <small class="text-muted">Comprobantes, gu&iacute;as y documentos sanitarios vinculados al ingreso</small>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive warehouse-entry-documents-table-wrap">
+                                    <table class="table table-sm table-hover mb-0 warehouse-entry-documents-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Tipo</th>
+                                                <th>Descripci&oacute;n</th>
+                                                <th>Archivo</th>
+                                                <th>Fecha</th>
+                                                <th class="text-center">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vwe_documents">
+                                            <tr>
+                                                <td colspan="6" class="text-center text-muted py-3">
+                                                    No hay documentos adjuntos.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -8,6 +8,8 @@ use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
+use App\Models\Document;
+use App\Models\DocumentType;
 use App\Models\Presentation;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
@@ -20,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
@@ -34,9 +37,9 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
         $this->middleware('can:admin.warehouse-entries.load-items')->only(['loadSupplierPurchaseOrderItems']);
         $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
-        $this->middleware('can:admin.warehouse-entries.update')->only(['update']);
+        $this->middleware('can:admin.warehouse-entries.update')->only(['update', 'destroyDocument']);
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
-        $this->middleware('can:admin.warehouse-entries.show')->only(['show']);
+        $this->middleware('can:admin.warehouse-entries.show')->only(['show', 'downloadDocument']);
     }
 
     public function index()
@@ -148,7 +151,7 @@ class WarehouseEntryController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
-            'documents',
+            'documents.documentType',
         ]);
 
         return response()->json([
@@ -166,6 +169,39 @@ class WarehouseEntryController extends Controller
     public function update(Request $request, WarehouseEntry $warehouseEntry)
     {
         return $this->saveEntry($request, $warehouseEntry);
+    }
+
+    public function downloadDocument(WarehouseEntry $warehouseEntry, Document $document)
+    {
+        $this->ensureEntryDocument($warehouseEntry, $document);
+
+        if (! $document->file_path || ! Storage::disk('public')->exists($document->file_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->download(
+            $document->file_path,
+            $document->original_name ?: basename($document->file_path)
+        );
+    }
+
+    public function destroyDocument(WarehouseEntry $warehouseEntry, Document $document)
+    {
+        $this->ensureEntryDocument($warehouseEntry, $document);
+
+        if ($document->file_path && Storage::disk('public')->exists($document->file_path)) {
+            Storage::disk('public')->delete($document->file_path);
+        }
+
+        $document->update([
+            'deleted_by' => Auth::id(),
+        ]);
+        $document->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Documento eliminado correctamente.',
+        ]);
     }
 
     public function destroy(WarehouseEntry $warehouseEntry, WarehouseKardexService $kardexService)
@@ -312,10 +348,14 @@ class WarehouseEntryController extends Controller
             'items.*.ordered_quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'warehouse_entry_documents' => ['nullable', 'array'],
+            'warehouse_entry_documents.*.type' => ['required_with:warehouse_entry_documents.*.file', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
+            'warehouse_entry_documents.*.description' => ['nullable', 'string', 'max:255'],
+            'warehouse_entry_documents.*.file' => ['required_with:warehouse_entry_documents.*.type', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
         ]);
 
         try {
-            return DB::transaction(function () use ($validated, $entry) {
+            return DB::transaction(function () use ($request, $validated, $entry) {
                 $supplierPurchaseOrder = ! empty($validated['supplier_purchase_order_id'])
                     ? SupplierPurchaseOrder::query()
                         ->with('supplier:id,ruc')
@@ -381,6 +421,8 @@ class WarehouseEntryController extends Controller
                 foreach ($preparedItems as $item) {
                     $entry->items()->create($item);
                 }
+
+                $this->storeEntryDocuments($entry, $request->input('warehouse_entry_documents', []), $request->file('warehouse_entry_documents', []));
 
                 $freshEntry = $entry->fresh([
                     'supplier',
@@ -615,5 +657,77 @@ class WarehouseEntryController extends Controller
         $value = mb_strtoupper(trim((string) $value), 'UTF-8');
 
         return $value === '' ? 'FACTURA' : $value;
+    }
+
+    private function storeEntryDocuments(WarehouseEntry $entry, array $documentData, array $documentFiles): void
+    {
+        foreach ($documentData as $index => $document) {
+            $file = $documentFiles[$index]['file'] ?? null;
+
+            if (! $file) {
+                continue;
+            }
+
+            $documentType = $this->resolveWarehouseEntryDocumentType($document['type'] ?? 'other');
+            $storedPath = $file->store('warehouse_entries/documents', 'public');
+
+            Document::create([
+                'documentable_type' => WarehouseEntry::class,
+                'documentable_id' => $entry->id,
+                'document_type_id' => $documentType->id,
+                'original_name' => $file->getClientOriginalName(),
+                'stored_name' => basename($storedPath),
+                'file_path' => $storedPath,
+                'mime_type' => $file->getMimeType(),
+                'extension' => $file->getClientOriginalExtension(),
+                'file_size' => $file->getSize(),
+                'observation' => $this->upperOrNull($document['description'] ?? null),
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+    }
+
+    private function resolveWarehouseEntryDocumentType(string $type): DocumentType
+    {
+        $types = $this->warehouseEntryDocumentTypes();
+        $payload = $types[$type] ?? $types['other'];
+
+        return DocumentType::query()->firstOrCreate(
+            ['code' => $payload['code']],
+            [
+                'description' => $payload['label'],
+                'observation' => 'Documento de ingreso de almacen',
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]
+        );
+    }
+
+    private function warehouseEntryDocumentTypes(): array
+    {
+        return [
+            'purchase_invoice' => ['code' => 'WE001', 'label' => 'FACTURA'],
+            'receipt' => ['code' => 'WE002', 'label' => 'BOLETA'],
+            'dispatch_guide' => ['code' => 'WE003', 'label' => 'GUIA DE REMISION'],
+            'analysis_certificate' => ['code' => 'WE004', 'label' => 'CERTIFICADO DE ANALISIS'],
+            'sanitary_registration' => ['code' => 'WE005', 'label' => 'REGISTRO SANITARIO'],
+            'quality_certificate' => ['code' => 'WE006', 'label' => 'CERTIFICADO DE CALIDAD'],
+            'bpm_bpa_certificate' => ['code' => 'WE007', 'label' => 'CERTIFICADO BPM / BPA'],
+            'technical_sheet' => ['code' => 'WE008', 'label' => 'FICHA TECNICA'],
+            'medicine_document' => ['code' => 'WE009', 'label' => 'DOCUMENTO DEL MEDICAMENTO'],
+            'other' => ['code' => 'WE010', 'label' => 'OTRO DOCUMENTO'],
+        ];
+    }
+
+    private function ensureEntryDocument(WarehouseEntry $entry, Document $document): void
+    {
+        abort_unless(
+            $document->documentable_type === WarehouseEntry::class
+            && (int) $document->documentable_id === (int) $entry->id,
+            404
+        );
     }
 }

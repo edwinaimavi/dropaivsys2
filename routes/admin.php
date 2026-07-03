@@ -382,6 +382,16 @@ Route::post(
     [WarehouseEntryController::class, 'loadSupplierPurchaseOrderItems']
 )->name('warehouse-entries.loadSupplierOrderItems');
 
+Route::get(
+    'warehouse-entries/{warehouseEntry}/documents/{document}/download',
+    [WarehouseEntryController::class, 'downloadDocument']
+)->name('warehouse-entries.documents.download');
+
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/documents/{document}',
+    [WarehouseEntryController::class, 'destroyDocument']
+)->name('warehouse-entries.documents.destroy');
+
 Route::resource(
     'warehouse-entries',
     WarehouseEntryController::class

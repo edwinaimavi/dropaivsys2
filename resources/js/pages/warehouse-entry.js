@@ -2,6 +2,41 @@ let tableWarehouseEntry;
 let warehouseEntryItemIndex = 0;
 let warehouseEntrySourceLoadRequest = null;
 let warehouseEntrySourceLoadTimer = null;
+let warehouseEntryPendingDocuments = [];
+let warehouseEntryExistingDocuments = [];
+
+const warehouseEntryDocumentTypes = {
+    purchase_invoice: { label: 'Factura', badge: 'badge-doc-green' },
+    receipt: { label: 'Boleta', badge: 'badge-doc-green' },
+    dispatch_guide: { label: 'Guia de remision', badge: 'badge-doc-blue' },
+    analysis_certificate: { label: 'Certificado de analisis', badge: 'badge-doc-yellow' },
+    sanitary_registration: { label: 'Registro sanitario', badge: 'badge-doc-teal' },
+    quality_certificate: { label: 'Certificado de calidad', badge: 'badge-doc-yellow' },
+    bpm_bpa_certificate: { label: 'Certificado BPM / BPA', badge: 'badge-doc-yellow' },
+    technical_sheet: { label: 'Ficha tecnica', badge: 'badge-doc-teal' },
+    medicine_document: { label: 'Documento del medicamento', badge: 'badge-doc-teal' },
+    other: { label: 'Otro', badge: 'badge-doc-gray' }
+};
+
+const warehouseEntryDocumentCodeMap = {
+    WE001: 'purchase_invoice',
+    WE002: 'receipt',
+    WE003: 'dispatch_guide',
+    WE004: 'analysis_certificate',
+    WE005: 'sanitary_registration',
+    WE006: 'quality_certificate',
+    WE007: 'bpm_bpa_certificate',
+    WE008: 'technical_sheet',
+    WE009: 'medicine_document',
+    WE010: 'other',
+    DOC001: 'technical_sheet',
+    DOC002: 'analysis_certificate',
+    DOC003: 'sanitary_registration',
+    DOC004: 'bpm_bpa_certificate'
+};
+
+const warehouseEntryAllowedDocumentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx'];
+const warehouseEntryMaxDocumentSize = 10 * 1024 * 1024;
 
 document.addEventListener('DOMContentLoaded', function () {
     $.ajaxSetup({
@@ -75,6 +110,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('click', '#btnLoadWarehouseEntrySource', loadWarehouseEntrySourceItems);
+
+    $(document).on('change', '#warehouse_entry_document_attachment_file', function () {
+        const file = this.files?.[0];
+        $(this).siblings('.custom-file-label').text(file ? file.name : 'Seleccionar archivo');
+    });
+
+    $(document).on('click', '#btnAddWarehouseEntryDocument', addWarehouseEntryPendingDocument);
+
+    $(document).on('click', '.btnRemoveWarehouseEntryPendingDocument', function () {
+        const index = Number($(this).data('index'));
+        warehouseEntryPendingDocuments.splice(index, 1);
+        renderWarehouseEntryDocuments();
+    });
+
+    $(document).on('click', '.btnDeleteWarehouseEntryExistingDocument', function () {
+        deleteWarehouseEntryDocument($(this).data('id'));
+    });
 
     $(document).on('click', '.editWarehouseEntry', function () {
         loadWarehouseEntryForEdit($(this).data('id'));
@@ -186,6 +238,10 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_payable_amount').val('0.00');
     $('#warehouse_entry_supplier_ruc').val('');
     $('#warehouse_entry_guide_ruc').val('');
+    warehouseEntryPendingDocuments = [];
+    warehouseEntryExistingDocuments = [];
+    resetWarehouseEntryDocumentInputs();
+    renderWarehouseEntryDocuments();
     setWarehouseEntrySupplierLocked(false);
     syncWarehouseEntryPayableAmount();
 }
@@ -211,16 +267,29 @@ function saveWarehouseEntry(form) {
     const url = id
         ? `${window.routes.warehouseEntryUpdate}/${id}`
         : window.routes.warehouseEntryStore;
-    const method = id ? 'PUT' : 'POST';
+    const formData = new FormData(form);
+
+    if (id) {
+        formData.append('_method', 'PUT');
+    }
+
+    warehouseEntryPendingDocuments.forEach(function (document, index) {
+        formData.append(`warehouse_entry_documents[${index}][type]`, document.type);
+        formData.append(`warehouse_entry_documents[${index}][description]`, document.description || '');
+        formData.append(`warehouse_entry_documents[${index}][file]`, document.file);
+    });
 
     $.ajax({
         url,
-        type: method,
-        data: $(form).serialize()
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false
     })
         .done(function (response) {
             $('#warehouseEntryModal').modal('hide');
             tableWarehouseEntry.ajax.reload(null, false);
+            warehouseEntryPendingDocuments = [];
 
             Swal.fire({
                 icon: 'success',
@@ -555,6 +624,10 @@ function fillWarehouseEntryForm(entry) {
     clearWarehouseEntryItemRows();
     (entry.items || []).forEach(addWarehouseEntryItemRow);
     showEmptyWarehouseEntryItemsRow();
+    warehouseEntryPendingDocuments = [];
+    warehouseEntryExistingDocuments = entry.documents || [];
+    resetWarehouseEntryDocumentInputs();
+    renderWarehouseEntryDocuments();
     calculateWarehouseEntryTotals();
     syncWarehouseEntryPayableAmount();
 }
@@ -621,6 +694,7 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     }).join('');
 
     $('#vwe_items').html(rows || '<tr><td colspan="10" class="text-center text-muted py-3">Sin articulos ingresados.</td></tr>');
+    renderWarehouseEntryDetailDocuments(entry.documents || [], entry.id);
 }
 
 function deleteWarehouseEntry(id) {
@@ -688,6 +762,233 @@ function normalizeWarehouseEntryDocumentType(value) {
     const documentType = String(value || 'FACTURA').toUpperCase();
 
     return documentType === 'BOLETA' ? 'BOLETA' : 'FACTURA';
+}
+
+function addWarehouseEntryPendingDocument() {
+    const type = $('#warehouse_entry_document_attachment_type').val();
+    const description = $('#warehouse_entry_document_attachment_description').val();
+    const fileInput = $('#warehouse_entry_document_attachment_file')[0];
+    const file = fileInput?.files?.[0];
+
+    if (!type) {
+        Swal.fire('Atencion', 'Seleccione el tipo de documento.', 'warning');
+        return;
+    }
+
+    if (!file) {
+        Swal.fire('Atencion', 'Seleccione un archivo para adjuntar.', 'warning');
+        return;
+    }
+
+    const extension = getWarehouseEntryFileExtension(file.name);
+
+    if (!warehouseEntryAllowedDocumentExtensions.includes(extension)) {
+        Swal.fire('Archivo no permitido', 'Adjunte PDF, imagen, Word o Excel.', 'warning');
+        return;
+    }
+
+    if (file.size > warehouseEntryMaxDocumentSize) {
+        Swal.fire('Archivo muy pesado', 'El documento no debe superar 10 MB.', 'warning');
+        return;
+    }
+
+    warehouseEntryPendingDocuments.push({
+        type,
+        description,
+        file,
+        original_name: file.name,
+        created_at: new Date().toISOString(),
+        pending: true
+    });
+
+    resetWarehouseEntryDocumentInputs();
+    renderWarehouseEntryDocuments();
+}
+
+function resetWarehouseEntryDocumentInputs() {
+    $('#warehouse_entry_document_attachment_type').val('purchase_invoice');
+    $('#warehouse_entry_document_attachment_description').val('');
+    $('#warehouse_entry_document_attachment_file').val('');
+    $('#warehouse_entry_document_attachment_file').siblings('.custom-file-label').text('Seleccionar archivo');
+}
+
+function renderWarehouseEntryDocuments() {
+    const entryId = $('#warehouse_entry_id').val();
+    const rows = [];
+
+    warehouseEntryExistingDocuments.forEach(function (document, index) {
+        rows.push(renderWarehouseEntryDocumentRow(document, index + 1, {
+            entryId,
+            existing: true
+        }));
+    });
+
+    warehouseEntryPendingDocuments.forEach(function (document, index) {
+        rows.push(renderWarehouseEntryDocumentRow(document, warehouseEntryExistingDocuments.length + index + 1, {
+            pendingIndex: index,
+            pending: true
+        }));
+    });
+
+    $('#warehouseEntryDocumentCount').text(rows.length);
+
+    $('#warehouseEntryDocumentsTbody').html(rows.join('') || `
+        <tr id="warehouseEntryDocumentsEmptyRow">
+            <td colspan="6" class="text-center text-muted py-3">
+                <i class="fas fa-folder-open d-block mb-2"></i>
+                No hay documentos adjuntos para este ingreso.
+            </td>
+        </tr>
+    `);
+}
+
+function renderWarehouseEntryDetailDocuments(documents, entryId) {
+    const rows = documents.map(function (document, index) {
+        return renderWarehouseEntryDocumentRow(document, index + 1, {
+            entryId,
+            detail: true
+        });
+    });
+
+    $('#vwe_documents').html(rows.join('') || `
+        <tr>
+            <td colspan="6" class="text-center text-muted py-3">
+                No hay documentos adjuntos.
+            </td>
+        </tr>
+    `);
+}
+
+function renderWarehouseEntryDocumentRow(document, rowNumber, options = {}) {
+    const typeKey = resolveWarehouseEntryDocumentTypeKey(document);
+    const type = warehouseEntryDocumentTypes[typeKey] || warehouseEntryDocumentTypes.other;
+    const description = document.description || document.observation || '-';
+    const fileName = document.original_name || document.file?.name || '-';
+    const date = options.pending ? 'Pendiente' : formatWarehouseEntryDisplayDate(document.created_at);
+    const filePath = document.file_path ? `/storage/${document.file_path}` : '#';
+    let actions = '';
+
+    if (options.pending) {
+        actions = `
+            <button type="button" class="btn btn-outline-danger btn-sm btnRemoveWarehouseEntryPendingDocument"
+                data-index="${options.pendingIndex}" title="Quitar">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        `;
+    } else {
+        const downloadUrl = `${window.routes.warehouseEntryShow}/${options.entryId}/documents/${document.id}/download`;
+        actions = `
+            <a href="${filePath}" target="_blank" class="btn btn-outline-info btn-sm" title="Ver">
+                <i class="fas fa-eye"></i>
+            </a>
+            <a href="${downloadUrl}" class="btn btn-outline-success btn-sm" title="Descargar">
+                <i class="fas fa-download"></i>
+            </a>
+        `;
+
+        if (!options.detail) {
+            actions += `
+                <button type="button" class="btn btn-outline-danger btn-sm btnDeleteWarehouseEntryExistingDocument"
+                    data-id="${document.id}" title="Eliminar">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            `;
+        }
+    }
+
+    return `
+        <tr>
+            <td>${rowNumber}</td>
+            <td>
+                <span class="warehouse-entry-document-badge ${type.badge}">
+                    <i class="fas fa-file-medical"></i>${escapeWarehouseEntryHtml(type.label)}
+                </span>
+            </td>
+            <td>${escapeWarehouseEntryHtml(description)}</td>
+            <td>
+                <span class="warehouse-entry-document-file-name" title="${escapeWarehouseEntryHtml(fileName)}">
+                    ${escapeWarehouseEntryHtml(fileName)}
+                </span>
+            </td>
+            <td>${escapeWarehouseEntryHtml(date)}</td>
+            <td class="text-center">
+                <span class="warehouse-entry-document-actions">${actions}</span>
+            </td>
+        </tr>
+    `;
+}
+
+function deleteWarehouseEntryDocument(documentId) {
+    const entryId = $('#warehouse_entry_id').val();
+
+    if (!entryId || !documentId) {
+        return;
+    }
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Eliminar documento',
+        text: 'Se eliminara el archivo adjunto sin borrar el ingreso.',
+        showCancelButton: true,
+        confirmButtonText: 'Si, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(function (result) {
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        $.ajax({
+            url: `${window.routes.warehouseEntryShow}/${entryId}/documents/${documentId}`,
+            type: 'DELETE'
+        })
+            .done(function (response) {
+                warehouseEntryExistingDocuments = warehouseEntryExistingDocuments.filter(function (document) {
+                    return Number(document.id) !== Number(documentId);
+                });
+                renderWarehouseEntryDocuments();
+                Swal.fire({
+                    icon: 'success',
+                    title: response.message || 'Documento eliminado correctamente.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2400
+                });
+            })
+            .fail(function (xhr) {
+                Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el documento.', 'error');
+            });
+    });
+}
+
+function resolveWarehouseEntryDocumentTypeKey(document) {
+    if (document.type && warehouseEntryDocumentTypes[document.type]) {
+        return document.type;
+    }
+
+    const code = String(document.document_type?.code || document.documentType?.code || '').toUpperCase();
+    if (warehouseEntryDocumentCodeMap[code]) {
+        return warehouseEntryDocumentCodeMap[code];
+    }
+
+    const label = String(document.document_type?.description || document.documentType?.description || '').toUpperCase();
+
+    if (label.includes('FACTURA')) return 'purchase_invoice';
+    if (label.includes('BOLETA')) return 'receipt';
+    if (label.includes('GUIA')) return 'dispatch_guide';
+    if (label.includes('ANALISIS') || label.includes('PROTOCOLO')) return 'analysis_certificate';
+    if (label.includes('SANITARIO')) return 'sanitary_registration';
+    if (label.includes('CALIDAD')) return 'quality_certificate';
+    if (label.includes('BPM') || label.includes('BPA') || label.includes('ISO')) return 'bpm_bpa_certificate';
+    if (label.includes('FICHA')) return 'technical_sheet';
+    if (label.includes('MEDICAMENTO')) return 'medicine_document';
+
+    return 'other';
+}
+
+function getWarehouseEntryFileExtension(fileName) {
+    const parts = String(fileName || '').toLowerCase().split('.');
+    return parts.length > 1 ? parts.pop() : '';
 }
 
 function escapeWarehouseEntryHtml(value) {

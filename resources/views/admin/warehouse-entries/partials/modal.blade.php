@@ -361,6 +361,100 @@
                         </div>
                     </div>
 
+                    <div class="col-12 mt-3">
+                        <div class="card border-0 shadow-sm warehouse-entry-card warehouse-entry-documents-card">
+                            <div class="card-header border-0 py-2 px-3 warehouse-entry-section-header">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                    <div class="warehouse-entry-document-title">
+                                        <span class="warehouse-entry-document-icon">
+                                            <i class="fas fa-folder-open"></i>
+                                        </span>
+                                        <div>
+                                            <h6 class="mb-0 font-weight-bold text-dark">Documentos del ingreso</h6>
+                                            <small class="text-muted">Adjunta comprobantes, gu&iacute;as, certificados y documentos sanitarios.</small>
+                                        </div>
+                                    </div>
+                                    <span class="warehouse-entry-document-counter">
+                                        <span id="warehouseEntryDocumentCount">0</span> documentos
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="warehouse-entry-document-form">
+                                    <div class="row align-items-end">
+                                        <div class="form-group col-lg-3 col-md-6">
+                                            <label>TIPO DE DOCUMENTO</label>
+                                            <select id="warehouse_entry_document_attachment_type"
+                                                class="form-control form-control-sm">
+                                                <option value="purchase_invoice">Factura</option>
+                                                <option value="receipt">Boleta</option>
+                                                <option value="dispatch_guide">Gu&iacute;a de remisi&oacute;n</option>
+                                                <option value="analysis_certificate">Certificado de an&aacute;lisis</option>
+                                                <option value="sanitary_registration">Registro sanitario</option>
+                                                <option value="quality_certificate">Certificado de calidad</option>
+                                                <option value="bpm_bpa_certificate">Certificado BPM / BPA</option>
+                                                <option value="technical_sheet">Ficha t&eacute;cnica</option>
+                                                <option value="medicine_document">Documento del medicamento</option>
+                                                <option value="other">Otro</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group col-lg-4 col-md-6">
+                                            <label>DESCRIPCI&Oacute;N / OBSERVACI&Oacute;N</label>
+                                            <input type="text" id="warehouse_entry_document_attachment_description"
+                                                class="form-control form-control-sm"
+                                                placeholder="Factura F001-000123, certificado del lote...">
+                                        </div>
+
+                                        <div class="form-group col-lg-3 col-md-7">
+                                            <label>ARCHIVO</label>
+                                            <div class="custom-file warehouse-entry-document-file">
+                                                <input type="file" id="warehouse_entry_document_attachment_file"
+                                                    class="custom-file-input"
+                                                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx">
+                                                <label class="custom-file-label" for="warehouse_entry_document_attachment_file">
+                                                    Seleccionar archivo
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-group col-lg-2 col-md-5">
+                                            <button type="button" id="btnAddWarehouseEntryDocument"
+                                                class="btn btn-info btn-sm btn-block warehouse-entry-document-add">
+                                                <i class="fas fa-paperclip mr-1"></i>
+                                                Adjuntar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive warehouse-entry-documents-table-wrap">
+                                    <table class="table table-sm table-hover mb-0 warehouse-entry-documents-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Tipo</th>
+                                                <th>Descripci&oacute;n</th>
+                                                <th>Archivo</th>
+                                                <th>Fecha</th>
+                                                <th class="text-center">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="warehouseEntryDocumentsTbody">
+                                            <tr id="warehouseEntryDocumentsEmptyRow">
+                                                <td colspan="6" class="text-center text-muted py-3">
+                                                    <i class="fas fa-folder-open d-block mb-2"></i>
+                                                    No hay documentos adjuntos para este ingreso.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <template id="warehouseEntryItemRowTemplate">
                         <tr class="warehouse-entry-item-row">
                             <td class="warehouse-entry-item-index align-middle"></td>
