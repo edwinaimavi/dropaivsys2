@@ -226,16 +226,30 @@
             justify-content: center;
         }
 
-        .roles-modal .modal-dialog {
-            max-width: 1120px;
+        .roles-modal .role-modal-dialog {
+            max-width: 1180px;
+            width: calc(100% - 40px);
+            margin: 20px auto;
         }
 
-        .roles-modal .modal-content {
+        .roles-modal .role-modal-content {
+            height: calc(100vh - 40px);
+            max-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
             border-radius: 16px !important;
             overflow: hidden;
         }
 
+        .roles-modal .role-modal-form {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+        }
+
         .roles-modal .modal-header {
+            flex-shrink: 0;
             padding: 15px 18px;
             background: linear-gradient(135deg, #0f7a38, #0f9488) !important;
             color: #fff;
@@ -275,7 +289,10 @@
             opacity: .9;
         }
 
-        .roles-modal .modal-body {
+        .roles-modal .role-modal-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
             padding: 14px;
             background: #f8fafc !important;
         }
@@ -359,9 +376,9 @@
         }
 
         .roles-permission-groups {
-            max-height: 430px;
+            max-height: none;
             padding-right: 4px;
-            overflow-y: auto;
+            overflow: visible;
         }
 
         .roles-permission-group {
@@ -450,9 +467,17 @@
             font-weight: 750;
         }
 
-        .roles-modal .modal-footer {
-            padding: 12px 18px;
+        .roles-modal .role-modal-footer {
+            position: sticky;
+            bottom: 0;
+            z-index: 20;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 18px;
             background: #fff;
+            border-top: 1px solid #e5e7eb !important;
         }
 
         @media (max-width: 767.98px) {
@@ -467,6 +492,25 @@
 
             .roles-search-wrap {
                 min-width: 100%;
+            }
+
+            .roles-modal .role-modal-dialog {
+                width: calc(100% - 16px);
+                margin: 8px auto;
+            }
+
+            .roles-modal .role-modal-content {
+                height: calc(100vh - 16px);
+                max-height: calc(100vh - 16px);
+                border-radius: 13px !important;
+            }
+
+            .roles-modal .role-modal-body {
+                padding: 10px;
+            }
+
+            .roles-modal .role-modal-footer {
+                padding: 10px;
             }
         }
     </style>

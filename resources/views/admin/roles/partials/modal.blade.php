@@ -46,9 +46,9 @@
 @endphp
 
 <div class="modal fade roles-modal" id="roleModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
-        <div class="modal-content border-0 shadow-lg">
-            <form id="roleForm">
+    <div class="modal-dialog modal-dialog-centered role-modal-dialog" role="document">
+        <div class="modal-content border-0 shadow-lg role-modal-content">
+            <form id="roleForm" class="role-modal-form">
                 @csrf
                 <div class="modal-header border-0">
                     <div class="roles-modal-title">
@@ -65,7 +65,7 @@
                     </button>
                 </div>
 
-                <div class="modal-body">
+                <div class="modal-body role-modal-body">
                     <div class="row">
                         <div class="col-lg-3 mb-3 mb-lg-0">
                             <aside class="roles-side-panel">
@@ -185,7 +185,7 @@
                     </div>
                 </div>
 
-                <div class="modal-footer border-0">
+                <div class="modal-footer border-0 role-modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">
                         <i class="fas fa-times mr-1"></i>
                         Cerrar
