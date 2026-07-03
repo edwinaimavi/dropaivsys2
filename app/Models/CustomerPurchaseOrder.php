@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 class CustomerPurchaseOrder extends Model
 {
@@ -98,5 +99,71 @@ class CustomerPurchaseOrder extends Model
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function refreshSupplyStatus(): void
+    {
+        if (in_array($this->status, ['cancelled', 'delivered', 'invoiced'], true)) {
+            return;
+        }
+
+        $requestedByItem = $this->items()
+            ->where('status', '!=', 'deleted')
+            ->select('id', 'quantity')
+            ->get()
+            ->mapWithKeys(fn (CustomerPurchaseOrderItem $item) => [
+                $item->id => round((float) $item->quantity, 2),
+            ]);
+
+        if ($requestedByItem->isEmpty()) {
+            $this->forceFill(['status' => 'registered'])->save();
+            return;
+        }
+
+        $itemIds = $requestedByItem->keys()->all();
+
+        $hasSupplierPurchase = SupplierPurchaseOrderItem::query()
+            ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'supplier_purchase_order_items.supplier_purchase_order_id')
+            ->whereIn('supplier_purchase_order_items.customer_purchase_order_item_id', $itemIds)
+            ->whereNull('orders.deleted_at')
+            ->where('orders.status', '!=', 'cancelled')
+            ->where('supplier_purchase_order_items.status', '!=', 'deleted')
+            ->exists();
+
+        if (! $hasSupplierPurchase) {
+            $this->forceFill(['status' => 'registered'])->save();
+            return;
+        }
+
+        $enteredByItem = DB::table('warehouse_entry_items as items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
+            ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'items.supplier_purchase_order_item_id')
+            ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
+            ->whereIn('supplier_items.customer_purchase_order_item_id', $itemIds)
+            ->whereNull('entries.deleted_at')
+            ->whereNull('supplier_orders.deleted_at')
+            ->where('entries.status', 'registered')
+            ->where('supplier_orders.status', '!=', 'cancelled')
+            ->where('items.status', '!=', 'deleted')
+            ->where('supplier_items.status', '!=', 'deleted')
+            ->groupBy('supplier_items.customer_purchase_order_item_id')
+            ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(items.quantity) as entered_quantity')
+            ->pluck('entered_quantity', 'customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $totalEntered = round((float) $enteredByItem->sum(), 2);
+        $isComplete = $requestedByItem->every(function (float $requested, $itemId) use ($enteredByItem) {
+            return round((float) ($enteredByItem[$itemId] ?? 0), 2) >= $requested;
+        });
+
+        $status = match (true) {
+            $totalEntered <= 0 => 'in_purchase',
+            $isComplete => 'entered',
+            default => 'partial_entered',
+        };
+
+        if ($this->status !== $status) {
+            $this->forceFill(['status' => $status])->save();
+        }
     }
 }

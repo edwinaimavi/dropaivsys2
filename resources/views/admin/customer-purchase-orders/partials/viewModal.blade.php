@@ -85,15 +85,12 @@
                         <table class="table table-sm table-hover mb-0">
                             <thead class="bg-light">
                                 <tr>
-                                    <th>#</th>
-                                    <th>ARTÍCULO</th>
-                                    <th>U.M.</th>
-                                    <th>PRESENTACIÓN</th>
-                                    <th>MARCA</th>
-                                    <th>CANT.</th>
-                                    <th>P. UNIT.</th>
-                                    <th>IGV</th>
-                                    <th>TOTAL</th>
+                                    <th>ARTICULO</th>
+                                    <th class="text-right">CANTIDAD SOLICITADA</th>
+                                    <th class="text-right">CANTIDAD EN COMPRA</th>
+                                    <th class="text-right">CANTIDAD INGRESADA</th>
+                                    <th class="text-right">CANTIDAD PENDIENTE</th>
+                                    <th class="text-center">ESTADO</th>
                                 </tr>
                             </thead>
                             <tbody id="vpo_items_body"></tbody>

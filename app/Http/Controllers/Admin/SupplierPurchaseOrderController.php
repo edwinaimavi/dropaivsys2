@@ -317,7 +317,10 @@ class SupplierPurchaseOrderController extends Controller
     public function destroy(SupplierPurchaseOrder $supplierPurchaseOrder)
     {
         try {
+            $customerPurchaseOrderIds = $this->customerPurchaseOrderIdsForSupplierOrder($supplierPurchaseOrder);
+
             $supplierPurchaseOrder->delete();
+            $this->refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds);
 
             return response()->json([
                 'status' => 'success',
@@ -409,6 +412,9 @@ class SupplierPurchaseOrderController extends Controller
                     ->unique()
                     ->values()
                     ->all();
+                $previousCustomerOrderIds = $order
+                    ? $this->customerPurchaseOrderIdsForSupplierOrder($order)
+                    : collect();
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
                 $validated['items'] = $this->applySupplierAwardDataToItems(
                     (int) $validated['supplier_id'],
@@ -471,6 +477,12 @@ class SupplierPurchaseOrderController extends Controller
 
                 $order->customerPurchaseOrders()->sync($customerOrderIds);
                 $order->refreshEntryStatus();
+                $this->refreshCustomerPurchaseOrderStatuses(
+                    $previousCustomerOrderIds
+                        ->merge($customerOrderIds)
+                        ->unique()
+                        ->values()
+                );
 
                 try {
                     $pdfData = $this->generateSupplierPurchaseOrderPdf($order->fresh([
@@ -1099,5 +1111,34 @@ class SupplierPurchaseOrderController extends Controller
             $item->setAttribute('pending_quantity', $pending);
             $item->setAttribute('entry_status', $status);
         });
+    }
+
+    private function customerPurchaseOrderIdsForSupplierOrder(SupplierPurchaseOrder $order)
+    {
+        $pivotIds = DB::table('supplier_purchase_order_customer_purchase_order')
+            ->where('supplier_purchase_order_id', $order->id)
+            ->pluck('customer_purchase_order_id');
+
+        $itemIds = DB::table('supplier_purchase_order_items as supplier_items')
+            ->join('customer_purchase_order_items as customer_items', 'customer_items.id', '=', 'supplier_items.customer_purchase_order_item_id')
+            ->where('supplier_items.supplier_purchase_order_id', $order->id)
+            ->where('supplier_items.status', '!=', 'deleted')
+            ->pluck('customer_items.customer_purchase_order_id');
+
+        return $pivotIds
+            ->merge($itemIds)
+            ->merge([$order->customer_purchase_order_id])
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+    }
+
+    private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
+    {
+        CustomerPurchaseOrder::query()
+            ->whereIn('id', collect($customerPurchaseOrderIds)->filter()->unique()->values()->all())
+            ->get()
+            ->each(fn (CustomerPurchaseOrder $order) => $order->refreshSupplyStatus());
     }
 }

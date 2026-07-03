@@ -8,6 +8,7 @@ use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
+use App\Models\CustomerPurchaseOrder;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\Presentation;
@@ -209,6 +210,7 @@ class WarehouseEntryController extends Controller
         try {
             DB::transaction(function () use ($warehouseEntry, $kardexService) {
                 $supplierPurchaseOrderId = $warehouseEntry->supplier_purchase_order_id;
+                $customerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($warehouseEntry);
 
                 $kardexService->reverseWarehouseEntry($warehouseEntry, 'Ingreso de almacen anulado');
 
@@ -219,6 +221,7 @@ class WarehouseEntryController extends Controller
                 $warehouseEntry->delete();
 
                 $this->refreshSupplierPurchaseOrderStatus($supplierPurchaseOrderId);
+                $this->refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds);
             });
 
             return response()->json([
@@ -361,6 +364,9 @@ class WarehouseEntryController extends Controller
         try {
             return DB::transaction(function () use ($request, $validated, $entry) {
                 $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
+                $previousCustomerPurchaseOrderIds = $entry
+                    ? $this->customerPurchaseOrderIdsForWarehouseEntry($entry)
+                    : collect();
                 $supplierPurchaseOrder = ! empty($validated['supplier_purchase_order_id'])
                     ? SupplierPurchaseOrder::query()
                         ->with('supplier:id,ruc')
@@ -427,6 +433,8 @@ class WarehouseEntryController extends Controller
                     $entry->items()->create($item);
                 }
 
+                $currentCustomerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($entry);
+
                 $this->storeEntryDocuments($entry, $request->input('warehouse_entry_documents', []), $request->file('warehouse_entry_documents', []));
 
                 $freshEntry = $entry->fresh([
@@ -451,6 +459,13 @@ class WarehouseEntryController extends Controller
                     ->filter()
                     ->unique()
                     ->each(fn ($supplierPurchaseOrderId) => $this->refreshSupplierPurchaseOrderStatus((int) $supplierPurchaseOrderId));
+
+                $this->refreshCustomerPurchaseOrderStatuses(
+                    $previousCustomerPurchaseOrderIds
+                        ->merge($currentCustomerPurchaseOrderIds)
+                        ->unique()
+                        ->values()
+                );
 
                 return response()->json([
                     'status' => 'success',
@@ -522,21 +537,33 @@ class WarehouseEntryController extends Controller
             ->get()
             ->keyBy('id');
         $received = $this->receivedQuantitiesForItemIds($orderItemIds->all(), $entryId);
+        $customerPendingByItem = $this->customerPendingQuantitiesForSupplierItemIds(
+            $orderItemIds->all(),
+            $entryId
+        );
 
         foreach ($items as $index => $item) {
             $orderItemId = $item['supplier_purchase_order_item_id'] ?? null;
 
-            if (!$orderItemId || !$orderItems->has($orderItemId)) {
+            if (!$orderItemId || !$orderItems->has((int) $orderItemId)) {
                 continue;
             }
 
-            $orderedQuantity = round((float) $orderItems->get($orderItemId)->quantity, 2);
+            $orderedQuantity = round((float) $orderItems->get((int) $orderItemId)->quantity, 2);
             $pending = max(round($orderedQuantity - (float) ($received[$orderItemId] ?? 0), 2), 0);
             $quantity = round((float) $item['quantity'], 2);
 
             if ($quantity > $pending) {
                 throw ValidationException::withMessages([
                     "items.$index.quantity" => 'La cantidad ingresada supera la cantidad pendiente de la orden.',
+                ]);
+            }
+
+            $customerPending = $customerPendingByItem[(int) $orderItemId] ?? null;
+
+            if ($customerPending !== null && $quantity > $customerPending) {
+                throw ValidationException::withMessages([
+                    "items.$index.quantity" => 'La cantidad ingresada supera la cantidad pendiente de la orden del cliente.',
                 ]);
             }
         }
@@ -684,6 +711,96 @@ class WarehouseEntryController extends Controller
             ->with('items:id,supplier_purchase_order_id,quantity,status')
             ->find($supplierPurchaseOrderId)
             ?->refreshEntryStatus();
+    }
+
+    private function customerPendingQuantitiesForSupplierItemIds(array $supplierItemIds, ?int $exceptEntryId = null): array
+    {
+        $supplierItems = SupplierPurchaseOrderItem::query()
+            ->whereIn('id', $supplierItemIds)
+            ->whereNotNull('customer_purchase_order_item_id')
+            ->get(['id', 'customer_purchase_order_item_id']);
+
+        if ($supplierItems->isEmpty()) {
+            return [];
+        }
+
+        $customerItemIds = $supplierItems
+            ->pluck('customer_purchase_order_item_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        $requestedByCustomerItem = DB::table('customer_purchase_order_items')
+            ->whereIn('id', $customerItemIds)
+            ->where('status', '!=', 'deleted')
+            ->pluck('quantity', 'id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $enteredByCustomerItem = DB::table('warehouse_entry_items as entry_items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
+            ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
+            ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
+            ->whereIn('supplier_items.customer_purchase_order_item_id', $customerItemIds)
+            ->whereNull('entries.deleted_at')
+            ->whereNull('supplier_orders.deleted_at')
+            ->where('entries.status', self::STATUS_REGISTERED)
+            ->where('supplier_orders.status', '!=', 'cancelled')
+            ->where('entry_items.status', '!=', 'deleted')
+            ->where('supplier_items.status', '!=', 'deleted')
+            ->when($exceptEntryId, fn ($query) => $query->where('entries.id', '!=', $exceptEntryId))
+            ->groupBy('supplier_items.customer_purchase_order_item_id')
+            ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(entry_items.quantity) as entered_quantity')
+            ->pluck('entered_quantity', 'customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        return $supplierItems
+            ->mapWithKeys(function (SupplierPurchaseOrderItem $supplierItem) use (
+                $requestedByCustomerItem,
+                $enteredByCustomerItem
+            ) {
+                $customerItemId = (int) $supplierItem->customer_purchase_order_item_id;
+                $requested = round((float) ($requestedByCustomerItem[$customerItemId] ?? 0), 2);
+                $entered = round((float) ($enteredByCustomerItem[$customerItemId] ?? 0), 2);
+
+                return [
+                    $supplierItem->id => max(round($requested - $entered, 2), 0),
+                ];
+            })
+            ->all();
+    }
+
+    private function customerPurchaseOrderIdsForWarehouseEntry(WarehouseEntry $entry)
+    {
+        $supplierItemIds = $entry->items()
+            ->whereNotNull('supplier_purchase_order_item_id')
+            ->pluck('supplier_purchase_order_item_id')
+            ->all();
+
+        return $this->customerPurchaseOrderIdsForSupplierItemIds($supplierItemIds);
+    }
+
+    private function customerPurchaseOrderIdsForSupplierItemIds(array $supplierItemIds)
+    {
+        if (empty($supplierItemIds)) {
+            return collect();
+        }
+
+        return DB::table('supplier_purchase_order_items as supplier_items')
+            ->join('customer_purchase_order_items as customer_items', 'customer_items.id', '=', 'supplier_items.customer_purchase_order_item_id')
+            ->whereIn('supplier_items.id', $supplierItemIds)
+            ->where('supplier_items.status', '!=', 'deleted')
+            ->pluck('customer_items.customer_purchase_order_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+    }
+
+    private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
+    {
+        CustomerPurchaseOrder::query()
+            ->whereIn('id', collect($customerPurchaseOrderIds)->filter()->unique()->values()->all())
+            ->get()
+            ->each(fn (CustomerPurchaseOrder $order) => $order->refreshSupplyStatus());
     }
 
     private function storeEntryDocuments(WarehouseEntry $entry, array $documentData, array $documentFiles): void

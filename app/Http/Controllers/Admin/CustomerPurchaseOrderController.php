@@ -25,7 +25,9 @@ use Yajra\DataTables\Facades\DataTables;
 class CustomerPurchaseOrderController extends Controller
 {
     private const STATUS_REGISTERED = 'registered';
-    private const STATUS_APPROVED = 'approved';
+    private const STATUS_IN_PURCHASE = 'in_purchase';
+    private const STATUS_PARTIAL_ENTERED = 'partial_entered';
+    private const STATUS_ENTERED = 'entered';
     private const STATUS_CANCELLED = 'cancelled';
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_INVOICED = 'invoiced';
@@ -145,15 +147,30 @@ class CustomerPurchaseOrderController extends Controller
             })
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
                 $statuses = [
+                    'approved' => [
+                        'label' => 'Registrada',
+                        'class' => 'badge-secondary text-white',
+                        'icon' => 'fas fa-clipboard-check',
+                    ],
                     self::STATUS_REGISTERED => [
                         'label' => 'Registrada',
                         'class' => 'badge-secondary text-white',
                         'icon' => 'fas fa-clipboard-check',
                     ],
-                    self::STATUS_APPROVED => [
-                        'label' => 'Aprobada',
+                    self::STATUS_IN_PURCHASE => [
+                        'label' => 'En compra',
+                        'class' => 'badge-warning text-dark',
+                        'icon' => 'fas fa-shopping-cart',
+                    ],
+                    self::STATUS_PARTIAL_ENTERED => [
+                        'label' => 'Ingreso parcial',
+                        'class' => 'badge-info text-white',
+                        'icon' => 'fas fa-dolly-flatbed',
+                    ],
+                    self::STATUS_ENTERED => [
+                        'label' => 'Abastecida',
                         'class' => 'badge-success text-white',
-                        'icon' => 'fas fa-check-circle',
+                        'icon' => 'fas fa-warehouse',
                     ],
                     self::STATUS_CANCELLED => [
                         'label' => 'Cancelada',
@@ -321,6 +338,7 @@ class CustomerPurchaseOrderController extends Controller
             'items.presentation',
             'items.brand',
         ]);
+        $this->appendSupplyProgress($customerPurchaseOrder);
 
         return response()->json([
             'status' => 'success',
@@ -679,7 +697,9 @@ class CustomerPurchaseOrderController extends Controller
     {
         return [
             self::STATUS_REGISTERED,
-            self::STATUS_APPROVED,
+            self::STATUS_IN_PURCHASE,
+            self::STATUS_PARTIAL_ENTERED,
+            self::STATUS_ENTERED,
             self::STATUS_CANCELLED,
             self::STATUS_DELIVERED,
             self::STATUS_INVOICED,
@@ -691,5 +711,61 @@ class CustomerPurchaseOrderController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? mb_strtoupper($value) : null;
+    }
+
+    private function appendSupplyProgress(CustomerPurchaseOrder $order): void
+    {
+        $itemIds = $order->items
+            ->where('status', '!=', 'deleted')
+            ->pluck('id')
+            ->all();
+
+        if (empty($itemIds)) {
+            return;
+        }
+
+        $purchaseByItem = DB::table('supplier_purchase_order_items as items')
+            ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'items.supplier_purchase_order_id')
+            ->whereIn('items.customer_purchase_order_item_id', $itemIds)
+            ->whereNull('orders.deleted_at')
+            ->where('orders.status', '!=', 'cancelled')
+            ->where('items.status', '!=', 'deleted')
+            ->groupBy('items.customer_purchase_order_item_id')
+            ->selectRaw('items.customer_purchase_order_item_id, SUM(items.quantity) as purchase_quantity')
+            ->pluck('purchase_quantity', 'customer_purchase_order_item_id');
+
+        $enteredByItem = DB::table('warehouse_entry_items as entry_items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
+            ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
+            ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
+            ->whereIn('supplier_items.customer_purchase_order_item_id', $itemIds)
+            ->whereNull('entries.deleted_at')
+            ->whereNull('supplier_orders.deleted_at')
+            ->where('entries.status', 'registered')
+            ->where('supplier_orders.status', '!=', 'cancelled')
+            ->where('entry_items.status', '!=', 'deleted')
+            ->where('supplier_items.status', '!=', 'deleted')
+            ->groupBy('supplier_items.customer_purchase_order_item_id')
+            ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(entry_items.quantity) as entered_quantity')
+            ->pluck('entered_quantity', 'customer_purchase_order_item_id');
+
+        $order->items->each(function ($item) use ($purchaseByItem, $enteredByItem) {
+            $requested = round((float) $item->quantity, 2);
+            $purchase = round((float) ($purchaseByItem[$item->id] ?? 0), 2);
+            $entered = round((float) ($enteredByItem[$item->id] ?? 0), 2);
+            $pending = max(round($requested - $entered, 2), 0);
+            $status = match (true) {
+                $purchase <= 0 => 'registered',
+                $entered <= 0 => 'in_purchase',
+                $pending <= 0 => 'entered',
+                default => 'partial_entered',
+            };
+
+            $item->setAttribute('requested_quantity', $requested);
+            $item->setAttribute('purchase_quantity', $purchase);
+            $item->setAttribute('entered_quantity', $entered);
+            $item->setAttribute('pending_quantity', $pending);
+            $item->setAttribute('supply_status', $status);
+        });
     }
 }

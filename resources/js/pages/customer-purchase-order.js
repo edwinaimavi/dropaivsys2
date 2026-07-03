@@ -628,7 +628,7 @@ function fillCustomerPurchaseOrderForm(order) {
 
     $('#customer_purchase_order_id').val(order.id || '');
     $('#purchase_order_code').val(order.code || '');
-    $('#purchase_order_status').val(order.status || 'registered');
+    $('#purchase_order_status').val(order.status === 'approved' ? 'registered' : (order.status || 'registered'));
     $('#purchase_order_company_id').val(order.company_id || '').trigger('change.select2');
     $('#purchase_order_type').val(order.order_type || 'articles').trigger('change.select2');
     $('#purchase_order_number').val(order.purchase_order_number || '');
@@ -681,8 +681,11 @@ function fillCustomerPurchaseOrderDetail(order) {
     const currencyCode = order.currency?.code || '';
     const currencySymbol = order.currency?.symbol || '';
     const statuses = {
+        approved: ['REGISTRADA', 'badge-secondary'],
         registered: ['REGISTRADA', 'badge-secondary'],
-        approved: ['APROBADA', 'badge-success'],
+        in_purchase: ['EN COMPRA', 'badge-warning text-dark'],
+        partial_entered: ['INGRESO PARCIAL', 'badge-info'],
+        entered: ['ABASTECIDA', 'badge-success'],
         cancelled: ['CANCELADA', 'badge-danger'],
         delivered: ['ENTREGADA', 'badge-primary'],
         invoiced: ['FACTURADA', 'badge-info']
@@ -717,24 +720,38 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_total').text(`${currencyCode} ${formatPurchaseOrderMoney(order.grand_total)}`);
 
     const items = order.items || [];
+    const supplyStatuses = {
+        registered: ['REGISTRADA', 'badge-secondary'],
+        in_purchase: ['EN COMPRA', 'badge-warning text-dark'],
+        partial_entered: ['INGRESO PARCIAL', 'badge-info'],
+        entered: ['ABASTECIDA', 'badge-success']
+    };
     const rows = items.map(function (item, index) {
+        const itemStatus = supplyStatuses[item.supply_status] || ['PENDIENTE', 'badge-secondary'];
+
         return `
             <tr>
-                <td>${index + 1}</td>
-                <td>${escapePurchaseOrderHtml(item.billing_name_snapshot || '—')}</td>
-                <td>${escapePurchaseOrderHtml(item.unit?.abbreviation || item.unit?.description || '—')}</td>
-                <td>${escapePurchaseOrderHtml(item.presentation?.description || '—')}</td>
-                <td>${escapePurchaseOrderHtml(item.brand?.description || '—')}</td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.quantity)}</td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.unit_price)}</td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.tax_amount)}</td>
-                <td class="text-right font-weight-bold">${formatPurchaseOrderMoney(item.line_total)}</td>
+                <td>
+                    <div class="font-weight-bold">${escapePurchaseOrderHtml(item.billing_name_snapshot || '—')}</div>
+                    <small class="text-muted">
+                        ${escapePurchaseOrderHtml(item.unit?.abbreviation || item.unit?.description || '—')}
+                        ${item.presentation?.description ? ` | ${escapePurchaseOrderHtml(item.presentation.description)}` : ''}
+                        ${item.brand?.description ? ` | ${escapePurchaseOrderHtml(item.brand.description)}` : ''}
+                    </small>
+                </td>
+                <td class="text-right">${formatPurchaseOrderMoney(item.requested_quantity ?? item.quantity)}</td>
+                <td class="text-right">${formatPurchaseOrderMoney(item.purchase_quantity)}</td>
+                <td class="text-right">${formatPurchaseOrderMoney(item.entered_quantity)}</td>
+                <td class="text-right font-weight-bold">${formatPurchaseOrderMoney(item.pending_quantity)}</td>
+                <td class="text-center">
+                    <span class="badge ${itemStatus[1]} px-2 py-1">${itemStatus[0]}</span>
+                </td>
             </tr>
         `;
     }).join('');
 
     $('#vpo_items_body').html(
-        rows || '<tr><td colspan="9" class="text-center text-muted py-3">Sin ítems registrados</td></tr>'
+        rows || '<tr><td colspan="6" class="text-center text-muted py-3">Sin items registrados</td></tr>'
     );
 }
 
