@@ -103,6 +103,7 @@
                                         <label for="name">Nombre del rol</label>
                                         <input type="text" class="form-control" id="name" name="name"
                                             placeholder="Ejemplo: Administrador, Vendedor, Supervisor" required>
+                                        <span class="invalid-feedback" id="name-error"></span>
                                         <div id="error-messages" class="alert alert-danger d-none mt-2 mb-0"></div>
                                     </div>
                                 </div>
@@ -179,6 +180,7 @@
                                         <i class="fas fa-search mr-1"></i>
                                         No se encontraron permisos con ese texto.
                                     </div>
+                                    <div id="permissions-error" class="alert alert-danger d-none mt-2 mb-0"></div>
                                 </div>
                             </div>
                         </div>

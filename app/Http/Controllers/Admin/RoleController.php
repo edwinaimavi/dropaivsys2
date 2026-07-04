@@ -4,10 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Spatie\Permission\models\Role;
+use Illuminate\Validation\Rule;
+use Spatie\Permission\Models\Role;
 use Yajra\DataTables\Facades\DataTables;
 use Spatie\Permission\Models\Permission;
-use Illuminate\Support\Facades\DB;
+use Spatie\Permission\PermissionRegistrar;
 
 class RoleController extends Controller
 {
@@ -60,8 +61,30 @@ class RoleController extends Controller
     public function store(Request $request)
     {
          $data = $request->validate([
-        'name' => 'required|string|max:255|unique:roles,name',
-        'permissions' => 'array'
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', 'web')),
+            ],
+            'permissions' => [
+                'required',
+                'array',
+                'min:1',
+            ],
+            'permissions.*' => [
+                Rule::exists('permissions', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', 'web')),
+            ],
+        ], [
+            'name.required' => 'El nombre del rol es obligatorio.',
+            'name.max' => 'El nombre del rol no debe superar 255 caracteres.',
+            'name.unique' => 'El nombre del rol ya está registrado.',
+            'permissions.required' => 'Debe seleccionar al menos un permiso.',
+            'permissions.array' => 'Debe seleccionar al menos un permiso.',
+            'permissions.min' => 'Debe seleccionar al menos un permiso.',
+            'permissions.*.exists' => 'Uno de los permisos seleccionados no es válido.',
         ]);
 
         $role = Role::create([
@@ -72,12 +95,16 @@ class RoleController extends Controller
     
 
         if (!empty($data['permissions'])) {
-            $permissions = Permission::whereIn('name', $data['permissions'])->pluck('id');
+            $permissions = Permission::where('guard_name', 'web')
+                ->whereIn('name', $data['permissions'])
+                ->pluck('id');
         
             $role->permissions()->sync($permissions);
         }
 
-        return response()->json(['message' => 'Rol creado Exitosamente']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return response()->json(['message' => 'Rol registrado correctamente.']);
     }
 
     /**
@@ -101,24 +128,53 @@ class RoleController extends Controller
      */
     public function update(Request $request, Role $role)
     {
+        $guardName = $role->guard_name ?? 'web';
+
         $data = $request->validate([
-                'name' => 'required|string|max:255|unique:roles,name,' . $role->id,
-                'permissions' => 'array'
-            ]);
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', $guardName))
+                    ->ignore($role->id),
+            ],
+            'permissions' => [
+                'required',
+                'array',
+                'min:1',
+            ],
+            'permissions.*' => [
+                Rule::exists('permissions', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', $guardName)),
+            ],
+        ], [
+            'name.required' => 'El nombre del rol es obligatorio.',
+            'name.max' => 'El nombre del rol no debe superar 255 caracteres.',
+            'name.unique' => 'El nombre del rol ya está registrado.',
+            'permissions.required' => 'Debe seleccionar al menos un permiso.',
+            'permissions.array' => 'Debe seleccionar al menos un permiso.',
+            'permissions.min' => 'Debe seleccionar al menos un permiso.',
+            'permissions.*.exists' => 'Uno de los permisos seleccionados no es válido.',
+        ]);
 
             $role->update([
                 'name' => $data['name'],
-                'guard_name' => 'web',
+                'guard_name' => $guardName,
             ]);
 
             if (!empty($data['permissions'])) {
-                $permissions = Permission::whereIn('name', $data['permissions'])->pluck('id');
+                $permissions = Permission::where('guard_name', $guardName)
+                    ->whereIn('name', $data['permissions'])
+                    ->pluck('id');
                 $role->permissions()->sync($permissions);
             } else {
                 $role->permissions()->detach(); // para quitar todos si viene vacío
             }
 
-            return response()->json(['message' => 'Rol actualizado exitosamente.']);
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return response()->json(['message' => 'Rol actualizado correctamente.']);
     }
 
     /**
@@ -135,6 +191,8 @@ class RoleController extends Controller
         }
 
         $role->delete();
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return response()->json(['message' => 'Rol eliminado correctamente.']);
     }

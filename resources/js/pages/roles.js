@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", function () {
         divLoading.style.display = "flex";
 
         const $form = $(this);
+        clearRoleValidationErrors();
         const id = $form.attr('data-id');
         const url = id ? `/admin/roles/${id}` : window.routes.storeRole;
         const type = id ? 'PUT' : 'POST';
@@ -45,14 +46,19 @@ document.addEventListener("DOMContentLoaded", function () {
             error: function (xhr) {
                 divLoading.style.display = "none";
                 if (xhr.status === 422) {
-                    const errors = xhr.responseJSON.errors;
-                    let errorList = '<ul class="mb-0 pl-3">';
-                    $.each(errors, function (key, messages) {
-                        errorList += `<li>${escapeRoleHtml(messages[0])}</li>`;
-                    });
-                    errorList += '</ul>';
-                    $('#error-messages').removeClass('d-none').html(errorList);
+                    showRoleValidationErrors(xhr.responseJSON.errors || {});
+                    return;
                 }
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: xhr.responseJSON?.message || 'No se pudo guardar el rol.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3500
+                });
             }
         });
     });
@@ -215,10 +221,50 @@ function resetRoleModal(resetForm = true) {
     $form.removeAttr('data-id');
     $('#exampleModalLabel').text('Nuevo Rol');
     $('#btnSaveRole').html('<i class="fas fa-save mr-1"></i>Guardar Rol');
-    $('#error-messages').addClass('d-none').empty();
+    clearRoleValidationErrors();
     $('#rolePermissionSearch').val('');
     filterRolePermissions('');
     updateRolePermissionSummary();
+}
+
+function clearRoleValidationErrors() {
+    $('#name').removeClass('is-invalid');
+    $('#name-error').text('');
+    $('#permissions-error').addClass('d-none').empty();
+    $('#error-messages').addClass('d-none').empty();
+}
+
+function showRoleValidationErrors(errors) {
+    const generalErrors = [];
+
+    $.each(errors, function (key, messages) {
+        const message = messages[0] || 'Revise los datos ingresados.';
+
+        if (key === 'name') {
+            $('#name').addClass('is-invalid');
+            $('#name-error').text(message);
+            return;
+        }
+
+        if (key === 'permissions' || key.startsWith('permissions.')) {
+            $('#permissions-error')
+                .removeClass('d-none')
+                .text(message);
+            return;
+        }
+
+        generalErrors.push(message);
+    });
+
+    if (generalErrors.length) {
+        const errorList = generalErrors
+            .map((message) => `<li>${escapeRoleHtml(message)}</li>`)
+            .join('');
+
+        $('#error-messages')
+            .removeClass('d-none')
+            .html(`<ul class="mb-0 pl-3">${errorList}</ul>`);
+    }
 }
 
 function filterRolePermissions(term) {
