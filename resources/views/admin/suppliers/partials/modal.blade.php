@@ -302,13 +302,13 @@
 
                                             <option value="NACIONAL">
 
-                                                IMPORTADOR
+                                                NACIONAL
 
                                             </option>
 
-                                            <option value="INTERNACIONAL">
+                                            <option value="IMPORTADOR">
 
-                                                FABRICANTE
+                                                IMPORTADOR
 
                                             </option>
 
@@ -318,9 +318,15 @@
 
                                             </option>
 
-                                            <option value="LABORATORIO">
+                                            <option value="FABRICANTE">
 
-                                                LABORATORIO
+                                                FABRICANTE
+
+                                            </option>
+
+                                            <option value="OTRO">
+
+                                                OTRO
 
                                             </option>
 

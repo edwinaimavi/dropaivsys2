@@ -169,6 +169,28 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.load-items' => 'Cargar items de orden de compra proveedor',
             'admin.warehouse-entries.pdf' => 'Ver PDF de ingresos de almacen',
 
+            'admin.electronic-invoices.index' => 'Ver facturacion electronica',
+            'admin.electronic-invoices.store' => 'Crear comprobantes electronicos',
+            'admin.electronic-invoices.show' => 'Ver detalle de comprobantes electronicos',
+            'admin.electronic-invoices.update' => 'Actualizar comprobantes electronicos',
+            'admin.electronic-invoices.destroy' => 'Eliminar comprobantes electronicos',
+            'admin.electronic-invoices.pdf' => 'Ver PDF de comprobantes electronicos',
+            'admin.electronic-invoices.payload' => 'Ver payload de comprobantes electronicos',
+            'admin.electronic-invoices.send' => 'Enviar comprobantes electronicos',
+            'admin.electronic-invoices.xml' => 'Ver XML de comprobantes electronicos',
+            'admin.electronic-invoices.cdr' => 'Ver CDR de comprobantes electronicos',
+
+            'admin.electronic-invoice-settings.index' => 'Ver configuracion de facturacion electronica',
+            'admin.electronic-invoice-settings.store' => 'Crear configuracion de facturacion electronica',
+            'admin.electronic-invoice-settings.update' => 'Actualizar configuracion de facturacion electronica',
+
+            'admin.electronic-invoice-series.index' => 'Ver series de facturacion electronica',
+            'admin.electronic-invoice-series.store' => 'Crear series de facturacion electronica',
+            'admin.electronic-invoice-series.update' => 'Actualizar series de facturacion electronica',
+            'admin.electronic-invoice-series.destroy' => 'Eliminar series de facturacion electronica',
+
+            'admin.sunat-catalogs.index' => 'Ver catalogos SUNAT',
+
             'admin.kardex.index' => 'Ver Kardex',
             'admin.kardex.show' => 'Ver detalle de Kardex',
             'admin.kardex.stock' => 'Ver stock de Kardex',

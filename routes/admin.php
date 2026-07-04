@@ -21,6 +21,11 @@ use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ElectronicInvoiceApiLogController;
+use App\Http\Controllers\Admin\ElectronicInvoiceCatalogController;
+use App\Http\Controllers\Admin\ElectronicInvoiceController;
+use App\Http\Controllers\Admin\ElectronicInvoiceSeriesController;
+use App\Http\Controllers\Admin\ElectronicInvoiceSettingController;
 use App\Http\Controllers\Admin\KardexController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
@@ -401,6 +406,39 @@ Route::resource(
     'warehouse-entries',
     WarehouseEntryController::class
 )->except(['create']);
+
+// RUTAS PARA FACTURACION ELECTRONICA
+Route::get('electronic-invoices/list', [ElectronicInvoiceController::class, 'list'])
+    ->name('electronic-invoices.list');
+Route::get('electronic-invoices/{electronicInvoice}/pdf', [ElectronicInvoiceController::class, 'pdf'])
+    ->name('electronic-invoices.pdf');
+Route::get('electronic-invoices/{electronicInvoice}/payload', [ElectronicInvoiceController::class, 'previewPayload'])
+    ->name('electronic-invoices.payload');
+Route::post('electronic-invoices/{electronicInvoice}/send', [ElectronicInvoiceController::class, 'sendToApi'])
+    ->name('electronic-invoices.send');
+Route::resource('electronic-invoices', ElectronicInvoiceController::class)->except(['create']);
+
+Route::get('electronic-invoice-settings/list', [ElectronicInvoiceSettingController::class, 'list'])
+    ->name('electronic-invoice-settings.list');
+Route::resource('electronic-invoice-settings', ElectronicInvoiceSettingController::class)
+    ->only(['index', 'store', 'show', 'update']);
+
+Route::get('electronic-invoice-series/list', [ElectronicInvoiceSeriesController::class, 'list'])
+    ->name('electronic-invoice-series.list');
+Route::get('electronic-invoice-series/next-number', [ElectronicInvoiceSeriesController::class, 'getNextNumber'])
+    ->name('electronic-invoice-series.nextNumber');
+Route::resource('electronic-invoice-series', ElectronicInvoiceSeriesController::class)
+    ->except(['create', 'edit']);
+
+Route::get('sunat-catalogs/list', [ElectronicInvoiceCatalogController::class, 'list'])
+    ->name('sunat-catalogs.list');
+Route::get('sunat-catalogs', [ElectronicInvoiceCatalogController::class, 'index'])
+    ->name('sunat-catalogs.index');
+
+Route::get('electronic-invoice-api-logs/list', [ElectronicInvoiceApiLogController::class, 'list'])
+    ->name('electronic-invoice-api-logs.list');
+Route::get('electronic-invoice-api-logs/{electronicInvoiceApiLog}', [ElectronicInvoiceApiLogController::class, 'show'])
+    ->name('electronic-invoice-api-logs.show');
 
 // RUTAS PARA KARDEX DE ALMACEN
 Route::get('kardex/list', [KardexController::class, 'list'])->name('kardex.list');

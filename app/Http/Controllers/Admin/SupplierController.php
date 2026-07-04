@@ -70,18 +70,7 @@ class SupplierController extends Controller
 
             ->editColumn('supplier_type', function ($supplier) {
 
-                return match ($supplier->supplier_type) {
-
-                    'LABORATORY' => 'LABORATORIO',
-
-                    'DISTRIBUTOR' => 'DISTRIBUIDOR',
-
-                    'WHOLESALER' => 'MAYORISTA',
-
-                    'LOCAL' => 'LOCAL',
-
-                    default => $supplier->supplier_type
-                };
+                return $supplier->supplier_type;
             })
 
             ->editColumn('payment_condition', function ($supplier) {
@@ -221,8 +210,7 @@ class SupplierController extends Controller
 
             'supplier_type' => [
                 'required',
-                'string',
-                'max:100'
+                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,OTRO'
             ],
 
             'payment_condition' => [
@@ -281,6 +269,9 @@ class SupplierController extends Controller
 
             'supplier_type.required' =>
             'Debe seleccionar el tipo proveedor.',
+
+            'supplier_type.in' =>
+            'El tipo proveedor seleccionado no es válido.',
 
             'payment_condition.required' =>
             'Debe seleccionar la condición de pago.',
@@ -450,8 +441,7 @@ class SupplierController extends Controller
 
             'supplier_type' => [
                 'required',
-                'string',
-                'max:100'
+                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,OTRO'
             ],
 
             'payment_condition' => [
@@ -510,6 +500,9 @@ class SupplierController extends Controller
 
             'supplier_type.required' =>
             'Debe seleccionar el tipo proveedor.',
+
+            'supplier_type.in' =>
+            'El tipo proveedor seleccionado no es válido.',
 
             'payment_condition.required' =>
             'Debe seleccionar la condición de pago.',

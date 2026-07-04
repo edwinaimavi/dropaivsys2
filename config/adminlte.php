@@ -438,6 +438,14 @@ return [
                     "can" => 'admin.supplier-purchase-orders.index'
 
                 ],
+                [
+                    'text' => 'Facturación Electrónica',
+                    'icon' => 'fas fa-file-invoice-dollar',
+                    'icon_color' => 'success',
+                    'url' => 'admin/electronic-invoices',
+                    "can" => 'admin.electronic-invoices.index'
+
+                ],
 
 
 

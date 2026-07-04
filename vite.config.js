@@ -20,6 +20,7 @@ export default defineConfig({
                 'resources/js/pages/unit.js',
                 'resources/js/pages/supplier-purchase-order.js',
                 'resources/js/pages/warehouse-entry.js',
+                'resources/js/pages/electronic-invoice.js',
                 'resources/js/pages/kardex.js',
                 'resources/js/pages/roles.js',
                 'resources/js/pages/user.js',
