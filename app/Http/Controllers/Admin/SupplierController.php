@@ -210,7 +210,7 @@ class SupplierController extends Controller
 
             'supplier_type' => [
                 'required',
-                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,OTRO'
+                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,LABORATORIO,OTRO'
             ],
 
             'payment_condition' => [
@@ -441,7 +441,7 @@ class SupplierController extends Controller
 
             'supplier_type' => [
                 'required',
-                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,OTRO'
+                'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,LABORATORIO,OTRO'
             ],
 
             'payment_condition' => [

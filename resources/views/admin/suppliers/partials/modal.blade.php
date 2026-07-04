@@ -324,6 +324,12 @@
 
                                             </option>
 
+                                            <option value="LABORATORIO">
+
+                                                LABORATORIO
+
+                                            </option>
+
                                             <option value="OTRO">
 
                                                 OTRO

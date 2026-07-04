@@ -24,6 +24,7 @@ export default defineConfig({
                 'resources/js/pages/kardex.js',
                 'resources/js/pages/roles.js',
                 'resources/js/pages/user.js',
+                'resources/js/pages/electronic-invoice.js',
             ],
             refresh: true,
         }),
