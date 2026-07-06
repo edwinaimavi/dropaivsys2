@@ -316,11 +316,6 @@ return [
             'text' => 'search',
         ],
         [
-            'text' => 'blog',
-            'url' => 'admin/blog',
-            'can' => 'manage-blog',
-        ],
-        [
             'text' => 'Usuarios',
             'icon' => 'fas fa-users',
             'submenu' => [
@@ -403,7 +398,7 @@ return [
 
         [
             'text' => 'Comercial',
-            'icon' => 'fas fas fa-dumpster',
+            'icon' => 'fas fa-handshake',
 
             'submenu' => [
                 [
@@ -438,23 +433,10 @@ return [
                     "can" => 'admin.supplier-purchase-orders.index'
 
                 ],
-                [
-                    'text' => 'Facturación Electrónica',
-                    'icon' => 'fas fa-file-invoice-dollar',
-                    'icon_color' => 'success',
-                    'url' => 'admin/electronic-invoices',
-                    "can" => 'admin.electronic-invoices.index'
-
-                ],
-
-
-
-
-
             ],
         ],
         [
-            'text' => 'Almacen',
+            'text' => 'Almacén',
             'icon' => 'fas fa-warehouse',
 
             'submenu' => [
@@ -481,68 +463,39 @@ return [
 
             ],
         ],
-
-
-
-
-        /*   [
-            'text' => 'pages',
-            'url' => 'admin/pages',
-            'icon' => 'far fa-fw fa-file',
-            'label' => 4,
-            'label_color' => 'success',
-        ], */
-        ['header' => 'account_settings'],
         [
-            'text' => 'profile',
-            'url' => 'admin/settings',
-            'icon' => 'fas fa-fw fa-user',
-            'can' => 'admin.profile.index',
-        ],
-
-        [
-            'text' => 'multilevel',
-            'icon' => 'fas fa-fw fa-share',
+            'text' => 'Facturación Electrónica',
+            'icon' => 'fas fa-file-invoice-dollar',
             'submenu' => [
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
+                    'text' => 'Comprobantes Electrónicos',
+                    'icon' => 'fas fa-file-invoice',
+                    'icon_color' => 'success',
+                    'url' => 'admin/electronic-invoices',
+                    'can' => 'admin.electronic-invoices.index',
                 ],
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
-                    'submenu' => [
-                        [
-                            'text' => 'level_two',
-                            'url' => '#',
-                        ],
-                        [
-                            'text' => 'level_two',
-                            'url' => '#',
-                            'submenu' => [
-                                [
-                                    'text' => 'level_three',
-                                    'url' => '#',
-                                ],
-                                [
-                                    'text' => 'level_three',
-                                    'url' => '#',
-                                ],
-                            ],
-                        ],
-                    ],
+                    'text' => 'Series Electrónicas',
+                    'icon' => 'fas fa-list-ol',
+                    'icon_color' => 'info',
+                    'url' => 'admin/electronic-invoice-series',
+                    'can' => 'admin.electronic-invoice-series.index',
                 ],
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
+                    'text' => 'Configuración Electrónica',
+                    'icon' => 'fas fa-cogs',
+                    'icon_color' => 'warning',
+                    'url' => 'admin/electronic-invoice-settings',
+                    'can' => 'admin.electronic-invoice-settings.index',
+                ],
+                [
+                    'text' => 'Catálogos SUNAT',
+                    'icon' => 'fas fa-book',
+                    'icon_color' => 'primary',
+                    'url' => 'admin/sunat-catalogs',
+                    'can' => 'admin.sunat-catalogs.index',
                 ],
             ],
-        ],
-        ['header' => 'labels'],
-        [
-            'text' => 'important',
-            'icon_color' => 'red',
-            'url' => '#',
         ],
 
     ],

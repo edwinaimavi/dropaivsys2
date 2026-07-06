@@ -183,11 +183,13 @@ class RoleSeeder extends Seeder
             'admin.electronic-invoice-settings.index' => 'Ver configuracion de facturacion electronica',
             'admin.electronic-invoice-settings.store' => 'Crear configuracion de facturacion electronica',
             'admin.electronic-invoice-settings.update' => 'Actualizar configuracion de facturacion electronica',
+            'admin.electronic-invoice-settings.show' => 'Ver detalle de configuracion de facturacion electronica',
 
             'admin.electronic-invoice-series.index' => 'Ver series de facturacion electronica',
             'admin.electronic-invoice-series.store' => 'Crear series de facturacion electronica',
             'admin.electronic-invoice-series.update' => 'Actualizar series de facturacion electronica',
             'admin.electronic-invoice-series.destroy' => 'Eliminar series de facturacion electronica',
+            'admin.electronic-invoice-series.show' => 'Ver detalle de series de facturacion electronica',
 
             'admin.sunat-catalogs.index' => 'Ver catalogos SUNAT',
 

@@ -110,7 +110,7 @@ Route::resource('customers', CustomerController::class)->except(['create', 'show
 Route::get('categories/list', [CategoryController::class, 'list'])->name('categories.list');
 
 Route::get(
-    'admin/categories/generate-code',
+    'categories/generate-code',
     [CategoryController::class, 'generateCode']
 )->name('categories.generateCode');
 
@@ -295,7 +295,7 @@ Route::get(
 
 
 Route::post(
-    '/admin/market-study/{marketStudy}/comparison/save',
+    'market-study/{marketStudy}/comparison/save',
     [MarketStudyComparisonController::class, 'save']
 )->name('market-study-comparison.save');
 

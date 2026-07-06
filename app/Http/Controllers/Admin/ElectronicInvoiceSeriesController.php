@@ -16,7 +16,8 @@ class ElectronicInvoiceSeriesController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.electronic-invoice-series.index')->only(['index', 'list', 'show', 'getNextNumber']);
+        $this->middleware('can:admin.electronic-invoice-series.index')->only(['index', 'list', 'getNextNumber']);
+        $this->middleware('can:admin.electronic-invoice-series.show')->only(['show']);
         $this->middleware('can:admin.electronic-invoice-series.store')->only(['store']);
         $this->middleware('can:admin.electronic-invoice-series.update')->only(['update']);
         $this->middleware('can:admin.electronic-invoice-series.destroy')->only(['destroy']);
@@ -31,24 +32,61 @@ class ElectronicInvoiceSeriesController extends Controller
 
     public function list()
     {
-        return DataTables::of(ElectronicInvoiceSeries::query()->with('company')->orderByDesc('id'))
+        $table = (new ElectronicInvoiceSeries())->getTable();
+
+        $seriesQuery = ElectronicInvoiceSeries::query()
+            ->leftJoin('companies', 'companies.id', '=', "{$table}.company_id")
+            ->select([
+                "{$table}.*",
+                'companies.id as company_table_id',
+                'companies.business_name as company_business_name',
+                'companies.trade_name as company_trade_name',
+            ])
+            ->orderByDesc("{$table}.id");
+
+        return DataTables::eloquent($seriesQuery)
             ->addColumn('company', fn (ElectronicInvoiceSeries $series) =>
-                $series->company?->trade_name ?? $series->company?->business_name ?? '-')
+                $series->company_trade_name ?? $series->company_business_name ?? '-')
             ->addColumn('document_type_label', fn (ElectronicInvoiceSeries $series) => $this->documentTypeLabel($series->document_type))
             ->editColumn('status', fn (ElectronicInvoiceSeries $series) =>
                 $series->status === 'ACTIVE'
-                    ? '<span class="badge badge-success">Activo</span>'
-                    : '<span class="badge badge-secondary">Inactivo</span>')
-            ->addColumn('acciones', fn (ElectronicInvoiceSeries $series) =>
-                '<button class="btn btn-sm btn-outline-primary editElectronicInvoiceSeries" data-id="' . $series->id . '"><i class="fas fa-edit"></i></button>
-                 <button class="btn btn-sm btn-outline-danger deleteElectronicInvoiceSeries" data-id="' . $series->id . '"><i class="fas fa-trash"></i></button>')
+                    ? '<span class="badge badge-success rounded-pill px-3">Activo</span>'
+                    : '<span class="badge badge-secondary rounded-pill px-3">Inactivo</span>')
+            ->addColumn('acciones', function (ElectronicInvoiceSeries $series) {
+                $buttons = '<div class="btn-group" role="group">';
+
+                if (auth()->user()?->can('admin.electronic-invoice-series.show')) {
+                    $buttons .= '<button class="btn btn-sm btn-outline-info viewElectronicInvoiceSeries" data-id="' . $series->id . '" title="Ver"><i class="fas fa-eye"></i></button>';
+                }
+
+                if (auth()->user()?->can('admin.electronic-invoice-series.update')) {
+                    $buttons .= '<button class="btn btn-sm btn-outline-primary editElectronicInvoiceSeries" data-id="' . $series->id . '" title="Editar"><i class="fas fa-edit"></i></button>';
+                }
+
+                if (auth()->user()?->can('admin.electronic-invoice-series.destroy')) {
+                    $buttons .= '<button class="btn btn-sm btn-outline-danger deleteElectronicInvoiceSeries" data-id="' . $series->id . '" title="Eliminar"><i class="fas fa-trash"></i></button>';
+                }
+
+                return $buttons . '</div>';
+            })
+            ->orderColumn('id', "{$table}.id $1")
+            ->orderColumn('company', 'companies.business_name $1')
+            ->orderColumn('document_type_label', "{$table}.document_type $1")
+            ->orderColumn('serie', "{$table}.serie $1")
+            ->orderColumn('current_number', "{$table}.current_number $1")
+            ->orderColumn('next_number', "{$table}.next_number $1")
+            ->orderColumn('environment', "{$table}.environment $1")
+            ->orderColumn('status', "{$table}.status $1")
             ->rawColumns(['status', 'acciones'])
             ->make(true);
     }
 
     public function show(ElectronicInvoiceSeries $electronicInvoiceSeries)
     {
-        return response()->json(['status' => 'success', 'data' => $electronicInvoiceSeries]);
+        return response()->json([
+            'status' => 'success',
+            'data' => $electronicInvoiceSeries->load('company'),
+        ]);
     }
 
     public function store(Request $request)
@@ -99,6 +137,22 @@ class ElectronicInvoiceSeriesController extends Controller
             'description' => ['nullable', 'string', 'max:255'],
             'is_default' => ['nullable', 'boolean'],
             'status' => ['required', Rule::in(['ACTIVE', 'INACTIVE'])],
+        ], [
+            'company_id.required' => 'Debe seleccionar una empresa.',
+            'company_id.exists' => 'La empresa seleccionada no existe.',
+            'document_type.required' => 'Debe seleccionar el tipo de documento.',
+            'document_type.in' => 'El tipo de documento seleccionado no es válido.',
+            'serie.required' => 'La serie es obligatoria.',
+            'serie.max' => 'La serie no debe superar 10 caracteres.',
+            'current_number.integer' => 'El número actual debe ser entero.',
+            'current_number.min' => 'El número actual no puede ser negativo.',
+            'next_number.required' => 'El número siguiente es obligatorio.',
+            'next_number.integer' => 'El número siguiente debe ser entero.',
+            'next_number.min' => 'El número siguiente debe ser mayor a cero.',
+            'environment.required' => 'Debe seleccionar el ambiente.',
+            'environment.in' => 'El ambiente seleccionado no es válido.',
+            'status.required' => 'Debe seleccionar el estado.',
+            'status.in' => 'El estado seleccionado no es válido.',
         ]);
 
         $exists = ElectronicInvoiceSeries::query()

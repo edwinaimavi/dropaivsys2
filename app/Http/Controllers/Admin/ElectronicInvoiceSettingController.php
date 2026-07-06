@@ -15,7 +15,8 @@ class ElectronicInvoiceSettingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.electronic-invoice-settings.index')->only(['index', 'list', 'show']);
+        $this->middleware('can:admin.electronic-invoice-settings.index')->only(['index', 'list']);
+        $this->middleware('can:admin.electronic-invoice-settings.show')->only(['show']);
         $this->middleware('can:admin.electronic-invoice-settings.store')->only(['store']);
         $this->middleware('can:admin.electronic-invoice-settings.update')->only(['update']);
     }
@@ -29,17 +30,47 @@ class ElectronicInvoiceSettingController extends Controller
 
     public function list()
     {
-        return DataTables::of(ElectronicInvoiceSetting::query()->with('company')->orderByDesc('id'))
+        $table = (new ElectronicInvoiceSetting())->getTable();
+
+        $settings = ElectronicInvoiceSetting::query()
+            ->leftJoin('companies', 'companies.id', '=', "{$table}.company_id")
+            ->select([
+                "{$table}.*",
+                'companies.id as company_table_id',
+                'companies.business_name as company_business_name',
+                'companies.trade_name as company_trade_name',
+            ])
+            ->orderByDesc("{$table}.id");
+
+        return DataTables::eloquent($settings)
             ->addColumn('company', fn (ElectronicInvoiceSetting $setting) =>
-                $setting->company?->trade_name ?? $setting->company?->business_name ?? '-')
+                $setting->company_trade_name ?? $setting->company_business_name ?? '-')
             ->addColumn('environment_label', fn (ElectronicInvoiceSetting $setting) =>
                 $setting->environment === 'production' ? 'Produccion' : 'Beta')
             ->editColumn('is_active', fn (ElectronicInvoiceSetting $setting) =>
                 $setting->is_active
-                    ? '<span class="badge badge-success">Activo</span>'
-                    : '<span class="badge badge-secondary">Inactivo</span>')
-            ->addColumn('acciones', fn (ElectronicInvoiceSetting $setting) =>
-                '<button class="btn btn-sm btn-outline-primary editElectronicInvoiceSetting" data-id="' . $setting->id . '"><i class="fas fa-edit"></i></button>')
+                    ? '<span class="badge badge-success rounded-pill px-3">Activo</span>'
+                    : '<span class="badge badge-secondary rounded-pill px-3">Inactivo</span>')
+            ->addColumn('acciones', function (ElectronicInvoiceSetting $setting) {
+                $buttons = '<div class="btn-group" role="group">';
+
+                if (auth()->user()?->can('admin.electronic-invoice-settings.show')) {
+                    $buttons .= '<button class="btn btn-sm btn-outline-info viewElectronicInvoiceSetting" data-id="' . $setting->id . '" title="Ver"><i class="fas fa-eye"></i></button>';
+                }
+
+                if (auth()->user()?->can('admin.electronic-invoice-settings.update')) {
+                    $buttons .= '<button class="btn btn-sm btn-outline-primary editElectronicInvoiceSetting" data-id="' . $setting->id . '" title="Editar"><i class="fas fa-edit"></i></button>';
+                }
+
+                return $buttons . '</div>';
+            })
+            ->orderColumn('id', "{$table}.id $1")
+            ->orderColumn('company', 'companies.business_name $1')
+            ->orderColumn('provider', "{$table}.provider $1")
+            ->orderColumn('environment_label', "{$table}.environment $1")
+            ->orderColumn('ruc', "{$table}.ruc $1")
+            ->orderColumn('business_name', "{$table}.business_name $1")
+            ->orderColumn('is_active', "{$table}.is_active $1")
             ->rawColumns(['is_active', 'acciones'])
             ->make(true);
     }
@@ -84,6 +115,22 @@ class ElectronicInvoiceSettingController extends Controller
             'certificate_path' => ['nullable', 'string', 'max:255'],
             'logo_path' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
+        ], [
+            'company_id.exists' => 'La empresa seleccionada no existe.',
+            'provider.required' => 'El proveedor es obligatorio.',
+            'provider.max' => 'El proveedor no debe superar 50 caracteres.',
+            'environment.required' => 'Debe seleccionar el ambiente.',
+            'environment.in' => 'El ambiente seleccionado no es válido.',
+            'api_base_url.max' => 'La URL API no debe superar 255 caracteres.',
+            'ruc.max' => 'El RUC no debe superar 20 caracteres.',
+            'business_name.max' => 'La razón social no debe superar 255 caracteres.',
+            'trade_name.max' => 'El nombre comercial no debe superar 255 caracteres.',
+            'ubigeo.max' => 'El ubigeo no debe superar 10 caracteres.',
+            'department.max' => 'El departamento no debe superar 255 caracteres.',
+            'province.max' => 'La provincia no debe superar 255 caracteres.',
+            'district.max' => 'El distrito no debe superar 255 caracteres.',
+            'sol_user.max' => 'El usuario SOL no debe superar 255 caracteres.',
+            'is_active.boolean' => 'El estado activo no es válido.',
         ]);
 
         try {
