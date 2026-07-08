@@ -12,6 +12,9 @@ class SupplierPurchaseOrder extends Model
 
     protected $fillable = [
         'code',
+        'purchase_order_sequence',
+        'purchase_order_year',
+        'purchase_order_bank_code',
         'company_id',
         'supplier_id',
         'supplier_account_id',
@@ -24,12 +27,24 @@ class SupplierPurchaseOrder extends Model
         'delivery_type',
         'transport_type',
         'shipping_address',
+        'shipping_agency_id',
+        'shipping_agency_branch_id',
+        'shipping_agency_contact_id',
+        'shipping_reference',
         'destination_ubigeo_id',
         'destination_text',
         'payment_method',
         'document_type',
         'affect_igv',
         'observations',
+        'requested_by',
+        'request_department',
+        'authorized_by_name',
+        'authorized_by_position',
+        'delivery_text',
+        'payment_terms_text',
+        'purchase_instructions',
+        'important_note',
         'subtotal',
         'igv',
         'grand_total',
@@ -91,6 +106,21 @@ class SupplierPurchaseOrder extends Model
     public function destinationUbigeo()
     {
         return $this->belongsTo(Ubigeo::class, 'destination_ubigeo_id');
+    }
+
+    public function shippingAgency()
+    {
+        return $this->belongsTo(ShippingAgency::class);
+    }
+
+    public function shippingAgencyBranch()
+    {
+        return $this->belongsTo(ShippingAgencyBranch::class);
+    }
+
+    public function shippingAgencyContact()
+    {
+        return $this->belongsTo(ShippingAgencyContact::class);
     }
 
     public function items()

@@ -2,6 +2,10 @@ let tableSupplierPurchaseOrder;
 let supplierOrderItemIndex = 0;
 let supplierOrderSourceLoadRequest = null;
 let supplierOrderSourceLoadTimer = null;
+const defaultSupplierOrderImportantNote = `ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTICA@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:
+1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE
+2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE
+3. REGISTRO SANITARIO DEL BIEN ADQUIRIDO - VIGENTE`;
 
 document.addEventListener('DOMContentLoaded', function () {
     $.ajaxSetup({
@@ -21,8 +25,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('click', '#btnCreateSupplierPurchaseOrder', function () {
         resetSupplierPurchaseOrderForm();
+        syncPurchaseInstructions(true);
         $('#supplierPurchaseOrderModalLabel').text('Registrar Orden de Compra a Proveedor');
-        generateSupplierPurchaseOrderCode();
+        $('#supplier_order_code').val('Seleccione cuenta bancaria');
         $('#supplierPurchaseOrderModal').modal('show');
     });
 
@@ -69,10 +74,59 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         loadSupplierAccounts(supplierId);
-        scheduleSupplierOrderSourceAutoLoad();
+        clearSupplierOrderPendingItems();
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
+
+    $(document).on('input', '#supplierPurchaseOrderForm .text-uppercase', function () {
+        this.value = this.value.toUpperCase();
+    });
+
+    $(document).on('change', '#supplier_order_supplier_account_id', function () {
+        if (!$('#supplier_purchase_order_id').val()) {
+            generateSupplierPurchaseOrderCode($(this).val());
+        }
+
+        syncPurchaseInstructions(true);
+    });
+
+    $(document).on('change', '#supplier_order_destination_ubigeo_id', function () {
+        syncPurchaseInstructions(true);
+    });
+
+    $(document).on('input', '#supplier_order_destination_text', function () {
+        syncPurchaseInstructions(true);
+    });
+
+    $(document).on('input', '#supplier_order_purchase_instructions', function () {
+        const input = $('#supplier_order_purchase_instructions');
+
+        if (input.val().trim() !== String(input.data('last-auto-value') || '').trim()) {
+            input.data('last-auto-value', '');
+        }
+    });
+
+    $(document).on('change', '#supplier_order_delivery_type', function () {
+        toggleSupplierOrderShippingAgencySection();
+    });
+
+    $(document).on('change', '#supplier_order_shipping_agency_id', function () {
+        loadSupplierOrderShippingBranches($(this).val());
+    });
+
+    $(document).on('change', '#supplier_order_shipping_agency_branch_id', function () {
+        const selected = $(this).find('option:selected');
+        $('#supplier_order_shipping_agency_address').val(selected.data('address') || '');
+        $('#supplier_order_shipping_reference').val(selected.data('reference') || $('#supplier_order_shipping_reference').val());
+        loadSupplierOrderShippingContacts($(this).val(), $('#supplier_order_shipping_agency_id').val());
+    });
+
+    $(document).on('change', '#supplier_order_shipping_agency_contact_id', function () {
+        const selected = $(this).find('option:selected');
+        $('#supplier_order_shipping_contact_phone').val(selected.data('phone') || '');
+        $('#supplier_order_shipping_contact_email').val(selected.data('email') || '');
+    });
 
     $(document).on(
         'input change',
@@ -87,8 +141,20 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '#btnLoadSupplierOrderSource', loadSupplierOrderSourceItems);
 
     $(document).on('change', '#supplier_order_customer_purchase_order_ids', function () {
-        scheduleSupplierOrderSourceAutoLoad();
+        clearSupplierOrderPendingItems();
     });
+
+    $(document).on('change', '#supplierOrderPendingCheckAll', function () {
+        $('#supplierOrderPendingItemsTbody .pending-item-check')
+            .prop('checked', $(this).is(':checked'));
+    });
+
+    $(document).on('input change', '.pending-item-quantity, .pending-item-unit-price', function () {
+        const row = $(this).closest('tr');
+        updateSupplierOrderPendingItemTotal(row);
+    });
+
+    $(document).on('click', '#btnAddSelectedSupplierPendingItems', addSelectedSupplierPendingItems);
 
     $(document).on('click', '.editSupplierPurchaseOrder', function () {
         loadSupplierPurchaseOrderForEdit($(this).data('id'));
@@ -227,27 +293,55 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_transport_type').val('').trigger('change.select2');
     $('#supplier_order_payment_condition').val('').trigger('change.select2');
     $('#supplier_order_delivery_type').val('').trigger('change.select2');
+    $('#supplier_order_shipping_agency_id').val('').trigger('change.select2');
+    $('#supplier_order_shipping_agency_branch_id')
+        .html('<option value="">Seleccione agencia primero</option>')
+        .val('')
+        .trigger('change.select2');
+    $('#supplier_order_shipping_agency_contact_id')
+        .html('<option value="">Seleccione sede primero</option>')
+        .val('')
+        .trigger('change.select2');
+    $('#supplier_order_shipping_agency_address').val('');
+    $('#supplier_order_shipping_contact_phone').val('');
+    $('#supplier_order_shipping_contact_email').val('');
+    $('#supplier_order_shipping_reference').val('');
     $('#supplier_order_payment_method').val('').trigger('change.select2');
     $('#supplier_order_document_type').val('').trigger('change.select2');
+    $('#supplier_order_request_department').val('COMPRAS');
+    $('#supplier_order_authorized_by_name').val('IVAN CUBAS BINCES');
+    $('#supplier_order_authorized_by_position').val('GERENTE GENERAL');
+    $('#supplier_order_delivery_text').val('EN AGENCIA DE TRANSPORTES - ENVIO A PROVINCIA');
+    $('#supplier_order_purchase_instructions').val('').data('last-auto-value', '');
+    $('#supplier_order_important_note').val(defaultSupplierOrderImportantNote);
 
     setDefaultSupplierOrderCurrency();
     $('#supplierOrderSideSupplier').text('Seleccione proveedor');
+    toggleSupplierOrderShippingAgencySection();
     calculateSupplierOrderTotals();
+    syncPurchaseInstructions(true);
 }
 
-function generateSupplierPurchaseOrderCode() {
+function generateSupplierPurchaseOrderCode(supplierAccountId = null) {
+    if (!supplierAccountId) {
+        $('#supplier_order_code').val('Seleccione cuenta bancaria');
+        return;
+    }
+
     $('#supplier_order_code').val('Generando...');
 
-    $.get(window.routes.supplierPurchaseOrderGenerateCode)
+    $.get(window.routes.supplierPurchaseOrderGenerateCode, {
+        supplier_account_id: supplierAccountId
+    })
         .done(function (response) {
-            $('#supplier_order_code').val(response.code || '');
+            $('#supplier_order_code').val(response.code || 'Seleccione cuenta bancaria');
         })
         .fail(function (xhr) {
             $('#supplier_order_code').val('');
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
-                text: xhr.responseJSON?.message || 'No se pudo generar el codigo.'
+                text: xhr.responseJSON?.message || 'No se pudo generar el numero de orden.'
             });
         });
 }
@@ -256,6 +350,7 @@ function saveSupplierPurchaseOrder(formElement) {
     clearSupplierPurchaseOrderErrors();
     refreshSupplierOrderItemIndexes();
     calculateSupplierOrderTotals();
+    syncPurchaseInstructions(true);
 
     if ($('#supplierOrderItemsTbody tr.supplier-order-item-row').length === 0) {
         Swal.fire({
@@ -329,11 +424,12 @@ function saveSupplierPurchaseOrder(formElement) {
     });
 }
 
-function loadSupplierAccounts(supplierId, selectedAccountId = null) {
+function loadSupplierAccounts(supplierId, selectedAccountId = null, options = {}) {
     const select = $('#supplier_order_supplier_account_id');
 
     if (!supplierId) {
         select.html('<option value="">Seleccione proveedor primero</option>').trigger('change.select2');
+        syncPurchaseInstructions(true);
         return;
     }
 
@@ -344,41 +440,184 @@ function loadSupplierAccounts(supplierId, selectedAccountId = null) {
         .html('<option value="">Cargando cuentas...</option>')
         .trigger('change.select2');
 
-    $.get(url)
+    return $.get(url)
         .done(function (response) {
             const accounts = response.accounts || [];
-            let options = '<option value="">Seleccione cuenta</option>';
+            let accountOptions = '<option value="">Seleccione cuenta</option>';
 
             accounts.forEach(function (account) {
-                const bank = account.bank?.description || 'Banco';
+                const bank = account.bank?.short_name || account.bank?.description || 'Banco';
                 const currency = account.currency?.code || '';
-                options += `<option value="${escapeSupplierOrderHtml(account.id)}">
+                accountOptions += `<option value="${escapeSupplierOrderHtml(account.id)}"
+                    data-bank="${escapeSupplierOrderHtml(bank)}">
                     ${escapeSupplierOrderHtml(bank)} - ${escapeSupplierOrderHtml(account.account_number)} - ${escapeSupplierOrderHtml(currency)}
                 </option>`;
             });
 
-            select.html(options).prop('disabled', accounts.length === 0);
+            select.html(accountOptions).prop('disabled', accounts.length === 0);
 
             if (selectedAccountId) {
                 select.val(String(selectedAccountId));
             }
 
             select.trigger('change.select2');
+
+            if (!options.suppressInstructionSync) {
+                syncPurchaseInstructions(true);
+            }
         })
         .fail(function () {
             select
                 .prop('disabled', true)
                 .html('<option value="">Error al cargar cuentas</option>')
                 .trigger('change.select2');
+            syncPurchaseInstructions(true);
+        });
+}
+
+function toggleSupplierOrderShippingAgencySection() {
+    const isAgency = supplierOrderRequiresShippingAgency($('#supplier_order_delivery_type').val());
+    $('#supplierOrderShippingAgencySection').toggleClass('d-none', !isAgency);
+    $('#supplier_order_shipping_agency_id, #supplier_order_shipping_agency_branch_id')
+        .prop('required', isAgency);
+
+    if (!isAgency) {
+        $('#supplier_order_shipping_agency_id').val('').trigger('change.select2');
+        $('#supplier_order_shipping_agency_branch_id')
+            .html('<option value="">Seleccione agencia primero</option>')
+            .val('')
+            .trigger('change.select2');
+        $('#supplier_order_shipping_agency_contact_id')
+            .html('<option value="">Seleccione sede primero</option>')
+            .val('')
+            .trigger('change.select2');
+        $('#supplier_order_shipping_agency_address').val('');
+        $('#supplier_order_shipping_contact_phone').val('');
+        $('#supplier_order_shipping_contact_email').val('');
+        $('#supplier_order_shipping_reference').val('');
+    }
+}
+
+function loadSupplierOrderShippingBranches(agencyId, selectedBranchId = null, selectedContactId = null) {
+    const branchSelect = $('#supplier_order_shipping_agency_branch_id');
+    const contactSelect = $('#supplier_order_shipping_agency_contact_id');
+
+    $('#supplier_order_shipping_agency_address').val('');
+    $('#supplier_order_shipping_contact_phone').val('');
+    $('#supplier_order_shipping_contact_email').val('');
+
+    if (!agencyId) {
+        branchSelect.html('<option value="">Seleccione agencia primero</option>').trigger('change.select2');
+        contactSelect.html('<option value="">Seleccione sede primero</option>').trigger('change.select2');
+        return;
+    }
+
+    const url = window.routes.supplierOrderShippingAgencyBranches.replace(':id', agencyId);
+    branchSelect.prop('disabled', true).html('<option value="">Cargando sedes...</option>').trigger('change.select2');
+    contactSelect.html('<option value="">Seleccione sede primero</option>').trigger('change.select2');
+
+    $.get(url)
+        .done(function (response) {
+            const branches = response.branches || [];
+            let options = '<option value="">Seleccione sede</option>';
+
+            branches.forEach(function (branch) {
+                const location = [branch.district, branch.province, branch.department].filter(Boolean).join(' / ');
+                const address = [branch.address, location].filter(Boolean).join(' | ');
+
+                options += `<option value="${escapeSupplierOrderHtml(branch.id)}"
+                    data-address="${escapeSupplierOrderHtml(address)}"
+                    data-reference="${escapeSupplierOrderHtml(branch.reference || '')}">
+                    ${escapeSupplierOrderHtml(branch.branch_name || 'Sede')} ${branch.is_main ? '(Principal)' : ''}
+                </option>`;
+            });
+
+            branchSelect.html(options).prop('disabled', false);
+
+            const defaultBranch = selectedBranchId
+                || branches.find(branch => Boolean(branch.is_main))?.id
+                || (branches.length === 1 ? branches[0].id : null);
+
+            if (defaultBranch) {
+                branchSelect.val(String(defaultBranch));
+            }
+
+            branchSelect.trigger('change.select2');
+
+            if (defaultBranch) {
+                const selected = branchSelect.find('option:selected');
+                $('#supplier_order_shipping_agency_address').val(selected.data('address') || '');
+                if (!$('#supplier_order_shipping_reference').val()) {
+                    $('#supplier_order_shipping_reference').val(selected.data('reference') || '');
+                }
+                loadSupplierOrderShippingContacts(defaultBranch, agencyId, selectedContactId);
+            } else if (!branches.length) {
+                loadSupplierOrderShippingContacts(null, agencyId, selectedContactId);
+            }
+        })
+        .fail(function () {
+            branchSelect.prop('disabled', false).html('<option value="">Error al cargar sedes</option>').trigger('change.select2');
+        });
+}
+
+function loadSupplierOrderShippingContacts(branchId = null, agencyId = null, selectedContactId = null) {
+    const contactSelect = $('#supplier_order_shipping_agency_contact_id');
+    let url = null;
+
+    if (branchId) {
+        url = window.routes.supplierOrderShippingBranchContacts.replace(':id', branchId);
+    } else if (agencyId) {
+        url = window.routes.supplierOrderShippingAgencyContacts.replace(':id', agencyId);
+    }
+
+    if (!url) {
+        contactSelect.html('<option value="">Seleccione agencia primero</option>').trigger('change.select2');
+        return;
+    }
+
+    contactSelect.prop('disabled', true).html('<option value="">Cargando contactos...</option>').trigger('change.select2');
+    $('#supplier_order_shipping_contact_phone').val('');
+    $('#supplier_order_shipping_contact_email').val('');
+
+    $.get(url)
+        .done(function (response) {
+            const contacts = response.contacts || [];
+            let options = '<option value="">Seleccione contacto</option>';
+
+            contacts.forEach(function (contact) {
+                const phone = [
+                    contact.phone ? `Tel: ${contact.phone}` : '',
+                    contact.whatsapp ? `WhatsApp: ${contact.whatsapp}` : ''
+                ].filter(Boolean).join(' | ');
+
+                options += `<option value="${escapeSupplierOrderHtml(contact.id)}"
+                    data-phone="${escapeSupplierOrderHtml(phone)}"
+                    data-email="${escapeSupplierOrderHtml(contact.email || '')}">
+                    ${escapeSupplierOrderHtml(contact.contact_name || 'Contacto')} ${contact.is_primary ? '(Principal)' : ''}
+                </option>`;
+            });
+
+            contactSelect.html(options).prop('disabled', false);
+
+            const defaultContact = selectedContactId
+                || contacts.find(contact => Boolean(contact.is_primary))?.id
+                || (contacts.length === 1 ? contacts[0].id : null);
+
+            if (defaultContact) {
+                contactSelect.val(String(defaultContact));
+            }
+
+            contactSelect.trigger('change.select2');
+            $('#supplier_order_shipping_contact_phone').val(contactSelect.find('option:selected').data('phone') || '');
+            $('#supplier_order_shipping_contact_email').val(contactSelect.find('option:selected').data('email') || '');
+        })
+        .fail(function () {
+            contactSelect.prop('disabled', false).html('<option value="">Error al cargar contactos</option>').trigger('change.select2');
         });
 }
 
 function scheduleSupplierOrderSourceAutoLoad() {
     clearTimeout(supplierOrderSourceLoadTimer);
-
-    supplierOrderSourceLoadTimer = setTimeout(function () {
-        loadSupplierOrderSourceItems({ silent: true });
-    }, 250);
 }
 
 function loadSupplierOrderSourceItems(options = {}) {
@@ -387,13 +626,6 @@ function loadSupplierOrderSourceItems(options = {}) {
     const isSilent = Boolean(options.silent);
 
     if (!orderIds.length) {
-        if (isSilent) {
-            clearSupplierOrderItemRows();
-            showEmptySupplierOrderItemsRow();
-            calculateSupplierOrderTotals();
-            return;
-        }
-
         Swal.fire({
             icon: 'warning',
             title: 'Seleccione al menos un pedido',
@@ -403,14 +635,10 @@ function loadSupplierOrderSourceItems(options = {}) {
     }
 
     if (!supplierId) {
-        clearSupplierOrderItemRows();
-        showEmptySupplierOrderItemsRow();
-        calculateSupplierOrderTotals();
-
         if (!isSilent) {
             Swal.fire({
                 icon: 'info',
-                title: 'Seleccione un proveedor para cargar los articulos adjudicados.'
+                title: 'Seleccione un proveedor antes de cargar los articulos.'
             });
         }
 
@@ -423,10 +651,11 @@ function loadSupplierOrderSourceItems(options = {}) {
 
     supplierOrderSourceLoadRequest = $.ajax({
         url: window.routes.supplierPurchaseOrderLoadCustomerItems,
-        type: 'POST',
+        type: 'GET',
         data: {
             supplier_id: supplierId,
-            customer_purchase_order_ids: orderIds
+            customer_purchase_order_ids: orderIds,
+            supplier_purchase_order_id: $('#supplier_purchase_order_id').val() || ''
         }
     })
         .done(function (response) {
@@ -438,27 +667,16 @@ function loadSupplierOrderSourceItems(options = {}) {
                 $('#supplier_order_currency_id').val(response.currency_id).trigger('change');
             }
 
-            clearSupplierOrderItemRows();
-            (response.items || []).forEach(addSupplierOrderItemRow);
-            showEmptySupplierOrderItemsRow();
-            calculateSupplierOrderTotals();
+            renderSupplierOrderPendingItems(response.items || []);
 
             if (!isSilent) {
                 if ((response.items || []).length) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Origen cargado',
-                        text: 'Items adjudicados al proveedor cargados correctamente.',
-                        toast: true,
-                        position: 'top-end',
-                        showConfirmButton: false,
-                        timer: 2500
-                    });
+                    $('#supplierOrderPendingItemsModal').modal('show');
                 } else {
                     Swal.fire({
                         icon: 'info',
-                        title: 'Sin articulos adjudicados',
-                        text: 'El proveedor seleccionado no tiene articulos adjudicados en las ordenes cliente seleccionadas.'
+                        title: 'Sin articulos pendientes',
+                        text: 'No hay articulos pendientes para comprar en las ordenes cliente seleccionadas.'
                     });
                 }
             }
@@ -477,6 +695,150 @@ function loadSupplierOrderSourceItems(options = {}) {
         .always(function () {
             supplierOrderSourceLoadRequest = null;
         });
+}
+
+function clearSupplierOrderPendingItems() {
+    $('#supplierOrderPendingCheckAll').prop('checked', false);
+    $('#supplierOrderPendingItemsTbody').html(`
+        <tr>
+            <td colspan="13" class="text-center text-muted py-4">
+                Sin items pendientes para mostrar.
+            </td>
+        </tr>
+    `);
+}
+
+function renderSupplierOrderPendingItems(items) {
+    const body = $('#supplierOrderPendingItemsTbody');
+    $('#supplierOrderPendingCheckAll').prop('checked', false);
+
+    if (!items.length) {
+        clearSupplierOrderPendingItems();
+        return;
+    }
+
+    body.html(items.map(function (item, index) {
+        const pending = parseFloat(item.pending_quantity || item.suggested_quantity || item.quantity || 0) || 0;
+        const quantity = parseFloat(item.suggested_quantity || pending) || 0;
+        const unitPrice = parseFloat(item.unit_price || 0) || 0;
+        const total = quantity * unitPrice;
+
+        return `
+            <tr class="supplier-order-pending-item-row" data-index="${index}">
+                <td class="text-center">
+                    <input type="checkbox" class="pending-item-check" ${pending > 0 ? 'checked' : ''}>
+                </td>
+                <td>${escapeSupplierOrderHtml(item.customer_order_code || item.customer_purchase_order_code || '-')}</td>
+                <td>
+                    <div class="font-weight-bold">${escapeSupplierOrderHtml(item.article_code || '-')}</div>
+                    <small class="text-muted">${escapeSupplierOrderHtml(item.article_name || item.billing_name_snapshot || '-')}</small>
+                </td>
+                <td>${escapeSupplierOrderHtml(item.presentation_name || '-')}</td>
+                <td>${escapeSupplierOrderHtml(item.brand_name || '-')}</td>
+                <td>${escapeSupplierOrderHtml(item.origin || '-')}</td>
+                <td>${escapeSupplierOrderHtml(formatSupplierOrderDate(item.expiration_date) || '-')}</td>
+                <td class="text-right">${formatSupplierOrderMoney(item.requested_quantity)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(item.purchased_quantity)}</td>
+                <td class="text-right"><span class="pending-badge">${formatSupplierOrderMoney(pending)}</span></td>
+                <td>
+                    <input type="number" class="form-control form-control-sm text-right pending-item-quantity"
+                        value="${formatSupplierOrderMoney(quantity)}" min="0.01" max="${formatSupplierOrderMoney(pending)}" step="0.01">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm text-right pending-item-unit-price"
+                        value="${formatSupplierOrderMoney(unitPrice)}" min="0" step="0.01">
+                </td>
+                <td class="text-right font-weight-bold pending-item-total">${formatSupplierOrderMoney(total)}</td>
+            </tr>
+        `;
+    }).join(''));
+
+    body.find('.supplier-order-pending-item-row').each(function () {
+        const row = $(this);
+        row.data('item', items[Number(row.data('index'))] || {});
+    });
+}
+
+function updateSupplierOrderPendingItemTotal(row) {
+    const quantityInput = row.find('.pending-item-quantity');
+    const pending = parseFloat(quantityInput.attr('max')) || 0;
+    let quantity = parseFloat(quantityInput.val()) || 0;
+    const unitPrice = parseFloat(row.find('.pending-item-unit-price').val()) || 0;
+
+    if (pending > 0 && quantity > pending) {
+        quantity = pending;
+        quantityInput.val(formatSupplierOrderMoney(quantity));
+    }
+
+    row.find('.pending-item-total').text(formatSupplierOrderMoney(quantity * unitPrice));
+}
+
+function addSelectedSupplierPendingItems() {
+    const selectedRows = $('#supplierOrderPendingItemsTbody .supplier-order-pending-item-row')
+        .filter(function () {
+            return $(this).find('.pending-item-check').is(':checked');
+        });
+
+    if (!selectedRows.length) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Seleccione articulos',
+            text: 'Marque al menos un item pendiente para agregarlo a la orden.'
+        });
+        return;
+    }
+
+    let hasInvalidQuantity = false;
+    selectedRows.each(function () {
+        const row = $(this);
+        const quantity = parseFloat(row.find('.pending-item-quantity').val()) || 0;
+        const pending = parseFloat(row.find('.pending-item-quantity').attr('max')) || 0;
+
+        if (quantity <= 0 || quantity > pending) {
+            hasInvalidQuantity = true;
+        }
+    });
+
+    if (hasInvalidQuantity) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Cantidad no valida',
+            text: 'La cantidad a comprar debe ser mayor a cero y no superar el saldo pendiente.'
+        });
+        return;
+    }
+
+    selectedRows.each(function () {
+        const row = $(this);
+        const item = { ...(row.data('item') || {}) };
+        item.quantity = parseFloat(row.find('.pending-item-quantity').val()) || 0;
+        item.unit_price = parseFloat(row.find('.pending-item-unit-price').val()) || 0;
+        item.reference_purchase_price = item.reference_purchase_price || item.unit_price;
+
+        removeSupplierOrderItemByCustomerItem(item.customer_purchase_order_item_id);
+        addSupplierOrderItemRow(item);
+    });
+
+    $('#supplierOrderPendingItemsModal').modal('hide');
+    calculateSupplierOrderTotals();
+}
+
+function removeSupplierOrderItemByCustomerItem(customerPurchaseOrderItemId) {
+    if (!customerPurchaseOrderItemId) {
+        return;
+    }
+
+    $('#supplierOrderItemsTbody tr.supplier-order-item-row').each(function () {
+        const row = $(this);
+
+        if (String(row.find('.item-customer-purchase-order-item-id').val()) === String(customerPurchaseOrderItemId)) {
+            destroySupplierOrderRowSelect2(row);
+            row.remove();
+        }
+    });
+
+    refreshSupplierOrderItemIndexes();
+    showEmptySupplierOrderItemsRow();
 }
 
 function addSupplierOrderItemRow(data = {}) {
@@ -505,7 +867,9 @@ function addSupplierOrderItemRow(data = {}) {
     row.find('.item-expiration-date').val(formatSupplierOrderDate(data.expiration_date));
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
     row.find('.item-reference-purchase-price').val(formatSupplierOrderMoney(data.reference_purchase_price || 0));
-    row.find('.item-quantity').val(formatSupplierOrderMoney(data.quantity || 1));
+    row.find('.item-quantity')
+        .val(formatSupplierOrderMoney(data.quantity || 1))
+        .attr('max', data.pending_quantity ? formatSupplierOrderMoney(data.pending_quantity) : null);
     row.find('.item-unit-price').val(formatSupplierOrderMoney(data.unit_price || 0));
 
     initSupplierOrderSelect2(row);
@@ -575,8 +939,16 @@ function calculateSupplierOrderTotals() {
 
     $('#supplierOrderItemsTbody tr.supplier-order-item-row').each(function () {
         const row = $(this);
-        const quantity = parseFloat(row.find('.item-quantity').val()) || 0;
+        const quantityInput = row.find('.item-quantity');
+        const maxQuantity = parseFloat(quantityInput.attr('max')) || 0;
+        let quantity = parseFloat(quantityInput.val()) || 0;
         const unitPrice = parseFloat(row.find('.item-unit-price').val()) || 0;
+
+        if (maxQuantity > 0 && quantity > maxQuantity) {
+            quantity = maxQuantity;
+            quantityInput.val(formatSupplierOrderMoney(quantity));
+        }
+
         const lineSubtotal = quantity * unitPrice;
         const taxAmount = affectIgv ? lineSubtotal * 0.18 : 0;
         const lineTotal = lineSubtotal + taxAmount;
@@ -620,7 +992,7 @@ function fillSupplierPurchaseOrderForm(order) {
     $('#supplier_order_code').val(order.code || '');
     $('#supplier_order_company_id').val(order.company_id || '').trigger('change.select2');
     $('#supplier_order_supplier_id').val(order.supplier_id || '').trigger('change.select2');
-    loadSupplierAccounts(order.supplier_id, order.supplier_account_id);
+    const supplierAccountsRequest = loadSupplierAccounts(order.supplier_id, order.supplier_account_id, { suppressInstructionSync: true });
     $('#supplier_order_currency_id').val(order.currency_id || '').trigger('change');
     const customerPurchaseOrderIds = (order.customer_purchase_orders || [])
         .map(customerOrder => String(customerOrder.id));
@@ -634,6 +1006,16 @@ function fillSupplierPurchaseOrderForm(order) {
     $('#supplier_order_delivery_type')
         .val(normalizeSupplierOrderOption(order.delivery_type || ''))
         .trigger('change.select2');
+    toggleSupplierOrderShippingAgencySection();
+    $('#supplier_order_shipping_agency_id').val(order.shipping_agency_id || '').trigger('change.select2');
+    if (order.shipping_agency_id) {
+        loadSupplierOrderShippingBranches(
+            order.shipping_agency_id,
+            order.shipping_agency_branch_id,
+            order.shipping_agency_contact_id
+        );
+    }
+    $('#supplier_order_shipping_reference').val(order.shipping_reference || '');
     $('#supplier_order_transport_type')
         .val(normalizeSupplierOrderOption(order.transport_type || ''))
         .trigger('change.select2');
@@ -648,12 +1030,31 @@ function fillSupplierPurchaseOrderForm(order) {
         .trigger('change.select2');
     $('#supplier_order_affect_igv').val(order.affect_igv ? '1' : '0').trigger('change.select2');
     $('#supplier_order_observations').val(order.observations || '');
+    $('#supplier_order_request_department').val(order.request_department || 'COMPRAS');
+    $('#supplier_order_authorized_by_name').val(order.authorized_by_name || 'IVAN CUBAS BINCES');
+    $('#supplier_order_authorized_by_position').val(order.authorized_by_position || 'GERENTE GENERAL');
+    $('#supplier_order_delivery_text').val(order.delivery_text || 'EN AGENCIA DE TRANSPORTES - ENVIO A PROVINCIA');
+    $('#supplier_order_purchase_instructions')
+        .val(order.purchase_instructions || '')
+        .data(
+            'last-auto-value',
+            isDefaultPurchaseInstructionText(order.purchase_instructions) ? order.purchase_instructions : ''
+        );
+    $('#supplier_order_important_note').val(order.important_note || defaultSupplierOrderImportantNote);
     $('#supplierOrderSideSupplier').text(supplierName(order.supplier));
 
     clearSupplierOrderItemRows();
     (order.items || []).forEach(addSupplierOrderItemRow);
     showEmptySupplierOrderItemsRow();
     calculateSupplierOrderTotals();
+
+    if (supplierAccountsRequest && typeof supplierAccountsRequest.always === 'function') {
+        supplierAccountsRequest.always(function () {
+            syncPurchaseInstructions(true);
+        });
+    } else {
+        syncPurchaseInstructions(true);
+    }
 }
 
 function loadSupplierPurchaseOrderDetail(id) {
@@ -729,6 +1130,31 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_destination').text(destination);
     $('#vspo_shipping_address').text(order.shipping_address || '-');
     $('#vspo_observations').text(order.observations || 'Sin observaciones');
+    const agency = order.shipping_agency;
+    const branch = order.shipping_agency_branch;
+    const contact = order.shipping_agency_contact;
+    const branchLocation = branch
+        ? [branch.address, [branch.district, branch.province, branch.department].filter(Boolean).join(' / ')].filter(Boolean).join(' | ')
+        : '-';
+    const contactPhone = contact
+        ? [contact.phone ? `Tel: ${contact.phone}` : '', contact.whatsapp ? `WhatsApp: ${contact.whatsapp}` : '', contact.email ? `Correo: ${contact.email}` : ''].filter(Boolean).join(' | ')
+        : '-';
+
+    $('#vspo_shipping_agency_card').toggleClass('d-none', !supplierOrderRequiresShippingAgency(order.delivery_type));
+    $('#vspo_shipping_agency').text(agency ? `${agency.ruc ? agency.ruc + ' | ' : ''}${agency.trade_name || agency.business_name || '-'}` : '-');
+    $('#vspo_shipping_branch').text(branch ? `${branch.branch_name || '-'} | ${branchLocation}` : '-');
+    $('#vspo_shipping_contact').text(contact ? contact.contact_name || '-' : '-');
+    $('#vspo_shipping_contact_phone').text(contactPhone || '-');
+    $('#vspo_shipping_contact_email').text(contact?.email || '-');
+    $('#vspo_shipping_reference').text(order.shipping_reference || branch?.reference || '-');
+    $('#vspo_requested_by').text(supplierOrderRequestedBy(order) || '-');
+    $('#vspo_request_department').text(order.request_department || '-');
+    $('#vspo_authorized_by_name').text(order.authorized_by_name || '-');
+    $('#vspo_authorized_by_position').text(order.authorized_by_position || '-');
+    $('#vspo_delivery_text').text(order.delivery_text || '-');
+    $('#vspo_payment_terms_text').text(supplierOrderPaymentTerms(order) || '-');
+    $('#vspo_purchase_instructions').text(order.purchase_instructions || '-');
+    $('#vspo_important_note').text(order.important_note || '-');
     $('#vspo_subtotal').text(`${currencyCode} ${formatSupplierOrderMoney(order.subtotal)}`);
     $('#vspo_igv').text(`${currencyCode} ${formatSupplierOrderMoney(order.igv)}`);
     $('#vspo_total').text(`${currencyCode} ${formatSupplierOrderMoney(order.grand_total)}`);
@@ -886,6 +1312,95 @@ function formatSupplierOrderDate(value) {
     return value ? String(value).substring(0, 10) : '';
 }
 
+function normalizeSupplierOrderText(value) {
+    return String(value || '')
+        .trim()
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function getSelectedBankName() {
+    const selected = $('#supplier_order_supplier_account_id option:selected');
+    let bank = selected.data('bank') || '';
+
+    if (!bank) {
+        bank = String(selected.text() || '').split(/[-|]/)[0] || '';
+    }
+
+    bank = normalizeSupplierOrderText(bank).replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+    const compactBank = bank.replace(/\s+/g, '');
+    const knownBank = ['BBVA', 'BCP', 'INTERBANK', 'SCOTIABANK'].find(code => compactBank.includes(code));
+
+    return knownBank || bank;
+}
+
+function getSelectedDestinationText() {
+    const optionalDestination = normalizeSupplierOrderText($('#supplier_order_destination_text').val());
+
+    if (optionalDestination) {
+        return optionalDestination;
+    }
+
+    const selected = $('#supplier_order_destination_ubigeo_id option:selected');
+    const department = normalizeSupplierOrderText(selected.data('department'));
+    const district = normalizeSupplierOrderText(selected.data('district'));
+
+    if (department || district) {
+        return [department, district]
+            .filter(Boolean)
+            .filter((value, index, values) => values.indexOf(value) === index)
+            .join(' / ');
+    }
+
+    return normalizeSupplierOrderText(selected.text() && selected.val() ? selected.text() : '');
+}
+
+function buildDefaultPurchaseInstructions() {
+    const bank = getSelectedBankName();
+    const destination = getSelectedDestinationText();
+
+    return `Abono de la presente Orden de compra se realizo a cuentas de la empresa ${bank || ''} - Factura enviar al correo, embalaje y rotulado de forma correcta, para ser enviado a la ciudad de ${destination || '-'}`.trim();
+}
+
+function isDefaultPurchaseInstructionText(value) {
+    return normalizeSupplierOrderText(value)
+        .startsWith('ABONO DE LA PRESENTE ORDEN DE COMPRA SE REALIZO A CUENTAS DE LA EMPRESA');
+}
+
+function syncPurchaseInstructions(force = false) {
+    const input = $('#supplier_order_purchase_instructions');
+    const currentValue = String(input.val() || '').trim();
+    const lastAutoValue = String(input.data('last-auto-value') || '').trim();
+    const nextAutoValue = buildDefaultPurchaseInstructions();
+
+    if (!input.length || !nextAutoValue) {
+        return;
+    }
+
+    if (
+        force
+        || !currentValue
+        || isOldPurchaseInstructionTestText(currentValue)
+        || isDefaultPurchaseInstructionText(currentValue)
+        || (lastAutoValue && currentValue === lastAutoValue)
+    ) {
+        input.val(nextAutoValue);
+        input.data('last-auto-value', nextAutoValue);
+    }
+}
+
+function isOldPurchaseInstructionTestText(value) {
+    const normalized = normalizeSupplierOrderText(value);
+
+    return [
+        'PRUEBA DE INSTRUCCIONES',
+        'PRUEBA INSTRUCCIONES',
+        'TEST',
+        'LOREM'
+    ].some(testText => normalized.includes(testText));
+}
+
 function normalizeSupplierOrderOption(value) {
     const normalized = String(value || '')
         .trim()
@@ -907,6 +1422,10 @@ function normalizeSupplierOrderOption(value) {
         credito_60_dia: 'credito_60_dias',
         deposito_en_cuenta: 'deposito_cuenta',
         deposito_cuenta: 'deposito_cuenta',
+        agencia_de_transporte: 'agencia_transporte',
+        agencia_transporte: 'agencia_transporte',
+        en_agencia: 'en_agencia',
+        transporte: 'transporte',
         recojo_de_almacen: 'recojo_almacen',
         recojo_almacen: 'recojo_almacen',
         transportista_del_proveedor: 'transportista_proveedor',
@@ -921,6 +1440,35 @@ function normalizeSupplierOrderOption(value) {
     return aliases[normalized] || normalized;
 }
 
+function supplierOrderRequiresShippingAgency(value) {
+    return ['agencia', 'agencia_transporte', 'en_agencia', 'transporte']
+        .includes(normalizeSupplierOrderOption(value));
+}
+
+function supplierOrderUserName(user) {
+    if (!user) {
+        return '';
+    }
+
+    return [user.name, user.lastname].filter(Boolean).join(' ').trim()
+        || user.email
+        || '';
+}
+
+function supplierOrderRequestedBy(order) {
+    return supplierOrderUserName(order.updater) || supplierOrderUserName(order.creator);
+}
+
+function supplierOrderPaymentTerms(order) {
+    const account = order.supplier_account || {};
+    const bank = account.bank || {};
+    const condition = supplierOrderOptionLabel(order.payment_condition) || 'Condicion no indicada';
+    const bankName = bank.short_name || bank.description || 'Banco no indicado';
+    const accountNumber = account.account_number || account.cci || 'Cuenta no indicada';
+
+    return `${condition} - ${bankName} - ${accountNumber}`;
+}
+
 function supplierOrderOptionLabel(value) {
     const labels = {
         terrestre: 'Terrestre',
@@ -931,6 +1479,9 @@ function supplierOrderOptionLabel(value) {
         credito_45_dias: 'Credito 45 dias',
         credito_60_dias: 'Credito 60 dias',
         agencia: 'Agencia',
+        agencia_transporte: 'Agencia de transporte',
+        en_agencia: 'En agencia',
+        transporte: 'Transporte',
         recojo_almacen: 'Recojo de almacen',
         transportista_proveedor: 'Transportista del proveedor',
         efectivo: 'Efectivo',

@@ -11,6 +11,10 @@ return new class extends Migration
             ->where('status', 'draft')
             ->update(['status' => 'registered']);
 
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement(
             "ALTER TABLE supplier_purchase_orders MODIFY status VARCHAR(30) NOT NULL DEFAULT 'registered'"
         );
@@ -18,6 +22,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement(
             "ALTER TABLE supplier_purchase_orders MODIFY status VARCHAR(30) NOT NULL DEFAULT 'draft'"
         );

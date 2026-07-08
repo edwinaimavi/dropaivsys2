@@ -1,5 +1,7 @@
 let tableCustomerPurchaseOrder;
 let purchaseOrderItemIndex = 0;
+let currentCustomerOrderItemRow = null;
+let quickBrandReturnTarget = 'row';
 
 document.addEventListener('DOMContentLoaded', function () {
     $.ajaxSetup({
@@ -56,6 +58,43 @@ document.addEventListener('DOMContentLoaded', function () {
         applySelectedArticle($(this).closest('tr'));
     });
 
+    $(document).on('click', '.btnQuickCreateArticle', function () {
+        currentCustomerOrderItemRow = $(this).closest('tr');
+        resetQuickPurchaseOrderArticleForm();
+        $('#quickPurchaseOrderArticleModal').modal('show');
+    });
+
+    $(document).on('click', '.btnQuickCreateBrand', function () {
+        currentCustomerOrderItemRow = $(this).closest('tr');
+        quickBrandReturnTarget = 'row';
+        resetQuickPurchaseOrderBrandForm();
+        $('#quickPurchaseOrderBrandModal').modal('show');
+    });
+
+    $(document).on('submit', '#quickPurchaseOrderBrandForm', function (event) {
+        event.preventDefault();
+        saveQuickPurchaseOrderBrand(this);
+    });
+
+    $(document).on('submit', '#quickPurchaseOrderArticleForm', function (event) {
+        event.preventDefault();
+        saveQuickPurchaseOrderArticle(this);
+    });
+
+    $(document).on('input', '#quick_article_legal_name', function () {
+        syncQuickArticleNames('legal');
+    });
+
+    $(document).on('input', '#quick_article_commercial_name', function () {
+        syncQuickArticleNames('commercial');
+    });
+
+    $('#quickPurchaseOrderBrandModal, #quickPurchaseOrderArticleModal').on('hidden.bs.modal', function () {
+        if ($('#customerPurchaseOrderModal').hasClass('show')) {
+            $('body').addClass('modal-open');
+        }
+    });
+
     $(document).on('change', '#purchase_order_customer_id', function () {
         const customerId = $(this).val();
         const customerText = getPurchaseOrderSelectedText(
@@ -97,9 +136,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!quoteId) {
             Swal.fire({
-                icon: 'warning',
-                title: 'Seleccione una cotización',
-                text: 'Debe seleccionar una cotización para cargar sus ítems.'
+                icon: 'info',
+                title: 'Cotización opcional',
+                text: 'Seleccione una cotización para cargar datos automáticamente, o agregue artículos manualmente.'
             });
             return;
         }
@@ -537,6 +576,255 @@ function applySelectedArticle(row) {
     }
 }
 
+function resetQuickPurchaseOrderBrandForm() {
+    const form = $('#quickPurchaseOrderBrandForm');
+    form[0].reset();
+    clearQuickPurchaseOrderErrors('#quickPurchaseOrderBrandForm', '#quickPurchaseOrderBrandErrors');
+}
+
+function resetQuickPurchaseOrderArticleForm() {
+    const form = $('#quickPurchaseOrderArticleForm');
+    form[0].reset();
+    clearQuickPurchaseOrderErrors('#quickPurchaseOrderArticleForm', '#quickPurchaseOrderArticleErrors');
+    $('#quick_article_code').val('Cargando...');
+    $('#quick_article_code_type').val('SIGA/SISMED');
+
+    loadQuickArticleCode();
+}
+
+function saveQuickPurchaseOrderBrand(formElement) {
+    clearQuickPurchaseOrderErrors('#quickPurchaseOrderBrandForm', '#quickPurchaseOrderBrandErrors');
+
+    const button = $('#btnSaveQuickPurchaseOrderBrand');
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.quickStoreBrand,
+        type: 'POST',
+        data: new FormData(formElement),
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            const brand = response.data || {};
+            addBrandOptionToPurchaseOrderSelects(brand);
+
+            if (quickBrandReturnTarget === 'row' && currentCustomerOrderItemRow && currentCustomerOrderItemRow.length) {
+                currentCustomerOrderItemRow
+                    .find('.item-brand-id')
+                    .val(String(brand.id))
+                    .trigger('change.select2');
+            }
+
+            $('#quickPurchaseOrderBrandModal').modal('hide');
+
+            Swal.fire({
+                icon: 'success',
+                title: response.message || 'Marca registrada correctamente.',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2500
+            });
+        },
+        error: function (xhr) {
+            handleQuickPurchaseOrderError(
+                xhr,
+                '#quickPurchaseOrderBrandForm',
+                '#quickPurchaseOrderBrandErrors',
+                'No se pudo guardar la marca.'
+            );
+        },
+        complete: function () {
+            button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar marca');
+        }
+    });
+}
+
+function saveQuickPurchaseOrderArticle(formElement) {
+    clearQuickPurchaseOrderErrors('#quickPurchaseOrderArticleForm', '#quickPurchaseOrderArticleErrors');
+    normalizeQuickArticleNames();
+
+    const button = $('#btnSaveQuickPurchaseOrderArticle');
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.quickStoreArticle,
+        type: 'POST',
+        data: new FormData(formElement),
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            const article = response.data || {};
+            addArticleOptionToPurchaseOrderSelects(article);
+
+            if (currentCustomerOrderItemRow && currentCustomerOrderItemRow.length) {
+                applyQuickArticleToPurchaseOrderRow(currentCustomerOrderItemRow, article);
+            }
+
+            $('#quickPurchaseOrderArticleModal').modal('hide');
+
+            Swal.fire({
+                icon: 'success',
+                title: response.message || 'Artículo registrado correctamente.',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2500
+            });
+        },
+        error: function (xhr) {
+            handleQuickPurchaseOrderError(
+                xhr,
+                '#quickPurchaseOrderArticleForm',
+                '#quickPurchaseOrderArticleErrors',
+                'No se pudo guardar el artículo.'
+            );
+        },
+        complete: function () {
+            button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar artículo');
+        }
+    });
+}
+
+function addBrandOptionToPurchaseOrderSelects(brand) {
+    if (!brand.id) {
+        return;
+    }
+
+    const text = brand.name || brand.description || 'MARCA';
+    $('.item-brand-id').each(function () {
+        const select = $(this);
+
+        if (!select.find(`option[value="${brand.id}"]`).length) {
+            select.append(new Option(text, brand.id, false, false));
+        }
+    });
+}
+
+function addArticleOptionToPurchaseOrderSelects(article) {
+    if (!article.id) {
+        return;
+    }
+
+    const text = `${article.code || ''} | ${article.billing_name || article.name || ''}`.trim();
+    $('.item-article-picker').each(function () {
+        const select = $(this);
+        let option = select.find(`option[value="${article.id}"]`);
+
+        if (!option.length) {
+            option = $(new Option(text, article.id, false, false));
+            select.append(option);
+        }
+
+        option
+            .attr('data-code', article.code || '')
+            .attr('data-billing-name', article.billing_name || article.name || '')
+            .attr('data-unit-id', article.unit_id || '')
+            .attr('data-presentation-id', article.presentation_id || '')
+            .attr('data-brand-id', article.brand_id || '');
+    });
+}
+
+function applyQuickArticleToPurchaseOrderRow(row, article) {
+    row.find('.item-article-picker')
+        .val(String(article.id))
+        .trigger('change.select2');
+    row.find('.item-article-id').val(article.id || '');
+    row.find('.item-article-code').val(article.code || '');
+    row.find('.item-billing-name').val(article.billing_name || article.name || '');
+    calculatePurchaseOrderTotals();
+}
+
+function loadQuickArticleCode() {
+    $.get(window.routes.generateArticleCode)
+        .done(function (response) {
+            $('#quick_article_code').val(response.code || '');
+        })
+        .fail(function () {
+            $('#quick_article_code').val('');
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo generar el código del artículo.'
+            });
+        });
+}
+
+function normalizeQuickArticleNames() {
+    const legal = ($('#quick_article_legal_name').val() || '').trim();
+    const commercial = ($('#quick_article_commercial_name').val() || '').trim();
+    const billing = ($('#quick_article_billing_name').val() || '').trim();
+    const baseName = legal || commercial || billing;
+
+    if (!legal && baseName) {
+        $('#quick_article_legal_name').val(baseName);
+    }
+
+    if (!commercial && baseName) {
+        $('#quick_article_commercial_name').val(baseName);
+    }
+
+    if (!billing && baseName) {
+        $('#quick_article_billing_name').val(baseName);
+    }
+}
+
+function syncQuickArticleNames(source) {
+    const legal = ($('#quick_article_legal_name').val() || '').trim();
+    const commercial = ($('#quick_article_commercial_name').val() || '').trim();
+    const billing = ($('#quick_article_billing_name').val() || '').trim();
+
+    if (source === 'legal') {
+        if (!commercial) {
+            $('#quick_article_commercial_name').val(legal);
+        }
+
+        if (!billing) {
+            $('#quick_article_billing_name').val(legal);
+        }
+    }
+
+    if (source === 'commercial' && !billing) {
+        $('#quick_article_billing_name').val(commercial);
+    }
+}
+
+function clearQuickPurchaseOrderErrors(formSelector, errorSelector) {
+    $(formSelector).find('.is-invalid').removeClass('is-invalid');
+    $(formSelector).find('.invalid-feedback').text('');
+    $(errorSelector).addClass('d-none').empty();
+}
+
+function handleQuickPurchaseOrderError(xhr, formSelector, errorSelector, fallbackMessage) {
+    if (xhr.status === 422) {
+        const errors = xhr.responseJSON?.errors || {};
+        const messages = [];
+
+        Object.entries(errors).forEach(function ([field, fieldMessages]) {
+            const input = $(formSelector).find(`[name="${field}"]`);
+            const message = fieldMessages[0];
+
+            if (input.length) {
+                input.addClass('is-invalid');
+                input.closest('.form-group').find('.invalid-feedback').first().text(message);
+            }
+
+            messages.push(message);
+        });
+
+        $(errorSelector)
+            .removeClass('d-none')
+            .html(`<ul class="mb-0 pl-3">${messages.map(message => `<li>${escapePurchaseOrderHtml(message)}</li>`).join('')}</ul>`);
+        return;
+    }
+
+    Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: xhr.responseJSON?.message || fallbackMessage
+    });
+}
+
 function clearPurchaseOrderItemRows() {
     $('#purchaseOrderItemsTbody tr.purchase-order-item-row').each(function () {
         destroyPurchaseOrderRowSelect2($(this));
@@ -852,15 +1140,7 @@ function configurePurchaseOrderQuoteOptions(selectedQuoteId = null) {
     const quoteSelect = $('#purchase_order_quote_id');
 
     quoteSelect.find('option').each(function () {
-        const option = $(this);
-        const status = String(option.data('status') || '');
-        const isCurrentQuote = selectedQuoteId
-            && String(option.val()) === String(selectedQuoteId);
-
-        option.prop(
-            'disabled',
-            status === 'approved' && !isCurrentQuote
-        );
+        $(this).prop('disabled', false);
     });
 
     if (selectedQuoteId) {

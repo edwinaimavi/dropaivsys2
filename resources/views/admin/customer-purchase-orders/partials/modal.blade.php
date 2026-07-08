@@ -80,7 +80,7 @@
                                 <div class="alert border-0 shadow-sm mt-3 mb-0 text-left purchase-order-info-alert">
                                     <i class="fas fa-info-circle text-primary mr-1"></i>
                                     <span class="small">
-                                        Filtra una cotización y elimina los ítems que no fueron adjudicados.
+                                        Puede cargar una cotización o registrar la orden directa con artículos manuales.
                                     </span>
                                 </div>
                             </div>
@@ -184,6 +184,10 @@
                                                 </button>
                                             </div>
                                         </div>
+                                        <small class="text-muted d-block mt-1">
+                                            Seleccione una cotización si desea cargar los datos automáticamente.
+                                            También puede registrar la orden manualmente.
+                                        </small>
                                     </div>
 
                                     <div class="form-group col-md-4">
@@ -311,7 +315,7 @@
                                             Artículos adjudicados
                                         </h6>
                                         <small class="text-muted">
-                                            Conserva únicamente las líneas adjudicadas por el cliente
+                                            Cargue artículos desde una cotización o agréguelos manualmente
                                         </small>
                                     </div>
 
@@ -346,7 +350,7 @@
                                         <tr id="purchaseOrderItemsEmptyRow">
                                             <td colspan="13" class="text-center text-muted py-4">
                                                 <i class="fas fa-box-open d-block mb-2"></i>
-                                                Selecciona y filtra una cotización para cargar sus ítems.
+                                                Seleccione una cotización para cargar ítems o inserte artículos manualmente.
                                             </td>
                                         </tr>
                                     </tbody>
@@ -426,18 +430,26 @@
                                     name="items[__INDEX__][article_code]">
                                 <input type="hidden" class="item-billing-name"
                                     name="items[__INDEX__][billing_name_snapshot]">
-                                <select class="form-control form-control-sm item-article-picker js-purchase-order-row-select">
-                                    <option value="">Seleccione artículo</option>
-                                    @foreach ($articles as $article)
-                                        <option value="{{ $article->id }}" data-code="{{ $article->code }}"
-                                            data-billing-name="{{ $article->billing_name }}"
-                                            data-unit-id="{{ $article->unit_id }}"
-                                            data-presentation-id="{{ $article->presentation_id }}"
-                                            data-brand-id="{{ $article->brand_id }}">
-                                            {{ $article->code }} | {{ $article->billing_name }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                                <div class="input-group input-group-sm purchase-order-row-picker">
+                                    <select class="form-control form-control-sm item-article-picker js-purchase-order-row-select">
+                                        <option value="">Seleccione artículo</option>
+                                        @foreach ($articles as $article)
+                                            <option value="{{ $article->id }}" data-code="{{ $article->code }}"
+                                                data-billing-name="{{ $article->billing_name }}"
+                                                data-unit-id="{{ $article->unit_id }}"
+                                                data-presentation-id="{{ $article->presentation_id }}"
+                                                data-brand-id="{{ $article->brand_id }}">
+                                                {{ $article->code }} | {{ $article->billing_name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-primary btnQuickCreateArticle"
+                                            title="Nuevo artículo">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <input type="text" class="form-control form-control-sm item-note"
@@ -463,13 +475,21 @@
                                 </select>
                             </td>
                             <td>
-                                <select class="form-control form-control-sm item-brand-id js-purchase-order-row-select"
-                                    name="items[__INDEX__][brand_id]">
-                                    <option value="">Seleccione</option>
-                                    @foreach ($brands as $brand)
-                                        <option value="{{ $brand->id }}">{{ $brand->description }}</option>
-                                    @endforeach
-                                </select>
+                                <div class="input-group input-group-sm purchase-order-row-picker">
+                                    <select class="form-control form-control-sm item-brand-id js-purchase-order-row-select"
+                                        name="items[__INDEX__][brand_id]">
+                                        <option value="">Seleccione</option>
+                                        @foreach ($brands as $brand)
+                                            <option value="{{ $brand->id }}">{{ $brand->description }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-primary btnQuickCreateBrand"
+                                            title="Nueva marca">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <input type="text" class="form-control form-control-sm item-origin text-uppercase"
@@ -518,6 +538,140 @@
                     </template>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade purchase-order-quick-modal" id="quickPurchaseOrderBrandModal" tabindex="-1" role="dialog"
+    aria-labelledby="quickPurchaseOrderBrandModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickPurchaseOrderBrandForm" autocomplete="off">
+                <div class="modal-header bg-white border-0">
+                    <div>
+                        <h5 class="modal-title mb-0 font-weight-bold" id="quickPurchaseOrderBrandModalLabel">
+                            Nueva marca
+                        </h5>
+                        <small class="text-muted">Registre una marca sin cerrar la orden.</small>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="quickPurchaseOrderBrandErrors" class="alert alert-danger d-none"></div>
+                    <div class="form-group">
+                        <label>NOMBRE DE MARCA <span class="text-danger">*</span></label>
+                        <input type="text" id="quick_brand_description" name="description"
+                            class="form-control form-control-sm text-uppercase" required>
+                        <span class="invalid-feedback"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>OBSERVACIÓN</label>
+                        <textarea id="quick_brand_observation" name="observation"
+                            class="form-control form-control-sm text-uppercase" rows="2"></textarea>
+                    </div>
+                    <input type="hidden" name="status" value="ACTIVE">
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSaveQuickPurchaseOrderBrand">
+                        <i class="fas fa-save mr-1"></i>
+                        Guardar marca
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade purchase-order-quick-modal" id="quickPurchaseOrderArticleModal" tabindex="-1" role="dialog"
+    aria-labelledby="quickPurchaseOrderArticleModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-md modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickPurchaseOrderArticleForm" autocomplete="off">
+                <div class="modal-header bg-white border-0">
+                    <div>
+                        <h5 class="modal-title mb-0 font-weight-bold" id="quickPurchaseOrderArticleModalLabel">
+                            Nuevo artículo
+                        </h5>
+                        <small class="text-muted">Cree el artículo y selecciónelo automáticamente en la fila actual.</small>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body bg-light">
+                    <div id="quickPurchaseOrderArticleErrors" class="alert alert-danger d-none"></div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-barcode mr-1 text-primary"></i>
+                            Identificación
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label>CÓDIGO</label>
+                                    <input type="text" id="quick_article_code" name="code"
+                                        class="form-control form-control-sm text-uppercase" placeholder="Cargando..." readonly>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>TIPO CÓDIGO</label>
+                                    <select id="quick_article_code_type" name="code_type" class="form-control form-control-sm">
+                                        <option value="SIGA/SISMED">SIGA / SISMED</option>
+                                        <option value="SAP/IETSI">SAP / IETSI</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>CÓDIGO INSTITUCIONAL</label>
+                                    <input type="text" id="quick_article_institutional_code" name="institutional_code"
+                                        class="form-control form-control-sm text-uppercase" maxlength="100">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-box-open mr-1 text-info"></i>
+                            Nombres del artículo
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-12">
+                                    <label>NOMBRE LEGAL <span class="text-danger">*</span></label>
+                                    <input type="text" id="quick_article_legal_name" name="legal_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-12">
+                                    <label>NOMBRE COMERCIAL</label>
+                                    <input type="text" id="quick_article_commercial_name" name="commercial_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-12 mb-0">
+                                    <label>NOMBRE FACTURACIÓN <span class="text-danger">*</span></label>
+                                    <input type="text" id="quick_article_billing_name" name="billing_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSaveQuickPurchaseOrderArticle">
+                        <i class="fas fa-save mr-1"></i>
+                        Guardar artículo
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -667,6 +821,23 @@
         min-width: 290px;
     }
 
+    #customerPurchaseOrderModal .purchase-order-row-picker {
+        flex-wrap: nowrap;
+        min-width: 330px;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-row-picker .select2-container {
+        flex: 1 1 auto;
+        width: 1% !important;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-row-picker .btn {
+        height: 31px;
+        min-width: 34px;
+        padding-left: .45rem;
+        padding-right: .45rem;
+    }
+
     #customerPurchaseOrderModal #purchaseOrderItemsTable .item-note {
         min-width: 90px;
     }
@@ -745,6 +916,41 @@
         padding-right: 18px !important;
         font-size: 12px;
         line-height: 29px !important;
+    }
+
+    .purchase-order-quick-modal {
+        z-index: 1065;
+    }
+
+    .purchase-order-quick-modal + .modal-backdrop {
+        z-index: 1060;
+    }
+
+    .purchase-order-quick-modal .modal-content {
+        border-radius: 12px;
+    }
+
+    .purchase-order-quick-modal .modal-header {
+        background: linear-gradient(90deg, #f4f9ff, #eaf3ff) !important;
+        border-bottom: 1px solid #b8d7ff !important;
+    }
+
+    .purchase-order-quick-modal label {
+        margin-bottom: 2px;
+        color: #495057;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .purchase-order-quick-modal .form-control,
+    .purchase-order-quick-modal .custom-select {
+        height: 31px;
+        font-size: 12px;
+    }
+
+    .purchase-order-quick-modal textarea.form-control {
+        min-height: 58px;
+        height: auto;
     }
 
     @media (max-width: 991px) {

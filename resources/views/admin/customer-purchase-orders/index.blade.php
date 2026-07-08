@@ -11,7 +11,7 @@
                     Órdenes de Compra de Clientes
                 </h1>
                 <small class="text-muted">
-                    Gestión de pedidos adjudicados desde cotizaciones emitidas.
+                    Gestión de pedidos adjudicados desde cotizaciones o registrados directamente.
                 </small>
             </div>
 
@@ -118,7 +118,10 @@
             customerPurchaseOrderShow: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderGenerateCode: "{{ route('admin.customer-purchase-orders.generateCode') }}",
             customerPurchaseOrderQuoteItems: "{{ url('admin/customer-purchase-orders/quote/:id/items') }}",
-            customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}"
+            customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}",
+            quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
+            quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
+            generateArticleCode: "{{ route('admin.articles.generateCode') }}"
         };
     </script>
 

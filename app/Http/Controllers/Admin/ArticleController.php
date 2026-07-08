@@ -28,7 +28,7 @@ class ArticleController extends Controller
     public function __construct()
     {
         $this->middleware('can:admin.articles.index')->only(['index', 'list', 'generateCode', 'getSubcategories', 'listPicker']);
-        $this->middleware('can:admin.articles.store')->only(['store']);
+        $this->middleware('can:admin.articles.store')->only(['store', 'quickStore']);
         $this->middleware('can:admin.articles.update')->only(['update']);
         $this->middleware('can:admin.articles.destroy')->only(['destroy']);
         $this->middleware('can:admin.articles.show')->only(['show', 'showData']);
@@ -489,6 +489,127 @@ class ArticleController extends Controller
         }
     }
 
+    public function quickStore(Request $request)
+    {
+        $baseName = $this->normalizeArticleText(
+            $request->input('legal_name')
+                ?: $request->input('billing_name')
+                ?: $request->input('commercial_name')
+                ?: $request->input('name')
+        );
+
+        $request->merge([
+            'code' => $request->input('code') ?: $this->nextArticleCode(),
+            'code_type' => $request->input('code_type') ?: 'SIGA/SISMED',
+            'legal_name' => $request->input('legal_name') ?: $baseName,
+            'commercial_name' => $request->input('commercial_name') ?: $baseName,
+            'billing_name' => $request->input('billing_name') ?: $request->input('commercial_name') ?: $baseName,
+            'status' => $request->input('status') ?: 'ACTIVE',
+            'is_taxable' => $request->input('is_taxable', 1),
+            'has_batch' => $request->input('has_batch', 0),
+            'has_expiration' => $request->input('has_expiration', 0),
+            'minimum_stock' => $request->input('minimum_stock', 0),
+        ]);
+
+        $code = mb_strtoupper((string) $request->input('code'), 'UTF-8');
+        if (Article::withTrashed()->where('code', $code)->exists()) {
+            $code = $this->nextArticleCode();
+        }
+
+        $request->merge(['code' => $code]);
+
+        $this->normalizeArticleNames($request);
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:20', 'unique:articles,code'],
+            'code_type' => ['nullable', 'in:SIGA/SISMED,SAP/IETSI'],
+            'institutional_code' => ['nullable', 'string', 'max:100'],
+            'legal_name' => ['required', 'max:255'],
+            'commercial_name' => ['nullable', 'max:255'],
+            'billing_name' => ['required', 'max:255'],
+        ], [
+            'code.required' => 'El código del artículo es obligatorio.',
+            'code.unique' => 'El código del artículo ya existe.',
+            'code_type.in' => 'El tipo de código seleccionado no es válido.',
+            'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
+            'billing_name.required' => 'El nombre de facturación es obligatorio.',
+            'legal_name.required' => 'Debe ingresar el nombre legal o el nombre de facturación.',
+        ]);
+
+        $this->validateDuplicateArticleName($validated);
+
+        $defaultCategory = Category::where('status', 'ACTIVE')
+            ->orderBy('id')
+            ->first();
+        $defaultUnit = Unit::where('status', 'ACTIVE')
+            ->orderBy('id')
+            ->first();
+
+        if (!$defaultCategory || !$defaultUnit) {
+            throw ValidationException::withMessages([
+                'article' => 'Debe registrar al menos una categoría y una unidad activas antes de crear artículos rápidos.',
+            ]);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $validated['code'] = mb_strtoupper($validated['code'], 'UTF-8');
+            $validated['institutional_code'] = !empty($validated['institutional_code'])
+                ? mb_strtoupper($validated['institutional_code'], 'UTF-8')
+                : null;
+            $validated['category_id'] = $defaultCategory->id;
+            $validated['subcategory_id'] = null;
+            $validated['presentation_id'] = null;
+            $validated['unit_id'] = $defaultUnit->id;
+            $validated['brand_id'] = null;
+            $validated['status'] = 'ACTIVE';
+            $validated['is_taxable'] = 1;
+            $validated['has_batch'] = 0;
+            $validated['has_expiration'] = 0;
+            $validated['minimum_stock'] = 0;
+            $validated['observation'] = null;
+            $validated['created_by'] = Auth::id();
+            $validated['updated_by'] = Auth::id();
+
+            $article = Article::create($validated)->fresh([
+                'unit',
+                'presentation',
+                'brand',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success',
+                'message' => 'Artículo registrado correctamente.',
+                'data' => [
+                    'id' => $article->id,
+                    'code' => $article->code,
+                    'code_type' => $article->code_type,
+                    'institutional_code' => $article->institutional_code,
+                    'name' => $article->billing_name,
+                    'legal_name' => $article->legal_name,
+                    'commercial_name' => $article->commercial_name,
+                    'billing_name' => $article->billing_name,
+                ],
+            ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Error quick creating article: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'No se pudo guardar el artículo.',
+            ], 500);
+        }
+    }
+
     /**
      * Display the specified resource.
      */
@@ -917,7 +1038,7 @@ class ArticleController extends Controller
         }
 
         $query = Article::query()
-            ->where('brand_id', $validated['brand_id'])
+            ->where('brand_id', $validated['brand_id'] ?? null)
             ->where('status', 'ACTIVE');
 
         if ($ignoreId) {
@@ -1019,6 +1140,16 @@ class ArticleController extends Controller
      */
     public function generateCode()
     {
+        return response()->json([
+
+            'code' =>
+            $this->nextArticleCode()
+
+        ]);
+    }
+
+    private function nextArticleCode(): string
+    {
         $lastArticle = Article::withTrashed()
             ->orderBy('id', 'desc')
             ->first();
@@ -1027,17 +1158,18 @@ class ArticleController extends Controller
             ? $lastArticle->id + 1
             : 1;
 
-        return response()->json([
-
-            'code' =>
-            'ART' . str_pad(
+        do {
+            $code = 'ART' . str_pad(
                 $nextNumber,
                 5,
                 '0',
                 STR_PAD_LEFT
-            )
+            );
 
-        ]);
+            $nextNumber++;
+        } while (Article::withTrashed()->where('code', $code)->exists());
+
+        return $code;
     }
 
     public function getSubcategories($categoryId)

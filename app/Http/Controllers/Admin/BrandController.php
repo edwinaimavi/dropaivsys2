@@ -21,7 +21,7 @@ class BrandController extends Controller
     public function __construct()
     {
         $this->middleware('can:admin.brands.index')->only(['index', 'list', 'generateCode', 'search']);
-        $this->middleware('can:admin.brands.store')->only(['store']);
+        $this->middleware('can:admin.brands.store')->only(['store', 'quickStore']);
         $this->middleware('can:admin.brands.update')->only(['update']);
         $this->middleware('can:admin.brands.destroy')->only(['destroy']);
     }
@@ -212,6 +212,69 @@ class BrandController extends Controller
 
                 'error' => $e->getMessage()
 
+            ], 500);
+        }
+    }
+
+    public function quickStore(Request $request)
+    {
+        $request->merge([
+            'description' => mb_strtoupper(
+                trim((string) ($request->input('description') ?: $request->input('name'))),
+                'UTF-8'
+            ),
+            'status' => $request->input('status') ?: 'ACTIVE',
+        ]);
+
+        $validated = $request->validate([
+            'description' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('brands', 'description')->whereNull('deleted_at'),
+            ],
+            'observation' => ['nullable', 'string'],
+            'status' => ['required', 'in:ACTIVE,INACTIVE'],
+        ], [
+            'description.required' => 'El nombre de la marca es obligatorio.',
+            'description.unique' => 'La marca ya existe.',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $validated['code'] = $this->nextBrandCode();
+            $validated['description'] = mb_strtoupper($validated['description'], 'UTF-8');
+            $validated['observation'] = !empty($validated['observation'])
+                ? mb_strtoupper($validated['observation'], 'UTF-8')
+                : null;
+            $validated['created_by'] = Auth::id();
+            $validated['updated_by'] = Auth::id();
+
+            $brand = Brand::create($validated);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success',
+                'message' => 'Marca registrada correctamente.',
+                'data' => [
+                    'id' => $brand->id,
+                    'name' => $brand->description,
+                    'description' => $brand->description,
+                    'status' => $brand->status,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Error quick creating brand: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'No se pudo guardar la marca.',
             ], 500);
         }
     }
@@ -423,6 +486,13 @@ class BrandController extends Controller
 
     public function generateCode()
     {
+        return response()->json([
+            'code' => $this->nextBrandCode()
+        ]);
+    }
+
+    private function nextBrandCode(): string
+    {
         $lastBrand = Brand::withTrashed()
             ->orderBy('id', 'desc')
             ->first();
@@ -431,9 +501,7 @@ class BrandController extends Controller
             ? $lastBrand->id + 1
             : 1;
 
-        return response()->json([
-            'code' => 'BRA' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT)
-        ]);
+        return 'BRA' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
     }
 
 

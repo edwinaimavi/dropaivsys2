@@ -371,6 +371,13 @@ return [
                     "can" => 'admin.suppliers.index'
                 ],
                 [
+                    'text' => 'Agencias de Envio',
+                    'icon' => 'fas fa-shipping-fast',
+                    'icon_color' => 'success',
+                    'url' => 'admin/shipping-agencies',
+                    "can" => 'admin.shipping-agencies.index'
+                ],
+                [
                     'text' => 'Marcas',
                     'icon' => 'fas  fa-tags',
                     'icon_color' => 'secondary',

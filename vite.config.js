@@ -17,6 +17,7 @@ export default defineConfig({
                 'resources/js/pages/presentation.js',
                 'resources/js/pages/quote.js',
                 'resources/js/pages/supplier.js',
+                'resources/js/pages/shipping-agency.js',
                 'resources/js/pages/unit.js',
                 'resources/js/pages/supplier-purchase-order.js',
                 'resources/js/pages/warehouse-entry.js',

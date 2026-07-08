@@ -111,6 +111,88 @@
                             </div>
                         </div>
 
+                        <div class="card border-0 shadow-sm mb-3 supplier-order-view-card" id="vspo_shipping_agency_card">
+                            <div class="card-header bg-white border-0 pb-0">
+                                <h6 class="mb-0 font-weight-bold text-dark">
+                                    <i class="fas fa-shipping-fast text-success mr-1"></i>
+                                    Datos de agencia de env&iacute;o
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row supplier-order-view-grid">
+                                    <div class="col-md-4">
+                                        <small>Agencia</small>
+                                        <strong id="vspo_shipping_agency">-</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small>Sede / direccion</small>
+                                        <strong id="vspo_shipping_branch">-</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small>Contacto</small>
+                                        <strong id="vspo_shipping_contact">-</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small>Telefono / WhatsApp</small>
+                                        <strong id="vspo_shipping_contact_phone">-</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small>Correo contacto</small>
+                                        <strong id="vspo_shipping_contact_email">-</strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small>Referencia</small>
+                                        <strong id="vspo_shipping_reference">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-0 shadow-sm mb-3 supplier-order-view-card">
+                            <div class="card-header bg-white border-0 pb-0">
+                                <h6 class="mb-0 font-weight-bold text-dark">
+                                    <i class="fas fa-file-signature text-success mr-1"></i>
+                                    Datos internos para PDF
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row supplier-order-view-grid">
+                                    <div class="col-md-3">
+                                        <small>Solicitado por</small>
+                                        <strong id="vspo_requested_by">-</strong>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small>Departamento</small>
+                                        <strong id="vspo_request_department">-</strong>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small>Autorizado por</small>
+                                        <strong id="vspo_authorized_by_name">-</strong>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small>Cargo autorizado</small>
+                                        <strong id="vspo_authorized_by_position">-</strong>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small>Delivery</small>
+                                        <strong id="vspo_delivery_text">-</strong>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small>Terminos de pago</small>
+                                        <strong id="vspo_payment_terms_text">-</strong>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small>Instrucciones</small>
+                                        <strong id="vspo_purchase_instructions">-</strong>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small>Nota importante</small>
+                                        <strong id="vspo_important_note">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="card border-0 shadow-sm mb-3 supplier-order-view-card">
                             <div class="card-header bg-white border-0 pb-0">
                                 <h6 class="mb-0 font-weight-bold text-dark">

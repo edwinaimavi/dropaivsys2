@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
@@ -13,6 +14,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\Presentation;
 use App\Models\Quote;
 use App\Models\QuoteItem;
+use App\Models\Subcategory;
 use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -84,6 +86,16 @@ class CustomerPurchaseOrderController extends Controller
             ->orderBy('description')
             ->get();
 
+        $categories = Category::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('description')
+            ->get();
+
+        $subcategories = Subcategory::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('description')
+            ->get();
+
         $articles = Article::query()
             ->where('status', 'ACTIVE')
             ->orderBy('billing_name')
@@ -104,6 +116,8 @@ class CustomerPurchaseOrderController extends Controller
             'units',
             'presentations',
             'brands',
+            'categories',
+            'subcategories',
             'articles'
         ));
     }

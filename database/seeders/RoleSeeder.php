@@ -37,7 +37,9 @@ class RoleSeeder extends Seeder
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $adminRole->syncPermissions(Permission::where('guard_name', 'web')->get());
+        Permission::where('guard_name', 'web')
+            ->get()
+            ->each(fn (Permission $permission) => $adminRole->givePermissionTo($permission));
     }
 
     private function permissions(): array
@@ -89,6 +91,20 @@ class RoleSeeder extends Seeder
             'admin.supplier-accounts.store' => 'Crear cuentas bancarias de proveedores',
             'admin.supplier-accounts.update' => 'Actualizar cuentas bancarias de proveedores',
             'admin.supplier-accounts.destroy' => 'Eliminar cuentas bancarias de proveedores',
+
+            'admin.shipping-agencies.index' => 'Ver agencias de envio',
+            'admin.shipping-agencies.store' => 'Crear agencias de envio',
+            'admin.shipping-agencies.update' => 'Actualizar agencias de envio',
+            'admin.shipping-agencies.destroy' => 'Eliminar agencias de envio',
+            'admin.shipping-agencies.show' => 'Ver detalle de agencias de envio',
+            'admin.shipping-agencies.branches' => 'Ver sedes de agencias de envio',
+            'admin.shipping-agencies.contacts' => 'Ver contactos de agencias de envio',
+            'admin.shipping-agency-branches.store' => 'Crear sedes de agencias de envio',
+            'admin.shipping-agency-branches.update' => 'Actualizar sedes de agencias de envio',
+            'admin.shipping-agency-branches.destroy' => 'Eliminar sedes de agencias de envio',
+            'admin.shipping-agency-contacts.store' => 'Crear contactos de agencias de envio',
+            'admin.shipping-agency-contacts.update' => 'Actualizar contactos de agencias de envio',
+            'admin.shipping-agency-contacts.destroy' => 'Eliminar contactos de agencias de envio',
 
             'admin.brands.index' => 'Ver marcas',
             'admin.brands.store' => 'Crear marcas',

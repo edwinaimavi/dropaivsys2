@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('subtitle', '&Oacute;rdenes de Compra a Proveedores')
+@section('subtitle', 'Órdenes de Compra a Proveedores')
 
 @section('header')
     <div class="container-fluid">
@@ -158,7 +158,10 @@
             supplierPurchaseOrderShow: "{{ url('admin/supplier-purchase-orders') }}",
             supplierPurchaseOrderGenerateCode: "{{ route('admin.supplier-purchase-orders.generateCode') }}",
             supplierPurchaseOrderSupplierAccounts: "{{ url('admin/supplier-purchase-orders/supplier/:id/accounts') }}",
-            supplierPurchaseOrderLoadCustomerItems: "{{ route('admin.supplier-purchase-orders.loadCustomerOrderItems') }}"
+            supplierPurchaseOrderLoadCustomerItems: "{{ route('admin.supplier-purchase-orders.customerOrderItems') }}",
+            supplierOrderShippingAgencyBranches: "{{ url('admin/shipping-agencies/:id/branches') }}",
+            supplierOrderShippingAgencyContacts: "{{ url('admin/shipping-agencies/:id/contacts') }}",
+            supplierOrderShippingBranchContacts: "{{ url('admin/shipping-agency-branches/:id/contacts') }}"
         });
     </script>
 

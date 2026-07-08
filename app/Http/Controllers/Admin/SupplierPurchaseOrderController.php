@@ -11,6 +11,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\CustomerPurchaseOrderItem;
 use App\Models\Document;
 use App\Models\Presentation;
+use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierAccount;
 use App\Models\SupplierPurchaseOrder;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
@@ -62,7 +64,7 @@ class SupplierPurchaseOrderController extends Controller
             ->get(['id', 'business_name', 'short_name', 'ruc', 'payment_condition']);
 
         $supplierAccounts = SupplierAccount::query()
-            ->with('bank:id,description', 'currency:id,code')
+            ->with('bank:id,description,short_name', 'currency:id,code')
             ->where('status', 'ACTIVE')
             ->orderBy('account_number')
             ->get();
@@ -114,6 +116,11 @@ class SupplierPurchaseOrderController extends Controller
             ->limit(3000)
             ->get();
 
+        $shippingAgencies = ShippingAgency::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('business_name')
+            ->get(['id', 'code', 'ruc', 'business_name', 'trade_name']);
+
         return view('admin.supplier-purchase-orders.index', compact(
             'companies',
             'suppliers',
@@ -124,7 +131,8 @@ class SupplierPurchaseOrderController extends Controller
             'units',
             'presentations',
             'brands',
-            'ubigeos'
+            'ubigeos',
+            'shippingAgencies'
         ));
     }
 
@@ -206,17 +214,41 @@ class SupplierPurchaseOrderController extends Controller
             ->make(true);
     }
 
-    public function generateCode()
+    public function generateCode(Request $request)
     {
+        $supplierAccountId = $request->input('supplier_account_id');
+
+        if (!$supplierAccountId) {
+            return response()->json([
+                'code' => '',
+                'message' => 'Seleccione una cuenta bancaria para generar el numero de orden.',
+            ]);
+        }
+
+        $account = SupplierAccount::query()
+            ->with('bank')
+            ->find($supplierAccountId);
+
+        if (!$account) {
+            return response()->json([
+                'message' => 'La cuenta bancaria seleccionada no existe.',
+            ], 422);
+        }
+
+        $sequence = $this->nextPurchaseOrderSequence($account);
+
         return response()->json([
-            'code' => $this->nextCode(),
+            'code' => $sequence['code'],
+            'sequence' => $sequence['sequence'],
+            'year' => $sequence['year'],
+            'bank_code' => $sequence['bank_code'],
         ]);
     }
 
     public function supplierAccounts(Supplier $supplier)
     {
         $accounts = $supplier->accounts()
-            ->with('bank:id,description', 'currency:id,code')
+            ->with('bank:id,description,short_name', 'currency:id,code')
             ->where('status', 'ACTIVE')
             ->orderBy('account_number')
             ->get();
@@ -241,6 +273,7 @@ class SupplierPurchaseOrderController extends Controller
         $validated = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'customer_purchase_order_ids' => ['required', 'array', 'min:1'],
+            'supplier_purchase_order_id' => ['nullable', 'exists:supplier_purchase_orders,id'],
             'customer_purchase_order_ids.*' => [
                 'distinct',
                 Rule::exists('customer_purchase_orders', 'id')
@@ -261,7 +294,8 @@ class SupplierPurchaseOrderController extends Controller
 
         return $this->customerPurchaseOrderItemsResponse(
             $orders,
-            (int) $validated['supplier_id']
+            (int) $validated['supplier_id'],
+            $validated['supplier_purchase_order_id'] ?? null
         );
     }
 
@@ -283,6 +317,9 @@ class SupplierPurchaseOrderController extends Controller
             'quote',
             'marketStudy',
             'destinationUbigeo',
+            'shippingAgency',
+            'shippingAgencyBranch',
+            'shippingAgencyContact',
             'creator',
             'updater',
             'documents',
@@ -344,7 +381,7 @@ class SupplierPurchaseOrderController extends Controller
             'company_id' => ['required', 'exists:companies,id'],
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'supplier_account_id' => [
-                'nullable',
+                'required',
                 Rule::exists('supplier_accounts', 'id')
                     ->where('supplier_id', $request->input('supplier_id')),
             ],
@@ -360,15 +397,40 @@ class SupplierPurchaseOrderController extends Controller
             'market_study_id' => ['nullable', 'exists:market_studies,id'],
             'order_type' => ['nullable', Rule::in(['articles', 'services'])],
             'payment_condition' => ['nullable', Rule::in($this->paymentConditionOptions())],
-            'delivery_type' => ['nullable', Rule::in($this->deliveryTypeOptions())],
+            'delivery_type' => ['required', Rule::in($this->deliveryTypeOptions())],
             'transport_type' => ['nullable', Rule::in($this->transportTypeOptions())],
             'shipping_address' => ['nullable', 'string'],
+            'shipping_agency_id' => [
+                Rule::requiredIf(fn () => $this->deliveryRequiresShippingAgency($request->input('delivery_type'))),
+                'nullable',
+                Rule::exists('shipping_agencies', 'id')->where('status', 'ACTIVE'),
+            ],
+            'shipping_agency_branch_id' => [
+                Rule::requiredIf(fn () => $this->deliveryRequiresShippingAgency($request->input('delivery_type'))),
+                'nullable',
+                Rule::exists('shipping_agency_branches', 'id')
+                    ->where('shipping_agency_id', $request->input('shipping_agency_id'))
+                    ->where('status', 'ACTIVE'),
+            ],
+            'shipping_agency_contact_id' => [
+                'nullable',
+                Rule::exists('shipping_agency_contacts', 'id')
+                    ->where('shipping_agency_id', $request->input('shipping_agency_id'))
+                    ->where('status', 'ACTIVE'),
+            ],
+            'shipping_reference' => ['nullable', 'string', 'max:255'],
             'destination_ubigeo_id' => ['nullable', 'exists:ubigeos,id'],
             'destination_text' => ['nullable', 'string', 'max:255'],
             'payment_method' => ['nullable', Rule::in($this->paymentMethodOptions())],
             'document_type' => ['nullable', Rule::in($this->documentTypeOptions())],
             'affect_igv' => ['nullable', 'boolean'],
             'observations' => ['nullable', 'string'],
+            'request_department' => ['nullable', 'string', 'max:255'],
+            'authorized_by_name' => ['nullable', 'string', 'max:255'],
+            'authorized_by_position' => ['nullable', 'string', 'max:255'],
+            'delivery_text' => ['nullable', 'string', 'max:255'],
+            'purchase_instructions' => ['nullable', 'string'],
+            'important_note' => ['nullable', 'string'],
             'status' => ['nullable', Rule::in($this->statusValues())],
             'items' => ['required', 'array', 'min:1'],
             'items.*.article_id' => ['required', 'exists:articles,id'],
@@ -391,7 +453,45 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.status' => ['nullable', 'string', 'max:30'],
+        ], [
+            'company_id.required' => 'La empresa es obligatoria.',
+            'supplier_id.required' => 'El proveedor es obligatorio.',
+            'supplier_account_id.required' => 'Debe seleccionar una cuenta bancaria para generar el numero de orden.',
+            'supplier_account_id.exists' => 'La cuenta bancaria seleccionada no pertenece al proveedor.',
+            'currency_id.required' => 'La moneda es obligatoria.',
+            'customer_purchase_order_ids.required' => 'Debe seleccionar al menos una orden de cliente.',
+            'customer_purchase_order_ids.min' => 'Debe seleccionar al menos una orden de cliente.',
+            'delivery_type.required' => 'El tipo de entrega es obligatorio.',
+            'shipping_agency_id.required' => 'Debe seleccionar una agencia de envio.',
+            'shipping_agency_id.exists' => 'No se pudo cargar la agencia de envio seleccionada.',
+            'shipping_agency_branch_id.required' => 'Debe seleccionar una sede de agencia.',
+            'shipping_agency_branch_id.exists' => 'La sede seleccionada no pertenece a la agencia de envio.',
+            'shipping_agency_contact_id.exists' => 'El contacto seleccionado no pertenece a la agencia de envio.',
+            'items.required' => 'Debe ingresar al menos un articulo.',
+            'items.min' => 'Debe ingresar al menos un articulo.',
+            'items.*.article_id.required' => 'Debe seleccionar un articulo.',
+            'items.*.billing_name_snapshot.required' => 'La descripcion del articulo es obligatoria.',
+            'items.*.quantity.required' => 'La cantidad es obligatoria.',
+            'items.*.quantity.min' => 'La cantidad debe ser mayor a cero.',
+            'items.*.unit_price.required' => 'El precio unitario es obligatorio.',
+            'items.*.unit_price.min' => 'El precio debe ser mayor o igual a cero.',
         ]);
+
+        if (! empty($validated['shipping_agency_contact_id'])) {
+            $contactMatchesBranch = DB::table('shipping_agency_contacts')
+                ->where('id', $validated['shipping_agency_contact_id'])
+                ->where(function ($query) use ($validated) {
+                    $query->whereNull('shipping_agency_branch_id')
+                        ->orWhere('shipping_agency_branch_id', $validated['shipping_agency_branch_id'] ?? null);
+                })
+                ->exists();
+
+            if (! $contactMatchesBranch) {
+                throw ValidationException::withMessages([
+                    'shipping_agency_contact_id' => 'El contacto seleccionado no pertenece a la sede de agencia.',
+                ]);
+            }
+        }
 
         $generatedPdfPath = null;
         $generatedPdfUrl = null;
@@ -421,8 +521,16 @@ class SupplierPurchaseOrderController extends Controller
                     $customerOrderIds,
                     $validated['items']
                 );
+                $this->validateCustomerOrderItemPendingQuantities(
+                    $validated['items'],
+                    $order?->id
+                );
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
+                $isAgencyDelivery = $this->deliveryRequiresShippingAgency($validated['delivery_type'] ?? null);
+                $supplierAccount = SupplierAccount::query()
+                    ->with('bank')
+                    ->findOrFail($validated['supplier_account_id']);
 
                 $orderData = [
                     'company_id' => $validated['company_id'],
@@ -439,6 +547,12 @@ class SupplierPurchaseOrderController extends Controller
                     'shipping_address' => $this->upperOrNull(
                         $validated['shipping_address'] ?? null
                     ),
+                    'shipping_agency_id' => $isAgencyDelivery ? ($validated['shipping_agency_id'] ?? null) : null,
+                    'shipping_agency_branch_id' => $isAgencyDelivery ? ($validated['shipping_agency_branch_id'] ?? null) : null,
+                    'shipping_agency_contact_id' => $isAgencyDelivery ? ($validated['shipping_agency_contact_id'] ?? null) : null,
+                    'shipping_reference' => $isAgencyDelivery
+                        ? $this->upperOrNull($validated['shipping_reference'] ?? null)
+                        : null,
                     'destination_ubigeo_id' => $validated['destination_ubigeo_id'] ?? null,
                     'destination_text' => $this->upperOrNull(
                         $validated['destination_text'] ?? null
@@ -447,6 +561,16 @@ class SupplierPurchaseOrderController extends Controller
                     'document_type' => $validated['document_type'] ?? null,
                     'affect_igv' => $affectIgv,
                     'observations' => $this->upperOrNull($validated['observations'] ?? null),
+                    'request_department' => $this->upperOrNull($validated['request_department'] ?? null),
+                    'authorized_by_name' => $this->upperOrNull($validated['authorized_by_name'] ?? null),
+                    'authorized_by_position' => $this->upperOrNull($validated['authorized_by_position'] ?? null),
+                    'delivery_text' => $this->upperOrNull($validated['delivery_text'] ?? null),
+                    'purchase_instructions' => $this->buildPurchaseInstructionsText(
+                        $supplierAccount,
+                        $validated['destination_text'] ?? null,
+                        $validated['destination_ubigeo_id'] ?? null
+                    ),
+                    'important_note' => $this->upperOrNull($validated['important_note'] ?? null),
                     'subtotal' => $totals['subtotal'],
                     'igv' => $totals['igv'],
                     'grand_total' => $totals['grand_total'],
@@ -464,7 +588,11 @@ class SupplierPurchaseOrderController extends Controller
                     $order->update($orderData);
                     $order->items()->delete();
                 } else {
-                    $orderData['code'] = $this->nextCode();
+                    $sequence = $this->nextPurchaseOrderSequence($supplierAccount);
+                    $orderData['code'] = $sequence['code'];
+                    $orderData['purchase_order_sequence'] = $sequence['sequence'];
+                    $orderData['purchase_order_year'] = $sequence['year'];
+                    $orderData['purchase_order_bank_code'] = $sequence['bank_code'];
                     $orderData['created_by'] = Auth::id();
                     $order = SupplierPurchaseOrder::create($orderData);
                 }
@@ -492,6 +620,11 @@ class SupplierPurchaseOrderController extends Controller
                         'supplierAccount.currency',
                         'currency',
                         'destinationUbigeo',
+                        'shippingAgency',
+                        'shippingAgencyBranch',
+                        'shippingAgencyContact',
+                        'creator',
+                        'updater',
                         'customerPurchaseOrders.customer',
                         'items.unit',
                         'items.presentation',
@@ -587,7 +720,11 @@ class SupplierPurchaseOrderController extends Controller
         ];
     }
 
-    private function customerPurchaseOrderItemsResponse($orders, ?int $supplierId = null)
+    private function customerPurchaseOrderItemsResponse(
+        $orders,
+        ?int $supplierId = null,
+        $supplierPurchaseOrderId = null
+    )
     {
         $orders->each(function (CustomerPurchaseOrder $order) {
             $order->load([
@@ -604,6 +741,13 @@ class SupplierPurchaseOrderController extends Controller
         $awardMap = $supplierId
             ? $this->awardedQuoteItemsForSupplier($orders, $supplierId)
             : collect();
+        $purchaseProgress = $this->customerOrderItemPurchaseProgress(
+            $orders
+                ->flatMap(fn (CustomerPurchaseOrder $order) => $order->items)
+                ->pluck('id')
+                ->all(),
+            $supplierPurchaseOrderId
+        );
 
         $items = $orders->flatMap(function (CustomerPurchaseOrder $order) {
             $customerName = $order->customer?->business_name
@@ -622,7 +766,7 @@ class SupplierPurchaseOrderController extends Controller
                 ];
             });
         })
-            ->filter(function (array $row) use ($awardMap, $supplierId) {
+            ->filter(function (array $row) use ($awardMap, $supplierId, $purchaseProgress) {
                 /** @var CustomerPurchaseOrderItem $item */
                 $item = $row['item'];
 
@@ -637,10 +781,13 @@ class SupplierPurchaseOrderController extends Controller
                 $marketStudyItemId = $item->market_study_item_id
                     ?? $item->quoteItem?->market_study_item_id;
 
-                return $marketStudyItemId
-                    && $awardMap->has((int) $marketStudyItemId);
+                if ($marketStudyItemId && ! $awardMap->has((int) $marketStudyItemId)) {
+                    return false;
+                }
+
+                return (float) ($purchaseProgress[$item->id]['pending_quantity'] ?? 0) > 0;
             })
-            ->map(function (array $row) use ($awardMap, $supplierId) {
+            ->map(function (array $row) use ($awardMap, $supplierId, $purchaseProgress) {
                 /** @var CustomerPurchaseOrderItem $item */
                 $item = $row['item'];
                 /** @var CustomerPurchaseOrder $order */
@@ -651,17 +798,39 @@ class SupplierPurchaseOrderController extends Controller
                 $award = $supplierId && $marketStudyItemId
                     ? $awardMap->get((int) $marketStudyItemId)
                     : null;
+                $progress = $purchaseProgress[$item->id] ?? [
+                    'requested_quantity' => round((float) $item->quantity, 2),
+                    'purchased_quantity' => 0,
+                    'pending_quantity' => round((float) $item->quantity, 2),
+                ];
+                $payload = $this->sourceItemPayload(
+                    $item,
+                    'customer_purchase_order_item_id',
+                    $award
+                );
+
+                if (! $award) {
+                    $payload['unit_price'] = 0;
+                    $payload['reference_purchase_price'] = 0;
+                }
+
+                $payload['quantity'] = $progress['pending_quantity'];
 
                 return array_merge(
-                    $this->sourceItemPayload(
-                        $item,
-                        'customer_purchase_order_item_id',
-                        $award
-                    ),
+                    $payload,
                     [
                         'customer_purchase_order_id' => $order->id,
                         'customer_purchase_order_code' => $order->code,
+                        'customer_order_code' => $order->code,
                         'customer_name' => $customerName,
+                        'article_name' => $payload['billing_name_snapshot'] ?? null,
+                        'unit_name' => $item->unit?->abbreviation ?? $item->unit?->description,
+                        'presentation_name' => $item->presentation?->description,
+                        'brand_name' => $item->brand?->description,
+                        'requested_quantity' => $progress['requested_quantity'],
+                        'purchased_quantity' => $progress['purchased_quantity'],
+                        'pending_quantity' => $progress['pending_quantity'],
+                        'suggested_quantity' => $progress['pending_quantity'],
                     ]
                 );
             })
@@ -675,6 +844,95 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_id' => $supplierId,
             'items' => $items,
         ]);
+    }
+
+    private function customerOrderItemPurchaseProgress(array $customerOrderItemIds, $excludeSupplierPurchaseOrderId = null): array
+    {
+        $ids = collect($customerOrderItemIds)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $requested = CustomerPurchaseOrderItem::query()
+            ->whereIn('id', $ids)
+            ->pluck('quantity', 'id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $purchasedQuery = DB::table('supplier_purchase_order_items as items')
+            ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'items.supplier_purchase_order_id')
+            ->whereIn('items.customer_purchase_order_item_id', $ids)
+            ->whereNull('orders.deleted_at')
+            ->where('orders.status', '!=', self::STATUS_CANCELLED)
+            ->where('items.status', '!=', 'deleted');
+
+        if ($excludeSupplierPurchaseOrderId) {
+            $purchasedQuery->where('orders.id', '!=', (int) $excludeSupplierPurchaseOrderId);
+        }
+
+        $purchased = $purchasedQuery
+            ->groupBy('items.customer_purchase_order_item_id')
+            ->selectRaw('items.customer_purchase_order_item_id, SUM(items.quantity) as purchased_quantity')
+            ->pluck('purchased_quantity', 'customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        return $ids
+            ->mapWithKeys(function (int $id) use ($requested, $purchased) {
+                $requestedQuantity = round((float) ($requested[$id] ?? 0), 2);
+                $purchasedQuantity = round((float) ($purchased[$id] ?? 0), 2);
+
+                return [
+                    $id => [
+                        'requested_quantity' => $requestedQuantity,
+                        'purchased_quantity' => $purchasedQuantity,
+                        'pending_quantity' => max(round($requestedQuantity - $purchasedQuantity, 2), 0),
+                    ],
+                ];
+            })
+            ->all();
+    }
+
+    private function validateCustomerOrderItemPendingQuantities(array $items, ?int $currentSupplierPurchaseOrderId = null): void
+    {
+        $customerOrderItemIds = collect($items)
+            ->pluck('customer_purchase_order_item_id')
+            ->filter()
+            ->all();
+
+        if (empty($customerOrderItemIds)) {
+            return;
+        }
+
+        $progress = $this->customerOrderItemPurchaseProgress(
+            $customerOrderItemIds,
+            $currentSupplierPurchaseOrderId
+        );
+
+        $requestedByCustomerItem = collect($items)
+            ->filter(fn (array $item) => ! empty($item['customer_purchase_order_item_id']))
+            ->groupBy(fn (array $item) => (int) $item['customer_purchase_order_item_id'])
+            ->map(fn ($group) => round((float) $group->sum(fn (array $item) => (float) ($item['quantity'] ?? 0)), 2));
+
+        foreach ($items as $index => $item) {
+            $customerOrderItemId = $item['customer_purchase_order_item_id'] ?? null;
+
+            if (! $customerOrderItemId) {
+                continue;
+            }
+
+            $quantity = round((float) ($requestedByCustomerItem[(int) $customerOrderItemId] ?? 0), 2);
+            $pending = round((float) ($progress[(int) $customerOrderItemId]['pending_quantity'] ?? 0), 2);
+
+            if ($quantity > $pending) {
+                throw ValidationException::withMessages([
+                    "items.$index.quantity" => 'La cantidad a comprar supera el saldo pendiente de la orden del cliente.',
+                ]);
+            }
+        }
     }
 
     private function awardedQuoteItemsForSupplier($orders, int $supplierId)
@@ -783,7 +1041,11 @@ class SupplierPurchaseOrderController extends Controller
                 continue;
             }
 
-            if (!$marketStudyItemId || !$awardMap->has((int) $marketStudyItemId)) {
+            if (!$marketStudyItemId) {
+                continue;
+            }
+
+            if (!$awardMap->has((int) $marketStudyItemId)) {
                 throw ValidationException::withMessages([
                     "items.$index.article_id" =>
                     'El item no esta adjudicado al proveedor seleccionado.',
@@ -856,28 +1118,62 @@ class SupplierPurchaseOrderController extends Controller
         ];
     }
 
-    private function nextCode(): string
+    private function nextPurchaseOrderSequence(SupplierAccount $account): array
     {
-        $lastNumber = SupplierPurchaseOrder::withTrashed()
-            ->where('code', 'like', 'OC%')
-            ->pluck('code')
-            ->map(function (?string $code) {
-                return preg_match('/^OC(\d{5,})$/', (string) $code, $matches)
-                    ? (int) $matches[1]
-                    : 0;
-            })
-            ->max() ?? 0;
+        $year = (int) now()->year;
+        $bankCode = $this->bankCodeForPurchaseOrder($account);
+
+        $lastSequence = SupplierPurchaseOrder::withTrashed()
+            ->where('purchase_order_year', $year)
+            ->where('purchase_order_bank_code', $bankCode)
+            ->max('purchase_order_sequence') ?? 0;
 
         do {
-            $lastNumber++;
-            $code = 'OC' . str_pad($lastNumber, 5, '0', STR_PAD_LEFT);
-        } while (
-            SupplierPurchaseOrder::withTrashed()
-                ->where('code', $code)
-                ->exists()
-        );
+            $lastSequence++;
+            $code = str_pad((string) $lastSequence, 5, '0', STR_PAD_LEFT) . '-' . $year . '-' . $bankCode;
+        } while (SupplierPurchaseOrder::withTrashed()->where('code', $code)->exists());
 
-        return $code;
+        return [
+            'code' => $code,
+            'sequence' => $lastSequence,
+            'year' => $year,
+            'bank_code' => $bankCode,
+        ];
+    }
+
+    private function bankCodeForPurchaseOrder(SupplierAccount $account): string
+    {
+        $bank = $account->bank;
+        $rawCode = $bank?->short_name ?: $bank?->description;
+
+        if (!$rawCode) {
+            throw ValidationException::withMessages([
+                'supplier_account_id' => 'El banco seleccionado no tiene codigo configurado.',
+            ]);
+        }
+
+        $normalized = mb_strtoupper(Str::ascii(trim($rawCode)));
+        $compactNormalized = preg_replace('/[^A-Z0-9]+/', '', $normalized);
+
+        foreach (['BBVA', 'BCP', 'INTERBANK', 'SCOTIABANK'] as $knownBankCode) {
+            if (str_contains($compactNormalized, $knownBankCode)) {
+                return $knownBankCode;
+            }
+        }
+
+        $normalized = str_replace(
+            ['BANCO DE CREDITO DEL PERU', 'BANCO DE CREDITO', 'CREDITO DEL PERU', 'BCP'],
+            'BCP',
+            $normalized
+        );
+        $normalized = str_replace(['BBVA CONTINENTAL', 'BANCO BBVA', 'BBVA'], 'BBVA', $normalized);
+        $normalized = str_replace(['INTERBANK', 'BANCO INTERNACIONAL DEL PERU'], 'INTERBANK', $normalized);
+        $normalized = str_replace(['SCOTIABANK PERU', 'SCOTIABANK'], 'SCOTIABANK', $normalized);
+        $normalized = str_replace(['BANCO DE LA NACION', 'BANCO NACION'], 'BANCO_NACION', $normalized);
+        $normalized = preg_replace('/[^A-Z0-9_]+/', '_', $normalized);
+        $normalized = trim((string) $normalized, '_');
+
+        return $normalized !== '' ? $normalized : 'SINBANCO';
     }
 
     private function generateSupplierPurchaseOrderPdf(SupplierPurchaseOrder $order): array
@@ -889,7 +1185,7 @@ class SupplierPurchaseOrderController extends Controller
             'order' => $order,
             'logoUrl' => $this->supplierOrderLogoUrl(),
         ])
-            ->setPaper('a4', 'landscape')
+            ->setPaper('a4', 'portrait')
             ->setOption(['isRemoteEnabled' => true]);
 
         Storage::disk('public')->put($storedPath, $pdf->output());
@@ -1043,9 +1339,30 @@ class SupplierPurchaseOrderController extends Controller
     {
         return [
             'agencia',
+            'agencia_transporte',
+            'en_agencia',
+            'transporte',
             'recojo_almacen',
             'transportista_proveedor',
         ];
+    }
+
+    private function deliveryRequiresShippingAgency(?string $deliveryType): bool
+    {
+        $normalized = mb_strtolower(Str::ascii(trim((string) $deliveryType)));
+        $normalized = str_replace(['.', '-'], '', $normalized);
+        $normalized = preg_replace('/\s+/', '_', $normalized);
+
+        $aliases = [
+            'agencia_de_transporte' => 'agencia_transporte',
+        ];
+
+        return in_array($aliases[$normalized] ?? $normalized, [
+            'agencia',
+            'agencia_transporte',
+            'en_agencia',
+            'transporte',
+        ], true);
     }
 
     private function paymentMethodOptions(): array
@@ -1072,6 +1389,66 @@ class SupplierPurchaseOrderController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? mb_strtoupper($value) : null;
+    }
+
+    private function buildPurchaseInstructionsText(
+        ?SupplierAccount $account,
+        ?string $destinationText,
+        $destinationUbigeoId
+    ): string {
+        $bank = $this->purchaseInstructionBankName($account);
+        $destination = $this->purchaseInstructionDestination($destinationText, $destinationUbigeoId);
+
+        return sprintf(
+            'Abono de la presente Orden de compra se realizo a cuentas de la empresa %s - Factura enviar al correo, embalaje y rotulado de forma correcta, para ser enviado a la ciudad de %s',
+            $bank,
+            $destination ?: '-'
+        );
+    }
+
+    private function purchaseInstructionBankName(?SupplierAccount $account): string
+    {
+        $rawBank = $account?->bank?->short_name
+            ?: $account?->bank?->description
+            ?: '';
+        $normalizedBank = mb_strtoupper(Str::ascii(trim($rawBank)));
+        $compactBank = preg_replace('/[^A-Z0-9]+/', '', $normalizedBank);
+
+        foreach (['BBVA', 'BCP', 'INTERBANK', 'SCOTIABANK'] as $knownBankCode) {
+            if (str_contains((string) $compactBank, $knownBankCode)) {
+                return $knownBankCode;
+            }
+        }
+
+        $normalizedBank = preg_replace('/[^A-Z0-9 ]+/', ' ', $normalizedBank);
+
+        return trim((string) preg_replace('/\s+/', ' ', $normalizedBank));
+    }
+
+    private function purchaseInstructionDestination(?string $destinationText, $destinationUbigeoId): string
+    {
+        $optionalDestination = trim((string) $destinationText);
+
+        if ($optionalDestination !== '') {
+            return mb_strtoupper(Str::ascii($optionalDestination));
+        }
+
+        if (! $destinationUbigeoId) {
+            return '';
+        }
+
+        $ubigeo = Ubigeo::query()->find($destinationUbigeoId);
+
+        if (! $ubigeo) {
+            return '';
+        }
+
+        return mb_strtoupper(Str::ascii(
+            collect([$ubigeo->department, $ubigeo->district])
+                ->filter()
+                ->unique()
+                ->join(' / ')
+        ));
     }
 
     private function appendEntryProgress(SupplierPurchaseOrder $order): void

@@ -185,13 +185,14 @@
                                     </div>
 
                                     <div class="form-group col-md-6">
-                                        <label>CUENTA DE BANCO</label>
+                                        <label>CUENTA DE BANCO <span class="text-danger">*</span></label>
                                         <select id="supplier_order_supplier_account_id" name="supplier_account_id"
-                                            class="form-control form-control-sm js-supplier-order-select">
+                                            class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione cuenta</option>
                                             @foreach ($supplierAccounts as $account)
                                                 <option value="{{ $account->id }}"
-                                                    data-supplier-id="{{ $account->supplier_id }}">
+                                                    data-supplier-id="{{ $account->supplier_id }}"
+                                                    data-bank="{{ $account->bank?->short_name ?? $account->bank?->description ?? 'Banco' }}">
                                                     {{ $account->bank?->description ?? 'Banco' }} |
                                                     {{ $account->account_number }} |
                                                     {{ $account->currency?->code }}
@@ -229,11 +230,14 @@
                                     </div>
 
                                     <div class="form-group col-md-3">
-                                        <label>TIPO ENTREGA</label>
+                                        <label>TIPO ENTREGA <span class="text-danger">*</span></label>
                                         <select id="supplier_order_delivery_type" name="delivery_type"
-                                            class="form-control form-control-sm js-supplier-order-select">
+                                            class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione</option>
                                             <option value="agencia">Agencia</option>
+                                            <option value="agencia_transporte">Agencia de transporte</option>
+                                            <option value="en_agencia">En agencia</option>
+                                            <option value="transporte">Transporte</option>
                                             <option value="recojo_almacen">Recojo de almac&eacute;n</option>
                                             <option value="transportista_proveedor">Transportista del proveedor</option>
                                         </select>
@@ -252,6 +256,74 @@
                                 </div>
 
                                 <div class="form-row">
+                                    <div class="col-12 d-none" id="supplierOrderShippingAgencySection">
+                                        <div class="card border-0 shadow-sm mb-2" style="background:#f4fff8;border-left:4px solid #198754 !important;">
+                                            <div class="card-body py-2">
+                                                <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                                                    <h6 class="mb-0 font-weight-bold text-dark">
+                                                        <i class="fas fa-shipping-fast text-success mr-1"></i>
+                                                        Datos de agencia de env&iacute;o
+                                                    </h6>
+                                                    <small class="text-muted">Visible cuando el tipo de entrega es agencia</small>
+                                                </div>
+                                                <div class="form-row">
+                                                    <div class="form-group col-md-4">
+                                                        <label>AGENCIA DE ENV&Iacute;O <span class="text-danger">*</span></label>
+                                                        <select id="supplier_order_shipping_agency_id" name="shipping_agency_id"
+                                                            class="form-control form-control-sm js-supplier-order-select">
+                                                            <option value="">Seleccione agencia</option>
+                                                            @foreach ($shippingAgencies as $shippingAgency)
+                                                                <option value="{{ $shippingAgency->id }}">
+                                                                    {{ $shippingAgency->ruc ? $shippingAgency->ruc . ' | ' : '' }}{{ $shippingAgency->trade_name ?? $shippingAgency->business_name }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                        <span class="invalid-feedback"></span>
+                                                    </div>
+                                                    <div class="form-group col-md-4">
+                                                        <label>SEDE / DIRECCI&Oacute;N <span class="text-danger">*</span></label>
+                                                        <select id="supplier_order_shipping_agency_branch_id" name="shipping_agency_branch_id"
+                                                            class="form-control form-control-sm js-supplier-order-select">
+                                                            <option value="">Seleccione agencia primero</option>
+                                                        </select>
+                                                        <span class="invalid-feedback"></span>
+                                                    </div>
+                                                    <div class="form-group col-md-4">
+                                                        <label>CONTACTO</label>
+                                                        <select id="supplier_order_shipping_agency_contact_id" name="shipping_agency_contact_id"
+                                                            class="form-control form-control-sm js-supplier-order-select">
+                                                            <option value="">Seleccione sede primero</option>
+                                                        </select>
+                                                        <span class="invalid-feedback"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-row">
+                                                    <div class="form-group col-md-4">
+                                                        <label>DIRECCI&Oacute;N / UBICACI&Oacute;N DE AGENCIA</label>
+                                                        <input type="text" id="supplier_order_shipping_agency_address"
+                                                            class="form-control form-control-sm" readonly>
+                                                    </div>
+                                                    <div class="form-group col-md-3">
+                                                        <label>TEL&Eacute;FONO / WHATSAPP CONTACTO</label>
+                                                        <input type="text" id="supplier_order_shipping_contact_phone"
+                                                            class="form-control form-control-sm" readonly>
+                                                    </div>
+                                                    <div class="form-group col-md-2">
+                                                        <label>CORREO CONTACTO</label>
+                                                        <input type="text" id="supplier_order_shipping_contact_email"
+                                                            class="form-control form-control-sm" readonly>
+                                                    </div>
+                                                    <div class="form-group col-md-3">
+                                                        <label>REFERENCIA ENV&Iacute;O</label>
+                                                        <input type="text" id="supplier_order_shipping_reference"
+                                                            name="shipping_reference" class="form-control form-control-sm text-uppercase">
+                                                        <span class="invalid-feedback"></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div class="form-group col-md-3">
                                         <label>FORMA DE PAGO</label>
                                         <select id="supplier_order_payment_method" name="payment_method"
@@ -292,7 +364,10 @@
                                             class="form-control form-control-sm js-supplier-order-select">
                                             <option value="">Seleccione ubigeo</option>
                                             @foreach ($ubigeos as $ubigeo)
-                                                <option value="{{ $ubigeo->id }}">
+                                                <option value="{{ $ubigeo->id }}"
+                                                    data-department="{{ $ubigeo->department }}"
+                                                    data-province="{{ $ubigeo->province }}"
+                                                    data-district="{{ $ubigeo->district }}">
                                                     {{ $ubigeo->department }} / {{ $ubigeo->province }} /
                                                     {{ $ubigeo->district }}
                                                 </option>
@@ -314,6 +389,64 @@
                                         <textarea id="supplier_order_observations" name="observations"
                                             class="form-control form-control-sm text-uppercase" rows="2"></textarea>
                                         <span class="invalid-feedback"></span>
+                                    </div>
+                                </div>
+
+                                <div class="card border-0 shadow-sm mb-2" style="background:#fff;border-left:4px solid #6c757d !important;">
+                                    <div class="card-body py-2">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                                            <h6 class="mb-0 font-weight-bold text-dark">
+                                                <i class="fas fa-file-signature text-secondary mr-1"></i>
+                                                Datos internos para PDF
+                                            </h6>
+                                            <small class="text-muted">Informaci&oacute;n complementaria para el PDF</small>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group col-md-3">
+                                                <label>DEPARTAMENTO</label>
+                                                <input type="text" id="supplier_order_request_department" name="request_department"
+                                                    class="form-control form-control-sm text-uppercase" value="COMPRAS">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>AUTORIZADO POR</label>
+                                                <input type="text" id="supplier_order_authorized_by_name" name="authorized_by_name"
+                                                    class="form-control form-control-sm text-uppercase" value="IVAN CUBAS BINCES">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>CARGO AUTORIZADO</label>
+                                                <input type="text" id="supplier_order_authorized_by_position" name="authorized_by_position"
+                                                    class="form-control form-control-sm text-uppercase" value="GERENTE GENERAL">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group col-md-12">
+                                                <label>DELIVERY</label>
+                                                <input type="text" id="supplier_order_delivery_text" name="delivery_text"
+                                                    class="form-control form-control-sm text-uppercase"
+                                                    value="EN AGENCIA DE TRANSPORTES - ENVIO A PROVINCIA">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group col-md-6">
+                                                <label>INSTRUCCIONES</label>
+                                                <textarea id="supplier_order_purchase_instructions" name="purchase_instructions"
+                                                    class="form-control form-control-sm supplier-order-informative-textarea" rows="4"></textarea>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-6">
+                                                <label>NOTA IMPORTANTE</label>
+                                                <textarea id="supplier_order_important_note" name="important_note"
+                                                    class="form-control form-control-sm text-uppercase supplier-order-informative-textarea" rows="4">ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTICA@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:
+1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE
+2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE
+3. REGISTRO SANITARIO DEL BIEN ADQUIRIDO - VIGENTE</textarea>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -538,6 +671,69 @@
     </div>
 </div>
 
+<div class="modal fade" id="supplierOrderPendingItemsModal" tabindex="-1" role="dialog"
+    aria-labelledby="supplierOrderPendingItemsModalLabel" aria-hidden="true" data-backdrop="static"
+    data-keyboard="false">
+    <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg supplier-order-pending-modal">
+            <div class="modal-header align-items-center supplier-order-modal-header">
+                <div>
+                    <h5 class="modal-title mb-0 font-weight-bold" id="supplierOrderPendingItemsModalLabel">
+                        Ítems pendientes de la orden del cliente
+                    </h5>
+                    <small class="text-muted">
+                        Seleccione los artículos que comprará al proveedor elegido. Puede modificar la cantidad y el precio de compra antes de agregarlos.
+                    </small>
+                </div>
+                <button type="button" class="close ml-3" data-dismiss="modal" aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body p-2">
+                <div class="supplier-order-table-scroll">
+                    <table class="table table-sm table-hover mb-0" id="supplierOrderPendingItemsTable">
+                        <thead class="bg-light text-center">
+                            <tr>
+                                <th>
+                                    <input type="checkbox" id="supplierOrderPendingCheckAll">
+                                </th>
+                                <th>N° Orden Cliente</th>
+                                <th>Artículo</th>
+                                <th>Presentación</th>
+                                <th>Marca</th>
+                                <th>Procedencia</th>
+                                <th>F. Venc.</th>
+                                <th>Solicitada</th>
+                                <th>Comprada</th>
+                                <th>Pendiente</th>
+                                <th>Cant. a comprar</th>
+                                <th>Precio compra</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierOrderPendingItemsTbody">
+                            <tr>
+                                <td colspan="13" class="text-center text-muted py-4">
+                                    Sin ítems pendientes para mostrar.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">
+                    Cancelar
+                </button>
+                <button type="button" id="btnAddSelectedSupplierPendingItems" class="btn btn-success btn-sm">
+                    <i class="fas fa-plus-circle mr-1"></i>
+                    Agregar seleccionados
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     #supplierPurchaseOrderModal .supplier-order-modal-dialog {
         max-width: 94%;
@@ -630,6 +826,16 @@
         min-height: 58px;
         height: auto;
         resize: vertical;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-informative-textarea {
+        min-height: 112px;
+        border-color: #b8e2c5;
+        background: #f4fff8;
+        color: #14532d;
+        font-size: 12px;
+        line-height: 1.45;
+        box-shadow: inset 0 1px 2px rgba(20, 83, 45, .04);
     }
 
     #supplierPurchaseOrderModal .form-control:focus,
@@ -798,6 +1004,48 @@
         padding-right: 18px !important;
         font-size: 12px;
         line-height: 29px !important;
+    }
+
+    #supplierOrderPendingItemsModal .supplier-order-pending-modal {
+        border-radius: 14px;
+    }
+
+    #supplierOrderPendingItemsModal .modal-body {
+        max-height: calc(100vh - 180px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: #f8fffb;
+    }
+
+    #supplierOrderPendingItemsModal .supplier-order-table-scroll {
+        width: 100%;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    #supplierOrderPendingItemsModal table {
+        min-width: 1420px;
+    }
+
+    #supplierOrderPendingItemsModal th {
+        color: #374151;
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    #supplierOrderPendingItemsModal td {
+        font-size: 11px;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    #supplierOrderPendingItemsModal .pending-badge {
+        border-radius: 999px;
+        padding: 3px 8px;
+        color: #14532d;
+        background: #dcfce7;
+        font-weight: 800;
     }
 
     @media (max-width: 991px) {

@@ -31,7 +31,9 @@ use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
 use App\Http\Controllers\Admin\QuoteController;
+use App\Http\Controllers\Admin\ShippingAgencyController;
 use Illuminate\Support\Facades\Route;
+
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
 
@@ -157,6 +159,14 @@ Route::get(
 Route::resource('presentations', PresentationController::class)->except(['create', 'show']);
 
 //RUTAS PARA PROVEEDORES 
+Route::get('shipping-agencies/list', [ShippingAgencyController::class, 'list'])->name('shipping-agencies.list');
+Route::get('shipping-agencies/{shippingAgency}/branches', [ShippingAgencyController::class, 'branches'])->name('shipping-agencies.branches');
+Route::get('shipping-agencies/{shippingAgency}/contacts', [ShippingAgencyController::class, 'contacts'])->name('shipping-agencies.contacts');
+Route::get('shipping-agency-branches/{branch}/contacts', [ShippingAgencyController::class, 'contactsByBranch'])->name('shipping-agency-branches.contacts');
+Route::get('shipping-agencies/consultar-ruc/{numero}', [ShippingAgencyController::class, 'consultarRuc'])
+    ->name('shipping-agencies.consultar-ruc');
+Route::resource('shipping-agencies', ShippingAgencyController::class)->except(['create']);
+
 Route::get(
     'suppliers/search-ubigeo',
     [SupplierController::class, 'searchUbigeo']
@@ -204,6 +214,7 @@ Route::get(
 )->name('brands.generateCode');
 
 Route::get('brands/search', [BrandController::class, 'search'])->name('brands.search');
+Route::post('brands/quick-store', [BrandController::class, 'quickStore'])->name('brands.quick-store');
 
 Route::resource('brands', BrandController::class)->except(['create', 'show']);
 
@@ -230,6 +241,10 @@ Route::get(
     'articles/list-picker',
     [ArticleController::class, 'listPicker']
 )->name('articles.listPicker');
+Route::post(
+    'articles/quick-store',
+    [ArticleController::class, 'quickStore']
+)->name('articles.quick-store');
 
 Route::resource('articles', ArticleController::class)->except(['create', 'show']);
 
@@ -365,6 +380,11 @@ Route::post(
     'supplier-purchase-orders/load-customer-order-items',
     [SupplierPurchaseOrderController::class, 'loadCustomerOrderItems']
 )->name('supplier-purchase-orders.loadCustomerOrderItems');
+
+Route::get(
+    'supplier-purchase-orders/customer-order-items',
+    [SupplierPurchaseOrderController::class, 'loadCustomerOrderItems']
+)->name('supplier-purchase-orders.customerOrderItems');
 
 Route::resource(
     'supplier-purchase-orders',
