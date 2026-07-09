@@ -19,7 +19,7 @@ function resetQuoteDraft() {
     $('#market_study_id_quote').val('');
 
     $('#quote_number').val('');
-    $('#supplier_id').val('');
+    clearQuoteSupplierSelect2();
     $('#currency_id').val('');
     $('#payment_condition').val('');
     $('#exchange_rate').val('1.0000');
@@ -1028,10 +1028,14 @@ $(document).on('click', '.quoteMarketStudy', function () {
     $('#quote_market_study_info').html(code + ' - ' + description);
 
     generateQuoteNumber();
-    loadSuppliers();
-    loadCurrencies();
 
-    $('#marketStudyQuoteModal').modal('show');
+    $('#marketStudyQuoteModal')
+        .off('shown.bs.modal.quoteSupplier')
+        .one('shown.bs.modal.quoteSupplier', function () {
+            loadSuppliers();
+            loadCurrencies();
+        })
+        .modal('show');
 });
 
 function generateQuoteNumber() {
@@ -1053,34 +1057,106 @@ function generateQuoteNumber() {
 
 }
 
-function loadSuppliers() {
+function initQuoteSupplierSelect2() {
+    const $modal = $('#marketStudyQuoteModal');
+    const $supplier = $modal.find('select[name="supplier_id"]');
 
-    $.ajax({
+    if (!$supplier.length) {
+        console.error('No se encontró el select supplier_id dentro del modal.');
+        return;
+    }
 
+    if (typeof $.fn.select2 !== 'function') {
+        console.error('Select2 no está cargado.');
+        return;
+    }
+
+    if ($supplier.hasClass('select2-hidden-accessible')) {
+        $supplier.select2('destroy');
+    }
+
+    $supplier.select2({
+        theme: 'bootstrap4',
+        width: '100%',
+        placeholder: 'Buscar proveedor...',
+        allowClear: true,
+        dropdownParent: $modal,
+        minimumResultsForSearch: 0,
+        language: {
+            noResults: function () {
+                return 'No se encontraron proveedores';
+            },
+            searching: function () {
+                return 'Buscando...';
+            },
+            inputTooShort: function () {
+                return 'Escriba para buscar';
+            }
+        }
+    });
+
+    console.log('Proveedor Select2 inicializado correctamente');
+}
+
+function clearQuoteSupplierSelect2() {
+    const $supplier = $('#marketStudyQuoteModal #supplier_id');
+
+    if ($supplier.hasClass('select2-hidden-accessible')) {
+        $supplier.val(null).trigger('change');
+    } else {
+        $supplier.val('');
+    }
+}
+
+function loadSuppliers(selectedSupplierId = null) {
+    const $supplier = $('#marketStudyQuoteModal select[name="supplier_id"]');
+
+    if (!$supplier.length) {
+        console.error('No existe el select de proveedor dentro del modal.');
+        return $.Deferred().reject().promise();
+    }
+
+    if ($supplier.hasClass('select2-hidden-accessible')) {
+        $supplier.select2('destroy');
+    }
+
+    return $.ajax({
         url: window.routes.marketStudyQuoteSuppliers,
         type: 'GET',
-
         success: function (response) {
-
-            let html =
-                '<option value="">Seleccione</option>';
+            let html = '<option value=""></option>';
 
             response.forEach(function (item) {
+                const ruc = item.ruc ? item.ruc + ' | ' : '';
+                const name = item.business_name ?? item.short_name ?? '';
 
                 html += `
                     <option value="${item.id}">
-                        ${item.business_name}
+                        ${escapeHtml(ruc + name)}
                     </option>
                 `;
-
             });
 
-            $('#supplier_id').html(html);
+            $supplier.html(html);
 
+            if (selectedSupplierId) {
+                $supplier.val(selectedSupplierId);
+            }
+
+            initQuoteSupplierSelect2();
+
+            if (selectedSupplierId) {
+                $supplier.trigger('change');
+            }
+        },
+        error: function () {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo cargar la lista de proveedores.'
+            });
         }
-
     });
-
 }
 function loadCurrencies() {
 
@@ -1130,46 +1206,40 @@ function loadCurrencies() {
     });
 
 }
-$(document).on('change', '#supplier_id', function () {
-
+$(document).on('change', '#marketStudyQuoteModal #supplier_id', function () {
     let supplierId = $(this).val();
 
     let supplierText = $(this)
         .find('option:selected')
-        .text();
+        .text()
+        .trim();
 
     if (!supplierId) {
-
         $('#quote_supplier_info').html('—');
-
         $('#payment_condition').val('');
-
         return;
     }
 
     $('#quote_supplier_info').html(
-        supplierText
+        escapeHtml(supplierText)
     );
 
     $.ajax({
-
-        url:
-            window.routes.marketStudyQuoteSupplierDetail +
-            '/' +
-            supplierId,
-
+        url: window.routes.marketStudyQuoteSupplierDetail + '/' + supplierId,
         type: 'GET',
-
         success: function (response) {
-
             $('#payment_condition').val(
                 response.payment_condition ?? ''
             );
-
+        },
+        error: function () {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Proveedor',
+                text: 'No se pudo obtener el detalle del proveedor.'
+            });
         }
-
     });
-
 });
 
 $(document).on('change', '#currency_id', function () {
@@ -2460,10 +2530,14 @@ $(document).on('click', '#btnNewStudyQuote', function () {
     $('#quote_market_study_info').html(code + ' - ' + description);
 
     generateQuoteNumber();
-    loadSuppliers();
-    loadCurrencies();
 
-    $('#marketStudyQuoteModal').modal('show');
+    $('#marketStudyQuoteModal')
+        .off('shown.bs.modal.quoteSupplier')
+        .one('shown.bs.modal.quoteSupplier', function () {
+            loadSuppliers();
+            loadCurrencies();
+        })
+        .modal('show');
 });
 
 $(document).on('show.bs.modal', '.modal', function () {
@@ -2534,16 +2608,14 @@ function loadQuoteForEdit(quoteId) {
 
             // Cabecera
             $('#quote_number').val(quote.quote_number);
-
-            loadSuppliers();
-            loadCurrencies();
-
-            setTimeout(function () {
-
-                $('#supplier_id').val(quote.supplier_id).trigger('change');
-                $('#currency_id').val(quote.currency_id).trigger('change');
-
-            }, 300);
+            $.when(
+                loadSuppliers(quote.supplier_id),
+                loadCurrencies()
+            ).done(function () {
+                $('#currency_id')
+                    .val(quote.currency_id)
+                    .trigger('change');
+            });
 
             $('#exchange_rate').val(quote.exchange_rate);
             $('#payment_condition').val(quote.payment_condition);

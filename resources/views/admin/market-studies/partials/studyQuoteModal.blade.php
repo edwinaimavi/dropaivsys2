@@ -144,8 +144,9 @@
                                         </label>
 
                                         <select id="supplier_id" name="supplier_id"
-                                            class="form-control form-control-sm">
-                                            <option value="">Seleccione</option>
+                                            class="form-control form-control-sm select2-quote-supplier"
+                                            data-placeholder="Buscar proveedor...">
+                                            <option value=""></option>
                                         </select>
 
                                         <span class="invalid-feedback" id="supplier_id-error"></span>
@@ -600,5 +601,31 @@
         font-size: 14px;
         font-weight: 700;
         color: #198754;
+    }
+
+    #marketStudyQuoteModal .select2-container {
+        width: 100% !important;
+    }
+
+    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single {
+        height: calc(1.8125rem + 2px) !important;
+        min-height: calc(1.8125rem + 2px) !important;
+        border-radius: 6px;
+        border: 1px solid #ced4da;
+        font-size: 12px;
+    }
+
+    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
+        line-height: 1.8125rem !important;
+        font-size: 12px;
+        color: #1f2d3d;
+    }
+
+    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__arrow {
+        height: calc(1.8125rem + 2px) !important;
+    }
+
+    #marketStudyQuoteModal .select2-results__option {
+        font-size: 12px;
     }
 </style>
