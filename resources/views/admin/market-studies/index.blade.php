@@ -243,6 +243,8 @@
             marketStudyGenerateCode: "{{ route('admin.market-studies.generateCode') }}",
 
             articlePickerList: "{{ route('admin.articles.listPicker') }}",
+            quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
+            generateArticleCode: "{{ route('admin.articles.generateCode') }}",
 
             // ==========================================
             // COTIZACIONES

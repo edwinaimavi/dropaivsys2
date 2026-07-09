@@ -457,6 +457,14 @@ return [
 
                 ],
                 [
+                    'text' => 'Rotulación',
+                    'icon' => 'fas fa-tags',
+                    'icon_color' => 'warning',
+                    'url' => 'admin/labelings',
+                    "can" => 'admin.labelings.index'
+
+                ],
+                [
                     'text' => 'Kardex',
                     'icon' => 'fas fa-clipboard-list',
                     'icon_color' => 'success',

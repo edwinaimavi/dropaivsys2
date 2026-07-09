@@ -408,6 +408,101 @@
 
 </div>
 
+<div class="modal fade market-study-quick-modal" id="quickMarketStudyArticleModal" tabindex="-1" role="dialog"
+    aria-labelledby="quickMarketStudyArticleModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-md modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickMarketStudyArticleForm" autocomplete="off">
+                <div class="modal-header bg-white border-0">
+                    <div>
+                        <h5 class="modal-title mb-0 font-weight-bold" id="quickMarketStudyArticleModalLabel">
+                            Nuevo artículo rápido
+                        </h5>
+                        <small class="text-muted">Cree el artículo sin cerrar el catálogo.</small>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+                <div class="modal-body bg-light">
+                    <div id="quickMarketStudyArticleErrors" class="alert alert-danger d-none"></div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-barcode mr-1 text-success"></i>
+                            Identificación
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label>CÓDIGO</label>
+                                    <input type="text" id="quick_market_article_code" name="code"
+                                        class="form-control form-control-sm text-uppercase" placeholder="Cargando..." readonly>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>TIPO CÓDIGO</label>
+                                    <select id="quick_market_article_code_type" name="code_type"
+                                        class="form-control form-control-sm">
+                                        <option value="SIGA/SISMED">SIGA / SISMED</option>
+                                        <option value="SAP/IETSI">SAP / IETSI</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>CÓDIGO INSTITUCIONAL</label>
+                                    <input type="text" id="quick_market_article_institutional_code"
+                                        name="institutional_code" class="form-control form-control-sm text-uppercase"
+                                        maxlength="100">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-box-open mr-1 text-info"></i>
+                            Nombres del artículo
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-12">
+                                    <label>NOMBRE LEGAL <span class="text-danger">*</span></label>
+                                    <input type="text" id="quick_market_article_legal_name" name="legal_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-12">
+                                    <label>NOMBRE COMERCIAL</label>
+                                    <input type="text" id="quick_market_article_commercial_name" name="commercial_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-12 mb-0">
+                                    <label>NOMBRE FACTURACIÓN <span class="text-danger">*</span></label>
+                                    <input type="text" id="quick_market_article_billing_name" name="billing_name"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success btn-sm" id="btnSaveQuickMarketStudyArticle">
+                        <i class="fas fa-save mr-1"></i>
+                        Guardar artículo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <style>
     #marketStudyModal .modal-content {
         border-radius: 14px;
@@ -458,6 +553,36 @@
 
     #marketStudyModal .font-weight-600 {
         font-weight: 600;
+    }
+
+    .market-study-quick-modal {
+        z-index: 1075;
+    }
+
+    .market-study-quick-modal + .modal-backdrop {
+        z-index: 1070;
+    }
+
+    .market-study-quick-modal .modal-content {
+        border-radius: 12px;
+    }
+
+    .market-study-quick-modal .modal-header {
+        background: linear-gradient(90deg, #f4fff7, #e8f8ee) !important;
+        border-bottom: 1px solid #b9efcb !important;
+    }
+
+    .market-study-quick-modal label {
+        margin-bottom: 2px;
+        color: #495057;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .market-study-quick-modal .form-control,
+    .market-study-quick-modal .custom-select {
+        height: 31px;
+        font-size: 12px;
     }
 
     @media (max-width: 991px) {

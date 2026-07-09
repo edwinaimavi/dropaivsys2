@@ -185,6 +185,15 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.load-items' => 'Cargar items de orden de compra proveedor',
             'admin.warehouse-entries.pdf' => 'Ver PDF de ingresos de almacen',
 
+            'admin.labelings.index' => 'Ver rotulaciones',
+            'admin.labelings.list' => 'Listar rotulaciones',
+            'admin.labelings.store' => 'Crear rotulaciones',
+            'admin.labelings.update' => 'Actualizar rotulaciones',
+            'admin.labelings.destroy' => 'Anular rotulaciones',
+            'admin.labelings.show' => 'Ver detalle de rotulación',
+            'admin.labelings.pdf' => 'Generar PDF de rotulación',
+            'admin.labelings.customer-order' => 'Cargar orden de cliente para rotulación',
+
             'admin.electronic-invoices.index' => 'Ver facturacion electronica',
             'admin.electronic-invoices.store' => 'Crear comprobantes electronicos',
             'admin.electronic-invoices.show' => 'Ver detalle de comprobantes electronicos',

@@ -21,6 +21,7 @@ export default defineConfig({
                 'resources/js/pages/unit.js',
                 'resources/js/pages/supplier-purchase-order.js',
                 'resources/js/pages/warehouse-entry.js',
+                'resources/js/pages/labeling.js',
                 'resources/js/pages/electronic-invoice.js',
                 'resources/js/pages/electronic-invoice-series.js',
                 'resources/js/pages/electronic-invoice-setting.js',

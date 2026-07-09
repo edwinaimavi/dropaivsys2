@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CustomerBranchContactController;
 use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\CustomerOrderLabelingController;
 
 use App\Http\Controllers\Admin\PresentationController;
 
@@ -248,6 +249,17 @@ Route::post(
 
 Route::resource('articles', ArticleController::class)->except(['create', 'show']);
 
+//RUTAS PARA ROTULACIÓN
+Route::get('labelings', [CustomerOrderLabelingController::class, 'index'])->name('labelings.index');
+Route::get('labelings/list', [CustomerOrderLabelingController::class, 'list'])->name('labelings.list');
+Route::get('labelings/create-data', [CustomerOrderLabelingController::class, 'createData'])->name('labelings.create-data');
+Route::get('labelings/customer-order/{id}', [CustomerOrderLabelingController::class, 'loadCustomerOrder'])->name('labelings.customer-order');
+Route::post('labelings/store', [CustomerOrderLabelingController::class, 'store'])->name('labelings.store');
+Route::get('labelings/{id}/show', [CustomerOrderLabelingController::class, 'show'])->name('labelings.show');
+Route::get('labelings/{id}/edit', [CustomerOrderLabelingController::class, 'edit'])->name('labelings.edit');
+Route::put('labelings/{id}/update', [CustomerOrderLabelingController::class, 'update'])->name('labelings.update');
+Route::delete('labelings/{id}/destroy', [CustomerOrderLabelingController::class, 'destroy'])->name('labelings.destroy');
+Route::get('labelings/{id}/pdf', [CustomerOrderLabelingController::class, 'pdf'])->name('labelings.pdf');
 
 //RUTAS PARA ESTUDIOS DE MERCADO
 Route::get('market-studies/list', [MarketStudyController::class, 'list'])->name('market-studies.list');

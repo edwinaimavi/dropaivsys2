@@ -93,6 +93,12 @@
                                 <span id="articlePickerSelectedCount">0</span> seleccionados
                             </span>
 
+                            <button type="button" id="btnQuickCreateArticleFromPicker"
+                                class="btn btn-outline-success btn-sm mr-2">
+                                <i class="fas fa-plus mr-1"></i>
+                                Nuevo artículo
+                            </button>
+
                             <button type="button" id="btnAddSelectedArticles" class="btn btn-success btn-sm">
                                 <i class="fas fa-check-square mr-1"></i>
                                 Agregar seleccionados
@@ -126,6 +132,11 @@
 
                                     <th>PRESENTACIÓN</th>
 
+                                    <th>MARCA</th>
+
+                                    <th>UNIDAD</th>
+
+                                    <th>CONDICIÓN DE COSTEO</th>
                                 </tr>
 
                             </thead>
@@ -177,6 +188,10 @@
         border-radius: 22px;
         overflow: hidden;
         box-shadow: 0 25px 80px rgba(0, 0, 0, .35);
+    }
+
+    #articlePickerModal {
+        z-index: 1060;
     }
 
     /* HEADER */

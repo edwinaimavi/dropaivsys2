@@ -411,6 +411,187 @@ document.addEventListener('DOMContentLoaded', function () {
 
     });
 
+    $(document).on('click', '#btnQuickCreateArticleFromPicker', function () {
+        resetQuickMarketStudyArticleForm();
+        $('#quickMarketStudyArticleModal').modal('show');
+    });
+
+    $(document).on('submit', '#quickMarketStudyArticleForm', function (event) {
+        event.preventDefault();
+        saveQuickMarketStudyArticle(this);
+    });
+
+    $(document).on('input', '#quick_market_article_legal_name', function () {
+        syncQuickMarketStudyArticleNames('legal');
+    });
+
+    $(document).on('input', '#quick_market_article_commercial_name', function () {
+        syncQuickMarketStudyArticleNames('commercial');
+    });
+
+    $('#quickMarketStudyArticleModal').on('hidden.bs.modal', function () {
+        if ($('#articlePickerModal').hasClass('show') || $('#marketStudyModal').hasClass('show')) {
+            $('body').addClass('modal-open');
+        }
+    });
+
+    function resetQuickMarketStudyArticleForm() {
+        const form = $('#quickMarketStudyArticleForm');
+
+        form[0].reset();
+        clearQuickMarketStudyArticleErrors();
+        $('#quick_market_article_code').val('Cargando...');
+        $('#quick_market_article_code_type').val('SIGA/SISMED');
+
+        loadQuickMarketStudyArticleCode();
+    }
+
+    function clearQuickMarketStudyArticleErrors() {
+        $('#quickMarketStudyArticleForm .is-invalid').removeClass('is-invalid');
+        $('#quickMarketStudyArticleForm .invalid-feedback').text('');
+        $('#quickMarketStudyArticleErrors').addClass('d-none').empty();
+    }
+
+    function showQuickMarketStudyArticleError(xhr) {
+        if (xhr.status === 422) {
+            const errors = xhr.responseJSON?.errors || {};
+            const messages = [];
+
+            Object.entries(errors).forEach(function ([field, fieldMessages]) {
+                const input = $(`#quickMarketStudyArticleForm [name="${field}"]`);
+                const message = Array.isArray(fieldMessages) ? fieldMessages[0] : fieldMessages;
+
+                if (input.length) {
+                    input.addClass('is-invalid');
+                    input.closest('.form-group').find('.invalid-feedback').first().text(message);
+                }
+
+                messages.push(message);
+            });
+
+            $('#quickMarketStudyArticleErrors')
+                .removeClass('d-none')
+                .html(`<ul class="mb-0 pl-3">${messages.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul>`);
+            return;
+        }
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: xhr.responseJSON?.message || 'No se pudo registrar el artículo.'
+        });
+    }
+
+    function loadQuickMarketStudyArticleCode() {
+        $.get(window.routes.generateArticleCode)
+            .done(function (response) {
+                $('#quick_market_article_code').val(response.code || '');
+            })
+            .fail(function () {
+                $('#quick_market_article_code').val('');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'No se pudo generar el código del artículo.'
+                });
+            });
+    }
+
+    function normalizeQuickMarketStudyArticleNames() {
+        const legal = ($('#quick_market_article_legal_name').val() || '').trim();
+        const commercial = ($('#quick_market_article_commercial_name').val() || '').trim();
+        const billing = ($('#quick_market_article_billing_name').val() || '').trim();
+        const baseName = legal || commercial || billing;
+
+        if (!legal && baseName) {
+            $('#quick_market_article_legal_name').val(baseName);
+        }
+
+        if (!commercial && baseName) {
+            $('#quick_market_article_commercial_name').val(baseName);
+        }
+
+        if (!billing && baseName) {
+            $('#quick_market_article_billing_name').val(baseName);
+        }
+    }
+
+    function syncQuickMarketStudyArticleNames(source) {
+        const legal = ($('#quick_market_article_legal_name').val() || '').trim();
+        const commercial = ($('#quick_market_article_commercial_name').val() || '').trim();
+
+        if (source === 'legal') {
+            if (!$('#quick_market_article_commercial_name').val()) {
+                $('#quick_market_article_commercial_name').val(legal);
+            }
+
+            if (!$('#quick_market_article_billing_name').val()) {
+                $('#quick_market_article_billing_name').val(legal);
+            }
+        }
+
+        if (source === 'commercial' && !$('#quick_market_article_billing_name').val()) {
+            $('#quick_market_article_billing_name').val(commercial);
+        }
+    }
+
+    function saveQuickMarketStudyArticle(formElement) {
+        clearQuickMarketStudyArticleErrors();
+        normalizeQuickMarketStudyArticleNames();
+
+        const button = $('#btnSaveQuickMarketStudyArticle');
+        button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+        $.ajax({
+            url: window.routes.quickStoreArticle,
+            type: 'POST',
+            data: new FormData(formElement),
+            processData: false,
+            contentType: false,
+            success: function (response) {
+                const article = response.data || {};
+
+                if (article.id) {
+                    selectedArticlePickerItems[parseInt(article.id)] = buildArticlePickerItem({
+                        id: article.id,
+                        code: article.code,
+                        billing_name: article.billing_name || article.invoice_name || article.name,
+                        category_name: article.category_name || '',
+                        subcategory_name: article.subcategory_name || '',
+                        presentation_name: article.presentation_name || '',
+                        unit_name: article.unit_name || '',
+                        brand_name: article.brand_name || '',
+                        cost_condition: article.cost_condition || ''
+                    });
+                    updateArticlePickerSelectionState();
+                }
+
+                if (tableArticlePicker) {
+                    tableArticlePicker
+                        .search(article.billing_name || article.invoice_name || article.name || article.code || '')
+                        .ajax.reload(function () {
+                            updateArticlePickerSelectionState();
+                        }, true);
+                }
+
+                $('#quickMarketStudyArticleModal').modal('hide');
+
+                Swal.fire({
+                    icon: 'success',
+                    title: response.message || 'Artículo registrado correctamente.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2500
+                });
+            },
+            error: showQuickMarketStudyArticleError,
+            complete: function () {
+                button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar artículo');
+            }
+        });
+    }
+
     // =====================================================
     // GUARDAR
     // =====================================================
@@ -657,6 +838,24 @@ $('#articlePickerModal').on('shown.bs.modal', function () {
             {
                 data: 'presentation_name',
                 orderable: false
+            },
+
+            {
+                data: 'brand_name',
+                orderable: false,
+                defaultContent: ''
+            },
+
+            {
+                data: 'unit_name',
+                orderable: false,
+                defaultContent: ''
+            },
+
+            {
+                data: 'cost_condition',
+                orderable: false,
+                defaultContent: ''
             },
 
         ]

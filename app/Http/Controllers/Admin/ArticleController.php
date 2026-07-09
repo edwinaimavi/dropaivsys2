@@ -533,7 +533,7 @@ class ArticleController extends Controller
             'code_type.in' => 'El tipo de código seleccionado no es válido.',
             'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
             'billing_name.required' => 'El nombre de facturación es obligatorio.',
-            'legal_name.required' => 'Debe ingresar el nombre legal o el nombre de facturación.',
+            'legal_name.required' => 'El nombre legal es obligatorio.',
         ]);
 
         $this->validateDuplicateArticleName($validated);
@@ -573,6 +573,8 @@ class ArticleController extends Controller
             $validated['updated_by'] = Auth::id();
 
             $article = Article::create($validated)->fresh([
+                'category',
+                'subcategory',
                 'unit',
                 'presentation',
                 'brand',
@@ -593,6 +595,13 @@ class ArticleController extends Controller
                     'legal_name' => $article->legal_name,
                     'commercial_name' => $article->commercial_name,
                     'billing_name' => $article->billing_name,
+                    'invoice_name' => $article->billing_name,
+                    'text' => $article->code . ' | ' . $article->billing_name,
+                    'category_name' => $article->category?->description,
+                    'subcategory_name' => $article->subcategory?->description,
+                    'presentation_name' => $article->presentation?->description,
+                    'unit_name' => $article->unit?->description,
+                    'brand_name' => $article->brand?->description,
                 ],
             ], 201);
         } catch (ValidationException $e) {
@@ -1235,7 +1244,7 @@ class ArticleController extends Controller
             'unit',
             'brand'
         ])
-            ->where('status', 1)
+            ->where('status', 'ACTIVE')
             ->orderBy('billing_name');
 
         return DataTables::eloquent($articles)
@@ -1258,6 +1267,10 @@ class ArticleController extends Controller
 
             ->addColumn('brand_name', function ($article) {
                 return $article->brand?->description;
+            })
+
+            ->addColumn('cost_condition', function () {
+                return '';
             })
 
             ->addColumn('action', function ($article) {
