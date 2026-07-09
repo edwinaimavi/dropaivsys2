@@ -9,6 +9,7 @@ class CustomerOrderLabelingBox extends Model
     protected $fillable = [
         'customer_order_labeling_id',
         'box_number',
+        'observation',
         'box_label',
         'observations',
     ];

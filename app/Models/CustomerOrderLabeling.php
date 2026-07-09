@@ -53,7 +53,7 @@ class CustomerOrderLabeling extends Model
 
     public function boxes()
     {
-        return $this->hasMany(CustomerOrderLabelingBox::class);
+        return $this->hasMany(CustomerOrderLabelingBox::class)->orderBy('box_number');
     }
 
     public function createdBy()

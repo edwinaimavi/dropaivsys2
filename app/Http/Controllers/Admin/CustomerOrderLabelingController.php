@@ -51,7 +51,8 @@ class CustomerOrderLabelingController extends Controller
 
         return DataTables::of($labelings)
             ->addIndexColumn()
-            ->addColumn('order', fn (CustomerOrderLabeling $labeling) => $labeling->customerPurchaseOrder?->code ?? '-')
+            ->addColumn('order', fn (CustomerOrderLabeling $labeling) =>
+                trim(($labeling->customerPurchaseOrder?->code ?? '-') . ' | ' . ($labeling->customerPurchaseOrder?->purchase_order_number ?? '')))
             ->addColumn('customer', fn (CustomerOrderLabeling $labeling) => $this->customerName($labeling->customer))
             ->editColumn('boxes_count', fn (CustomerOrderLabeling $labeling) => (int) $labeling->boxes_count)
             ->editColumn('status', fn (CustomerOrderLabeling $labeling) => $this->statusBadge($labeling->status))
@@ -178,10 +179,17 @@ class CustomerOrderLabelingController extends Controller
     public function pdf($id)
     {
         $labeling = $this->labelingQuery()->findOrFail($id);
+        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
         $pdf = Pdf::loadView('admin.labelings.pdf', [
             'labeling' => $labeling,
-            'logoPath' => public_path('vendor/adminlte/dist/img/logo_img.png'),
-        ])->setPaper('a4', 'portrait');
+            'logoDataUri' => $this->imageDataUri($logoPath),
+        ])
+            ->setPaper('a4', 'portrait')
+            ->setOptions([
+                'defaultFont' => 'DejaVu Sans',
+                'isHtml5ParserEnabled' => true,
+                'isFontSubsettingEnabled' => true,
+            ]);
 
         $fileName = 'labelings/' . $labeling->code . '.pdf';
 
@@ -211,17 +219,25 @@ class CustomerOrderLabelingController extends Controller
             'guide_number' => ['nullable', 'string', 'max:50'],
             'boxes_count' => ['required', 'integer', 'min:1', 'max:200'],
             'observations' => ['nullable', 'string'],
+            'items_to_label' => ['required', 'array', 'min:1'],
+            'items_to_label.*.customer_purchase_order_item_id' => ['required', 'exists:customer_purchase_order_items,id'],
+            'items_to_label.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'boxes' => ['required', 'array', 'min:1'],
             'boxes.*.box_number' => ['required', 'integer', 'min:1'],
-            'boxes.*.items' => ['nullable', 'array'],
+            'boxes.*.observation' => ['nullable', 'string', 'max:1000'],
+            'boxes.*.items' => ['required', 'array', 'min:1'],
             'boxes.*.items.*.customer_purchase_order_item_id' => ['required', 'exists:customer_purchase_order_items,id'],
             'boxes.*.items.*.quantity' => ['required', 'numeric', 'min:0.01'],
         ], [
             'customer_purchase_order_id.required' => 'Seleccione una orden de compra abastecida.',
             'customer_purchase_order_id.exists' => 'La orden seleccionada no está disponible para rotulación.',
             'boxes_count.required' => 'Ingrese la cantidad de cajas.',
-            'boxes_count.min' => 'Debe registrar al menos una caja.',
+            'boxes_count.min' => 'La cantidad de cajas debe ser mayor a cero.',
+            'items_to_label.required' => 'Seleccione al menos un artículo con cantidad a rotular.',
+            'items_to_label.*.quantity.min' => 'La cantidad a rotular debe ser mayor a cero.',
             'boxes.required' => 'Debe generar la distribución por cajas.',
+            'boxes.*.items.required' => 'Cada caja debe tener al menos un artículo.',
+            'boxes.*.items.min' => 'Cada caja debe tener al menos un artículo.',
             'boxes.*.items.*.quantity.min' => 'Las cantidades deben ser mayores a cero.',
         ]);
 
@@ -231,8 +247,37 @@ class CustomerOrderLabelingController extends Controller
                 $itemMap = $order->items->keyBy('id');
                 $entered = $this->enteredQuantities($order->id);
                 $entryMeta = $this->enteredItemMeta($order->id);
+                $alreadyLabeled = $this->labeledQuantities($order->id, $labeling?->id);
+                $requested = [];
                 $distributed = [];
                 $boxes = [];
+
+                if (count($validated['boxes']) !== (int) $validated['boxes_count']) {
+                    throw ValidationException::withMessages([
+                        'boxes' => 'La cantidad de cajas generadas no coincide con la cantidad indicada.',
+                    ]);
+                }
+
+                foreach ($validated['items_to_label'] as $selectedItem) {
+                    $itemId = (int) $selectedItem['customer_purchase_order_item_id'];
+                    $quantity = round((float) $selectedItem['quantity'], 2);
+
+                    if (!$itemMap->has($itemId)) {
+                        throw ValidationException::withMessages([
+                            'items_to_label' => 'Uno de los artículos seleccionados no pertenece a la orden seleccionada.',
+                        ]);
+                    }
+
+                    $available = round((float) ($entered[$itemId] ?? 0) - (float) ($alreadyLabeled[$itemId] ?? 0), 2);
+
+                    if ($quantity > $available) {
+                        throw ValidationException::withMessages([
+                            'items_to_label' => 'La cantidad a rotular de ' . $this->itemDescription($itemMap[$itemId]) . ' supera la cantidad disponible.',
+                        ]);
+                    }
+
+                    $requested[$itemId] = round(($requested[$itemId] ?? 0) + $quantity, 2);
+                }
 
                 foreach ($validated['boxes'] as $box) {
                     $items = collect($box['items'] ?? [])
@@ -240,11 +285,14 @@ class CustomerOrderLabelingController extends Controller
                         ->values();
 
                     if ($items->isEmpty()) {
-                        continue;
+                        throw ValidationException::withMessages([
+                            'boxes' => 'La caja ' . ($box['box_number'] ?? '-') . '/' . $validated['boxes_count'] . ' no tiene artículos.',
+                        ]);
                     }
 
                     $boxes[] = [
                         'box_number' => (int) $box['box_number'],
+                        'observation' => $this->upperOrNull($box['observation'] ?? null),
                         'items' => $items->all(),
                     ];
 
@@ -257,23 +305,28 @@ class CustomerOrderLabelingController extends Controller
                             ]);
                         }
 
+                        if (!isset($requested[$itemId])) {
+                            throw ValidationException::withMessages([
+                                'items' => 'La caja ' . (int) $box['box_number'] . ' contiene un artículo que no fue seleccionado para rotular.',
+                            ]);
+                        }
+
                         $distributed[$itemId] = round(($distributed[$itemId] ?? 0) + (float) $item['quantity'], 2);
                     }
                 }
 
-                if (empty($boxes)) {
-                    throw ValidationException::withMessages([
-                        'boxes' => 'Debe distribuir al menos un artículo en una caja.',
-                    ]);
-                }
+                foreach ($requested as $itemId => $quantity) {
+                    $distributedQuantity = round((float) ($distributed[$itemId] ?? 0), 2);
 
-                $alreadyLabeled = $this->labeledQuantities($order->id, $labeling?->id);
-                foreach ($distributed as $itemId => $quantity) {
-                    $available = round((float) ($entered[$itemId] ?? 0) - (float) ($alreadyLabeled[$itemId] ?? 0), 2);
-
-                    if ($quantity > $available) {
+                    if ($distributedQuantity > $quantity) {
                         throw ValidationException::withMessages([
-                            'items' => 'La cantidad distribuida supera la cantidad disponible de ' . $this->itemDescription($itemMap[$itemId]) . '.',
+                            'items' => 'La cantidad distribuida del artículo ' . $this->itemDescription($itemMap[$itemId]) . ' supera la cantidad a rotular.',
+                        ]);
+                    }
+
+                    if ($distributedQuantity !== $quantity) {
+                        throw ValidationException::withMessages([
+                            'items' => 'Hay artículos seleccionados que aún no fueron distribuidos completamente. Revise ' . $this->itemDescription($itemMap[$itemId]) . '.',
                         ]);
                     }
                 }
@@ -305,6 +358,8 @@ class CustomerOrderLabelingController extends Controller
                 foreach ($boxes as $boxData) {
                     $box = $labeling->boxes()->create([
                         'box_number' => $boxData['box_number'],
+                        'observation' => $boxData['observation'],
+                        'observations' => $boxData['observation'],
                         'box_label' => $boxData['box_number'] . '/' . $validated['boxes_count'],
                     ]);
 
@@ -347,7 +402,6 @@ class CustomerOrderLabelingController extends Controller
             ], 500);
         }
     }
-
     private function findAvailableOrder($id, bool $lock = false): CustomerPurchaseOrder
     {
         $query = CustomerPurchaseOrder::query()
@@ -432,8 +486,15 @@ class CustomerOrderLabelingController extends Controller
             'boxes' => $labeling->boxes->map(fn (CustomerOrderLabelingBox $box) => [
                 'box_number' => $box->box_number,
                 'box_label' => $box->box_label,
+                'observation' => $box->observation ?? $box->observations,
                 'items' => $box->items->map(fn ($item) => [
                     'customer_purchase_order_item_id' => $item->customer_purchase_order_item_id,
+                    'description' => $item->description,
+                    'unit_name' => $item->unit_name,
+                    'lot' => $item->lot,
+                    'expiration_date' => $item->expiration_date?->format('Y-m-d'),
+                    'brand_name' => $item->brand_name,
+                    'origin' => $item->origin,
                     'quantity' => (float) $item->quantity,
                 ])->values(),
             ])->values(),
@@ -518,23 +579,30 @@ class CustomerOrderLabelingController extends Controller
             ->where('entries.status', 'registered')
             ->where('items.status', '!=', 'deleted')
             ->where('supplier_items.status', '!=', 'deleted')
-            ->groupBy('supplier_items.customer_purchase_order_item_id')
-            ->selectRaw('
-                supplier_items.customer_purchase_order_item_id,
-                MIN(items.lot_number) as lot,
-                MIN(items.expiration_date) as expiration_date,
-                MIN(brands.description) as brand_name,
-                MIN(items.origin) as origin
-            ')
-            ->get()
-            ->mapWithKeys(fn ($row) => [
-                (int) $row->customer_purchase_order_item_id => [
-                    'lot' => $row->lot,
-                    'expiration_date' => $row->expiration_date,
-                    'brand_name' => $row->brand_name,
-                    'origin' => $row->origin,
-                ],
+            ->orderBy('entries.created_at')
+            ->orderBy('items.id')
+            ->select([
+                'supplier_items.customer_purchase_order_item_id',
+                'items.lot_number as lot',
+                'items.expiration_date',
+                'brands.description as brand_name',
+                'items.origin',
             ])
+            ->get()
+            ->groupBy('customer_purchase_order_item_id')
+            ->mapWithKeys(function ($rows, $itemId) {
+                $row = $rows->first(fn ($entryItem) => filled($entryItem->lot))
+                    ?? $rows->first();
+
+                return [
+                    (int) $itemId => [
+                        'lot' => $row?->lot,
+                        'expiration_date' => $row?->expiration_date,
+                        'brand_name' => $row?->brand_name,
+                        'origin' => $row?->origin,
+                    ],
+                ];
+            })
             ->all();
     }
 
@@ -596,26 +664,20 @@ class CustomerOrderLabelingController extends Controller
             $parts[] = $item->presentation->description;
         }
 
-        if (!empty($meta['lot'])) {
-            $parts[] = 'LOTE: ' . $meta['lot'];
-        }
+        $parts[] = 'LOTE: ' . (!empty($meta['lot']) ? $meta['lot'] : 'SIN LOTE');
 
         $expirationDate = $meta['expiration_date'] ?? $item->expiration_date;
-        if ($expirationDate) {
-            $parts[] = 'VCTO: ' . (is_string($expirationDate)
+        $parts[] = 'VCTO: ' . ($expirationDate
+            ? (is_string($expirationDate)
                 ? date('m/Y', strtotime($expirationDate))
-                : $expirationDate->format('m/Y'));
-        }
+                : $expirationDate->format('m/Y'))
+            : 'SIN VCTO');
 
         $brandName = $meta['brand_name'] ?? $item->brand?->description;
-        if ($brandName) {
-            $parts[] = 'MARCA: ' . $brandName;
-        }
+        $parts[] = 'MARCA: ' . ($brandName ?: 'SIN MARCA');
 
         $origin = $meta['origin'] ?? $item->origin;
-        if ($origin) {
-            $parts[] = 'PROCEDENCIA: ' . $origin;
-        }
+        $parts[] = 'PROCEDENCIA: ' . ($origin ?: 'SIN PROCEDENCIA');
 
         return mb_strtoupper(implode(' - ', array_filter($parts)), 'UTF-8');
     }
@@ -625,6 +687,23 @@ class CustomerOrderLabelingController extends Controller
         return $item->unit?->description
             ?? $item->unit?->abbreviation
             ?? null;
+    }
+
+    private function imageDataUri(string $path): ?string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = match ($extension) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/png',
+        };
+
+        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
     }
 
     private function upperOrNull(?string $value): ?string

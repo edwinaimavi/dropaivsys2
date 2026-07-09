@@ -158,6 +158,29 @@
             color: #b77a00;
         }
 
+        .labeling-side-icon {
+            width: 82px;
+            height: 82px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            background: linear-gradient(135deg, #d89300, #f2b42b);
+            box-shadow: 0 8px 20px rgba(216, 147, 0, .24);
+            font-size: 30px;
+        }
+
+        .labeling-side-total {
+            padding: 10px 12px;
+            border-radius: 12px;
+            color: #fff;
+            background: linear-gradient(135deg, #d89300, #f2b42b);
+            text-align: center;
+            font-size: 22px;
+            font-weight: 800;
+        }
+
         .labeling-modal-body {
             background: #f7f8fb;
             padding: 14px;
@@ -254,6 +277,14 @@
             gap: 6px;
             align-items: center;
             margin-bottom: 6px;
+        }
+
+        .labeling-box-observation {
+            background: #fffdf8;
+            border-color: #ead7a7 !important;
+            font-size: 11.5px !important;
+            min-height: 42px !important;
+            resize: vertical;
         }
 
         .labeling-modal-footer {

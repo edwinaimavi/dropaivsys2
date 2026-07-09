@@ -22,25 +22,31 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (orderId) {
             loadLabelingCustomerOrder(orderId);
-        } else {
-            currentLabelingOrder = null;
-            renderLabelingOrderItems([]);
-            renderLabelingBoxes();
+            return;
         }
+
+        currentLabelingOrder = null;
+        resetLabelingSideSummary();
+        renderLabelingOrderItems([]);
+        renderLabelingBoxes();
     });
 
-    $(document).on('input change', '#labeling_boxes_count', renderLabelingBoxes);
+    $(document).on('input change', '#labeling_boxes_count', function () {
+        renderLabelingBoxes(getCurrentBoxDistribution());
+    });
+
     $(document).on('input', '.labeling-item-distribute', updateLabelingAvailableSummary);
 
     $(document).on('click', '.btnAddLabelingBoxItem', function () {
-        const box = $(this).closest('.labeling-box-card');
-        addLabelingBoxItemRow(box.data('box-number'));
+        addLabelingBoxItemRow($(this).closest('.labeling-box-card').data('box-number'));
     });
 
     $(document).on('click', '.btnRemoveLabelingBoxItem', function () {
         $(this).closest('.labeling-box-item-row').remove();
+        updateLabelingAvailableSummary();
     });
 
+    $(document).on('change input', '.labeling-box-item-select, .labeling-box-item-quantity', updateLabelingAvailableSummary);
     $(document).on('click', '#btnAutoDistributeLabeling', autoDistributeLabeling);
 
     $(document).on('submit', '#labelingForm', function (event) {
@@ -111,13 +117,22 @@ function initLabelingsTable() {
 function resetLabelingForm() {
     $('#labelingForm')[0].reset();
     $('#labeling_id').val('');
-    $('#labeling_customer_purchase_order_id').prop('disabled', false).html('<option value="">Seleccione orden abastecida</option>');
+    $('#labeling_customer_purchase_order_id')
+        .prop('disabled', false)
+        .html('<option value="">Seleccione orden abastecida</option>');
     $('#labeling_customer_name, #labeling_company_name, #labeling_order_number').val('');
     $('#labeling_boxes_count').val(1);
     currentLabelingOrder = null;
     clearLabelingErrors();
+    resetLabelingSideSummary();
     renderLabelingOrderItems([]);
     renderLabelingBoxes();
+}
+
+function resetLabelingSideSummary() {
+    $('#labelingSideCustomer').text('Seleccione orden');
+    $('#labelingSideCompany').text('-');
+    $('#labelingSideBoxes').text($('#labeling_boxes_count').val() || '0');
 }
 
 function loadAvailableLabelingOrders(selectedId = '') {
@@ -155,17 +170,22 @@ function fillLabelingOrderSummary(order) {
     $('#labeling_customer_name').val(order.customer_name || '');
     $('#labeling_company_name').val(order.company_name || '');
     $('#labeling_order_number').val(order.purchase_order_number || order.code || '');
+    $('#labelingSideCustomer').text(order.customer_name || 'Seleccione orden');
+    $('#labelingSideCompany').text(order.company_name || '-');
+    $('#labelingSideBoxes').text($('#labeling_boxes_count').val() || '0');
 }
 
 function renderLabelingOrderItems(items) {
     const tbody = $('#labelingOrderItemsTable tbody');
 
     if (!items.length) {
-        tbody.html('<tr><td colspan="10" class="text-center text-muted py-3">Seleccione una orden abastecida.</td></tr>');
+        tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">Seleccione una orden abastecida.</td></tr>');
         return;
     }
 
     tbody.html(items.map(function (item) {
+        const available = parseFloat(item.available_quantity) || 0;
+
         return `
             <tr data-item-id="${item.id}">
                 <td>${escapeLabelingHtml(item.article_code || '')}</td>
@@ -176,20 +196,22 @@ function renderLabelingOrderItems(items) {
                 <td>${escapeLabelingHtml(item.lot || '')}</td>
                 <td>${escapeLabelingHtml(formatLabelingDate(item.expiration_date))}</td>
                 <td class="text-right">${formatLabelingNumber(item.quantity)}</td>
-                <td class="text-right labeling-available-cell">${formatLabelingNumber(item.available_quantity)}</td>
+                <td class="text-right">${formatLabelingNumber(item.labeled_quantity)}</td>
+                <td class="text-right labeling-available-cell">${formatLabelingNumber(available)}</td>
                 <td>
                     <input type="number" class="form-control form-control-sm text-right labeling-item-distribute"
-                        data-item-id="${item.id}" min="0" step="0.01" max="${item.available_quantity}"
-                        value="${item.available_quantity > 0 ? item.available_quantity : 0}">
+                        data-item-id="${item.id}" min="0" step="0.01" max="${available}"
+                        value="${available > 0 ? available : 0}">
                 </td>
             </tr>
         `;
     }).join(''));
 }
 
-function renderLabelingBoxes() {
+function renderLabelingBoxes(existingDistribution = {}) {
     const count = parseInt($('#labeling_boxes_count').val(), 10) || 0;
     const container = $('#labelingBoxesContainer');
+    $('#labelingSideBoxes').text(count || '0');
 
     if (!count || count < 1) {
         container.html('<div class="col-12 text-center text-muted py-3">Ingrese la cantidad de cajas.</div>');
@@ -203,12 +225,17 @@ function renderLabelingBoxes() {
                 <div class="card labeling-box-card" data-box-number="${i}">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <strong>Caja ${i}/${count}</strong>
-                        <button type="button" class="btn btn-outline-primary btn-xs btnAddLabelingBoxItem">
+                        <button type="button" class="btn btn-outline-primary btn-xs btnAddLabelingBoxItem" title="Agregar artículo">
                             <i class="fas fa-plus"></i>
                         </button>
                     </div>
                     <div class="card-body p-2">
                         <div class="labeling-box-items"></div>
+                        <div class="form-group mb-0 mt-2">
+                            <label class="small font-weight-bold text-muted mb-1">Observación de caja</label>
+                            <textarea class="form-control form-control-sm labeling-box-observation" rows="2"
+                                maxlength="1000" placeholder="Ingrese una observación para esta caja, si aplica"></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -216,6 +243,21 @@ function renderLabelingBoxes() {
     }
 
     container.html(html);
+
+    Object.entries(existingDistribution).forEach(function ([boxNumber, boxData]) {
+        if (parseInt(boxNumber, 10) <= count) {
+            const items = Array.isArray(boxData) ? boxData : (boxData.items || []);
+            const observation = Array.isArray(boxData) ? '' : (boxData.observation || '');
+
+            $(`.labeling-box-card[data-box-number="${boxNumber}"]`)
+                .find('.labeling-box-observation')
+                .val(observation);
+
+            items.forEach(item => addLabelingBoxItemRow(boxNumber, item.itemId, item.quantity));
+        }
+    });
+
+    updateLabelingAvailableSummary();
 }
 
 function addLabelingBoxItemRow(boxNumber, itemId = '', quantity = '') {
@@ -231,7 +273,7 @@ function addLabelingBoxItemRow(boxNumber, itemId = '', quantity = '') {
             <select class="form-control form-control-sm labeling-box-item-select">${options}</select>
             <input type="number" class="form-control form-control-sm text-right labeling-box-item-quantity"
                 min="0.01" step="0.01" value="${quantity}">
-            <button type="button" class="btn btn-outline-danger btn-sm btnRemoveLabelingBoxItem">
+            <button type="button" class="btn btn-outline-danger btn-sm btnRemoveLabelingBoxItem" title="Quitar">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -246,6 +288,7 @@ function autoDistributeLabeling() {
         return;
     }
 
+    const existingDistribution = getCurrentBoxDistribution();
     renderLabelingBoxes();
 
     $('.labeling-item-distribute').each(function () {
@@ -257,20 +300,26 @@ function autoDistributeLabeling() {
             return;
         }
 
-        const base = Math.floor((total / count) * 100) / 100;
-        let accumulated = 0;
+        const cents = Math.round(total * 100);
+        const baseCents = Math.floor(cents / count);
+        const remainder = cents % count;
 
         for (let box = 1; box <= count; box++) {
-            let quantity = box === count
-                ? roundLabeling(total - accumulated)
-                : base;
-            accumulated = roundLabeling(accumulated + quantity);
+            const quantity = (baseCents + (box <= remainder ? 1 : 0)) / 100;
 
             if (quantity > 0) {
-                addLabelingBoxItemRow(box, itemId, quantity);
+                addLabelingBoxItemRow(box, itemId, quantity.toFixed(2));
             }
         }
     });
+
+    Object.entries(existingDistribution).forEach(function ([boxNumber, boxData]) {
+        $(`.labeling-box-card[data-box-number="${boxNumber}"]`)
+            .find('.labeling-box-observation')
+            .val(boxData.observation || '');
+    });
+
+    updateLabelingAvailableSummary();
 }
 
 function saveLabeling() {
@@ -311,10 +360,6 @@ function saveLabeling() {
                 showConfirmButton: false,
                 timer: 2500
             });
-
-            if (response.data?.pdf_url) {
-                window.open(response.data.pdf_url, '_blank');
-            }
         },
         error: function (xhr) {
             handleLabelingError(xhr);
@@ -333,9 +378,15 @@ function buildLabelingFormData() {
     formData.append('boxes_count', $('#labeling_boxes_count').val() || '');
     formData.append('observations', $('#labeling_observations').val() || '');
 
+    getItemsToLabel().forEach(function (item, index) {
+        formData.append(`items_to_label[${index}][customer_purchase_order_item_id]`, item.itemId);
+        formData.append(`items_to_label[${index}][quantity]`, item.quantity);
+    });
+
     $('.labeling-box-card').each(function (boxIndex) {
         const box = $(this);
         formData.append(`boxes[${boxIndex}][box_number]`, box.data('box-number'));
+        formData.append(`boxes[${boxIndex}][observation]`, box.find('.labeling-box-observation').val() || '');
 
         box.find('.labeling-box-item-row').each(function (itemIndex) {
             const row = $(this);
@@ -357,48 +408,143 @@ function validateLabelingDistribution() {
         return { valid: false, message: 'Seleccione una orden abastecida.' };
     }
 
-    const totals = {};
-    let hasItems = false;
-    let hasNegative = false;
-
-    $('.labeling-box-item-row').each(function () {
-        const itemId = $(this).find('.labeling-box-item-select').val();
-        const quantity = parseFloat($(this).find('.labeling-box-item-quantity').val()) || 0;
-
-        if (quantity < 0) {
-            hasNegative = true;
-            return;
-        }
-
-        if (!itemId && quantity > 0) {
-            return;
-        }
-
-        if (itemId && quantity > 0) {
-            hasItems = true;
-            totals[itemId] = roundLabeling((totals[itemId] || 0) + quantity);
-        }
-
-    });
-
-    if (hasNegative) {
-        return { valid: false, message: 'No se permiten cantidades negativas.' };
+    const count = parseInt($('#labeling_boxes_count').val(), 10) || 0;
+    if (count < 1) {
+        return { valid: false, message: 'La cantidad de cajas debe ser mayor a cero.' };
     }
 
-    if (!hasItems) {
-        return { valid: false, message: 'Debe distribuir al menos un artículo en una caja.' };
+    const selected = getItemsToLabel();
+    if (!selected.length) {
+        return { valid: false, message: 'Seleccione al menos un artículo con cantidad a rotular.' };
     }
 
-    for (const item of currentLabelingOrder.items || []) {
-        if ((totals[item.id] || 0) > parseFloat(item.available_quantity)) {
+    for (const item of selected) {
+        const orderItem = findLabelingOrderItem(item.itemId);
+        const available = parseFloat(orderItem?.available_quantity || 0);
+
+        if (item.quantity > available) {
+            return { valid: false, message: `La cantidad a rotular de ${orderItem?.article_name || 'un artículo'} supera lo disponible.` };
+        }
+    }
+
+    const selectedTotals = Object.fromEntries(selected.map(item => [String(item.itemId), item.quantity]));
+    const distributedTotals = {};
+
+    for (let box = 1; box <= count; box++) {
+        const card = $(`.labeling-box-card[data-box-number="${box}"]`);
+        const rows = card.find('.labeling-box-item-row').filter(function () {
+            const itemId = $(this).find('.labeling-box-item-select').val();
+            const quantity = parseFloat($(this).find('.labeling-box-item-quantity').val()) || 0;
+            return itemId && quantity > 0;
+        });
+
+        if (!rows.length) {
+            return { valid: false, message: `La caja ${box}/${count} no tiene artículos.` };
+        }
+
+        let invalidRow = false;
+        rows.each(function () {
+            const itemId = String($(this).find('.labeling-box-item-select').val());
+            const quantity = parseFloat($(this).find('.labeling-box-item-quantity').val()) || 0;
+
+            if (!selectedTotals[itemId] || quantity <= 0) {
+                invalidRow = true;
+                return false;
+            }
+
+            distributedTotals[itemId] = roundLabeling((distributedTotals[itemId] || 0) + quantity);
+        });
+
+        if (invalidRow) {
+            return { valid: false, message: `La caja ${box}/${count} tiene artículos sin cantidad válida o no seleccionados para rotular.` };
+        }
+    }
+
+    for (const [itemId, selectedQuantity] of Object.entries(selectedTotals)) {
+        const distributed = roundLabeling(distributedTotals[itemId] || 0);
+        const orderItem = findLabelingOrderItem(itemId);
+
+        if (distributed > selectedQuantity) {
             return {
                 valid: false,
-                message: `La cantidad distribuida supera lo disponible para ${item.article_name}.`
+                message: `La cantidad distribuida del artículo ${orderItem?.article_name || itemId} supera la cantidad a rotular.`
+            };
+        }
+
+        if (distributed !== selectedQuantity) {
+            return {
+                valid: false,
+                message: `Hay artículos seleccionados que aún no fueron distribuidos completamente. Revise ${orderItem?.article_name || itemId}.`
             };
         }
     }
 
     return { valid: true };
+}
+
+function getItemsToLabel() {
+    const items = [];
+
+    $('.labeling-item-distribute').each(function () {
+        const itemId = $(this).data('item-id');
+        const quantity = roundLabeling(parseFloat($(this).val()) || 0);
+
+        if (quantity > 0) {
+            items.push({ itemId, quantity });
+        }
+    });
+
+    return items;
+}
+
+function getCurrentBoxDistribution() {
+    const distribution = {};
+
+    $('.labeling-box-card').each(function () {
+        const boxNumber = $(this).data('box-number');
+        distribution[boxNumber] = {
+            observation: $(this).find('.labeling-box-observation').val() || '',
+            items: []
+        };
+
+        $(this).find('.labeling-box-item-row').each(function () {
+            const itemId = $(this).find('.labeling-box-item-select').val();
+            const quantity = $(this).find('.labeling-box-item-quantity').val();
+
+            if (itemId || quantity) {
+                distribution[boxNumber].items.push({ itemId, quantity });
+            }
+        });
+    });
+
+    return distribution;
+}
+
+function updateLabelingAvailableSummary() {
+    const distributed = {};
+
+    $('.labeling-box-item-row').each(function () {
+        const itemId = $(this).find('.labeling-box-item-select').val();
+        const quantity = parseFloat($(this).find('.labeling-box-item-quantity').val()) || 0;
+
+        if (itemId && quantity > 0) {
+            distributed[itemId] = roundLabeling((distributed[itemId] || 0) + quantity);
+        }
+    });
+
+    $('.labeling-item-distribute').each(function () {
+        const input = $(this);
+        const itemId = String(input.data('item-id'));
+        const toLabel = roundLabeling(parseFloat(input.val()) || 0);
+        const assigned = roundLabeling(distributed[itemId] || 0);
+        const row = input.closest('tr');
+        const available = parseFloat(input.attr('max')) || 0;
+
+        row.toggleClass('table-warning', assigned < toLabel);
+        row.toggleClass('table-danger', assigned > toLabel || toLabel > available);
+        row.find('.labeling-distributed-cell').remove();
+        row.append(`<td class="d-none labeling-distributed-cell">${assigned}</td>`);
+    });
 }
 
 function viewLabeling(id) {
@@ -430,21 +576,54 @@ function editLabeling(id) {
                 .append(new Option(`${data.order.code} | ${data.order.customer_name}`, data.customer_purchase_order_id, true, true))
                 .val(data.customer_purchase_order_id)
                 .prop('disabled', true);
+
             fillLabelingOrderSummary(data.order);
             renderLabelingOrderItems(data.order.items || []);
-            renderLabelingBoxes();
+            applyLabelingItemsToLabel(data.boxes || []);
+            renderLabelingBoxes(getSavedLabelingBoxDistribution(data.boxes || []));
 
-            (data.boxes || []).forEach(function (box) {
-                (box.items || []).forEach(function (item) {
-                    addLabelingBoxItemRow(box.box_number, item.customer_purchase_order_item_id, item.quantity);
-                });
-            });
-
+            updateLabelingAvailableSummary();
             $('#labelingModal').modal('show');
         })
         .fail(function (xhr) {
             Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo cargar la rotulación.', 'error');
         });
+}
+
+function getSavedLabelingBoxDistribution(boxes) {
+    const distribution = {};
+
+    boxes.forEach(function (box) {
+        distribution[box.box_number] = {
+            observation: box.observation || '',
+            items: (box.items || []).map(function (item) {
+                return {
+                    itemId: item.customer_purchase_order_item_id,
+                    quantity: item.quantity
+                };
+            })
+        };
+    });
+
+    return distribution;
+}
+
+function applyLabelingItemsToLabel(boxes) {
+    const totals = {};
+
+    boxes.forEach(function (box) {
+        (box.items || []).forEach(function (item) {
+            const itemId = String(item.customer_purchase_order_item_id);
+            totals[itemId] = roundLabeling((totals[itemId] || 0) + (parseFloat(item.quantity) || 0));
+        });
+    });
+
+    $('.labeling-item-distribute').each(function () {
+        const itemId = String($(this).data('item-id'));
+        if (totals[itemId]) {
+            $(this).val(totals[itemId]);
+        }
+    });
 }
 
 function deleteLabeling(id) {
@@ -478,10 +657,16 @@ function renderLabelingDetail(data) {
     const boxes = (data.boxes || []).map(function (box) {
         const rows = (box.items || []).map(function (item) {
             const orderItem = (data.order.items || []).find(current => String(current.id) === String(item.customer_purchase_order_item_id));
-            return `<li>${escapeLabelingHtml(orderItem?.article_name || 'ARTÍCULO')}: <strong>${formatLabelingNumber(item.quantity)}</strong></li>`;
-        }).join('');
+            const description = item.description || orderItem?.description || orderItem?.article_name || 'ARTÍCULO';
+            const unitName = item.unit_name ? ` <span class="text-muted">(${escapeLabelingHtml(item.unit_name)})</span>` : '';
 
-        return `<div class="col-md-6 mb-2"><div class="border rounded p-2"><strong>Caja ${box.box_label}</strong><ul class="mb-0 pl-3">${rows}</ul></div></div>`;
+            return `<li>${escapeLabelingHtml(description)}${unitName}: <strong>${formatLabelingNumber(item.quantity)}</strong></li>`;
+        }).join('');
+        const observation = box.observation
+            ? `<div class="alert alert-warning py-1 px-2 mt-2 mb-0"><strong>Observación:</strong> ${escapeLabelingHtml(box.observation)}</div>`
+            : '';
+
+        return `<div class="col-md-6 mb-2"><div class="border rounded p-2"><strong>Caja ${box.box_label}</strong><ul class="mb-0 pl-3">${rows}</ul>${observation}</div></div>`;
     }).join('');
 
     return `
@@ -535,8 +720,8 @@ function clearLabelingErrors() {
     $('#labelingErrors').addClass('d-none').empty();
 }
 
-function updateLabelingAvailableSummary() {
-    return true;
+function findLabelingOrderItem(itemId) {
+    return (currentLabelingOrder?.items || []).find(item => String(item.id) === String(itemId));
 }
 
 function roundLabeling(value) {
