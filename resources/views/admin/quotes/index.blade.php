@@ -328,9 +328,27 @@
 
             quoteCustomerBranches: "{{ route('admin.quotes.customerBranches', ':id') }}",
 
+            quoteCustomerSearch: "{{ route('admin.quotes.customers.search') }}",
+
+            quoteCustomerQuickStore: "{{ route('admin.quotes.customers.quick-store') }}",
+
+            quoteCustomerDocumentConsult: "{{ route('admin.customers.consultar', 'DOC_PLACEHOLDER') }}",
+
             generateQuoteNumber: "{{ route('admin.quotes.generateNumber') }}",
 
+            quoteMarketStudySearch: "{{ route('admin.quotes.market-studies.search') }}",
+
             quoteMarketStudyWinners: "{{ route('admin.quotes.marketStudyWinners', ':id') }}",
+
+            quoteArticleSearch: "{{ route('admin.quotes.articles.search') }}",
+
+            quoteArticleGenerateCode: "{{ route('admin.quotes.articles.generate-code') }}",
+
+            quoteArticleQuickStore: "{{ route('admin.quotes.articles.quick-store') }}",
+
+            quoteBrandSearch: "{{ route('admin.quotes.brands.search') }}",
+
+            quoteBrandQuickStore: "{{ route('admin.quotes.brands.quick-store') }}",
 
 
 

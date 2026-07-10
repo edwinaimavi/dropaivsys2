@@ -52,7 +52,10 @@ class MarketStudyQuoteController extends Controller
             ->orderBy('business_name')
             ->get([
                 'id',
-                'business_name'
+                'ruc',
+                'business_name',
+                'short_name',
+                'payment_condition'
             ]);
 
         return response()->json($suppliers);
@@ -468,7 +471,9 @@ class MarketStudyQuoteController extends Controller
     {
         return response()->json([
             'id'                => $supplier->id,
+            'ruc'               => $supplier->ruc,
             'business_name'     => $supplier->business_name,
+            'short_name'        => $supplier->short_name,
             'payment_condition' => $supplier->payment_condition,
         ]);
     }

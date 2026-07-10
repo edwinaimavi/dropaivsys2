@@ -17,6 +17,7 @@ class CustomerOrderLabeling extends Model
         'customer_branch_id',
         'invoice_number',
         'guide_number',
+        'destination',
         'boxes_count',
         'total_quantity',
         'status',

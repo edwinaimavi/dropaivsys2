@@ -20,7 +20,7 @@ class SupplierController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.suppliers.index')->only(['index', 'list', 'searchUbigeo', 'consultarRuc']);
+        $this->middleware('can:admin.suppliers.index')->only(['index', 'list', 'searchUbigeo', 'consultarRuc', 'findByRuc']);
         $this->middleware('can:admin.suppliers.store')->only(['store']);
         $this->middleware('can:admin.suppliers.update')->only(['update']);
         $this->middleware('can:admin.suppliers.destroy')->only(['destroy']);
@@ -262,7 +262,7 @@ class SupplierController extends Controller
             'El RUC debe tener 11 dígitos.',
 
             'ruc.unique' =>
-            'El RUC ya existe.',
+            'Este RUC ya está registrado como proveedor.',
 
             'business_name.required' =>
             'La razón social es obligatoria.',
@@ -726,6 +726,40 @@ class SupplierController extends Controller
                     )
 
             ),
+        ]);
+    }
+
+    public function findByRuc(string $ruc)
+    {
+        if (!preg_match('/^\d{11}$/', $ruc)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'El RUC debe tener 11 dígitos.'
+            ], 422);
+        }
+
+        $supplier = Supplier::query()
+            ->where('ruc', $ruc)
+            ->first([
+                'id',
+                'ruc',
+                'business_name',
+                'short_name',
+                'payment_condition',
+                'status'
+            ]);
+
+        if (!$supplier) {
+            return response()->json([
+                'exists' => false,
+                'message' => 'Proveedor no encontrado.'
+            ], 404);
+        }
+
+        return response()->json([
+            'exists' => true,
+            'message' => 'Este RUC ya está registrado como proveedor.',
+            'data' => $supplier
         ]);
     }
 

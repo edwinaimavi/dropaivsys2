@@ -1,5 +1,10 @@
 let tableQuote;
 let quoteItemIndex = 0;
+let quickQuoteArticleRow = null;
+let quickQuoteBrandRow = null;
+let lastQuickCustomerDocument = '';
+let quickCustomerDocumentTimer = null;
+let quickCustomerConsulting = false;
 
 $(function () {
     $('[data-toggle="tooltip"]').tooltip();
@@ -279,6 +284,16 @@ document.addEventListener('DOMContentLoaded', function () {
         let url = quoteId
             ? window.routes.updateQuote + '/' + quoteId
             : window.routes.storeQuote;
+
+        if ($('#quoteItemsTbody tr.quote-item-row').length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Sin artículos',
+                text: 'Debe agregar al menos un artículo a la cotización.'
+            });
+
+            return;
+        }
 
         if (quoteId) {
 
@@ -706,7 +721,7 @@ document.addEventListener('DOMContentLoaded', function () {
             Swal.fire({
                 icon: 'warning',
                 title: 'Seleccione un estudio de mercado',
-                text: 'Debe seleccionar un estudio para cargar los artículos ganadores.'
+                text: 'Seleccione un estudio de mercado para cargar artículos.',
             });
 
             return;
@@ -756,6 +771,8 @@ document.addEventListener('DOMContentLoaded', function () {
 function initQuoteSelects() {
 
     initSelect2ForQuoteScope($('#quoteModal'));
+    initQuoteMarketStudySelect();
+    initQuoteCustomerSelect();
 
 }
 
@@ -794,15 +811,17 @@ function initSelect2ForQuoteScope(scope) {
         ? scope.closest('.modal')
         : $('#quoteModal');
 
-    scope.find('select').not('.item-unit-id').select2({
+    scope.find('select')
+        .not('.item-unit-id, .item-article-select, .item-brand-id, #market_study_id, #customer_id')
+        .select2({
 
-        dropdownParent: dropdownParent,
+            dropdownParent: dropdownParent,
 
-        width: '100%',
+            width: '100%',
 
-        theme: 'bootstrap4'
+            theme: 'bootstrap4'
 
-    });
+        });
 
     scope.find('.item-unit-id').select2({
 
@@ -962,6 +981,247 @@ function resetQuoteForm() {
 
 }
 
+function initQuoteMarketStudySelect() {
+    if (!$.fn.select2 || !window.routes.quoteMarketStudySearch) {
+        return;
+    }
+
+    const select = $('#market_study_id');
+
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.select2({
+        dropdownParent: $('#quoteModal'),
+        width: '100%',
+        theme: 'bootstrap4',
+        placeholder: 'Buscar por código o descripción...',
+        allowClear: true,
+        ajax: {
+            url: window.routes.quoteMarketStudySearch,
+            type: 'GET',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term || '' };
+            },
+            processResults: function (response) {
+                return { results: response.results || [] };
+            },
+            cache: true
+        },
+        language: {
+            noResults: function () {
+                return 'No se encontraron estudios de mercado';
+            },
+            searching: function () {
+                return 'Buscando...';
+            }
+        }
+    });
+}
+
+function initQuoteCustomerSelect() {
+    if (!$.fn.select2 || !window.routes.quoteCustomerSearch) {
+        return;
+    }
+
+    const select = $('#customer_id');
+
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.select2({
+        dropdownParent: $('#quoteModal'),
+        width: '100%',
+        theme: 'bootstrap4',
+        placeholder: 'Buscar cliente...',
+        allowClear: true,
+        ajax: {
+            url: window.routes.quoteCustomerSearch,
+            type: 'GET',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term || '' };
+            },
+            processResults: function (response) {
+                return { results: response.results || [] };
+            },
+            cache: true
+        },
+        language: {
+            noResults: function () {
+                return 'No se encontraron clientes';
+            },
+            searching: function () {
+                return 'Buscando...';
+            }
+        }
+    });
+}
+
+function selectQuoteCustomer(customer, branch = null) {
+    if (!customer || !customer.id) {
+        return;
+    }
+
+    const select = $('#customer_id');
+
+    if (!select.find('option[value="' + customer.id + '"]').length) {
+        select.append(new Option(customer.text || customer.name || customer.id, customer.id, true, true));
+    }
+
+    select.val(String(customer.id)).trigger('change.select2');
+    $('#quoteSideCustomer').text(customer.text || 'Seleccione cliente');
+    resetCustomerBranches();
+
+    loadCustomerBranches(customer.id, {
+        selectedBranchId: branch?.id || null,
+        autoSelectSingle: !branch
+    });
+
+    if (branch?.address) {
+        $('#delivery_address').val(String(branch.address).toUpperCase());
+    }
+}
+
+function initQuoteArticleSelect(row) {
+    const select = row.find('.item-article-select');
+
+    if (!$.fn.select2 || !select.length) {
+        return;
+    }
+
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.select2({
+        dropdownParent: $('#quoteModal'),
+        width: '100%',
+        theme: 'bootstrap4',
+        placeholder: select.data('placeholder') || 'Buscar artículo...',
+        allowClear: true,
+        ajax: {
+            url: window.routes.quoteArticleSearch,
+            type: 'GET',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term || '' };
+            },
+            processResults: function (response) {
+                return { results: response.results || [] };
+            },
+            cache: true
+        },
+        language: {
+            noResults: function () {
+                return 'No se encontraron artículos';
+            },
+            searching: function () {
+                return 'Buscando...';
+            }
+        }
+    });
+}
+
+function initQuoteBrandSelect(row) {
+    const select = row.find('.item-brand-id');
+
+    if (!$.fn.select2 || !select.length) {
+        return;
+    }
+
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.select2({
+        dropdownParent: $('#quoteModal'),
+        width: '100%',
+        theme: 'bootstrap4',
+        placeholder: 'Buscar marca...',
+        allowClear: true,
+        ajax: {
+            url: window.routes.quoteBrandSearch,
+            type: 'GET',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term || '' };
+            },
+            processResults: function (response) {
+                return { results: response.results || [] };
+            },
+            cache: true
+        }
+    });
+}
+
+function setQuoteArticle(row, article) {
+    if (!row.length || !article) {
+        return;
+    }
+
+    const text = article.text || [article.code, article.billing_name].filter(Boolean).join(' | ');
+    const select = row.find('.item-article-select');
+
+    if (select.length) {
+        if (!select.find('option[value="' + article.id + '"]').length) {
+            select.append(new Option(text, article.id, true, true));
+        }
+
+        select.val(String(article.id)).trigger('change.select2');
+        select.data('selected-article', article);
+    }
+
+    row.find('.item-article-id').val(article.id || '');
+    row.find('.item-article-code').val(article.code || '');
+    row.find('.item-billing-name-value').val(article.billing_name || article.name || '');
+    row.find('.item-billing-name').prop('disabled', true).val(article.billing_name || article.name || '');
+
+    setRowSelectValue(row.find('.item-unit-id'), article.unit_id, article.unit_text);
+    setRowSelectValue(row.find('.item-presentation-id'), article.presentation_id, article.presentation_text);
+    setRowSelectValue(row.find('.item-brand-id'), article.brand_id, article.brand_text);
+
+    if (article.origin) {
+        row.find('.item-origin').val(article.origin);
+    }
+
+    if (article.cost_price !== undefined && article.cost_price !== null) {
+        row.find('.item-cost-price').val(formatMoney(article.cost_price));
+    }
+
+    calculateQuoteTotals();
+}
+
+function setRowSelectValue(select, value, text = '') {
+    if (!select.length) {
+        return;
+    }
+
+    if (value && !select.find('option[value="' + value + '"]').length) {
+        select.append(new Option(text || value, value, true, true));
+    }
+
+    select.val(value || '').trigger('change.select2');
+}
+
+function showQuickQuoteToast(icon, title) {
+    Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: icon,
+        title: title,
+        showConfirmButton: false,
+        timer: 3000
+    });
+}
+
 /*
 |--------------------------------------------------------------------------
 | LLENAR FORMULARIO PARA EDICION
@@ -974,6 +1234,17 @@ function fillQuoteForm(quote) {
     $('#quote_id').val(quote.id || '');
     $('#quote_number').val(quote.quote_number || '');
     $('#status').val(quote.status || 'sent');
+
+    if (quote.customer_id && quote.customer) {
+        const customerText = [
+            quote.customer.ruc || quote.customer.document_number,
+            quote.customer.business_name || quote.customer.full_name || quote.customer.first_name
+        ].filter(Boolean).join(' | ');
+
+        if (!$('#customer_id option[value="' + quote.customer_id + '"]').length) {
+            $('#customer_id').append(new Option(customerText, quote.customer_id, true, true));
+        }
+    }
 
     $('#customer_id')
         .val(quote.customer_id || '')
@@ -1009,6 +1280,17 @@ function fillQuoteForm(quote) {
     $('#validity_date').val(formatDateForInput(quote.validity_date));
     $('#delivery_days').val(quote.delivery_days || '');
     $('#delivery_time').val(quote.delivery_time || '');
+    if (quote.market_study_id && quote.market_study) {
+        const studyText = [
+            quote.market_study.code,
+            quote.market_study.description
+        ].filter(Boolean).join(' | ');
+
+        if (!$('#market_study_id option[value="' + quote.market_study_id + '"]').length) {
+            $('#market_study_id').append(new Option(studyText, quote.market_study_id, true, true));
+        }
+    }
+
     $('#market_study_id')
         .val(quote.market_study_id || '')
         .trigger('change.select2');
@@ -1078,7 +1360,8 @@ function addQuoteItemRow(data = {}) {
     row.find('.item-article-id').val(data.article_id || '');
     row.find('.item-article-code').val(data.article_code || '');
     row.find('.item-is-winner').val(data.is_winner || 0);
-    row.find('.item-billing-name').val(data.billing_name_snapshot || '');
+    row.find('.item-billing-name-value').val(data.billing_name_snapshot || '');
+    row.find('.item-billing-name').prop('disabled', true).val(data.billing_name_snapshot || '');
     row.find('.item-note').val(data.note || '');
     row.find('.item-unit-id').val(data.unit_id || '');
     row.find('.item-presentation-id').val(data.presentation_id || '');
@@ -1094,6 +1377,22 @@ function addQuoteItemRow(data = {}) {
     row.find('.item-line-total').val(formatMoney(data.line_total || 0));
 
     initSelect2ForQuoteScope(row);
+    initQuoteArticleSelect(row);
+    initQuoteBrandSelect(row);
+
+    if (data.article_id) {
+        setQuoteArticle(row, {
+            id: data.article_id,
+            code: data.article_code,
+            billing_name: data.billing_name_snapshot,
+            text: [data.article_code, data.billing_name_snapshot].filter(Boolean).join(' | '),
+            unit_id: data.unit_id,
+            presentation_id: data.presentation_id,
+            brand_id: data.brand_id,
+            origin: data.origin,
+            cost_price: data.cost_price || 0
+        });
+    }
 
     quoteItemIndex++;
 
@@ -1620,4 +1919,412 @@ function loadMarketStudyWinnerItems(marketStudyId) {
 
     });
 
+}
+
+$(document).on('select2:select', '.item-article-select', function (event) {
+    setQuoteArticle($(this).closest('tr.quote-item-row'), event.params.data || {});
+});
+
+$(document).on('select2:clear', '.item-article-select', function () {
+    const row = $(this).closest('tr.quote-item-row');
+
+    row.find('.item-article-id').val('');
+    row.find('.item-article-code').val('');
+    row.find('.item-billing-name-value').val('');
+    row.find('.item-billing-name').prop('disabled', true).val('');
+});
+
+$(document).on('click', '.btnOpenQuickQuoteArticle', function () {
+    quickQuoteArticleRow = $(this).closest('tr.quote-item-row');
+    resetQuickQuoteArticleForm();
+    $('#quickQuoteArticleModal').modal('show');
+});
+
+$(document).on('click', '.btnOpenQuickQuoteBrand', function () {
+    quickQuoteBrandRow = $(this).closest('tr.quote-item-row');
+    resetQuickQuoteBrandForm();
+    $('#quickQuoteBrandModal').modal('show');
+});
+
+$('#quickQuoteArticleModal, #quickQuoteBrandModal').on('hidden.bs.modal', function () {
+    if ($('#quoteModal').hasClass('show')) {
+        $('body').addClass('modal-open');
+    }
+});
+
+$(document).on('click', '#btnOpenQuickCustomerModal', function () {
+    resetQuickCustomerForm();
+    $('#quickCustomerModal').modal('show');
+});
+
+$('#quickCustomerModal').on('shown.bs.modal', function () {
+    $('#quick_customer_document_number').trigger('focus');
+});
+
+$('#quickCustomerModal').on('hidden.bs.modal', function () {
+    if ($('#quoteModal').hasClass('show')) {
+        $('body').addClass('modal-open');
+    }
+});
+
+$(document).on('change', '#quick_customer_document_type', function () {
+    const type = $(this).val();
+
+    if (type === 'RUC') {
+        $('#quick_customer_person_type').val('juridica').trigger('change.select2');
+        $('#quick_customer_document_number').attr('maxlength', 11);
+    } else if (type === 'DNI') {
+        $('#quick_customer_person_type').val('natural').trigger('change.select2');
+        $('#quick_customer_document_number').attr('maxlength', 8);
+    } else {
+        $('#quick_customer_document_number').attr('maxlength', 20);
+    }
+
+    lastQuickCustomerDocument = '';
+    $('#quick_customer_document_number').val('');
+});
+
+$(document).on('input', '#quick_customer_document_number', function () {
+    const documentType = $('#quick_customer_document_type').val();
+    const maxLength = documentType === 'RUC' ? 11 : (documentType === 'DNI' ? 8 : 20);
+    const number = $(this).val().replace(/\D/g, '').slice(0, maxLength);
+
+    $(this).val(number);
+    clearTimeout(quickCustomerDocumentTimer);
+
+    if (!['RUC', 'DNI'].includes(documentType)) {
+        return;
+    }
+
+    const expectedLength = documentType === 'RUC' ? 11 : 8;
+
+    if (number.length !== expectedLength || number === lastQuickCustomerDocument) {
+        return;
+    }
+
+    quickCustomerDocumentTimer = setTimeout(function () {
+        consultQuickCustomerDocument(documentType, number);
+    }, 350);
+});
+
+$(document).on('submit', '#quickCustomerForm', function (event) {
+    event.preventDefault();
+
+    clearQuickQuoteFormErrors('#quickCustomerForm');
+
+    const button = $('#btnSaveQuickCustomer');
+    const formData = new FormData(this);
+
+    button.prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.quoteCustomerQuickStore,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            selectQuoteCustomer(response.customer, response.branch);
+            $('#quickCustomerModal').modal('hide');
+            showQuickQuoteToast('success', 'Cliente registrado y seleccionado correctamente.');
+        },
+        error: function (xhr) {
+            if (xhr.status === 409) {
+                const response = xhr.responseJSON || {};
+
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Cliente existente',
+                    text: response.message || 'Este cliente ya está registrado.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Seleccionarlo',
+                    cancelButtonText: 'Cancelar'
+                }).then(function (result) {
+                    if (result.isConfirmed) {
+                        selectQuoteCustomer(response.customer, response.branch);
+                        $('#quickCustomerModal').modal('hide');
+                    }
+                });
+                return;
+            }
+
+            if (xhr.status === 422) {
+                showQuickQuoteFormErrors('#quickCustomerForm', xhr.responseJSON?.errors || {});
+                return;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message || 'No se pudo guardar el cliente.'
+            });
+        },
+        complete: function () {
+            button.prop('disabled', false)
+                .html('<i class="fas fa-save mr-1"></i> Guardar Cliente');
+        }
+    });
+});
+
+$(document).on('show.bs.modal', '#quoteModal, #quickCustomerModal, #quickQuoteArticleModal, #quickQuoteBrandModal', function () {
+    const zIndex = 1040 + (10 * $('.modal:visible').length);
+
+    $(this).css('z-index', zIndex);
+
+    setTimeout(function () {
+        $('.modal-backdrop')
+            .not('.modal-stack')
+            .css('z-index', zIndex - 1)
+            .addClass('modal-stack');
+    }, 0);
+});
+
+$(document).on('input', '#quick_quote_article_legal_name', function () {
+    const value = $(this).val();
+
+    if (!$('#quick_quote_article_commercial_name').val()) {
+        $('#quick_quote_article_commercial_name').val(value);
+    }
+
+    if (!$('#quick_quote_article_billing_name').val()) {
+        $('#quick_quote_article_billing_name').val(value);
+    }
+});
+
+$(document).on('input', '#quick_quote_article_commercial_name', function () {
+    if (!$('#quick_quote_article_billing_name').val()) {
+        $('#quick_quote_article_billing_name').val($(this).val());
+    }
+});
+
+$(document).on('submit', '#quickQuoteArticleForm', function (event) {
+    event.preventDefault();
+
+    clearQuickQuoteFormErrors('#quickQuoteArticleForm');
+
+    const button = $('#btnSaveQuickQuoteArticle');
+    const formData = new FormData(this);
+
+    button.prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.quoteArticleQuickStore,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            const article = response.data || {};
+
+            if (quickQuoteArticleRow && quickQuoteArticleRow.length) {
+                setQuoteArticle(quickQuoteArticleRow, article);
+            }
+
+            $('#quickQuoteArticleModal').modal('hide');
+            showQuickQuoteToast('success', 'Artículo registrado y seleccionado correctamente.');
+        },
+        error: function (xhr) {
+            if (xhr.status === 422) {
+                showQuickQuoteFormErrors('#quickQuoteArticleForm', xhr.responseJSON?.errors || {});
+                return;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message || 'No se pudo registrar el artículo.'
+            });
+        },
+        complete: function () {
+            button.prop('disabled', false)
+                .html('<i class="fas fa-save mr-1"></i> Guardar Artículo');
+        }
+    });
+});
+
+$(document).on('submit', '#quickQuoteBrandForm', function (event) {
+    event.preventDefault();
+
+    clearQuickQuoteFormErrors('#quickQuoteBrandForm');
+
+    const button = $('#btnSaveQuickQuoteBrand');
+    const formData = new FormData(this);
+
+    button.prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.quoteBrandQuickStore,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            const brand = response.data || {};
+
+            if (quickQuoteBrandRow && quickQuoteBrandRow.length) {
+                const select = quickQuoteBrandRow.find('.item-brand-id');
+
+                if (!select.find('option[value="' + brand.id + '"]').length) {
+                    select.append(new Option(brand.text || brand.description, brand.id, true, true));
+                }
+
+                select.val(String(brand.id)).trigger('change.select2');
+            }
+
+            $('#quickQuoteBrandModal').modal('hide');
+            showQuickQuoteToast('success', 'Marca registrada y seleccionada correctamente.');
+        },
+        error: function (xhr) {
+            if (xhr.status === 422) {
+                showQuickQuoteFormErrors('#quickQuoteBrandForm', xhr.responseJSON?.errors || {});
+                return;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message || 'No se pudo registrar la marca.'
+            });
+        },
+        complete: function () {
+            button.prop('disabled', false)
+                .html('<i class="fas fa-save mr-1"></i> Guardar Marca');
+        }
+    });
+});
+
+function resetQuickQuoteArticleForm() {
+    const form = $('#quickQuoteArticleForm');
+
+    form[0].reset();
+    clearQuickQuoteFormErrors('#quickQuoteArticleForm');
+    $('#quick_quote_article_code').val('Cargando...');
+    $('#quick_quote_article_code_type').val('SIGA/SISMED');
+
+    $.get(window.routes.quoteArticleGenerateCode)
+        .done(function (response) {
+            $('#quick_quote_article_code').val(response.code || '');
+        })
+        .fail(function () {
+            $('#quick_quote_article_code').val('');
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo generar el código del artículo.'
+            });
+        });
+}
+
+function resetQuickCustomerForm() {
+    const form = $('#quickCustomerForm');
+
+    form[0].reset();
+    clearQuickQuoteFormErrors('#quickCustomerForm');
+    $('#quick_customer_person_type').val('natural').trigger('change.select2');
+    $('#quick_customer_document_type').val('DNI').trigger('change.select2');
+    $('#quick_customer_withholding_agent').val('0').trigger('change.select2');
+    $('#quickCustomerDocumentLoading').addClass('d-none');
+    $('#btnSaveQuickCustomer')
+        .prop('disabled', false)
+        .html('<i class="fas fa-save mr-1"></i> Guardar Cliente');
+    lastQuickCustomerDocument = '';
+}
+
+function consultQuickCustomerDocument(documentType, number) {
+    if (quickCustomerConsulting || !window.routes.quoteCustomerDocumentConsult) {
+        return;
+    }
+
+    quickCustomerConsulting = true;
+    lastQuickCustomerDocument = number;
+
+    $('#quickCustomerDocumentLoading').removeClass('d-none');
+
+    const url = window.routes.quoteCustomerDocumentConsult.replace('DOC_PLACEHOLDER', number);
+
+    $.ajax({
+        url: url,
+        type: 'GET',
+        dataType: 'json',
+        success: function (response) {
+            if (!response.status) {
+                showQuickQuoteToast('warning', response.message || 'No se pudo consultar el documento.');
+                return;
+            }
+
+            fillQuickCustomerDocument(response, documentType);
+        },
+        error: function (xhr) {
+            showQuickQuoteToast(
+                'warning',
+                xhr.responseJSON?.message || 'No se pudo consultar el documento.'
+            );
+        },
+        complete: function () {
+            quickCustomerConsulting = false;
+            $('#quickCustomerDocumentLoading').addClass('d-none');
+        }
+    });
+}
+
+function fillQuickCustomerDocument(response, documentType) {
+    const data = response.data || {};
+
+    if (documentType === 'RUC') {
+        const name = response.razon_social
+            || data.nombre
+            || data.razonSocial
+            || '';
+        const address = response.direccion
+            || data.direccion
+            || data.domicilioFiscal
+            || '';
+
+        if (name) {
+            $('#quick_customer_name').val(name).trigger('input');
+        }
+
+        if (address) {
+            $('#quick_customer_address').val(address).trigger('input');
+        }
+
+        return;
+    }
+
+    const fullName = [
+        data.nombres,
+        data.apellidoPaterno,
+        data.apellidoMaterno
+    ].filter(Boolean).join(' ');
+
+    if (fullName) {
+        $('#quick_customer_name').val(fullName).trigger('input');
+    }
+}
+
+function resetQuickQuoteBrandForm() {
+    const form = $('#quickQuoteBrandForm');
+
+    form[0].reset();
+    clearQuickQuoteFormErrors('#quickQuoteBrandForm');
+}
+
+function clearQuickQuoteFormErrors(formSelector) {
+    $(formSelector + ' .is-invalid').removeClass('is-invalid');
+    $(formSelector + ' .invalid-feedback').text('');
+}
+
+function showQuickQuoteFormErrors(formSelector, errors) {
+    Object.entries(errors || {}).forEach(function ([field, messages]) {
+        const message = Array.isArray(messages) ? messages[0] : messages;
+        const input = $(formSelector + ' [name="' + field + '"]');
+
+        if (input.length) {
+            input.addClass('is-invalid');
+            input.closest('.form-group').find('.invalid-feedback').first().text(message);
+        }
+    });
 }

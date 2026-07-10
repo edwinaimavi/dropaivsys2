@@ -1,7 +1,7 @@
 <!-- =========================================================
      MODAL COTIZACIÓN DE ESTUDIO DE MERCADO
 ========================================================= -->
-<div class="modal fade" id="marketStudyQuoteModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
+<div class="modal fade" id="studyQuoteModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
     aria-hidden="true">
 
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -143,11 +143,21 @@
                                             PROVEEDOR <span class="text-danger">*</span>
                                         </label>
 
-                                        <select id="supplier_id" name="supplier_id"
-                                            class="form-control form-control-sm select2-quote-supplier"
-                                            data-placeholder="Buscar proveedor...">
-                                            <option value=""></option>
-                                        </select>
+                                        <div class="input-group input-group-sm quote-supplier-group">
+                                            <select id="supplier_id" name="supplier_id"
+                                                class="form-control form-control-sm select2-quote-supplier"
+                                                data-placeholder="Buscar proveedor...">
+                                                <option value=""></option>
+                                            </select>
+
+                                            <div class="input-group-append">
+                                                <button type="button" id="btnOpenQuickSupplierModal"
+                                                    class="btn btn-success quote-supplier-add"
+                                                    title="Registrar proveedor" data-toggle="tooltip">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
 
                                         <span class="invalid-feedback" id="supplier_id-error"></span>
                                     </div>
@@ -453,53 +463,266 @@
 
 </div>
 
+<!-- =========================================================
+     MODAL RAPIDO DE PROVEEDOR PARA COTIZACION
+========================================================= -->
+<div class="modal fade" id="quickSupplierModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
+    aria-hidden="true">
+
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+
+        <div class="modal-content quick-supplier-modal">
+
+            <div class="quick-supplier-header">
+
+                <div class="d-flex align-items-center">
+
+                    <div class="quick-supplier-icon">
+                        <i class="fas fa-truck"></i>
+                    </div>
+
+                    <div class="ml-3">
+                        <h5 class="mb-0 font-weight-bold text-white">
+                            Nuevo Proveedor
+                        </h5>
+                        <small class="text-white-50">
+                            Registro rapido para cotizacion de proveedor
+                        </small>
+                    </div>
+
+                </div>
+
+                <button type="button" class="quick-supplier-close" data-dismiss="modal" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+
+            </div>
+
+            <div class="modal-body bg-light">
+
+                <form id="quickSupplierForm" autocomplete="off">
+                    @csrf
+
+                    <input type="hidden" name="status" value="ACTIVE">
+
+                    <div id="quickSupplierDuplicateAlert" class="alert alert-warning d-none py-2 mb-3">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap">
+                            <span>
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                Este RUC ya esta registrado como proveedor.
+                            </span>
+                            <button type="button" id="btnSelectExistingQuickSupplier"
+                                class="btn btn-warning btn-sm ml-2 mt-2 mt-sm-0">
+                                <i class="fas fa-check mr-1"></i>
+                                Seleccionarlo
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+
+                        <div class="form-group col-md-3">
+                            <label class="small font-weight-bold text-secondary">
+                                RUC <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" id="quick_supplier_ruc" name="ruc"
+                                class="form-control form-control-sm" maxlength="11" placeholder="Ingrese RUC">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-6">
+                            <label class="small font-weight-bold text-secondary">
+                                RAZON SOCIAL <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" id="quick_supplier_business_name" name="business_name"
+                                class="form-control form-control-sm text-uppercase" placeholder="Ingrese razon social">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-3">
+                            <label class="small font-weight-bold text-secondary">
+                                NOMBRE CORTO
+                            </label>
+                            <input type="text" id="quick_supplier_short_name" name="short_name"
+                                class="form-control form-control-sm text-uppercase" placeholder="Nombre corto">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                    </div>
+
+                    <div class="form-row">
+
+                        <div class="form-group col-md-7">
+                            <label class="small font-weight-bold text-secondary">
+                                DIRECCION
+                            </label>
+                            <input type="text" id="quick_supplier_address" name="address"
+                                class="form-control form-control-sm text-uppercase" placeholder="Ingrese direccion">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-5">
+                            <label class="small font-weight-bold text-secondary">
+                                UBIGEO
+                            </label>
+                            <select id="quick_supplier_ubigeo_id" name="ubigeo_id"
+                                class="form-control form-control-sm">
+                                <option value="">Seleccione</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                    </div>
+
+                    <div class="form-row">
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                TIPO PROVEEDOR <span class="text-danger">*</span>
+                            </label>
+                            <select id="quick_supplier_type" name="supplier_type"
+                                class="form-control form-control-sm">
+                                <option value="">Seleccione</option>
+                                <option value="NACIONAL">NACIONAL</option>
+                                <option value="IMPORTADOR">IMPORTADOR</option>
+                                <option value="DISTRIBUIDOR">DISTRIBUIDOR</option>
+                                <option value="FABRICANTE">FABRICANTE</option>
+                                <option value="LABORATORIO">LABORATORIO</option>
+                                <option value="OTRO">OTRO</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                CONDICION DE PAGO <span class="text-danger">*</span>
+                            </label>
+                            <select id="quick_supplier_payment_condition" name="payment_condition"
+                                class="form-control form-control-sm">
+                                <option value="">Seleccione</option>
+                                <option value="CONTADO">CONTADO</option>
+                                <option value="CREDITO">CREDITO</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                IGV %
+                            </label>
+                            <input type="number" step="0.01" min="0" id="quick_supplier_igv_percentage"
+                                name="igv_percentage" class="form-control form-control-sm" value="18.00">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                    </div>
+
+                    <div class="form-row">
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                CONTACTO
+                            </label>
+                            <input type="text" id="quick_supplier_contact_name" name="contact_name"
+                                class="form-control form-control-sm text-uppercase" placeholder="Ingrese contacto">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                CORREO
+                            </label>
+                            <input type="email" id="quick_supplier_email" name="email"
+                                class="form-control form-control-sm" placeholder="correo@dominio.com">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label class="small font-weight-bold text-secondary">
+                                TELEFONO
+                            </label>
+                            <input type="text" id="quick_supplier_phone" name="phone"
+                                class="form-control form-control-sm" placeholder="Ingrese telefono">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <span class="badge badge-success py-2 px-3">
+                            ESTADO: ACTIVO
+                        </span>
+
+                        <div class="mt-2 mt-sm-0">
+                            <button type="button" class="btn btn-light border btn-sm mr-2" data-dismiss="modal">
+                                <i class="fas fa-times mr-1"></i>
+                                Cerrar
+                            </button>
+
+                            <button type="submit" id="btnSaveQuickSupplier" class="btn btn-success btn-sm">
+                                <i class="fas fa-save mr-1"></i>
+                                Guardar Proveedor
+                            </button>
+                        </div>
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
 <style>
-    #marketStudyQuoteModal .modal-content {
+    #studyQuoteModal .modal-content {
         border-radius: 14px;
         overflow: hidden;
     }
 
-    #marketStudyQuoteModal .card {
+    #studyQuoteModal .card {
         border-radius: 12px;
     }
 
-    #marketStudyQuoteModal .table td,
-    #marketStudyQuoteModal .table th {
+    #studyQuoteModal .table td,
+    #studyQuoteModal .table th {
         padding-top: .42rem;
         padding-bottom: .42rem;
         vertical-align: middle;
         white-space: nowrap;
     }
 
-    #marketStudyQuoteModal .table thead th {
+    #studyQuoteModal .table thead th {
         font-size: 11px;
         font-weight: 700;
         color: #666;
     }
 
-    #marketStudyQuoteModal .table tbody td {
+    #studyQuoteModal .table tbody td {
         font-size: 12px;
     }
 
-    #marketStudyQuoteModal .form-control-sm {
+    #studyQuoteModal .form-control-sm {
         font-size: 12px;
     }
 
-    #marketStudyQuoteModal .small {
+    #studyQuoteModal .small {
         font-size: 11px;
     }
 
-    #marketStudyQuoteModal .btn-success,
-    #marketStudyQuoteModal .btn-outline-success {
+    #studyQuoteModal .btn-success,
+    #studyQuoteModal .btn-outline-success {
         border-radius: 8px;
     }
 
-    #marketStudyQuoteModal .badge {
+    #studyQuoteModal .badge {
         font-size: 10px;
         font-weight: 600;
     }
 
-    #marketStudyQuoteModal .font-weight-600 {
+    #studyQuoteModal .font-weight-600 {
         font-weight: 600;
     }
 
@@ -548,7 +771,7 @@
     }
 
     @media (max-width:991px) {
-        #marketStudyQuoteModal .modal-dialog {
+        #studyQuoteModal .modal-dialog {
             max-width: 100%;
             margin: .5rem;
         }
@@ -603,11 +826,11 @@
         color: #198754;
     }
 
-    #marketStudyQuoteModal .select2-container {
+    #studyQuoteModal .select2-container {
         width: 100% !important;
     }
 
-    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single {
+    #studyQuoteModal .select2-container--bootstrap4 .select2-selection--single {
         height: calc(1.8125rem + 2px) !important;
         min-height: calc(1.8125rem + 2px) !important;
         border-radius: 6px;
@@ -615,17 +838,74 @@
         font-size: 12px;
     }
 
-    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
+    #studyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
         line-height: 1.8125rem !important;
         font-size: 12px;
         color: #1f2d3d;
     }
 
-    #marketStudyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__arrow {
+    #studyQuoteModal .select2-container--bootstrap4 .select2-selection--single .select2-selection__arrow {
         height: calc(1.8125rem + 2px) !important;
     }
 
-    #marketStudyQuoteModal .select2-results__option {
+    #studyQuoteModal .select2-results__option {
         font-size: 12px;
+    }
+
+    #studyQuoteModal .quote-supplier-group .select2-container {
+        flex: 1 1 auto;
+        width: 1% !important;
+    }
+
+    #studyQuoteModal .quote-supplier-add {
+        width: 34px;
+        border-radius: 0 6px 6px 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .quick-supplier-modal {
+        border: none;
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, .25);
+    }
+
+    .quick-supplier-header {
+        background: linear-gradient(135deg, #198754, #146c43);
+        color: #fff;
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .quick-supplier-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .quick-supplier-close {
+        border: none;
+        background: rgba(255, 255, 255, .15);
+        color: #fff;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    #quickSupplierModal .form-control-sm,
+    #quickSupplierModal .small {
+        font-size: 12px;
+    }
+
+    #quickSupplierModal .select2-container {
+        width: 100% !important;
     }
 </style>

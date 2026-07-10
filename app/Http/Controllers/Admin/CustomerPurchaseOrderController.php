@@ -36,9 +36,9 @@ class CustomerPurchaseOrderController extends Controller
 
     public function __construct()
     {
-        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'customerBranches']);
+        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'customerBranches', 'searchCustomers']);
         $this->middleware('can:admin.customer-purchase-orders.load-items')->only(['quoteItems']);
-        $this->middleware('can:admin.customer-purchase-orders.store')->only(['store']);
+        $this->middleware('can:admin.customer-purchase-orders.store')->only(['store', 'quickStoreCustomer']);
         $this->middleware('can:admin.customer-purchase-orders.update')->only(['update']);
         $this->middleware('can:admin.customer-purchase-orders.destroy')->only(['destroy']);
         $this->middleware('can:admin.customer-purchase-orders.show')->only(['show']);
@@ -263,6 +263,154 @@ class CustomerPurchaseOrderController extends Controller
         return response()->json([
             'branches' => $branches,
         ]);
+    }
+
+    public function searchCustomers(Request $request)
+    {
+        $search = trim((string) $request->input('q', $request->input('term', '')));
+
+        $customers = Customer::query()
+            ->where('status', true)
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($subquery) use ($search) {
+                    $subquery
+                        ->where('document_number', 'like', "%{$search}%")
+                        ->orWhere('ruc', 'like', "%{$search}%")
+                        ->orWhere('business_name', 'like', "%{$search}%")
+                        ->orWhere('full_name', 'like', "%{$search}%")
+                        ->orWhere('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('business_name')
+            ->orderBy('full_name')
+            ->limit(30)
+            ->get();
+
+        return response()->json([
+            'results' => $customers
+                ->map(fn (Customer $customer) => $this->customerSelectPayload($customer))
+                ->values(),
+        ]);
+    }
+
+    public function quickStoreCustomer(Request $request)
+    {
+        $validated = $request->validate([
+            'person_type' => ['required', Rule::in(['natural', 'juridica'])],
+            'document_type' => ['required', Rule::in(['DNI', 'RUC'])],
+            'document_number' => [
+                'required',
+                'digits_between:8,11',
+                function ($attribute, $value, $fail) use ($request) {
+                    $documentType = mb_strtoupper((string) $request->input('document_type'));
+
+                    if ($documentType === 'RUC' && !preg_match('/^\d{11}$/', (string) $value)) {
+                        $fail('El RUC debe tener 11 dígitos.');
+                        return;
+                    }
+
+                    if ($documentType === 'DNI' && !preg_match('/^\d{8}$/', (string) $value)) {
+                        $fail('El DNI debe tener 8 dígitos.');
+                        return;
+                    }
+
+                },
+            ],
+            'business_name' => ['required', 'string', 'max:255'],
+            'channel' => ['nullable', 'string', 'max:100'],
+            'subchannel' => ['nullable', 'string', 'max:100'],
+            'withholding_agent' => ['nullable', 'boolean'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'boolean'],
+        ], [
+            'person_type.required' => 'El tipo de persona es obligatorio.',
+            'person_type.in' => 'El tipo de persona seleccionado no es válido.',
+            'document_type.required' => 'El tipo de documento es obligatorio.',
+            'document_type.in' => 'El tipo de documento seleccionado no es válido.',
+            'document_number.required' => 'El número de documento es obligatorio.',
+            'document_number.digits_between' => 'El número de documento debe tener 8 u 11 dígitos.',
+            'business_name.required' => 'La razón social o nombre es obligatorio.',
+            'business_name.max' => 'La razón social o nombre no debe exceder 255 caracteres.',
+            'email.email' => 'El correo no tiene un formato válido.',
+        ]);
+
+        try {
+            $documentType = mb_strtoupper($validated['document_type']);
+            $documentNumber = (string) $validated['document_number'];
+            $existingCustomer = $this->findExistingCustomer($documentType, $documentNumber);
+
+            if ($existingCustomer) {
+                $branch = $this->mainBranchForCustomer($existingCustomer);
+
+                return response()->json([
+                    'success' => false,
+                    'duplicate' => true,
+                    'message' => 'Este cliente ya está registrado.',
+                    'customer' => $this->customerSelectPayload($existingCustomer),
+                    'branch' => $branch ? $this->branchSelectPayload($branch) : null,
+                ], 409);
+            }
+
+            $payload = DB::transaction(function () use ($validated, $documentType, $documentNumber) {
+                $name = $this->upperOrNull($validated['business_name']);
+                $isRuc = $documentType === 'RUC';
+                $userId = Auth::id();
+
+                $customer = Customer::create([
+                    'person_type' => $validated['person_type'],
+                    'document_type' => $documentType,
+                    'document_number' => $documentNumber,
+                    'ruc' => $isRuc ? $documentNumber : null,
+                    'business_name' => $isRuc ? $name : null,
+                    'first_name' => $isRuc ? null : $name,
+                    'last_name' => $isRuc ? null : '',
+                    'full_name' => $name,
+                    'channel' => $this->upperOrNull($validated['channel'] ?? null),
+                    'subchannel' => $this->upperOrNull($validated['subchannel'] ?? null),
+                    'withholding_agent' => (bool) ($validated['withholding_agent'] ?? false),
+                    'phone' => $validated['phone'] ?? null,
+                    'email' => $validated['email'] ?? null,
+                    'address' => $this->upperOrNull($validated['address'] ?? null),
+                    'status' => (bool) ($validated['status'] ?? true),
+                    'created_by' => $userId,
+                    'updated_by' => $userId,
+                ]);
+
+                $branch = CustomerBranch::create([
+                    'customer_id' => $customer->id,
+                    'branch_name' => 'SEDE PRINCIPAL',
+                    'address' => $this->upperOrNull($validated['address'] ?? null),
+                    'is_main' => true,
+                    'status' => true,
+                    'created_by' => $userId,
+                    'updated_by' => $userId,
+                ]);
+
+                return [
+                    'customer' => $customer,
+                    'branch' => $branch,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cliente registrado correctamente.',
+                'customer' => $this->customerSelectPayload($payload['customer']),
+                'branch' => $this->branchSelectPayload($payload['branch']),
+            ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Error quick storing customer from customer purchase order: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo guardar el cliente.',
+            ], 500);
+        }
     }
 
     public function quoteItems(Quote $quote)
@@ -725,6 +873,56 @@ class CustomerPurchaseOrderController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? mb_strtoupper($value) : null;
+    }
+
+    private function findExistingCustomer(string $documentType, string $documentNumber): ?Customer
+    {
+        return Customer::query()
+            ->where(function ($query) use ($documentType, $documentNumber) {
+                $query->where(function ($subquery) use ($documentType, $documentNumber) {
+                    $subquery
+                        ->where('document_type', $documentType)
+                        ->where('document_number', $documentNumber);
+                });
+
+                if ($documentType === 'RUC') {
+                    $query->orWhere('ruc', $documentNumber);
+                }
+            })
+            ->first();
+    }
+
+    private function mainBranchForCustomer(Customer $customer): ?CustomerBranch
+    {
+        return CustomerBranch::query()
+            ->where('customer_id', $customer->id)
+            ->where('status', true)
+            ->orderByDesc('is_main')
+            ->orderBy('branch_name')
+            ->first();
+    }
+
+    private function customerSelectPayload(Customer $customer): array
+    {
+        $name = $customer->business_name
+            ?? $customer->full_name
+            ?? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''))
+            ?: 'Cliente';
+        $document = $customer->document_number ?? $customer->ruc;
+
+        return [
+            'id' => $customer->id,
+            'text' => trim(($document ? $document . ' | ' : '') . $name),
+        ];
+    }
+
+    private function branchSelectPayload(CustomerBranch $branch): array
+    {
+        return [
+            'id' => $branch->id,
+            'text' => $branch->branch_name,
+            'address' => $branch->address,
+        ];
     }
 
     private function appendSupplyProgress(CustomerPurchaseOrder $order): void

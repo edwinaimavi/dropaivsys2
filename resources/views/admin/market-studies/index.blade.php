@@ -260,6 +260,14 @@
 
             marketStudyQuoteSupplierDetail: "{{ url('admin/market-study-quotes/supplier') }}",
 
+            supplierStore: "{{ route('admin.suppliers.store') }}",
+
+            supplierSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}",
+
+            supplierConsultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
+
+            supplierByRuc: "{{ url('admin/suppliers/by-ruc') }}",
+
             marketStudyQuoteStudyItems: "{{ route('admin.market-study-quotes.study-items', ':id') }}",
 
 

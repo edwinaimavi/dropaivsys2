@@ -1029,7 +1029,7 @@ $(document).on('click', '.quoteMarketStudy', function () {
 
     generateQuoteNumber();
 
-    $('#marketStudyQuoteModal')
+    $('#studyQuoteModal')
         .off('shown.bs.modal.quoteSupplier')
         .one('shown.bs.modal.quoteSupplier', function () {
             loadSuppliers();
@@ -1058,7 +1058,7 @@ function generateQuoteNumber() {
 }
 
 function initQuoteSupplierSelect2() {
-    const $modal = $('#marketStudyQuoteModal');
+    const $modal = $('#studyQuoteModal');
     const $supplier = $modal.find('select[name="supplier_id"]');
 
     if (!$supplier.length) {
@@ -1099,7 +1099,7 @@ function initQuoteSupplierSelect2() {
 }
 
 function clearQuoteSupplierSelect2() {
-    const $supplier = $('#marketStudyQuoteModal #supplier_id');
+    const $supplier = $('#studyQuoteModal #supplier_id');
 
     if ($supplier.hasClass('select2-hidden-accessible')) {
         $supplier.val(null).trigger('change');
@@ -1109,7 +1109,7 @@ function clearQuoteSupplierSelect2() {
 }
 
 function loadSuppliers(selectedSupplierId = null) {
-    const $supplier = $('#marketStudyQuoteModal select[name="supplier_id"]');
+    const $supplier = $('#studyQuoteModal select[name="supplier_id"]');
 
     if (!$supplier.length) {
         console.error('No existe el select de proveedor dentro del modal.');
@@ -1206,7 +1206,7 @@ function loadCurrencies() {
     });
 
 }
-$(document).on('change', '#marketStudyQuoteModal #supplier_id', function () {
+$(document).on('change', '#studyQuoteModal #supplier_id', function () {
     let supplierId = $(this).val();
 
     let supplierText = $(this)
@@ -1237,6 +1237,314 @@ $(document).on('change', '#marketStudyQuoteModal #supplier_id', function () {
                 icon: 'warning',
                 title: 'Proveedor',
                 text: 'No se pudo obtener el detalle del proveedor.'
+            });
+        }
+    });
+});
+
+let quickSupplierExisting = null;
+let quickSupplierRucTimer = null;
+let quickSupplierConsulting = false;
+
+function initQuickSupplierUbigeoSelect2() {
+    const $ubigeo = $('#quick_supplier_ubigeo_id');
+
+    if (!$ubigeo.length || typeof $.fn.select2 !== 'function') {
+        return;
+    }
+
+    if ($ubigeo.hasClass('select2-hidden-accessible')) {
+        $ubigeo.select2('destroy');
+    }
+
+    $ubigeo.select2({
+        theme: 'bootstrap4',
+        width: '100%',
+        dropdownParent: $('#quickSupplierModal'),
+        placeholder: 'Buscar ubigeo...',
+        allowClear: true,
+        minimumInputLength: 2,
+        ajax: {
+            url: window.routes.supplierSearchUbigeo,
+            type: 'GET',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    search: params.term
+                };
+            },
+            processResults: function (response) {
+                return {
+                    results: $.map(response, function (item) {
+                        return {
+                            id: item.id,
+                            text: item.text
+                        };
+                    })
+                };
+            },
+            cache: true
+        }
+    });
+}
+
+function resetQuickSupplierForm() {
+    const form = $('#quickSupplierForm');
+
+    form[0].reset();
+    clearQuickSupplierErrors();
+    quickSupplierExisting = null;
+
+    $('#quick_supplier_igv_percentage').val('18.00');
+    $('#quickSupplierDuplicateAlert').addClass('d-none');
+    $('#btnSaveQuickSupplier')
+        .prop('disabled', false)
+        .html('<i class="fas fa-save mr-1"></i> Guardar Proveedor');
+
+    if ($('#quick_supplier_ubigeo_id').hasClass('select2-hidden-accessible')) {
+        $('#quick_supplier_ubigeo_id').val(null).trigger('change');
+    }
+}
+
+function clearQuickSupplierErrors() {
+    $('#quickSupplierForm .is-invalid').removeClass('is-invalid');
+    $('#quickSupplierForm .invalid-feedback').text('');
+}
+
+function showQuickSupplierErrors(errors) {
+    clearQuickSupplierErrors();
+
+    Object.entries(errors || {}).forEach(function ([field, messages]) {
+        const message = Array.isArray(messages) ? messages[0] : messages;
+        const $input = $(`#quickSupplierForm [name="${field}"]`);
+
+        if ($input.length) {
+            $input.addClass('is-invalid');
+            $input.closest('.form-group').find('.invalid-feedback').first().text(message);
+        }
+    });
+}
+
+function quickSupplierToast(icon, title) {
+    Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: icon,
+        title: title,
+        showConfirmButton: false,
+        timer: 3000
+    });
+}
+
+function supplierOptionText(supplier) {
+    const ruc = supplier?.ruc ? supplier.ruc + ' | ' : '';
+    const name = supplier?.business_name || supplier?.short_name || '';
+
+    return ruc + name;
+}
+
+function selectQuoteSupplier(supplier) {
+    if (!supplier || !supplier.id) {
+        return $.Deferred().reject().promise();
+    }
+
+    return loadSuppliers(supplier.id).then(function () {
+        const $supplier = $('#studyQuoteModal #supplier_id');
+
+        if (!$supplier.find(`option[value="${supplier.id}"]`).length) {
+            const option = new Option(supplierOptionText(supplier), supplier.id, true, true);
+            $supplier.append(option);
+        }
+
+        $supplier.val(String(supplier.id)).trigger('change');
+        calculateQuoteSummary();
+    });
+}
+
+function showQuickSupplierDuplicate(supplier) {
+    quickSupplierExisting = supplier;
+    $('#quickSupplierDuplicateAlert').removeClass('d-none');
+    $('#btnSaveQuickSupplier').prop('disabled', true);
+}
+
+function hideQuickSupplierDuplicate() {
+    quickSupplierExisting = null;
+    $('#quickSupplierDuplicateAlert').addClass('d-none');
+    $('#btnSaveQuickSupplier').prop('disabled', false);
+}
+
+function fillQuickSupplierFromRuc(response) {
+    const data = response?.data || {};
+    const businessName = response?.razon_social || data.nombre || data.razonSocial || '';
+    const address = response?.direccion || data.direccion || data.domicilioFiscal || '';
+    const shortName = data.nombreComercial || data.nombreCorto || '';
+
+    $('#quick_supplier_business_name').val(businessName).trigger('input');
+    $('#quick_supplier_address').val(address).trigger('input');
+
+    if (shortName && !$('#quick_supplier_short_name').val()) {
+        $('#quick_supplier_short_name').val(shortName).trigger('input');
+    }
+}
+
+function consultQuickSupplierRuc(ruc) {
+    if (quickSupplierConsulting) {
+        return;
+    }
+
+    quickSupplierConsulting = true;
+    $('#quick_supplier_ruc').prop('disabled', true);
+    $('#btnSaveQuickSupplier').prop('disabled', true);
+
+    $.ajax({
+        url: `${window.routes.supplierConsultarRuc}/${ruc}`,
+        type: 'GET',
+        dataType: 'json',
+        success: function (response) {
+            if (response.status) {
+                fillQuickSupplierFromRuc(response);
+            } else {
+                quickSupplierToast('warning', response.message || 'No se pudo obtener el RUC.');
+            }
+        },
+        error: function (xhr) {
+            $('#quick_supplier_business_name').val('');
+            $('#quick_supplier_address').val('');
+
+            quickSupplierToast(
+                'warning',
+                xhr.responseJSON?.message || 'No se pudo consultar el RUC.'
+            );
+        },
+        complete: function () {
+            quickSupplierConsulting = false;
+            $('#quick_supplier_ruc').prop('disabled', false);
+            $('#btnSaveQuickSupplier').prop('disabled', Boolean(quickSupplierExisting));
+        }
+    });
+}
+
+function checkQuickSupplierRuc(ruc) {
+    hideQuickSupplierDuplicate();
+
+    if (!/^\d{11}$/.test(ruc)) {
+        return;
+    }
+
+    $.ajax({
+        url: `${window.routes.supplierByRuc}/${ruc}`,
+        type: 'GET',
+        success: function (response) {
+            showQuickSupplierDuplicate(response.data);
+            quickSupplierToast('warning', 'Este RUC ya está registrado como proveedor.');
+        },
+        error: function (xhr) {
+            if (xhr.status === 404) {
+                consultQuickSupplierRuc(ruc);
+            } else if (xhr.status !== 422) {
+                quickSupplierToast('warning', xhr.responseJSON?.message || 'No se pudo validar el RUC.');
+            }
+        }
+    });
+}
+
+$(document).on('click', '#btnOpenQuickSupplierModal', function () {
+    resetQuickSupplierForm();
+    $('#quickSupplierModal').modal('show');
+});
+
+$('#quickSupplierModal').on('shown.bs.modal', function () {
+    initQuickSupplierUbigeoSelect2();
+    $('#quick_supplier_ruc').trigger('focus');
+});
+
+$('#quickSupplierModal').on('hidden.bs.modal', function () {
+    if ($('#studyQuoteModal').hasClass('show')) {
+        $('body').addClass('modal-open');
+    }
+});
+
+$(document).on('input', '#quick_supplier_ruc', function () {
+    const ruc = $(this).val().replace(/\D/g, '').slice(0, 11);
+    $(this).val(ruc);
+
+    clearTimeout(quickSupplierRucTimer);
+    hideQuickSupplierDuplicate();
+
+    if (ruc.length !== 11) {
+        return;
+    }
+
+    quickSupplierRucTimer = setTimeout(function () {
+        checkQuickSupplierRuc(ruc);
+    }, 300);
+});
+
+$(document).on('click', '#btnSelectExistingQuickSupplier', function () {
+    if (!quickSupplierExisting) {
+        return;
+    }
+
+    selectQuoteSupplier(quickSupplierExisting).done(function () {
+        $('#quickSupplierModal').modal('hide');
+        quickSupplierToast('success', 'Proveedor seleccionado correctamente.');
+    });
+});
+
+$(document).on('submit', '#quickSupplierForm', function (e) {
+    e.preventDefault();
+
+    if (quickSupplierExisting) {
+        quickSupplierToast('warning', 'Este RUC ya está registrado como proveedor.');
+        return;
+    }
+
+    clearQuickSupplierErrors();
+
+    const btn = $('#btnSaveQuickSupplier');
+    const formData = new FormData(this);
+
+    btn.prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: window.routes.supplierStore,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            const supplier = response.data || {};
+
+            selectQuoteSupplier(supplier).always(function () {
+                $('#quickSupplierModal').modal('hide');
+                btn.prop('disabled', false)
+                    .html('<i class="fas fa-save mr-1"></i> Guardar Proveedor');
+
+                quickSupplierToast('success', 'Proveedor registrado y seleccionado correctamente.');
+            });
+        },
+        error: function (xhr) {
+            btn.prop('disabled', false)
+                .html('<i class="fas fa-save mr-1"></i> Guardar Proveedor');
+
+            if (xhr.status === 422) {
+                const errors = xhr.responseJSON?.errors || {};
+                showQuickSupplierErrors(errors);
+
+                if (errors.ruc) {
+                    quickSupplierToast('warning', errors.ruc[0] || 'Este RUC ya está registrado como proveedor.');
+                    checkQuickSupplierRuc(($('#quick_supplier_ruc').val() || '').trim());
+                }
+
+                return;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message || 'No se pudo registrar el proveedor.'
             });
         }
     });
@@ -2166,7 +2474,7 @@ $(document).on('click', '.removeQuoteItem', function () {
 
 }); */
 
-$('#marketStudyQuoteModal').on('hidden.bs.modal', function () {
+$('#studyQuoteModal').on('hidden.bs.modal', function () {
     resetQuoteDraft();
     quoteSaved = false;
 });
@@ -2349,7 +2657,7 @@ $(document).on('submit', '#marketStudyQuoteForm', function (e) {
                 timer: 3000
             });
 
-            $('#marketStudyQuoteModal').modal('hide');
+            $('#studyQuoteModal').modal('hide');
 
             tableMarketStudy.ajax.reload(null, false);
 
@@ -2531,7 +2839,7 @@ $(document).on('click', '#btnNewStudyQuote', function () {
 
     generateQuoteNumber();
 
-    $('#marketStudyQuoteModal')
+    $('#studyQuoteModal')
         .off('shown.bs.modal.quoteSupplier')
         .one('shown.bs.modal.quoteSupplier', function () {
             loadSuppliers();
@@ -2672,7 +2980,7 @@ function loadQuoteForEdit(quoteId) {
             renderQuoteItems();
             calculateQuoteSummary();
 
-            $('#marketStudyQuoteModal').modal('show');
+            $('#studyQuoteModal').modal('show');
 
         },
 

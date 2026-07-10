@@ -174,6 +174,10 @@ Route::get(
 )->name('suppliers.searchUbigeo');
 Route::get('suppliers/list', [SupplierController::class, 'list'])->name('suppliers.list');
 Route::get(
+    'suppliers/by-ruc/{ruc}',
+    [SupplierController::class, 'findByRuc']
+)->name('suppliers.byRuc');
+Route::get(
     'suppliers/consultar-ruc/{numero}',
     [SupplierController::class, 'consultarRuc']
 )->name('suppliers.consultarRuc');
@@ -333,6 +337,30 @@ Route::get('quotes/generate-number', [QuoteController::class, 'generateNumber'])
 
 Route::get('quotes/list', [QuoteController::class, 'list'])->name('quotes.list');
 
+Route::get('quotes/market-studies/search', [QuoteController::class, 'searchMarketStudies'])
+    ->name('quotes.market-studies.search');
+
+Route::get('quotes/customers/search', [QuoteController::class, 'searchCustomers'])
+    ->name('quotes.customers.search');
+
+Route::post('quotes/customers/quick-store', [QuoteController::class, 'quickStoreCustomer'])
+    ->name('quotes.customers.quick-store');
+
+Route::get('quotes/articles/search', [QuoteController::class, 'searchArticles'])
+    ->name('quotes.articles.search');
+
+Route::get('quotes/articles/generate-code', [QuoteController::class, 'generateArticleCode'])
+    ->name('quotes.articles.generate-code');
+
+Route::post('quotes/articles/quick-store', [QuoteController::class, 'quickStoreArticle'])
+    ->name('quotes.articles.quick-store');
+
+Route::get('quotes/brands/search', [QuoteController::class, 'searchBrands'])
+    ->name('quotes.brands.search');
+
+Route::post('quotes/brands/quick-store', [QuoteController::class, 'quickStoreBrand'])
+    ->name('quotes.brands.quick-store');
+
 Route::get('quotes/customer/{customer}/branches', [QuoteController::class, 'customerBranches'])
     ->name('quotes.customerBranches');
 
@@ -361,6 +389,16 @@ Route::get(
     'customer-purchase-orders/customer/{customer}/branches',
     [CustomerPurchaseOrderController::class, 'customerBranches']
 )->name('customer-purchase-orders.customerBranches');
+
+Route::get(
+    'customer-purchase-orders/customers/search',
+    [CustomerPurchaseOrderController::class, 'searchCustomers']
+)->name('customer-purchase-orders.customers.search');
+
+Route::post(
+    'customer-purchase-orders/customers/quick-store',
+    [CustomerPurchaseOrderController::class, 'quickStoreCustomer']
+)->name('customer-purchase-orders.customers.quick-store');
 
 Route::resource(
     'customer-purchase-orders',

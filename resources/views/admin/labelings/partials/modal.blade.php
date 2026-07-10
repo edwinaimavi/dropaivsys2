@@ -97,6 +97,15 @@
                                             <span class="invalid-feedback"></span>
                                         </div>
                                     </div>
+                                    <div class="form-row">
+                                        <div class="form-group col-md-6">
+                                            <label>DESTINO <span class="text-danger">*</span></label>
+                                            <input type="text" id="labeling_destination" name="destination"
+                                                class="form-control form-control-sm text-uppercase"
+                                                placeholder="Ej. ALMACEN CENTRAL / FARMACIA / TARAPOTO" required>
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                    </div>
                                     <div class="form-group mb-0">
                                         <label>OBSERVACIONES</label>
                                         <textarea id="labeling_observations" name="observations"

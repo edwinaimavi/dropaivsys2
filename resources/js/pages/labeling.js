@@ -375,6 +375,7 @@ function buildLabelingFormData() {
     formData.append('customer_purchase_order_id', $('#labeling_customer_purchase_order_id').val() || '');
     formData.append('invoice_number', $('#labeling_invoice_number').val() || '');
     formData.append('guide_number', $('#labeling_guide_number').val() || '');
+    formData.append('destination', $('#labeling_destination').val() || '');
     formData.append('boxes_count', $('#labeling_boxes_count').val() || '');
     formData.append('observations', $('#labeling_observations').val() || '');
 
@@ -567,6 +568,7 @@ function editLabeling(id) {
             $('#labeling_id').val(data.id);
             $('#labeling_invoice_number').val(data.invoice_number || '');
             $('#labeling_guide_number').val(data.guide_number || '');
+            $('#labeling_destination').val(data.destination || '');
             $('#labeling_boxes_count').val(data.boxes_count || 1);
             $('#labeling_observations').val(data.observations || '');
 

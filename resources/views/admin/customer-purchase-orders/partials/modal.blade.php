@@ -208,26 +208,35 @@
                                 <div class="form-row">
                                     <div class="form-group col-md-6">
                                         <label>CLIENTE <span class="text-danger">*</span></label>
-                                        <select id="purchase_order_customer_id" name="customer_id"
-                                            class="form-control form-control-sm js-purchase-order-select">
-                                            <option value="">Seleccione cliente</option>
-                                            @foreach ($customers as $customer)
-                                                @php
-                                                    $customerName = $customer->business_name
-                                                        ?? $customer->full_name
-                                                        ?? trim(
-                                                            ($customer->first_name ?? '') .
-                                                                ' ' .
-                                                                ($customer->last_name ?? ''),
-                                                        )
-                                                        ?: ($customer->name ?? 'Cliente');
-                                                    $customerDocument = $customer->document_number ?? $customer->ruc;
-                                                @endphp
-                                                <option value="{{ $customer->id }}">
-                                                    {{ $customerDocument ? $customerDocument . ' | ' : '' }}{{ $customerName }}
-                                                </option>
-                                            @endforeach
-                                        </select>
+                                        <div class="input-group input-group-sm purchase-order-customer-picker">
+                                            <select id="purchase_order_customer_id" name="customer_id"
+                                                class="form-control form-control-sm js-purchase-order-select">
+                                                <option value="">Seleccione cliente</option>
+                                                @foreach ($customers as $customer)
+                                                    @php
+                                                        $customerName = $customer->business_name
+                                                            ?? $customer->full_name
+                                                            ?? trim(
+                                                                ($customer->first_name ?? '') .
+                                                                    ' ' .
+                                                                    ($customer->last_name ?? ''),
+                                                            )
+                                                            ?: ($customer->name ?? 'Cliente');
+                                                        $customerDocument = $customer->document_number ?? $customer->ruc;
+                                                    @endphp
+                                                    <option value="{{ $customer->id }}">
+                                                        {{ $customerDocument ? $customerDocument . ' | ' : '' }}{{ $customerName }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            <div class="input-group-append">
+                                                <button type="button" id="btnQuickCreateCustomerForOrder"
+                                                    class="btn btn-outline-primary" title="Nuevo cliente">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <span class="invalid-feedback" id="purchase_order_customer_id-error"></span>
                                     </div>
 
                                     <div class="form-group col-md-6">
@@ -542,6 +551,169 @@
     </div>
 </div>
 
+<div class="modal fade purchase-order-quick-modal" id="quickCustomerModalForCustomerOrder" tabindex="-1" role="dialog"
+    aria-labelledby="quickCustomerModalForCustomerOrderLabel" aria-hidden="true" data-backdrop="static"
+    data-keyboard="false">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickCustomerForCustomerOrderForm" autocomplete="off">
+                <div class="modal-header bg-white border-0">
+                    <div>
+                        <h5 class="modal-title mb-0 font-weight-bold" id="quickCustomerModalForCustomerOrderLabel">
+                            Nuevo cliente
+                        </h5>
+                        <small class="text-muted">Registre el cliente sin cerrar la orden.</small>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+                <div class="modal-body bg-light">
+                    <div id="quickCustomerForCustomerOrderErrors" class="alert alert-danger d-none"></div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-id-card mr-1 text-primary"></i>
+                            Informaci&oacute;n General
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label>TIPO PERSONA <span class="text-danger">*</span></label>
+                                    <select id="quick_customer_person_type" name="person_type"
+                                        class="form-control form-control-sm">
+                                        <option value="juridica" selected>JUR&Iacute;DICA</option>
+                                        <option value="natural">NATURAL</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>TIPO DOCUMENTO <span class="text-danger">*</span></label>
+                                    <select id="quick_customer_document_type" name="document_type"
+                                        class="form-control form-control-sm">
+                                        <option value="RUC" selected>RUC</option>
+                                        <option value="DNI">DNI</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>N&deg; DOCUMENTO <span class="text-danger">*</span></label>
+                                    <input type="text" id="quick_customer_document_number" name="document_number"
+                                        class="form-control form-control-sm" maxlength="11" inputmode="numeric">
+                                    <span class="invalid-feedback"></span>
+                                    <small id="quickCustomerDocumentStatus" class="form-text text-muted"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-chart-line mr-1 text-info"></i>
+                            Clasificaci&oacute;n Comercial
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-5">
+                                    <label>CANAL</label>
+                                    <input type="text" id="quick_customer_channel" name="channel"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-5">
+                                    <label>SUB CANAL</label>
+                                    <input type="text" id="quick_customer_subchannel" name="subchannel"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label>RETENCI&Oacute;N</label>
+                                    <select id="quick_customer_withholding_agent" name="withholding_agent"
+                                        class="form-control form-control-sm">
+                                        <option value="0" selected>NO</option>
+                                        <option value="1">S&Iacute;</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-user-tie mr-1 text-success"></i>
+                            Datos del Cliente
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-group mb-0">
+                                <label>RAZ&Oacute;N SOCIAL / NOMBRES <span class="text-danger">*</span></label>
+                                <input type="text" id="quick_customer_business_name" name="business_name"
+                                    class="form-control form-control-sm text-uppercase">
+                                <span class="invalid-feedback"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-address-book mr-1 text-warning"></i>
+                            Informaci&oacute;n de Contacto
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label>TEL&Eacute;FONO</label>
+                                    <input type="text" id="quick_customer_phone" name="phone"
+                                        class="form-control form-control-sm">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>EMAIL</label>
+                                    <input type="email" id="quick_customer_email" name="email"
+                                        class="form-control form-control-sm">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label>DIRECCI&Oacute;N</label>
+                                    <input type="text" id="quick_customer_address" name="address"
+                                        class="form-control form-control-sm text-uppercase">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-0">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-toggle-on mr-1 text-primary"></i>
+                            Configuraci&oacute;n
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-group mb-0">
+                                <label>ESTADO</label>
+                                <select id="quick_customer_status" name="status" class="form-control form-control-sm">
+                                    <option value="1" selected>ACTIVO</option>
+                                    <option value="0">INACTIVO</option>
+                                </select>
+                                <span class="invalid-feedback"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSaveQuickCustomerForCustomerOrder">
+                        <i class="fas fa-save mr-1"></i>
+                        Guardar cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade purchase-order-quick-modal" id="quickPurchaseOrderBrandModal" tabindex="-1" role="dialog"
     aria-labelledby="quickPurchaseOrderBrandModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -832,6 +1004,22 @@
     }
 
     #customerPurchaseOrderModal .purchase-order-row-picker .btn {
+        height: 31px;
+        min-width: 34px;
+        padding-left: .45rem;
+        padding-right: .45rem;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-customer-picker {
+        flex-wrap: nowrap;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-customer-picker .select2-container {
+        flex: 1 1 auto;
+        width: 1% !important;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-customer-picker .btn {
         height: 31px;
         min-width: 34px;
         padding-left: .45rem;

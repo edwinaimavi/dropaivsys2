@@ -7,7 +7,7 @@
     <title>{{ $labeling->code }}</title>
     <style>
         @page {
-            margin: 9mm;
+            margin: 6mm;
             size: A4 portrait;
         }
 
@@ -18,7 +18,7 @@
         body {
             color: #111827;
             font-family: "DejaVu Sans", sans-serif;
-            font-size: 9px;
+            font-size: 7.4px;
             margin: 0;
         }
 
@@ -31,94 +31,128 @@
             page-break-after: auto;
         }
 
-        .label-stack {
-            border-collapse: separate;
-            border-spacing: 0 5mm;
+        .label-grid {
+            border-collapse: collapse;
             table-layout: fixed;
             width: 100%;
         }
 
         .label-cell {
-            height: 132mm;
-            padding: 0;
+            height: 139mm;
+            padding: 2mm;
             vertical-align: top;
+            width: 50%;
         }
 
         .label {
-            border: 1.5px solid #111827;
-            height: 132mm;
+            border: 1.2px solid #111827;
+            height: 135mm;
             overflow: hidden;
-            padding: 8px 9px;
+            padding: 5px 6px;
             page-break-inside: avoid;
             position: relative;
         }
 
-        .header {
+        .top {
             border-bottom: 1px solid #111827;
-            height: 38px;
-            padding-bottom: 5px;
+            min-height: 30px;
+            padding-bottom: 3px;
         }
 
         .logo {
             float: left;
-            max-height: 32px;
-            max-width: 120px;
+            max-height: 23px;
+            max-width: 82px;
         }
 
-        .code {
+        .destination {
             float: right;
-            font-size: 9px;
-            font-weight: bold;
-            line-height: 1.25;
+            line-height: 1.05;
             text-align: right;
-            width: 55%;
-        }
-
-        .clear {
-            clear: both;
-        }
-
-        .title-row {
-            margin: 7px 0 6px;
-            min-height: 22px;
-        }
-
-        .title {
-            float: left;
-            font-size: 13px;
-            font-weight: bold;
-            line-height: 1.2;
-            text-transform: uppercase;
             width: 62%;
         }
 
-        .box-label {
-            background: #111827;
+        .destination-label {
+            display: block;
+            font-size: 6.5px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .destination-value {
+            display: block;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            word-wrap: break-word;
+        }
+
+        .tag-row {
+            height: 16px;
+            margin-top: 4px;
+        }
+
+        .observation-tag {
+            background: #dc2626;
+            border: 1px solid #991b1b;
             color: #fff;
-            float: right;
-            font-size: 13px;
-            font-weight: bold;
-            line-height: 1.15;
-            padding: 5px 8px;
-            text-align: center;
-            width: 31%;
-        }
-
-        .meta {
-            border: 1px solid #d1d5db;
-            margin-bottom: 7px;
-            padding: 5px 6px;
-        }
-
-        .meta-row {
-            line-height: 1.35;
-            margin-bottom: 1px;
-        }
-
-        .meta-label {
             display: inline-block;
+            font-size: 8px;
             font-weight: bold;
-            width: 55px;
+            max-width: 100%;
+            padding: 2px 7px;
+            text-transform: uppercase;
+            word-wrap: break-word;
+        }
+
+        .main {
+            text-align: center;
+        }
+
+        .customer-label {
+            font-size: 6.5px;
+            font-weight: bold;
+            margin-top: 2px;
+            text-transform: uppercase;
+        }
+
+        .customer-name {
+            font-size: 12px;
+            font-weight: bold;
+            line-height: 1.08;
+            margin-top: 1px;
+            min-height: 25px;
+            text-transform: uppercase;
+            word-wrap: break-word;
+        }
+
+        .oc {
+            border-bottom: 1px solid #111827;
+            border-top: 1px solid #111827;
+            font-size: 14px;
+            font-weight: bold;
+            line-height: 1.1;
+            margin: 4px 0 3px;
+            padding: 3px 0;
+            text-transform: uppercase;
+        }
+
+        .docs {
+            border-collapse: collapse;
+            margin-bottom: 4px;
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .docs td {
+            border: 1px solid #111827;
+            font-size: 7.8px;
+            font-weight: bold;
+            padding: 2px 3px;
+            text-align: center;
+            text-transform: uppercase;
+            width: 50%;
+            word-wrap: break-word;
         }
 
         .items {
@@ -130,167 +164,151 @@
         .items th,
         .items td {
             border: 1px solid #111827;
-            padding: 4px;
+            padding: 2px 3px;
             vertical-align: top;
         }
 
         .items th {
             background: #f3f4f6;
-            font-size: 8px;
+            font-size: 6.4px;
             font-weight: bold;
-            line-height: 1.15;
+            line-height: 1.05;
             text-align: center;
             text-transform: uppercase;
         }
 
         .description {
-            font-size: 8px;
-            line-height: 1.22;
+            font-size: 6.5px;
+            line-height: 1.1;
             word-wrap: break-word;
         }
 
         .unit {
-            font-size: 7.8px;
+            font-size: 6.3px;
+            line-height: 1.05;
             text-align: center;
             word-wrap: break-word;
         }
 
         .qty {
-            font-size: 9px;
+            font-size: 7.2px;
             font-weight: bold;
             text-align: right;
             white-space: nowrap;
         }
 
-        .box-observation {
-            background: #fff8db;
-            border: 1px solid #e0b84f;
-            margin-top: 6px;
-            padding: 5px 6px;
-        }
-
-        .box-observation-title {
-            color: #7a5600;
-            display: block;
-            font-size: 7.5px;
+        .box-number {
+            bottom: 5px;
+            font-size: 23px;
             font-weight: bold;
-            margin-bottom: 2px;
-            text-transform: uppercase;
-        }
-
-        .box-observation-text {
-            font-size: 8px;
-            line-height: 1.25;
-            word-wrap: break-word;
-        }
-
-        .footer {
-            bottom: 6px;
-            color: #4b5563;
-            font-size: 7px;
-            left: 9px;
+            left: 0;
+            line-height: 1;
             position: absolute;
-            right: 9px;
+            right: 0;
             text-align: center;
         }
 
         .empty-label {
-            height: 132mm;
+            height: 135mm;
+        }
+
+        .clear {
+            clear: both;
         }
     </style>
 </head>
 
 <body>
-    @foreach ($labeling->boxes->chunk(2) as $pageBoxes)
+    @php
+        $customerName = $labeling->customer?->business_name
+            ?? $labeling->customer?->full_name
+            ?? trim(($labeling->customer?->first_name ?? '') . ' ' . ($labeling->customer?->last_name ?? ''))
+            ?: '-';
+        $orderNumber = $labeling->customerPurchaseOrder?->purchase_order_number
+            ?? $labeling->customerPurchaseOrder?->code
+            ?? '-';
+        $destination = $labeling->destination ?: '-';
+    @endphp
+
+    @foreach ($labeling->boxes->chunk(4) as $pageBoxes)
         <div class="sheet">
-            <table class="label-stack">
-                @for ($slot = 0; $slot < 2; $slot++)
-                    @php
-                        $box = $pageBoxes->get($slot);
-                    @endphp
-
+            <table class="label-grid">
+                @for ($row = 0; $row < 2; $row++)
                     <tr>
-                        <td class="label-cell">
-                            @if ($box)
-                                @php
-                                    $boxObservation = trim((string) ($box->observation ?? $box->observations ?? ''));
-                                @endphp
+                        @for ($col = 0; $col < 2; $col++)
+                            @php
+                                $slot = ($row * 2) + $col;
+                                $box = $pageBoxes->get($slot);
+                            @endphp
 
-                                <div class="label">
-                                    <div class="header">
-                                        @if (!empty($logoDataUri))
-                                            <img src="{{ $logoDataUri }}" class="logo" alt="Dropaiv">
-                                        @endif
+                            <td class="label-cell">
+                                @if ($box)
+                                    @php
+                                        $boxObservation = trim((string) ($box->observation ?? $box->observations ?? ''));
+                                    @endphp
 
-                                        <div class="code">
-                                            {{ $labeling->code }}<br>
-                                            OC N°:
-                                            {{ $labeling->customerPurchaseOrder?->purchase_order_number ?? $labeling->customerPurchaseOrder?->code ?? '-' }}
-                                        </div>
-                                        <div class="clear"></div>
-                                    </div>
+                                    <div class="label">
+                                        <div class="top">
+                                            @if (!empty($logoDataUri))
+                                                <img src="{{ $logoDataUri }}" class="logo" alt="Dropaiv">
+                                            @endif
 
-                                    <div class="title-row">
-                                        <div class="title">Rótulo de caja</div>
-                                        <div class="box-label">Caja {{ $box->box_label }}</div>
-                                        <div class="clear"></div>
-                                    </div>
+                                            <div class="destination">
+                                                <span class="destination-label">Destino</span>
+                                                <span class="destination-value">{{ $destination }}</span>
+                                            </div>
+                                            <div class="clear"></div>
+                                        </div>
 
-                                    <div class="meta">
-                                        <div class="meta-row">
-                                            <span class="meta-label">Factura:</span>
-                                            {{ $labeling->invoice_number ?? '-' }}
+                                        <div class="tag-row">
+                                            @if ($boxObservation !== '')
+                                                <span class="observation-tag">{{ $boxObservation }}</span>
+                                            @endif
                                         </div>
-                                        <div class="meta-row">
-                                            <span class="meta-label">Guía:</span>
-                                            {{ $labeling->guide_number ?? '-' }}
-                                        </div>
-                                        <div class="meta-row">
-                                            <span class="meta-label">Cliente:</span>
-                                            {{ $labeling->customer?->business_name ?? $labeling->customer?->full_name ?? '-' }}
-                                        </div>
-                                        <div class="meta-row">
-                                            <span class="meta-label">Empresa:</span>
-                                            {{ $labeling->company?->trade_name ?? $labeling->company?->business_name ?? 'DROPAIV S.A.C.' }}
-                                        </div>
-                                    </div>
 
-                                    <table class="items">
-                                        <thead>
+                                        <div class="main">
+                                            <div class="customer-label">Cliente</div>
+                                            <div class="customer-name">{{ $customerName }}</div>
+                                            <div class="oc">OC N&deg; {{ $orderNumber }}</div>
+                                        </div>
+
+                                        <table class="docs">
                                             <tr>
-                                                <th>Descripción detallada</th>
-                                                <th style="width: 21%;">Unidad de medida</th>
-                                                <th style="width: 14%;">Cantidad</th>
+                                                <td>Factura: {{ $labeling->invoice_number ?? '-' }}</td>
+                                                <td>Guia: {{ $labeling->guide_number ?? '-' }}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            @forelse ($box->items as $item)
-                                                <tr>
-                                                    <td class="description">{{ $item->description }}</td>
-                                                    <td class="unit">{{ $item->unit_name ?? '-' }}</td>
-                                                    <td class="qty">{{ number_format((float) $item->quantity, 2) }}</td>
-                                                </tr>
-                                            @empty
-                                                <tr>
-                                                    <td colspan="3" style="text-align: center;">Sin artículos registrados</td>
-                                                </tr>
-                                            @endforelse
-                                        </tbody>
-                                    </table>
+                                        </table>
 
-                                    @if ($boxObservation !== '')
-                                        <div class="box-observation">
-                                            <span class="box-observation-title">Observación de caja</span>
-                                            <div class="box-observation-text">{{ $boxObservation }}</div>
-                                        </div>
-                                    @endif
+                                        <table class="items">
+                                            <thead>
+                                                <tr>
+                                                    <th>Descripcion detallada</th>
+                                                    <th style="width: 23%;">Unidad de medida</th>
+                                                    <th style="width: 15%;">Cantidad</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @forelse ($box->items as $item)
+                                                    <tr>
+                                                        <td class="description">{{ $item->description }}</td>
+                                                        <td class="unit">{{ $item->unit_name ?? '-' }}</td>
+                                                        <td class="qty">{{ number_format((float) $item->quantity, 2) }}</td>
+                                                    </tr>
+                                                @empty
+                                                    <tr>
+                                                        <td colspan="3" style="text-align:center;">Sin articulos registrados</td>
+                                                    </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
 
-                                    <div class="footer">Documento generado por DropaivSys2</div>
-                                </div>
-                            @else
-                                <div class="empty-label"></div>
-                            @endif
-                        </td>
+                                        <div class="box-number">{{ $box->box_label }}</div>
+                                    </div>
+                                @else
+                                    <div class="empty-label"></div>
+                                @endif
+                            </td>
+                        @endfor
                     </tr>
                 @endfor
             </table>

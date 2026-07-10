@@ -13,6 +13,8 @@ use Illuminate\Validation\Rule;
 
 use App\Models\Quote;
 use App\Models\QuoteItem;
+use App\Models\Article;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\CustomerBranch;
 use App\Models\Company;
@@ -23,13 +25,30 @@ use App\Models\Presentation;
 use App\Models\Brand;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Yajra\DataTables\Facades\DataTables;
+use Illuminate\Validation\ValidationException;
 
 class QuoteController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.quotes.index')->only(['index', 'list', 'generateNumber', 'customerBranches', 'marketStudyWinners']);
-        $this->middleware('can:admin.quotes.store')->only(['store']);
+        $this->middleware('can:admin.quotes.index')->only([
+            'index',
+            'list',
+            'generateNumber',
+            'customerBranches',
+            'marketStudyWinners',
+            'searchMarketStudies',
+            'searchArticles',
+            'searchBrands',
+            'searchCustomers',
+        ]);
+        $this->middleware('can:admin.quotes.store')->only([
+            'store',
+            'quickStoreArticle',
+            'quickStoreBrand',
+            'generateArticleCode',
+            'quickStoreCustomer',
+        ]);
         $this->middleware('can:admin.quotes.update')->only(['update']);
         $this->middleware('can:admin.quotes.destroy')->only(['destroy']);
     }
@@ -231,6 +250,173 @@ class QuoteController extends Controller
         ]);
     }
 
+    public function searchCustomers(Request $request)
+    {
+        $term = trim((string) $request->get('q', ''));
+
+        $customers = Customer::query()
+            ->when($term !== '', function ($query) use ($term) {
+                $query->where(function ($q) use ($term) {
+                    $q->where('document_number', 'like', "%{$term}%")
+                        ->orWhere('ruc', 'like', "%{$term}%")
+                        ->orWhere('business_name', 'like', "%{$term}%")
+                        ->orWhere('full_name', 'like', "%{$term}%")
+                        ->orWhere('first_name', 'like', "%{$term}%")
+                        ->orWhere('last_name', 'like', "%{$term}%");
+                });
+            })
+            ->orderBy('business_name')
+            ->orderBy('full_name')
+            ->limit(30)
+            ->get(['id', 'document_number', 'ruc', 'business_name', 'full_name', 'first_name', 'last_name']);
+
+        return response()->json([
+            'results' => $customers->map(fn (Customer $customer) => [
+                'id' => $customer->id,
+                'text' => $this->quoteCustomerText($customer),
+            ]),
+        ]);
+    }
+
+    public function quickStoreCustomer(Request $request)
+    {
+        $documentType = mb_strtoupper(trim((string) $request->input('document_type')));
+        $documentNumber = preg_replace('/\D+/', '', (string) $request->input('document_number'));
+        $name = trim((string) $request->input('name'));
+
+        $request->merge([
+            'document_type' => $documentType,
+            'document_number' => $documentNumber,
+            'name' => $name,
+            'status' => 1,
+            'withholding_agent' => $request->boolean('withholding_agent') ? 1 : 0,
+        ]);
+
+        $validated = $request->validate([
+            'person_type' => ['required', Rule::in(['natural', 'juridica'])],
+            'document_type' => ['required', Rule::in(['DNI', 'CE', 'RUC'])],
+            'document_number' => [
+                'required',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) use ($documentType) {
+                    if ($documentType === 'RUC' && strlen((string) $value) !== 11) {
+                        $fail('El RUC debe tener 11 dígitos.');
+                    }
+
+                    if ($documentType === 'DNI' && strlen((string) $value) !== 8) {
+                        $fail('El DNI debe tener 8 dígitos.');
+                    }
+                },
+            ],
+            'name' => ['required', 'string', 'max:255'],
+            'channel' => ['nullable', 'string', 'max:100'],
+            'subchannel' => ['nullable', 'string', 'max:100'],
+            'withholding_agent' => ['nullable', 'boolean'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+        ], [
+            'person_type.required' => 'El tipo de persona es obligatorio.',
+            'document_type.required' => 'El tipo de documento es obligatorio.',
+            'document_number.required' => 'El número de documento es obligatorio.',
+            'name.required' => 'La razón social o nombre es obligatorio.',
+            'email.email' => 'El email no tiene un formato válido.',
+        ]);
+
+        $existingCustomer = Customer::query()
+            ->where('document_type', $validated['document_type'])
+            ->where('document_number', $validated['document_number'])
+            ->first();
+
+        if (!$existingCustomer && $validated['document_type'] === 'RUC') {
+            $existingCustomer = Customer::query()
+                ->where('ruc', $validated['document_number'])
+                ->first();
+        }
+
+        if ($existingCustomer) {
+            $branch = $this->mainBranchForCustomer($existingCustomer);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Este cliente ya está registrado.',
+                'customer' => [
+                    'id' => $existingCustomer->id,
+                    'text' => $this->quoteCustomerText($existingCustomer),
+                ],
+                'branch' => $branch ? $this->quoteBranchPayload($branch) : null,
+            ], 409);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $upperName = mb_strtoupper($validated['name'], 'UTF-8');
+            $address = $this->upperOrNull($validated['address'] ?? null);
+
+            $customerData = [
+                'person_type' => $validated['person_type'],
+                'document_type' => $validated['document_type'],
+                'document_number' => $validated['document_number'],
+                'ruc' => $validated['document_type'] === 'RUC' ? $validated['document_number'] : null,
+                'business_name' => $validated['document_type'] === 'RUC' ? $upperName : null,
+                'first_name' => $validated['document_type'] === 'RUC' ? null : $upperName,
+                'last_name' => $validated['document_type'] === 'RUC' ? null : '',
+                'full_name' => $upperName,
+                'channel' => $this->upperOrNull($validated['channel'] ?? null),
+                'subchannel' => $this->upperOrNull($validated['subchannel'] ?? null),
+                'withholding_agent' => (int) ($validated['withholding_agent'] ?? 0),
+                'phone' => $validated['phone'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'address' => $address,
+                'status' => 1,
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ];
+
+            $customer = Customer::create($customerData);
+
+            $branch = CustomerBranch::create([
+                'customer_id' => $customer->id,
+                'branch_name' => 'SEDE PRINCIPAL',
+                'branch_type' => 'PRINCIPAL',
+                'phone' => $validated['phone'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'address' => $address,
+                'reference' => null,
+                'voucher_type' => null,
+                'generate_guide' => 'NO',
+                'payment_condition' => null,
+                'is_main' => 1,
+                'status' => 1,
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cliente registrado correctamente.',
+                'customer' => [
+                    'id' => $customer->id,
+                    'text' => $this->quoteCustomerText($customer),
+                ],
+                'branch' => $this->quoteBranchPayload($branch),
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Error quick creating quote customer: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo guardar el cliente.',
+            ], 500);
+        }
+    }
+
     public function marketStudyWinners($marketStudyId)
     {
         $items = DB::table('market_study_item_winners as winners')
@@ -309,9 +495,264 @@ class QuoteController extends Controller
                 ];
             });
 
+        if ($items->isEmpty()) {
+            $items = DB::table('market_study_items as study_items')
+                ->leftJoin('articles as articles', 'articles.id', '=', 'study_items.article_id')
+                ->leftJoin('units as units', 'units.id', '=', 'articles.unit_id')
+                ->leftJoin('presentations as presentations', 'presentations.id', '=', 'articles.presentation_id')
+                ->leftJoin('brands as brands', 'brands.id', '=', 'articles.brand_id')
+                ->where('study_items.market_study_id', $marketStudyId)
+                ->select([
+                    'study_items.id as market_study_item_id',
+                    'study_items.article_id',
+                    'study_items.article_code_snapshot',
+                    'study_items.billing_name_snapshot',
+                    'study_items.cost_condition_snapshot',
+                    'articles.code as article_code',
+                    'articles.billing_name as article_billing_name',
+                    'articles.unit_id',
+                    'articles.presentation_id',
+                    'articles.brand_id',
+                    'units.description as unit_name',
+                    'presentations.description as presentation_name',
+                    'brands.description as brand_name',
+                ])
+                ->orderBy('study_items.id')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'market_study_item_id' => $item->market_study_item_id,
+                        'article_id' => $item->article_id,
+                        'article_code' => $item->article_code_snapshot ?? $item->article_code,
+                        'billing_name_snapshot' => $item->billing_name_snapshot ?? $item->article_billing_name,
+                        'unit_id' => $item->unit_id,
+                        'presentation_id' => $item->presentation_id,
+                        'brand_id' => $item->brand_id,
+                        'origin' => '',
+                        'expiration_date' => null,
+                        'cost_type' => $item->cost_condition_snapshot ?? 'PESO',
+                        'cost_price' => '0.00',
+                        'quantity' => '1.00',
+                        'unit_price' => '0.00',
+                        'discount_percentage' => '0.00',
+                        'discount_amount' => '0.00',
+                        'line_total' => '0.00',
+                        'is_winner' => 0,
+                    ];
+                });
+        }
+
         return response()->json([
             'items' => $items,
         ]);
+    }
+
+    public function searchMarketStudies(Request $request)
+    {
+        $term = trim((string) $request->get('q', ''));
+
+        $studies = MarketStudy::query()
+            ->where('status', 1)
+            ->when($term !== '', function ($query) use ($term) {
+                $query->where(function ($q) use ($term) {
+                    $q->where('code', 'like', "%{$term}%")
+                        ->orWhere('description', 'like', "%{$term}%");
+                });
+            })
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get(['id', 'code', 'description', 'created_at']);
+
+        return response()->json([
+            'results' => $studies->map(fn (MarketStudy $study) => [
+                'id' => $study->id,
+                'text' => trim($study->code . ' | ' . $study->description),
+                'code' => $study->code,
+                'description' => $study->description,
+            ]),
+        ]);
+    }
+
+    public function searchArticles(Request $request)
+    {
+        $term = trim((string) $request->get('q', ''));
+
+        $articles = Article::query()
+            ->with(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description'])
+            ->where('status', 'ACTIVE')
+            ->when($term !== '', function ($query) use ($term) {
+                $query->where(function ($q) use ($term) {
+                    $q->where('code', 'like', "%{$term}%")
+                        ->orWhere('legal_name', 'like', "%{$term}%")
+                        ->orWhere('commercial_name', 'like', "%{$term}%")
+                        ->orWhere('billing_name', 'like', "%{$term}%");
+                });
+            })
+            ->orderBy('billing_name')
+            ->limit(30)
+            ->get();
+
+        return response()->json([
+            'results' => $articles->map(fn (Article $article) => $this->quoteArticlePayload($article)),
+        ]);
+    }
+
+    public function quickStoreArticle(Request $request)
+    {
+        $this->normalizeQuoteArticleNames($request);
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:20', 'unique:articles,code'],
+            'code_type' => ['nullable', 'in:SIGA/SISMED,SAP/IETSI'],
+            'institutional_code' => ['nullable', 'string', 'max:100'],
+            'legal_name' => ['required', 'string', 'max:255'],
+            'commercial_name' => ['nullable', 'string', 'max:255'],
+            'billing_name' => ['required', 'string', 'max:255'],
+        ], [
+            'code.required' => 'El código del artículo es obligatorio.',
+            'code.unique' => 'El código del artículo ya existe.',
+            'code_type.in' => 'El tipo de código seleccionado no es válido.',
+            'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
+            'legal_name.required' => 'El nombre legal es obligatorio.',
+            'billing_name.required' => 'El nombre de facturación es obligatorio.',
+        ]);
+
+        $this->validateDuplicateQuoteArticleName($validated);
+
+        $defaultCategory = Category::where('status', 'ACTIVE')->orderBy('id')->first();
+        $defaultUnit = Unit::where('status', 'ACTIVE')->orderBy('id')->first();
+
+        if (!$defaultCategory || !$defaultUnit) {
+            throw ValidationException::withMessages([
+                'article' => 'Debe registrar al menos una categoría y una unidad activas antes de crear artículos rápidos.',
+            ]);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $article = Article::create([
+                'code' => mb_strtoupper($validated['code'], 'UTF-8'),
+                'code_type' => $validated['code_type'] ?? 'SIGA/SISMED',
+                'institutional_code' => !empty($validated['institutional_code'])
+                    ? mb_strtoupper($validated['institutional_code'], 'UTF-8')
+                    : null,
+                'category_id' => $defaultCategory->id,
+                'subcategory_id' => null,
+                'presentation_id' => null,
+                'unit_id' => $defaultUnit->id,
+                'brand_id' => null,
+                'legal_name' => $validated['legal_name'],
+                'commercial_name' => $validated['commercial_name'] ?: $validated['legal_name'],
+                'billing_name' => $validated['billing_name'],
+                'is_taxable' => 1,
+                'minimum_stock' => 0,
+                'has_batch' => 0,
+                'has_expiration' => 0,
+                'observation' => null,
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ])->fresh(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Artículo registrado correctamente.',
+                'data' => $this->quoteArticlePayload($article),
+            ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Error quick creating quote article: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No se pudo registrar el artículo.',
+            ], 500);
+        }
+    }
+
+    public function searchBrands(Request $request)
+    {
+        $term = trim((string) $request->get('q', ''));
+
+        $brands = Brand::query()
+            ->where('status', 'ACTIVE')
+            ->when($term !== '', function ($query) use ($term) {
+                $query->where(function ($q) use ($term) {
+                    $q->where('code', 'like', "%{$term}%")
+                        ->orWhere('description', 'like', "%{$term}%");
+                });
+            })
+            ->orderBy('description')
+            ->limit(30)
+            ->get(['id', 'code', 'description']);
+
+        return response()->json([
+            'results' => $brands->map(fn (Brand $brand) => [
+                'id' => $brand->id,
+                'text' => trim(($brand->code ? $brand->code . ' | ' : '') . $brand->description),
+                'description' => $brand->description,
+            ]),
+        ]);
+    }
+
+    public function quickStoreBrand(Request $request)
+    {
+        $request->merge([
+            'description' => mb_strtoupper(trim((string) ($request->input('description') ?: $request->input('name'))), 'UTF-8'),
+            'status' => 'ACTIVE',
+        ]);
+
+        $validated = $request->validate([
+            'description' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('brands', 'description')->whereNull('deleted_at'),
+            ],
+        ], [
+            'description.required' => 'El nombre de la marca es obligatorio.',
+            'description.unique' => 'Esta marca ya está registrada.',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $brand = Brand::create([
+                'code' => $this->nextQuoteBrandCode(),
+                'description' => $validated['description'],
+                'observation' => null,
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Marca registrada correctamente.',
+                'data' => [
+                    'id' => $brand->id,
+                    'text' => trim($brand->code . ' | ' . $brand->description),
+                    'description' => $brand->description,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Error quick creating quote brand: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No se pudo registrar la marca.',
+            ], 500);
+        }
     }
 
     public function store(Request $request)
@@ -467,6 +908,16 @@ class QuoteController extends Controller
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'items.*.line_total' => ['nullable', 'numeric', 'min:0'],
             'items.*.is_winner' => ['nullable', 'boolean'],
+        ], [
+            'customer_id.required' => 'Debe seleccionar un cliente.',
+            'company_id.required' => 'Debe seleccionar una empresa.',
+            'currency_id.required' => 'Debe seleccionar una moneda.',
+            'items.required' => 'Debe agregar al menos un artículo a la cotización.',
+            'items.min' => 'Debe agregar al menos un artículo a la cotización.',
+            'items.*.article_id.required' => 'Debe seleccionar un artículo.',
+            'items.*.billing_name_snapshot.required' => 'Debe seleccionar un artículo.',
+            'items.*.quantity.required' => 'Debe ingresar la cantidad.',
+            'items.*.quantity.min' => 'La cantidad debe ser mayor a cero.',
         ]);
 
         $generatedPdfPath = null;
@@ -619,6 +1070,37 @@ class QuoteController extends Controller
         return $quoteNumber;
     }
 
+    private function nextQuoteArticleCode(): string
+    {
+        $nextNumber = (Article::withTrashed()->max('id') ?? 0) + 1;
+
+        do {
+            $code = 'ART' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            $nextNumber++;
+        } while (Article::withTrashed()->where('code', $code)->exists());
+
+        return $code;
+    }
+
+    private function nextQuoteBrandCode(): string
+    {
+        $nextNumber = (Brand::withTrashed()->max('id') ?? 0) + 1;
+
+        do {
+            $code = 'BRA' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+            $nextNumber++;
+        } while (Brand::withTrashed()->where('code', $code)->exists());
+
+        return $code;
+    }
+
+    public function generateArticleCode()
+    {
+        return response()->json([
+            'code' => $this->nextQuoteArticleCode(),
+        ]);
+    }
+
     private function quoteNumberExists(?string $quoteNumber): bool
     {
         $quoteNumber = trim((string) $quoteNumber);
@@ -674,6 +1156,108 @@ class QuoteController extends Controller
         return $value !== ''
             ? mb_strtoupper($value)
             : null;
+    }
+
+    private function quoteArticlePayload(Article $article): array
+    {
+        $article->loadMissing(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
+
+        return [
+            'id' => $article->id,
+            'text' => trim($article->code . ' | ' . $article->billing_name),
+            'code' => $article->code,
+            'legal_name' => $article->legal_name,
+            'commercial_name' => $article->commercial_name,
+            'billing_name' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'unit_text' => $article->unit
+                ? trim(($article->unit->abbreviation ? $article->unit->abbreviation . ' | ' : '') . $article->unit->description)
+                : '',
+            'presentation_id' => $article->presentation_id,
+            'presentation_text' => $article->presentation?->description ?? '',
+            'brand_id' => $article->brand_id,
+            'brand_text' => $article->brand?->description ?? '',
+            'origin' => '',
+            'cost_price' => 0,
+            'is_taxable' => (bool) $article->is_taxable,
+        ];
+    }
+
+    private function quoteCustomerText(Customer $customer): string
+    {
+        $document = $customer->ruc ?: $customer->document_number;
+        $name = $customer->business_name
+            ?: $customer->full_name
+            ?: trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''));
+
+        return trim(($document ? $document . ' | ' : '') . $name);
+    }
+
+    private function mainBranchForCustomer(Customer $customer): ?CustomerBranch
+    {
+        return $customer->branches()
+            ->orderByDesc('is_main')
+            ->orderBy('branch_name')
+            ->first();
+    }
+
+    private function quoteBranchPayload(CustomerBranch $branch): array
+    {
+        return [
+            'id' => $branch->id,
+            'text' => $branch->branch_name,
+            'branch_name' => $branch->branch_name,
+            'address' => $branch->address,
+            'is_main' => (bool) $branch->is_main,
+        ];
+    }
+
+    private function normalizeQuoteArticleNames(Request $request): void
+    {
+        $legalName = $this->normalizeQuoteArticleText($request->input('legal_name'));
+        $commercialName = $this->normalizeQuoteArticleText($request->input('commercial_name')) ?: $legalName;
+        $billingName = $this->normalizeQuoteArticleText($request->input('billing_name')) ?: $commercialName;
+
+        $request->merge([
+            'legal_name' => $legalName,
+            'commercial_name' => $commercialName,
+            'billing_name' => $billingName,
+        ]);
+    }
+
+    private function normalizeQuoteArticleText($value): string
+    {
+        return mb_strtoupper(trim((string) $value), 'UTF-8');
+    }
+
+    private function validateDuplicateQuoteArticleName(array $validated): void
+    {
+        $names = collect([
+            $validated['legal_name'] ?? '',
+            $validated['commercial_name'] ?? '',
+            $validated['billing_name'] ?? '',
+        ])->filter()->unique()->values();
+
+        if ($names->isEmpty()) {
+            return;
+        }
+
+        $duplicate = Article::query()
+            ->where('status', 'ACTIVE')
+            ->where(function ($query) use ($names) {
+                foreach ($names as $name) {
+                    $query->orWhereRaw('UPPER(TRIM(legal_name)) = ?', [$name])
+                        ->orWhereRaw('UPPER(TRIM(commercial_name)) = ?', [$name])
+                        ->orWhereRaw('UPPER(TRIM(billing_name)) = ?', [$name]);
+                }
+            })
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'billing_name' => 'Ya existe un artículo registrado con ese nombre.',
+            ]);
+        }
     }
 
     private function generateQuotePdf(Quote $quote): array

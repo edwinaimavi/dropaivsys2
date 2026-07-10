@@ -119,6 +119,9 @@
             customerPurchaseOrderGenerateCode: "{{ route('admin.customer-purchase-orders.generateCode') }}",
             customerPurchaseOrderQuoteItems: "{{ url('admin/customer-purchase-orders/quote/:id/items') }}",
             customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}",
+            customerPurchaseOrderCustomersSearch: "{{ route('admin.customer-purchase-orders.customers.search') }}",
+            customerPurchaseOrderCustomersQuickStore: "{{ route('admin.customer-purchase-orders.customers.quick-store') }}",
+            customerPurchaseOrderCustomerDocumentConsult: "{{ route('admin.customers.consultar', ['numero' => 'DOC_PLACEHOLDER']) }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
             generateArticleCode: "{{ route('admin.articles.generateCode') }}"

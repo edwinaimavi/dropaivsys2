@@ -228,8 +228,10 @@
                                             CLIENTE <span class="text-danger">*</span>
                                         </label>
 
-                                        <select id="customer_id" name="customer_id"
-                                            class="form-control form-control-sm">
+                                        <div class="input-group input-group-sm quote-inline-select">
+
+                                            <select id="customer_id" name="customer_id"
+                                                class="form-control form-control-sm">
 
                                             <option value="">Seleccione cliente</option>
 
@@ -243,7 +245,21 @@
                                                 @endforeach
                                             @endisset
 
-                                        </select>
+                                            </select>
+
+                                            <div class="input-group-append">
+
+                                                <button type="button" id="btnOpenQuickCustomerModal"
+                                                    class="btn btn-outline-primary"
+                                                    title="Crear cliente" data-toggle="tooltip">
+
+                                                    <i class="fas fa-plus"></i>
+
+                                                </button>
+
+                                            </div>
+
+                                        </div>
 
                                         <span class="invalid-feedback" id="customer_id-error"></span>
 
@@ -754,7 +770,30 @@ GARANTÍA : 12 MESES</textarea>
                                 <input type="hidden" class="item-is-winner" name="items[__INDEX__][is_winner]"
                                     value="0">
 
-                                <div class="input-group input-group-sm">
+                                <input type="hidden" class="item-billing-name-value"
+                                    name="items[__INDEX__][billing_name_snapshot]">
+
+                                <div class="input-group input-group-sm quote-inline-select">
+
+                                    <select class="form-control form-control-sm item-article-select"
+                                        data-placeholder="Buscar artículo...">
+                                        <option value=""></option>
+                                    </select>
+
+                                    <div class="input-group-append">
+
+                                        <button type="button" class="btn btn-outline-primary btnOpenQuickQuoteArticle"
+                                            title="Crear artículo" data-toggle="tooltip">
+
+                                            <i class="fas fa-plus"></i>
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="input-group input-group-sm quote-legacy-article-input d-none">
 
                                     <input type="text" name="items[__INDEX__][billing_name_snapshot]"
                                         class="form-control item-billing-name text-uppercase"
@@ -823,8 +862,10 @@ GARANTÍA : 12 MESES</textarea>
 
                             <td>
 
-                                <select name="items[__INDEX__][brand_id]"
-                                    class="form-control form-control-sm item-brand-id">
+                                <div class="input-group input-group-sm quote-inline-select">
+
+                                    <select name="items[__INDEX__][brand_id]"
+                                        class="form-control form-control-sm item-brand-id">
 
                                     <option value="">Seleccione</option>
 
@@ -836,7 +877,20 @@ GARANTÍA : 12 MESES</textarea>
                                         @endforeach
                                     @endisset
 
-                                </select>
+                                    </select>
+
+                                    <div class="input-group-append">
+
+                                        <button type="button" class="btn btn-outline-primary btnOpenQuickQuoteBrand"
+                                            title="Crear marca" data-toggle="tooltip">
+
+                                            <i class="fas fa-plus"></i>
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
 
                             </td>
 
@@ -933,6 +987,279 @@ GARANTÍA : 12 MESES</textarea>
 
     </div>
 
+</div>
+
+<!-- MODAL RAPIDO CLIENTE DESDE COTIZACION -->
+<div class="modal fade" id="quickCustomerModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content quick-quote-modal">
+            <div class="modal-header align-items-center quick-quote-modal-header">
+                <div>
+                    <h5 class="modal-title mb-0 font-weight-bold">Nuevo Cliente</h5>
+                    <small class="text-muted">Registro rápido para cotización comercial</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body bg-light">
+                <form id="quickCustomerForm" autocomplete="off">
+                    @csrf
+
+                    <div class="alert alert-info py-2 d-none" id="quickCustomerDocumentLoading">
+                        <i class="fas fa-spinner fa-spin mr-1"></i>
+                        Consultando documento...
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>TIPO PERSONA <span class="text-danger">*</span></label>
+                            <select id="quick_customer_person_type" name="person_type"
+                                class="form-control form-control-sm">
+                                <option value="natural">Persona Natural</option>
+                                <option value="juridica">Persona Jurídica</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>TIPO DOCUMENTO <span class="text-danger">*</span></label>
+                            <select id="quick_customer_document_type" name="document_type"
+                                class="form-control form-control-sm">
+                                <option value="DNI">DNI</option>
+                                <option value="RUC">RUC</option>
+                                <option value="CE">CE</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>N° DOCUMENTO <span class="text-danger">*</span></label>
+                            <input type="text" id="quick_customer_document_number" name="document_number"
+                                class="form-control form-control-sm" maxlength="11">
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>CANAL</label>
+                            <select id="quick_customer_channel" name="channel" class="form-control form-control-sm">
+                                <option value="">Seleccione</option>
+                                <option value="PRESTADOR DE SALUD">PRESTADOR DE SALUD</option>
+                                <option value="DISTRIBUIDOR">DISTRIBUIDOR</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>SUB CANAL</label>
+                            <select id="quick_customer_subchannel" name="subchannel"
+                                class="form-control form-control-sm">
+                                <option value="">Seleccione</option>
+                                <option value="PUBLICO">PÚBLICO</option>
+                                <option value="PRIVADO">PRIVADO</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>¿AGENTE DE RETENCIÓN?</label>
+                            <select id="quick_customer_withholding_agent" name="withholding_agent"
+                                class="form-control form-control-sm">
+                                <option value="0">NO</option>
+                                <option value="1">SI</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-12">
+                            <label>RAZÓN SOCIAL / NOMBRES <span class="text-danger">*</span></label>
+                            <input type="text" id="quick_customer_name" name="name"
+                                class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>TELÉFONO</label>
+                            <input type="text" id="quick_customer_phone" name="phone"
+                                class="form-control form-control-sm">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>EMAIL</label>
+                            <input type="email" id="quick_customer_email" name="email"
+                                class="form-control form-control-sm">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>DIRECCIÓN</label>
+                            <input type="text" id="quick_customer_address" name="address"
+                                class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <span class="badge badge-primary py-2 px-3">ESTADO: ACTIVO</span>
+
+                        <div class="mt-2 mt-sm-0">
+                            <button type="button" class="btn btn-light border btn-sm mr-2" data-dismiss="modal">
+                                <i class="fas fa-times mr-1"></i>
+                                Cerrar
+                            </button>
+                            <button type="submit" id="btnSaveQuickCustomer" class="btn btn-primary btn-sm">
+                                <i class="fas fa-save mr-1"></i>
+                                Guardar Cliente
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RAPIDO ARTICULO DESDE COTIZACION -->
+<div class="modal fade" id="quickQuoteArticleModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+        <div class="modal-content quick-quote-modal">
+            <div class="modal-header align-items-center quick-quote-modal-header">
+                <div>
+                    <h5 class="modal-title mb-0 font-weight-bold">Nuevo Artículo</h5>
+                    <small class="text-muted">Registro rápido para cotización comercial</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body bg-light">
+                <form id="quickQuoteArticleForm" autocomplete="off">
+                    @csrf
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>CÓDIGO</label>
+                            <input type="text" id="quick_quote_article_code" name="code"
+                                class="form-control form-control-sm font-weight-bold" readonly>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>TIPO CÓDIGO</label>
+                            <select id="quick_quote_article_code_type" name="code_type"
+                                class="form-control form-control-sm">
+                                <option value="SIGA/SISMED" selected>SIGA/SISMED</option>
+                                <option value="SAP/IETSI">SAP/IETSI</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>CÓDIGO INSTITUCIONAL</label>
+                            <input type="text" id="quick_quote_article_institutional_code"
+                                name="institutional_code" class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>NOMBRE LEGAL <span class="text-danger">*</span></label>
+                            <input type="text" id="quick_quote_article_legal_name" name="legal_name"
+                                class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>NOMBRE COMERCIAL</label>
+                            <input type="text" id="quick_quote_article_commercial_name" name="commercial_name"
+                                class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="form-group col-md-4">
+                            <label>NOMBRE FACTURACIÓN <span class="text-danger">*</span></label>
+                            <input type="text" id="quick_quote_article_billing_name" name="billing_name"
+                                class="form-control form-control-sm text-uppercase">
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <span class="badge badge-primary py-2 px-3">ESTADO: ACTIVO</span>
+
+                        <div class="mt-2 mt-sm-0">
+                            <button type="button" class="btn btn-light border btn-sm mr-2" data-dismiss="modal">
+                                <i class="fas fa-times mr-1"></i>
+                                Cerrar
+                            </button>
+                            <button type="submit" id="btnSaveQuickQuoteArticle" class="btn btn-primary btn-sm">
+                                <i class="fas fa-save mr-1"></i>
+                                Guardar Artículo
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RAPIDO MARCA DESDE COTIZACION -->
+<div class="modal fade" id="quickQuoteBrandModal" tabindex="-1" data-backdrop="static" data-keyboard="false"
+    aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-centered" role="document">
+        <div class="modal-content quick-quote-modal">
+            <div class="modal-header align-items-center quick-quote-modal-header">
+                <div>
+                    <h5 class="modal-title mb-0 font-weight-bold">Nueva Marca</h5>
+                    <small class="text-muted">Registro rápido para la fila actual</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body bg-light">
+                <form id="quickQuoteBrandForm" autocomplete="off">
+                    @csrf
+
+                    <div class="form-group">
+                        <label>NOMBRE DE MARCA <span class="text-danger">*</span></label>
+                        <input type="text" id="quick_quote_brand_description" name="description"
+                            class="form-control form-control-sm text-uppercase">
+                        <span class="invalid-feedback"></span>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <span class="badge badge-primary py-2 px-3">ESTADO: ACTIVO</span>
+
+                        <div class="mt-2 mt-sm-0">
+                            <button type="button" class="btn btn-light border btn-sm mr-2" data-dismiss="modal">
+                                <i class="fas fa-times mr-1"></i>
+                                Cerrar
+                            </button>
+                            <button type="submit" id="btnSaveQuickQuoteBrand" class="btn btn-primary btn-sm">
+                                <i class="fas fa-save mr-1"></i>
+                                Guardar Marca
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -1094,6 +1421,27 @@ GARANTÍA : 12 MESES</textarea>
         min-width: 300px;
     }
 
+    #quoteModal #quoteItemsTable .item-article-select {
+        min-width: 300px;
+    }
+
+    #quoteModal .quote-inline-select {
+        flex-wrap: nowrap;
+    }
+
+    #quoteModal .quote-inline-select .select2-container {
+        flex: 1 1 auto;
+        width: 1% !important;
+    }
+
+    #quoteModal .quote-inline-select .input-group-append .btn {
+        width: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0 8px 8px 0;
+    }
+
     #quoteModal #quoteItemsTable .item-note {
         min-width: 75px;
     }
@@ -1207,6 +1555,34 @@ GARANTÍA : 12 MESES</textarea>
         white-space: nowrap !important;
         font-size: 12px;
         padding: 6px 10px;
+    }
+
+    .quick-quote-modal {
+        border: none;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
+    }
+
+    .quick-quote-modal-header {
+        background: linear-gradient(90deg, #f4f9ff, #eaf3ff);
+        border-bottom: 1px solid #b8d7ff;
+    }
+
+    #quickCustomerModal label,
+    #quickQuoteArticleModal label,
+    #quickQuoteBrandModal label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #495057;
+        margin-bottom: 2px;
+    }
+
+    #quickCustomerModal .form-control,
+    #quickQuoteArticleModal .form-control,
+    #quickQuoteBrandModal .form-control {
+        height: 31px;
+        font-size: 12px;
     }
 
     .quote-unit-option {
