@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\ArticleController;
 
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\CustomerBranchContactController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerOrderLabelingController;
@@ -160,6 +161,10 @@ Route::get(
 Route::resource('presentations', PresentationController::class)->except(['create', 'show']);
 
 //RUTAS PARA PROVEEDORES 
+Route::get('companies/list', [CompanyController::class, 'list'])->name('companies.list');
+Route::get('companies/consultar-ruc/{numero}', [CompanyController::class, 'consultarRuc'])->name('companies.consultar-ruc');
+Route::resource('companies', CompanyController::class)->except(['create']);
+
 Route::get('shipping-agencies/list', [ShippingAgencyController::class, 'list'])->name('shipping-agencies.list');
 Route::get('shipping-agencies/{shippingAgency}/branches', [ShippingAgencyController::class, 'branches'])->name('shipping-agencies.branches');
 Route::get('shipping-agencies/{shippingAgency}/contacts', [ShippingAgencyController::class, 'contacts'])->name('shipping-agencies.contacts');

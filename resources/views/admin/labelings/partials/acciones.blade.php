@@ -7,12 +7,10 @@
     @endcan
 
     @can('admin.labelings.update')
-        @if ($labeling->status === 'DRAFT')
-            <button type="button" class="btn btn-sm btn-outline-primary editLabeling mr-2" data-id="{{ $labeling->id }}"
-                data-toggle="tooltip" title="Editar">
-                <i class="fas fa-edit"></i>
-            </button>
-        @endif
+        <button type="button" class="btn btn-sm btn-outline-primary editLabeling mr-2" data-id="{{ $labeling->id }}"
+            data-toggle="tooltip" title="Editar">
+            <i class="fas fa-edit"></i>
+        </button>
     @endcan
 
     @can('admin.labelings.pdf')

@@ -135,12 +135,6 @@ class CustomerOrderLabelingController extends Controller
     {
         $labeling = $this->labelingQuery()->findOrFail($id);
 
-        if ($labeling->status !== self::STATUS_DRAFT) {
-            throw ValidationException::withMessages([
-                'status' => 'Solo se pueden editar rotulaciones en borrador.',
-            ]);
-        }
-
         return response()->json([
             'status' => 'success',
             'data' => $this->labelingPayload($labeling),
@@ -150,12 +144,6 @@ class CustomerOrderLabelingController extends Controller
     public function update(Request $request, $id)
     {
         $labeling = CustomerOrderLabeling::query()->findOrFail($id);
-
-        if ($labeling->status !== self::STATUS_DRAFT) {
-            throw ValidationException::withMessages([
-                'status' => 'Solo se pueden actualizar rotulaciones en borrador.',
-            ]);
-        }
 
         return $this->saveLabeling($request, $labeling);
     }
@@ -179,27 +167,10 @@ class CustomerOrderLabelingController extends Controller
     public function pdf($id)
     {
         $labeling = $this->labelingQuery()->findOrFail($id);
-        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
-        $pdf = Pdf::loadView('admin.labelings.pdf', [
-            'labeling' => $labeling,
-            'logoDataUri' => $this->imageDataUri($logoPath),
-        ])
-            ->setPaper('a4', 'portrait')
-            ->setOptions([
-                'defaultFont' => 'DejaVu Sans',
-                'isHtml5ParserEnabled' => true,
-                'isFontSubsettingEnabled' => true,
-            ]);
-
-        $fileName = 'labelings/' . $labeling->code . '.pdf';
+        $pdf = $this->buildLabelingPdf($labeling);
 
         try {
-            Storage::disk('public')->put($fileName, $pdf->output());
-            $labeling->update([
-                'pdf_path' => $fileName,
-                'status' => self::STATUS_GENERATED,
-                'updated_by' => Auth::id(),
-            ]);
+            $this->storeLabelingPdf($labeling, $pdf);
         } catch (\Throwable $e) {
             Log::warning('No se pudo guardar PDF de rotulación: ' . $e->getMessage());
         }
@@ -209,6 +180,8 @@ class CustomerOrderLabelingController extends Controller
 
     private function saveLabeling(Request $request, ?CustomerOrderLabeling $labeling = null)
     {
+        $wasGenerated = $labeling?->status === self::STATUS_GENERATED;
+
         $validated = $request->validate([
             'customer_purchase_order_id' => [
                 'required',
@@ -245,7 +218,7 @@ class CustomerOrderLabelingController extends Controller
         ]);
 
         try {
-            return DB::transaction(function () use ($validated, $labeling) {
+            return DB::transaction(function () use ($validated, $labeling, $wasGenerated) {
                 $order = $this->findAvailableOrder($validated['customer_purchase_order_id'], true);
                 $itemMap = $order->items->keyBy('id');
                 $entered = $this->enteredQuantities($order->id);
@@ -345,7 +318,8 @@ class CustomerOrderLabelingController extends Controller
                     'destination' => $this->upperOrNull($validated['destination'] ?? null),
                     'boxes_count' => (int) $validated['boxes_count'],
                     'total_quantity' => $totalQuantity,
-                    'status' => $labeling?->status ?? self::STATUS_DRAFT,
+                    'status' => $wasGenerated ? self::STATUS_GENERATED : ($labeling?->status ?? self::STATUS_DRAFT),
+                    'pdf_path' => $wasGenerated ? null : ($labeling?->pdf_path),
                     'observations' => $this->upperOrNull($validated['observations'] ?? null),
                     'updated_by' => Auth::id(),
                 ];
@@ -382,6 +356,20 @@ class CustomerOrderLabelingController extends Controller
                             'brand_name' => $meta['brand_name'] ?? $orderItem->brand?->description,
                             'origin' => $meta['origin'] ?? $orderItem->origin,
                         ]);
+                    }
+                }
+
+                if ($wasGenerated) {
+                    try {
+                        $this->storeLabelingPdf($labeling->load([
+                            'company',
+                            'customer',
+                            'customerBranch',
+                            'customerPurchaseOrder',
+                            'boxes.items',
+                        ]));
+                    } catch (\Throwable $e) {
+                        Log::warning('No se pudo regenerar PDF de rotulaciÃ³n: ' . $e->getMessage());
                     }
                 }
 
@@ -444,6 +432,7 @@ class CustomerOrderLabelingController extends Controller
             'customer_name' => $this->customerName($order->customer),
             'customer_branch_id' => $order->customer_branch_id,
             'customer_branch_name' => $order->customerBranch?->branch_name,
+            'destination' => $this->defaultDestination($order),
             'items' => $order->items
                 ->where('status', '!=', 'deleted')
                 ->map(function (CustomerPurchaseOrderItem $item) use ($labeled, $entered, $entryMeta) {
@@ -692,6 +681,370 @@ class CustomerOrderLabelingController extends Controller
         return $item->unit?->description
             ?? $item->unit?->abbreviation
             ?? null;
+    }
+
+    private function buildLabelingPdf(CustomerOrderLabeling $labeling)
+    {
+        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
+
+        return Pdf::loadView('admin.labelings.pdf', [
+            'labeling' => $labeling,
+            'logoDataUri' => $this->imageDataUri($logoPath),
+            'qrCodes' => $this->labelingQrCodes($labeling),
+            'labelsPerPage' => $this->labelsPerPageFor($labeling),
+        ])
+            ->setPaper('a4', 'portrait')
+            ->setOptions([
+                'defaultFont' => 'DejaVu Sans',
+                'isHtml5ParserEnabled' => true,
+                'isFontSubsettingEnabled' => true,
+                'isRemoteEnabled' => false,
+            ]);
+    }
+
+    private function storeLabelingPdf(CustomerOrderLabeling $labeling, $pdf = null): string
+    {
+        $pdf ??= $this->buildLabelingPdf($labeling);
+        $fileName = 'labelings/' . $labeling->code . '.pdf';
+
+        Storage::disk('public')->put($fileName, $pdf->output());
+        $labeling->update([
+            'pdf_path' => $fileName,
+            'status' => self::STATUS_GENERATED,
+            'updated_by' => Auth::id(),
+        ]);
+
+        return $fileName;
+    }
+
+    private function labelsPerPageFor(CustomerOrderLabeling $labeling): int
+    {
+        $destinationLength = mb_strlen((string) $labeling->destination, 'UTF-8');
+        $customerLength = mb_strlen($this->customerName($labeling->customer), 'UTF-8');
+
+        if ($destinationLength > 42 || $customerLength > 55) {
+            return 4;
+        }
+
+        foreach ($labeling->boxes as $box) {
+            $observationLength = mb_strlen((string) ($box->observation ?? $box->observations ?? ''), 'UTF-8');
+
+            if ($observationLength > 34 || $box->items->count() > 2) {
+                return 4;
+            }
+
+            foreach ($box->items as $item) {
+                if (mb_strlen((string) $item->description, 'UTF-8') > 175) {
+                    return 4;
+                }
+            }
+        }
+
+        return 6;
+    }
+
+    private function defaultDestination(CustomerPurchaseOrder $order): ?string
+    {
+        return $this->upperOrNull(
+            $order->customerBranch?->branch_name
+                ?? $order->customerBranch?->address
+                ?? $order->customer?->address
+                ?? null
+        );
+    }
+
+    private function labelingQrCodes(CustomerOrderLabeling $labeling): array
+    {
+        $customerName = $this->customerName($labeling->customer);
+        $orderNumber = $labeling->customerPurchaseOrder?->purchase_order_number
+            ?? $labeling->customerPurchaseOrder?->code
+            ?? '-';
+
+        return $labeling->boxes->mapWithKeys(function (CustomerOrderLabelingBox $box) use ($labeling, $customerName, $orderNumber) {
+            $payload = implode("\n", [
+                'ROT: ' . $labeling->code,
+                'OC: ' . $orderNumber,
+                'CLIENTE: ' . mb_substr($customerName, 0, 55, 'UTF-8'),
+                'DESTINO: ' . mb_substr($labeling->destination ?: '-', 0, 45, 'UTF-8'),
+                'FACTURA: ' . ($labeling->invoice_number ?: '-'),
+                'GUIA: ' . ($labeling->guide_number ?: '-'),
+                'CAJA: ' . $box->box_label,
+            ]);
+
+            return [$box->id => $this->qrSvgDataUri($payload)];
+        })->all();
+    }
+
+    private function qrSvgDataUri(string $payload): string
+    {
+        $matrix = $this->qrMatrix(mb_substr($payload, 0, 190, 'UTF-8'));
+        $module = 3;
+        $quiet = 4;
+        $size = count($matrix);
+        $canvas = ($size + ($quiet * 2)) * $module;
+        $rects = '';
+
+        foreach ($matrix as $row => $columns) {
+            foreach ($columns as $column => $dark) {
+                if ($dark) {
+                    $rects .= sprintf(
+                        '<rect x="%d" y="%d" width="%d" height="%d"/>',
+                        ($column + $quiet) * $module,
+                        ($row + $quiet) * $module,
+                        $module,
+                        $module
+                    );
+                }
+            }
+        }
+
+        $svg = sprintf(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d"><rect width="100%%" height="100%%" fill="#fff"/><g fill="#111827">%s</g></svg>',
+            $canvas,
+            $canvas,
+            $canvas,
+            $canvas,
+            $rects
+        );
+
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+
+    private function qrMatrix(string $payload): array
+    {
+        $version = 6;
+        $size = 21 + (($version - 1) * 4);
+        $matrix = array_fill(0, $size, array_fill(0, $size, false));
+        $reserved = array_fill(0, $size, array_fill(0, $size, false));
+
+        $this->qrFinder($matrix, $reserved, 0, 0);
+        $this->qrFinder($matrix, $reserved, $size - 7, 0);
+        $this->qrFinder($matrix, $reserved, 0, $size - 7);
+        $this->qrAlignment($matrix, $reserved, 34, 34);
+
+        for ($i = 8; $i < $size - 8; $i++) {
+            $matrix[6][$i] = $i % 2 === 0;
+            $matrix[$i][6] = $i % 2 === 0;
+            $reserved[6][$i] = true;
+            $reserved[$i][6] = true;
+        }
+
+        $matrix[$size - 8][8] = true;
+        $reserved[$size - 8][8] = true;
+        $this->qrReserveFormat($reserved, $size);
+
+        $data = $this->qrDataCodewords($payload);
+        $bits = [];
+        foreach ($data as $byte) {
+            for ($i = 7; $i >= 0; $i--) {
+                $bits[] = (($byte >> $i) & 1) === 1;
+            }
+        }
+
+        $bitIndex = 0;
+        $up = true;
+        for ($column = $size - 1; $column > 0; $column -= 2) {
+            if ($column === 6) {
+                $column--;
+            }
+
+            for ($i = 0; $i < $size; $i++) {
+                $row = $up ? $size - 1 - $i : $i;
+
+                for ($offset = 0; $offset < 2; $offset++) {
+                    $currentColumn = $column - $offset;
+                    if ($reserved[$row][$currentColumn]) {
+                        continue;
+                    }
+
+                    $dark = $bits[$bitIndex] ?? false;
+                    if (($row + $currentColumn) % 2 === 0) {
+                        $dark = ! $dark;
+                    }
+
+                    $matrix[$row][$currentColumn] = $dark;
+                    $bitIndex++;
+                }
+            }
+
+            $up = ! $up;
+        }
+
+        $this->qrFormat($matrix, $reserved, $size);
+
+        return $matrix;
+    }
+
+    private function qrDataCodewords(string $payload): array
+    {
+        $bytes = array_values(unpack('C*', mb_convert_encoding($payload, 'UTF-8')));
+        $bytes = array_slice($bytes, 0, 132);
+        $bits = [0, 1, 0, 0];
+
+        for ($i = 7; $i >= 0; $i--) {
+            $bits[] = ((count($bytes) >> $i) & 1) === 1;
+        }
+
+        foreach ($bytes as $byte) {
+            for ($i = 7; $i >= 0; $i--) {
+                $bits[] = (($byte >> $i) & 1) === 1;
+            }
+        }
+
+        $capacityBits = 136 * 8;
+        for ($i = 0; $i < min(4, $capacityBits - count($bits)); $i++) {
+            $bits[] = false;
+        }
+
+        while (count($bits) % 8 !== 0) {
+            $bits[] = false;
+        }
+
+        $data = [];
+        foreach (array_chunk($bits, 8) as $chunk) {
+            $byte = 0;
+            foreach ($chunk as $bit) {
+                $byte = ($byte << 1) | ($bit ? 1 : 0);
+            }
+            $data[] = $byte;
+        }
+
+        $pads = [0xec, 0x11];
+        for ($i = 0; count($data) < 136; $i++) {
+            $data[] = $pads[$i % 2];
+        }
+
+        $blocks = [array_slice($data, 0, 68), array_slice($data, 68, 68)];
+        $eccBlocks = array_map(fn (array $block) => $this->qrReedSolomon($block, 18), $blocks);
+        $codewords = [];
+
+        for ($i = 0; $i < 68; $i++) {
+            foreach ($blocks as $block) {
+                $codewords[] = $block[$i];
+            }
+        }
+
+        for ($i = 0; $i < 18; $i++) {
+            foreach ($eccBlocks as $block) {
+                $codewords[] = $block[$i];
+            }
+        }
+
+        return $codewords;
+    }
+
+    private function qrFinder(array &$matrix, array &$reserved, int $x, int $y): void
+    {
+        $size = count($matrix);
+        for ($row = $y - 1; $row <= $y + 7; $row++) {
+            for ($column = $x - 1; $column <= $x + 7; $column++) {
+                if ($row < 0 || $column < 0 || $row >= $size || $column >= $size) {
+                    continue;
+                }
+
+                $reserved[$row][$column] = true;
+                $inFinder = $row >= $y && $row < $y + 7 && $column >= $x && $column < $x + 7;
+                $matrix[$row][$column] = $inFinder
+                    && ($row === $y || $row === $y + 6 || $column === $x || $column === $x + 6
+                        || ($row >= $y + 2 && $row <= $y + 4 && $column >= $x + 2 && $column <= $x + 4));
+            }
+        }
+    }
+
+    private function qrAlignment(array &$matrix, array &$reserved, int $centerX, int $centerY): void
+    {
+        for ($row = $centerY - 2; $row <= $centerY + 2; $row++) {
+            for ($column = $centerX - 2; $column <= $centerX + 2; $column++) {
+                $reserved[$row][$column] = true;
+                $matrix[$row][$column] = $row === $centerY - 2 || $row === $centerY + 2
+                    || $column === $centerX - 2 || $column === $centerX + 2
+                    || ($row === $centerY && $column === $centerX);
+            }
+        }
+    }
+
+    private function qrReserveFormat(array &$reserved, int $size): void
+    {
+        for ($i = 0; $i < 9; $i++) {
+            $reserved[8][$i] = true;
+            $reserved[$i][8] = true;
+        }
+
+        for ($i = 0; $i < 8; $i++) {
+            $reserved[8][$size - 1 - $i] = true;
+            $reserved[$size - 1 - $i][8] = true;
+        }
+    }
+
+    private function qrFormat(array &$matrix, array &$reserved, int $size): void
+    {
+        $formatBits = 0x77c4;
+        $positionsA = [[8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]];
+        $positionsB = [[$size - 1, 8], [$size - 2, 8], [$size - 3, 8], [$size - 4, 8], [$size - 5, 8], [$size - 6, 8], [$size - 7, 8], [$size - 8, 8], [8, $size - 7], [8, $size - 6], [8, $size - 5], [8, $size - 4], [8, $size - 3], [8, $size - 2], [8, $size - 1]];
+
+        foreach ($positionsA as $index => [$row, $column]) {
+            $matrix[$row][$column] = (($formatBits >> $index) & 1) === 1;
+            $reserved[$row][$column] = true;
+        }
+
+        foreach ($positionsB as $index => [$row, $column]) {
+            $matrix[$row][$column] = (($formatBits >> $index) & 1) === 1;
+            $reserved[$row][$column] = true;
+        }
+    }
+
+    private function qrReedSolomon(array $data, int $degree): array
+    {
+        $generator = [1];
+        for ($i = 0; $i < $degree; $i++) {
+            $next = array_fill(0, count($generator) + 1, 0);
+            foreach ($generator as $index => $coefficient) {
+                $next[$index] ^= $this->qrGfMul($coefficient, 1);
+                $next[$index + 1] ^= $this->qrGfMul($coefficient, $this->qrGfPow(2, $i));
+            }
+            $generator = $next;
+        }
+
+        $result = array_fill(0, $degree, 0);
+        foreach ($data as $byte) {
+            $factor = $byte ^ $result[0];
+            array_shift($result);
+            $result[] = 0;
+
+            for ($i = 0; $i < $degree; $i++) {
+                $result[$i] ^= $this->qrGfMul($generator[$i + 1], $factor);
+            }
+        }
+
+        return $result;
+    }
+
+    private function qrGfPow(int $base, int $exponent): int
+    {
+        $result = 1;
+        for ($i = 0; $i < $exponent; $i++) {
+            $result = $this->qrGfMul($result, $base);
+        }
+
+        return $result;
+    }
+
+    private function qrGfMul(int $a, int $b): int
+    {
+        $result = 0;
+        while ($b > 0) {
+            if ($b & 1) {
+                $result ^= $a;
+            }
+
+            $a <<= 1;
+            if ($a & 0x100) {
+                $a ^= 0x11d;
+            }
+            $b >>= 1;
+        }
+
+        return $result & 0xff;
     }
 
     private function imageDataUri(string $path): ?string

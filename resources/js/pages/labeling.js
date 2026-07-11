@@ -120,7 +120,7 @@ function resetLabelingForm() {
     $('#labeling_customer_purchase_order_id')
         .prop('disabled', false)
         .html('<option value="">Seleccione orden abastecida</option>');
-    $('#labeling_customer_name, #labeling_company_name, #labeling_order_number').val('');
+    $('#labeling_customer_name, #labeling_company_name, #labeling_order_number, #labeling_destination').val('');
     $('#labeling_boxes_count').val(1);
     currentLabelingOrder = null;
     clearLabelingErrors();
@@ -170,6 +170,9 @@ function fillLabelingOrderSummary(order) {
     $('#labeling_customer_name').val(order.customer_name || '');
     $('#labeling_company_name').val(order.company_name || '');
     $('#labeling_order_number').val(order.purchase_order_number || order.code || '');
+    if (!$('#labeling_id').val() && !$('#labeling_destination').val()) {
+        $('#labeling_destination').val(order.destination || order.customer_branch_name || '');
+    }
     $('#labelingSideCustomer').text(order.customer_name || 'Seleccione orden');
     $('#labelingSideCompany').text(order.company_name || '-');
     $('#labelingSideBoxes').text($('#labeling_boxes_count').val() || '0');
@@ -409,6 +412,10 @@ function validateLabelingDistribution() {
         return { valid: false, message: 'Seleccione una orden abastecida.' };
     }
 
+    if (!String($('#labeling_destination').val() || '').trim()) {
+        return { valid: false, message: 'Ingrese el destino de la rotulación.' };
+    }
+
     const count = parseInt($('#labeling_boxes_count').val(), 10) || 0;
     if (count < 1) {
         return { valid: false, message: 'La cantidad de cajas debe ser mayor a cero.' };
@@ -622,9 +629,7 @@ function applyLabelingItemsToLabel(boxes) {
 
     $('.labeling-item-distribute').each(function () {
         const itemId = String($(this).data('item-id'));
-        if (totals[itemId]) {
-            $(this).val(totals[itemId]);
-        }
+        $(this).val(totals[itemId] || 0);
     });
 }
 
@@ -679,6 +684,7 @@ function renderLabelingDetail(data) {
                     <div class="col-md-3 mb-2"><small class="text-muted font-weight-bold">FACTURA</small><div>${escapeLabelingHtml(data.invoice_number || '-')}</div></div>
                     <div class="col-md-3 mb-2"><small class="text-muted font-weight-bold">GUÍA</small><div>${escapeLabelingHtml(data.guide_number || '-')}</div></div>
                     <div class="col-md-6"><small class="text-muted font-weight-bold">ORDEN</small><div>${escapeLabelingHtml(data.order.purchase_order_number || data.order.code || '-')}</div></div>
+                    <div class="col-md-6"><small class="text-muted font-weight-bold">DESTINO</small><div>${escapeLabelingHtml(data.destination || data.order.destination || '-')}</div></div>
                     <div class="col-md-3"><small class="text-muted font-weight-bold">CAJAS</small><div>${escapeLabelingHtml(data.boxes_count || '-')}</div></div>
                     <div class="col-md-3"><small class="text-muted font-weight-bold">ESTADO</small><div>${escapeLabelingHtml(data.status || '-')}</div></div>
                 </div>

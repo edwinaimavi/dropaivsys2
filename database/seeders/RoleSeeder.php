@@ -80,6 +80,12 @@ class RoleSeeder extends Seeder
             'admin.presentations.destroy' => 'Eliminar presentaciones',
             'admin.presentations.show' => 'Ver detalle de presentaciones',
 
+            'admin.companies.index' => 'Ver empresas',
+            'admin.companies.store' => 'Crear empresas',
+            'admin.companies.update' => 'Actualizar empresas',
+            'admin.companies.destroy' => 'Eliminar empresas',
+            'admin.companies.show' => 'Ver detalle de empresas',
+
             'admin.suppliers.index' => 'Ver proveedores',
             'admin.suppliers.store' => 'Crear proveedores',
             'admin.suppliers.update' => 'Actualizar proveedores',

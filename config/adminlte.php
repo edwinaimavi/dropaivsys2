@@ -364,6 +364,13 @@ return [
                     "can" => 'admin.presentations.index'
                 ],
                 [
+                    'text' => 'Empresas',
+                    'icon' => 'fas fa-building',
+                    'icon_color' => 'info',
+                    'url' => 'admin/companies',
+                    "can" => 'admin.companies.index'
+                ],
+                [
                     'text' => 'Proveedores',
                     'icon' => 'fas  fa-truck',
                     'icon_color' => 'info',
