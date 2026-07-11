@@ -65,7 +65,7 @@ return [
 
     'logo' => '<b>Dropaiv</b>Sys',
     'logo_img' => 'vendor/adminlte/dist/img/logo2.png',
-    'logo_img_class' => 'brand-image img-circle elevation-3 ',
+    'logo_img_class' => 'brand-image dp-brand-logo',
     'logo_img_xl' => null,
     'logo_img_xl_class' => 'brand-image-xs',
     'logo_img_alt' => 'Admin Logo',
@@ -133,7 +133,7 @@ return [
     |
     */
 
-    'usermenu_enabled' => true,
+    'usermenu_enabled' => false,
     'usermenu_header' => false,
     'usermenu_header_class' => 'bg-success',
     'usermenu_image' => false,
@@ -189,15 +189,15 @@ return [
     | https://github.com/jeroennoten/Laravel-AdminLTE/wiki/Layout-and-Styling-Configuration
     |
     */
-    'classes_body' => 'layout-fixed layout-navbar-fixed',
-    'classes_brand' => 'bg-transparent',
-    'classes_brand_text' => 'font-weight-bold',
+    'classes_body' => 'layout-fixed layout-navbar-fixed dp-premium-shell dp-compact-shell',
+    'classes_brand' => 'bg-transparent dp-brand-panel',
+    'classes_brand_text' => 'font-weight-bold dp-brand-text',
     'classes_content_wrapper' => 'dp-content-wrapper',
     'classes_content_header' => '',
     'classes_content' => '',
-    'classes_sidebar' => 'sidebar-dark-success dp-sidebar elevation-4',
+    'classes_sidebar' => 'sidebar-dark-success dp-sidebar',
     'classes_sidebar_nav' => 'nav-flat nav-child-indent nav-compact dp-sidebar-nav',
-    'classes_topnav' => 'navbar-white navbar-light',
+    'classes_topnav' => 'navbar-white navbar-light dp-topnav',
     'classes_topnav_nav' => 'navbar-expand',
     'classes_topnav_container' => 'container-fluid',
     /*
@@ -321,6 +321,7 @@ return [
             'submenu' => [
                 [
                     'text' => 'Roles',
+                    'icon' => 'fas fa-user-tag',
                     'icon_color' => 'primary',
                     'url' => 'admin/roles',
                     "can" => 'admin.roles.index'
@@ -328,6 +329,7 @@ return [
                 ],
                 [
                     'text' => 'Usuarios',
+                    'icon' => 'fas fa-user-shield',
                     'icon_color' => 'yellow',
                     'url' => 'admin/users',
                     "can" => 'admin.users.index'
@@ -372,7 +374,7 @@ return [
                 ],
                 [
                     'text' => 'Proveedores',
-                    'icon' => 'fas  fa-truck',
+                    'icon' => 'fas fa-truck',
                     'icon_color' => 'info',
                     'url' => 'admin/suppliers',
                     "can" => 'admin.suppliers.index'
@@ -386,21 +388,21 @@ return [
                 ],
                 [
                     'text' => 'Marcas',
-                    'icon' => 'fas  fa-tags',
+                    'icon' => 'fas fa-tags',
                     'icon_color' => 'secondary',
                     'url' => 'admin/brands',
                     "can" => 'admin.brands.index'
                 ],
                 [
                     'text' => 'Artículos',
-                    'icon' => 'fas  fa-boxes',
+                    'icon' => 'fas fa-boxes',
                     'icon_color' => 'primary',
                     'url' => 'admin/articles',
                     "can" => 'admin.articles.index'
                 ],
                 [
                     'text' => 'Clientes',
-                    'icon' => 'fas  fa-users',
+                    'icon' => 'fas fa-users',
                     'icon_color' => 'danger',
                     'url' => 'admin/customers',
                     "can" => 'admin.customers.index'

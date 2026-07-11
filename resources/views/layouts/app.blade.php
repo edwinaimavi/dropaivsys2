@@ -12,6 +12,11 @@
     <link rel="icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
     <link rel="shortcut icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap"
+        rel="stylesheet">
 @stop
 
 @php
@@ -28,12 +33,25 @@
 {{-- 🔽 AGREGA ESTO --}}
 @section('content_top_nav_right')
     <li class="nav-item dropdown">
-        <a class="nav-link" data-toggle="dropdown" href="#" role="button">
+        <a class="nav-link dp-user-toggle" data-toggle="dropdown" href="#" role="button">
+            <span class="dp-user-meta d-none d-md-inline-flex">
+                <span class="dp-user-name">{{ $user?->name ?? 'Usuario' }}</span>
+                <span class="dp-user-role">DropaivSys</span>
+            </span>
             <img src="{{ $rutaFoto }}" alt="Avatar" class="img-avatar-navbar">
         </a>
-        <div class="dropdown-menu dropdown-menu-right">
-            <a href="#" class="dropdown-item">Mi Perfil</a>
-            <a href="#" class="dropdown-item">Cerrar Sesión</a>
+        <div class="dropdown-menu dropdown-menu-right dp-user-menu">
+            <a href="#" class="dropdown-item">
+                <i class="fas fa-user-circle mr-2"></i>
+                Mi Perfil
+            </a>
+            <form method="POST" action="{{ route('logout') }}" class="mb-0">
+                @csrf
+                <button type="submit" class="dropdown-item">
+                    <i class="fas fa-sign-out-alt mr-2"></i>
+                    Cerrar Sesi&oacute;n
+                </button>
+            </form>
         </div>
     </li>
 @endsection
