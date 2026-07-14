@@ -21,6 +21,7 @@ class CustomerPurchaseOrder extends Model
         'currency_id',
         'notification_date',
         'delivery_start_date',
+        'delivery_days',
         'delivery_end_date',
         'siaf_file_number',
         'acquisition_chart_number',
@@ -40,6 +41,7 @@ class CustomerPurchaseOrder extends Model
     protected $casts = [
         'notification_date' => 'date',
         'delivery_start_date' => 'date',
+        'delivery_days' => 'integer',
         'delivery_end_date' => 'date',
         'affect_igv' => 'boolean',
         'subtotal_exonerated' => 'decimal:2',

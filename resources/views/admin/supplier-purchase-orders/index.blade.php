@@ -71,6 +71,8 @@
     </div>
 
     @include('admin.supplier-purchase-orders.partials.modal')
+    @include('admin.supplier-purchase-orders.partials.quickSupplierModal')
+    @include('admin.supplier-purchase-orders.partials.quickSupplierAccountModal')
     @include('admin.supplier-purchase-orders.partials.viewModal')
 @stop
 
@@ -161,7 +163,12 @@
             supplierPurchaseOrderLoadCustomerItems: "{{ route('admin.supplier-purchase-orders.customerOrderItems') }}",
             supplierOrderShippingAgencyBranches: "{{ url('admin/shipping-agencies/:id/branches') }}",
             supplierOrderShippingAgencyContacts: "{{ url('admin/shipping-agencies/:id/contacts') }}",
-            supplierOrderShippingBranchContacts: "{{ url('admin/shipping-agency-branches/:id/contacts') }}"
+            supplierOrderShippingBranchContacts: "{{ url('admin/shipping-agency-branches/:id/contacts') }}",
+            supplierQuickStore: "{{ route('admin.suppliers.quick-store-with-account') }}",
+            supplierQuickAccountStore: "{{ url('admin/suppliers/:id/quick-account') }}",
+            supplierQuickByRuc: "{{ url('admin/suppliers/by-ruc') }}",
+            supplierQuickConsultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
+            supplierQuickSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}"
         });
     </script>
 

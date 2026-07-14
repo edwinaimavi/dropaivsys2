@@ -4,6 +4,8 @@ let currentCustomerOrderItemRow = null;
 let quickBrandReturnTarget = 'row';
 let lastQuickCustomerDocumentLookup = '';
 let quickCustomerDocumentRequest = null;
+let purchaseOrderDocumentIndex = 0;
+let deletedPurchaseOrderDocuments = [];
 
 document.addEventListener('DOMContentLoaded', function () {
     $.ajaxSetup({
@@ -42,6 +44,33 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('submit', '#customerPurchaseOrderForm', function (event) {
         event.preventDefault();
         saveCustomerPurchaseOrder(this);
+    });
+
+    $(document).on('click', '#btnAddPurchaseOrderDocument', function () {
+        addPurchaseOrderDocumentRow();
+    });
+
+    $(document).on('click', '.remove-purchase-order-document', function () {
+        const row = $(this).closest('tr');
+        const documentId = Number(row.data('document-id') || 0);
+
+        if (documentId && !deletedPurchaseOrderDocuments.includes(documentId)) {
+            deletedPurchaseOrderDocuments.push(documentId);
+        }
+
+        row.remove();
+        showEmptyPurchaseOrderDocumentsRow();
+    });
+
+    $(document).on(
+        'input change',
+        '#purchase_order_delivery_start_date, #purchase_order_delivery_days',
+        calculateDeliveryEndDate
+    );
+
+    $(document).on('change', '.purchase-order-document-file', function () {
+        const fileName = this.files?.[0]?.name || 'Ningún archivo seleccionado';
+        $(this).closest('.purchase-order-file-picker').find('.purchase-order-file-name').text(fileName);
     });
 
     $(document).on('click', '#btnAddPurchaseOrderItem', function () {
@@ -231,11 +260,11 @@ function initCustomerPurchaseOrderTable() {
             { data: 'id', name: 'id' },
             { data: 'code', name: 'code' },
             { data: 'purchase_order_number', name: 'purchase_order_number', defaultContent: '-' },
-            { data: 'quote', name: 'quote.quote_number', orderable: false },
             { data: 'customer', name: 'customer.business_name', orderable: false },
             { data: 'company', name: 'company.business_name', orderable: false },
             { data: 'currency', name: 'currency.code', orderable: false },
             { data: 'grand_total', name: 'grand_total' },
+            { data: 'delivery_period', name: 'delivery_end_date', orderable: true, searchable: false },
             { data: 'status', name: 'status' },
             { data: 'created_at', name: 'created_at' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
@@ -261,17 +290,20 @@ function initCustomerPurchaseOrderTable() {
             {
                 extend: 'excel',
                 className: 'btn btn-success btn-sm',
-                text: '<i class="fas fa-file-excel"></i> Excel'
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
             },
             {
                 extend: 'pdf',
                 className: 'btn btn-danger btn-sm',
-                text: '<i class="fas fa-file-pdf"></i> PDF'
+                text: '<i class="fas fa-file-pdf"></i> PDF',
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
             },
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
-                text: '<i class="fas fa-print"></i> Imprimir'
+                text: '<i class="fas fa-print"></i> Imprimir',
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
             }
         ],
         drawCallback: function () {
@@ -357,6 +389,10 @@ function resetCustomerPurchaseOrderForm() {
     purchaseOrderItemIndex = 0;
     $('#purchaseOrderItemsTbody').empty();
     showEmptyPurchaseOrderItemsRow();
+    purchaseOrderDocumentIndex = 0;
+    deletedPurchaseOrderDocuments = [];
+    $('#purchaseOrderDocumentsTbody').empty();
+    showEmptyPurchaseOrderDocumentsRow();
 
     $('#purchase_order_type').val('articles').trigger('change.select2');
     $('#purchase_order_billing_type').val('local').trigger('change.select2');
@@ -415,6 +451,10 @@ function saveCustomerPurchaseOrder(formElement) {
     if (id) {
         formData.append('_method', 'PUT');
     }
+
+    deletedPurchaseOrderDocuments.forEach(function (documentId) {
+        formData.append('deleted_documents[]', documentId);
+    });
 
     button
         .prop('disabled', true)
@@ -1213,6 +1253,7 @@ function fillCustomerPurchaseOrderForm(order) {
     $('#purchase_order_customer_id').val(order.customer_id || '').trigger('change.select2');
     $('#purchase_order_notification_date').val(formatPurchaseOrderDate(order.notification_date));
     $('#purchase_order_delivery_start_date').val(formatPurchaseOrderDate(order.delivery_start_date));
+    $('#purchase_order_delivery_days').val(order.delivery_days || '');
     $('#purchase_order_delivery_end_date').val(formatPurchaseOrderDate(order.delivery_end_date));
     $('#purchase_order_siaf_file_number').val(order.siaf_file_number || '');
     $('#purchase_order_acquisition_chart_number').val(order.acquisition_chart_number || '');
@@ -1220,6 +1261,10 @@ function fillCustomerPurchaseOrderForm(order) {
     $('#purchase_order_billing_type').val(order.billing_type || 'local').trigger('change.select2');
     $('#purchase_order_affect_igv').val(order.affect_igv ? '1' : '0').trigger('change.select2');
     $('#purchase_order_observations').val(order.observations || '');
+
+    $('#purchaseOrderDocumentsTbody').empty();
+    (order.documents || []).forEach(addExistingPurchaseOrderDocumentRow);
+    showEmptyPurchaseOrderDocumentsRow();
 
     $('#purchaseOrderSideCustomer').text(
         order.customer
@@ -1328,6 +1373,119 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_items_body').html(
         rows || '<tr><td colspan="6" class="text-center text-muted py-3">Sin items registrados</td></tr>'
     );
+
+    const documentRows = (order.documents || []).map(function (document) {
+        return `
+            <tr>
+                <td>${escapePurchaseOrderHtml(document.document_type?.description || 'Sin tipo')}</td>
+                <td>${escapePurchaseOrderHtml(document.original_name || 'Documento')}</td>
+                <td>${formatPurchaseOrderDisplayDate(document.issue_date)}</td>
+                <td>${formatPurchaseOrderDisplayDate(document.expiration_date)}</td>
+                <td class="text-center">
+                    <a href="${escapePurchaseOrderHtml(document.url || '#')}" target="_blank"
+                        rel="noopener" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-external-link-alt mr-1"></i> Abrir
+                    </a>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    $('#vpo_documents_body').html(
+        documentRows || '<tr><td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>'
+    );
+}
+
+function purchaseOrderDocumentTypeOptions(selectedId = '') {
+    const options = ['<option value="">Sin tipo</option>'];
+
+    (window.purchaseOrderDocumentTypes || []).forEach(function (type) {
+        const selected = String(type.id) === String(selectedId) ? ' selected' : '';
+        options.push(`<option value="${type.id}"${selected}>${escapePurchaseOrderHtml(type.description)}</option>`);
+    });
+
+    return options.join('');
+}
+
+function addPurchaseOrderDocumentRow() {
+    const index = purchaseOrderDocumentIndex++;
+    $('#purchaseOrderDocumentsTbody .purchase-order-documents-empty').remove();
+    $('#purchaseOrderDocumentsTbody').append(`
+        <tr class="purchase-order-document-row">
+            <td>
+                <select name="documents[${index}][document_type_id]" class="form-control form-control-sm">
+                    ${purchaseOrderDocumentTypeOptions()}
+                </select>
+            </td>
+            <td>
+                <div class="purchase-order-file-picker">
+                    <input type="file" id="purchase_order_document_file_${index}"
+                        name="documents[${index}][file]"
+                        class="purchase-order-document-file custom-file-input-real"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
+                    <label for="purchase_order_document_file_${index}" class="purchase-order-file-picker-label">
+                        <i class="fas fa-paperclip mr-1"></i> Seleccionar archivo
+                    </label>
+                    <span class="purchase-order-file-name">Ningún archivo seleccionado</span>
+                </div>
+            </td>
+            <td><input type="date" name="documents[${index}][issue_date]" class="form-control form-control-sm"></td>
+            <td><input type="date" name="documents[${index}][expiration_date]" class="form-control form-control-sm"></td>
+            <td class="text-center">
+                <button type="button" class="btn btn-outline-danger btn-sm remove-purchase-order-document" title="Quitar">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
+        </tr>
+    `);
+}
+
+function addExistingPurchaseOrderDocumentRow(document) {
+    $('#purchaseOrderDocumentsTbody').append(`
+        <tr class="purchase-order-document-row" data-document-id="${document.id}">
+            <td>${escapePurchaseOrderHtml(document.document_type?.description || 'Sin tipo')}</td>
+            <td class="text-break">
+                <i class="fas fa-file-alt text-primary mr-1"></i>
+                ${escapePurchaseOrderHtml(document.original_name || 'Documento')}
+            </td>
+            <td>${formatPurchaseOrderDisplayDate(document.issue_date)}</td>
+            <td>${formatPurchaseOrderDisplayDate(document.expiration_date)}</td>
+            <td class="text-center text-nowrap">
+                <a href="${escapePurchaseOrderHtml(document.url || '#')}" target="_blank" rel="noopener"
+                    class="btn btn-outline-primary btn-sm" title="Abrir"><i class="fas fa-eye"></i></a>
+                <button type="button" class="btn btn-outline-danger btn-sm remove-purchase-order-document" title="Quitar">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
+        </tr>
+    `);
+}
+
+function showEmptyPurchaseOrderDocumentsRow() {
+    const tbody = $('#purchaseOrderDocumentsTbody');
+    if (!tbody.find('.purchase-order-document-row').length) {
+        tbody.html('<tr class="purchase-order-documents-empty"><td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>');
+    }
+}
+
+function calculateDeliveryEndDate() {
+    const startDate = String($('#purchase_order_delivery_start_date').val() || '');
+    const rawDays = String($('#purchase_order_delivery_days').val() || '');
+
+    if (!startDate || !rawDays) {
+        return;
+    }
+
+    const days = Number.parseInt(rawDays, 10);
+    const parts = startDate.split('-').map(Number);
+
+    if (!Number.isInteger(days) || days < 1 || parts.length !== 3 || parts.some(Number.isNaN)) {
+        return;
+    }
+
+    const endDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    endDate.setUTCDate(endDate.getUTCDate() + days);
+    $('#purchase_order_delivery_end_date').val(endDate.toISOString().slice(0, 10));
 }
 
 function deleteCustomerPurchaseOrder(id) {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bank;
 use App\Models\Currency;
 use App\Models\Supplier;
+use App\Models\SupplierAccount;
 use App\Models\Ubigeo;
 
 use Illuminate\Http\Request;
@@ -15,13 +16,14 @@ use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class SupplierController extends Controller
 {
     public function __construct()
     {
         $this->middleware('can:admin.suppliers.index')->only(['index', 'list', 'searchUbigeo', 'consultarRuc', 'findByRuc']);
-        $this->middleware('can:admin.suppliers.store')->only(['store']);
+        $this->middleware('can:admin.suppliers.store')->only(['store', 'quickStoreWithAccount', 'quickStoreAccount']);
         $this->middleware('can:admin.suppliers.update')->only(['update']);
         $this->middleware('can:admin.suppliers.destroy')->only(['destroy']);
         $this->middleware('can:admin.suppliers.accounts')->only(['accounts']);
@@ -262,7 +264,7 @@ class SupplierController extends Controller
             'El RUC debe tener 11 dígitos.',
 
             'ruc.unique' =>
-            'Este RUC ya está registrado como proveedor.',
+            'Ya existe un proveedor registrado con este RUC.',
 
             'business_name.required' =>
             'La razón social es obligatoria.',
@@ -355,6 +357,117 @@ class SupplierController extends Controller
 
             ], 500);
         }
+    }
+
+    public function quickStoreWithAccount(Request $request)
+    {
+        $validated = $this->validateQuickSupplierWithAccount($request);
+
+        $result = DB::transaction(function () use ($validated) {
+            $supplierData = collect($validated)->except('bank_account')->all();
+            foreach (['business_name', 'short_name', 'address', 'contact_name'] as $field) {
+                if (!empty($supplierData[$field])) {
+                    $supplierData[$field] = mb_strtoupper($supplierData[$field], 'UTF-8');
+                }
+            }
+            $supplierData['status'] = 'ACTIVE';
+            $supplierData['created_by'] = Auth::id();
+            $supplierData['updated_by'] = Auth::id();
+            $supplier = Supplier::create($supplierData);
+            $account = $this->createQuickSupplierAccount($supplier, $validated['bank_account']);
+
+            return [$supplier, $account];
+        });
+
+        [$supplier, $account] = $result;
+        return response()->json([
+            'success' => true,
+            'message' => 'Proveedor y cuenta bancaria registrados correctamente.',
+            'supplier' => $this->quickSupplierPayload($supplier),
+            'bank_account' => $this->quickAccountPayload($account),
+        ], 201);
+    }
+
+    public function quickStoreAccount(Request $request, Supplier $supplier)
+    {
+        $validated = $request->validate($this->quickAccountRules($supplier->id), $this->quickAccountMessages());
+        $account = DB::transaction(fn () => $this->createQuickSupplierAccount($supplier, $validated));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cuenta bancaria registrada correctamente.',
+            'bank_account' => $this->quickAccountPayload($account),
+        ], 201);
+    }
+
+    private function validateQuickSupplierWithAccount(Request $request): array
+    {
+        return $request->validate(array_merge([
+            'ruc' => ['required', 'digits:11', 'unique:suppliers,ruc'],
+            'business_name' => ['required', 'string', 'max:255'],
+            'short_name' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'ubigeo_id' => ['nullable', 'exists:ubigeos,id'],
+            'supplier_type' => ['required', 'in:NACIONAL,IMPORTADOR,DISTRIBUIDOR,FABRICANTE,LABORATORIO,OTRO'],
+            'payment_condition' => ['required', 'string', 'max:100'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'igv_percentage' => ['required', 'numeric', 'min:0'],
+        ], collect($this->quickAccountRules())->mapWithKeys(fn ($rule, $key) => ["bank_account.{$key}" => $rule])->all()), [
+            'ruc.unique' => 'Ya existe un proveedor registrado con este RUC.',
+            'business_name.required' => 'La razón social es obligatoria.',
+            'supplier_type.required' => 'Debe seleccionar el tipo proveedor.',
+            'payment_condition.required' => 'Debe seleccionar la condición de pago.',
+        ] + collect($this->quickAccountMessages())->mapWithKeys(fn ($message, $key) => ["bank_account.{$key}" => $message])->all());
+    }
+
+    private function quickAccountRules(?int $supplierId = null): array
+    {
+        return [
+            'bank_id' => ['required', 'exists:banks,id'],
+            'currency_id' => ['required', 'exists:currencies,id'],
+            'account_holder' => ['required', 'string', 'max:255'],
+            'account_number' => ['required', 'string', 'max:100', Rule::unique('supplier_accounts')->where(fn ($query) => $query->where('supplier_id', $supplierId)->whereNull('deleted_at'))],
+            'cci' => ['nullable', 'string', 'max:100'],
+            'is_detraction' => ['required', Rule::in(['YES', 'NO'])],
+            'observation' => ['nullable', 'string'],
+        ];
+    }
+
+    private function quickAccountMessages(): array
+    {
+        return [
+            'bank_id.required' => 'Debe seleccionar el banco.',
+            'currency_id.required' => 'Debe seleccionar la moneda.',
+            'account_holder.required' => 'El titular es obligatorio.',
+            'account_number.required' => 'El número de cuenta es obligatorio.',
+            'account_number.unique' => 'Esta cuenta bancaria ya está registrada para el proveedor.',
+        ];
+    }
+
+    private function createQuickSupplierAccount(Supplier $supplier, array $data): SupplierAccount
+    {
+        $data['account_holder'] = mb_strtoupper($data['account_holder'], 'UTF-8');
+        $data['status'] = 'ACTIVE';
+        $data['created_by'] = Auth::id();
+        $data['updated_by'] = Auth::id();
+        return $supplier->accounts()->create($data)->load('bank:id,description,short_name', 'currency:id,code');
+    }
+
+    private function quickSupplierPayload(Supplier $supplier): array
+    {
+        return ['id' => $supplier->id, 'ruc' => $supplier->ruc, 'business_name' => $supplier->business_name,
+            'payment_condition' => $supplier->payment_condition, 'text' => trim($supplier->ruc . ' | ' . $supplier->business_name)];
+    }
+
+    private function quickAccountPayload(SupplierAccount $account): array
+    {
+        $bank = $account->bank?->short_name ?? $account->bank?->description ?? 'Banco';
+        $currency = $account->currency?->code ?? '';
+        return ['id' => $account->id, 'supplier_id' => $account->supplier_id, 'bank' => $bank,
+            'account_number' => $account->account_number, 'currency' => $currency,
+            'text' => trim("{$bank} - {$account->account_number} - {$currency}")];
     }
 
     /**

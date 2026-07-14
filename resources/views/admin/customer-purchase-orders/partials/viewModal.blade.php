@@ -98,6 +98,29 @@
                     </div>
                 </div>
 
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0 font-weight-bold">
+                            <i class="fas fa-paperclip text-primary mr-1"></i>
+                            Documentación de la Orden
+                        </h6>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>TIPO</th>
+                                    <th>ARCHIVO</th>
+                                    <th>EMISIÓN</th>
+                                    <th>VENCIMIENTO</th>
+                                    <th class="text-center">ACCIÓN</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vpo_documents_body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="row justify-content-end mt-3">
                     <div class="col-md-5 col-lg-4">
                         <div class="purchase-order-view-totals">

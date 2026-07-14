@@ -56,11 +56,11 @@
                             <th>ID</th>
                             <th>CÓDIGO</th>
                             <th>NRO ORDEN COMPRA</th>
-                            <th>COTIZACIÓN</th>
                             <th>CLIENTE</th>
                             <th>EMPRESA</th>
                             <th>MONEDA</th>
                             <th>TOTAL</th>
+                            <th>PLAZO ENTREGA</th>
                             <th>ESTADO</th>
                             <th>F. REGISTRO</th>
                             <th width="150">ACCIONES</th>
@@ -102,6 +102,46 @@
             background: #fafafa;
         }
 
+        .delivery-period-card {
+            min-width: 165px;
+            padding: 7px 9px;
+            border-left: 4px solid;
+            border-radius: 10px;
+            font-size: 10.5px;
+            line-height: 1.35;
+            text-align: left;
+        }
+
+        .delivery-period-card strong {
+            color: #374151;
+            font-weight: 800;
+        }
+
+        .delivery-period-days {
+            margin-top: 2px;
+            color: #4b5563;
+            font-weight: 700;
+        }
+
+        .delivery-period-badge {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            font-weight: 800;
+        }
+
+        .delivery-period-success { border-color: #22c55e; background: #f0fdf4; }
+        .delivery-period-success .delivery-period-badge { color: #166534; background: #dcfce7; }
+        .delivery-period-warning { border-color: #f59e0b; background: #fffbeb; }
+        .delivery-period-warning .delivery-period-badge { color: #92400e; background: #fef3c7; }
+        .delivery-period-danger { border-color: #ef4444; background: #fef2f2; }
+        .delivery-period-danger .delivery-period-badge { color: #991b1b; background: #fee2e2; }
+        .delivery-period-info { border-color: #38bdf8; background: #f0f9ff; }
+        .delivery-period-info .delivery-period-badge { color: #075985; background: #e0f2fe; }
+        .delivery-period-muted { border-color: #9ca3af; background: #f8fafc; text-align: center; }
+        .delivery-period-muted .delivery-period-badge { color: #4b5563; background: #e5e7eb; }
+
         .breadcrumb {
             margin-bottom: 0;
         }
@@ -126,6 +166,7 @@
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
             generateArticleCode: "{{ route('admin.articles.generateCode') }}"
         };
+        window.purchaseOrderDocumentTypes = @json($documentTypes);
     </script>
 
     @vite(['resources/js/pages/customer-purchase-order.js'])

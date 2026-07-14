@@ -38,6 +38,12 @@ class DocumentTypeSeeder extends Seeder
                 'status' => 'ACTIVE',
             ],
 
+            [
+                'code' => 'DOC005',
+                'description' => 'ORDEN DE COMPRA',
+                'status' => 'ACTIVE',
+            ],
+
         ];
 
         foreach ($documentTypes as $documentType) {
@@ -45,10 +51,11 @@ class DocumentTypeSeeder extends Seeder
             DocumentType::updateOrCreate(
 
                 [
-                    'code' => $documentType['code']
+                    'description' => $documentType['description']
                 ],
 
                 [
+                    'code'        => $documentType['code'],
                     'description' => $documentType['description'],
                     'status'      => $documentType['status'],
                 ]

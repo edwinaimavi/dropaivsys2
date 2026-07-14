@@ -198,6 +198,10 @@ Route::post(
     'supplier-accounts',
     [SupplierAccountController::class, 'store']
 )->name('supplier-accounts.store');
+Route::post('suppliers/quick-store-with-account', [SupplierController::class, 'quickStoreWithAccount'])
+    ->name('suppliers.quick-store-with-account');
+Route::post('suppliers/{supplier}/quick-account', [SupplierController::class, 'quickStoreAccount'])
+    ->name('suppliers.quick-account');
 
 Route::put(
     'supplier-accounts/{supplierAccount}',

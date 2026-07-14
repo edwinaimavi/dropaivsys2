@@ -11,15 +11,20 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerBranch;
 use App\Models\CustomerPurchaseOrder;
+use App\Models\Document;
+use App\Models\DocumentType;
 use App\Models\Presentation;
 use App\Models\Quote;
 use App\Models\QuoteItem;
 use App\Models\Subcategory;
 use App\Models\Unit;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
@@ -108,6 +113,11 @@ class CustomerPurchaseOrderController extends Controller
                 'brand_id',
             ]);
 
+        $documentTypes = DocumentType::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('description')
+            ->get(['id', 'description']);
+
         return view('admin.customer-purchase-orders.index', compact(
             'companies',
             'customers',
@@ -118,7 +128,8 @@ class CustomerPurchaseOrderController extends Controller
             'brands',
             'categories',
             'subcategories',
-            'articles'
+            'articles',
+            'documentTypes'
         ));
     }
 
@@ -126,7 +137,6 @@ class CustomerPurchaseOrderController extends Controller
     {
         $orders = CustomerPurchaseOrder::query()
             ->with([
-                'quote:id,quote_number',
                 'company:id,business_name,trade_name',
                 'customer:id,business_name,full_name,first_name,last_name',
                 'currency:id,code,symbol,description',
@@ -135,9 +145,6 @@ class CustomerPurchaseOrderController extends Controller
 
         return DataTables::of($orders)
             ->addIndexColumn()
-            ->addColumn('quote', function (CustomerPurchaseOrder $order) {
-                return $order->quote?->quote_number ?? '-';
-            })
             ->addColumn('company', function (CustomerPurchaseOrder $order) {
                 return $order->company?->trade_name
                     ?? $order->company?->business_name
@@ -159,6 +166,7 @@ class CustomerPurchaseOrderController extends Controller
 
                 return trim($symbol . ' ' . number_format((float) $order->grand_total, 2));
             })
+            ->addColumn('delivery_period', fn (CustomerPurchaseOrder $order) => $this->deliveryPeriodHtml($order))
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
                 $statuses = [
                     'approved' => [
@@ -231,8 +239,72 @@ class CustomerPurchaseOrderController extends Controller
                     compact('order')
                 )->render();
             })
-            ->rawColumns(['status', 'acciones'])
+            ->rawColumns(['delivery_period', 'status', 'acciones'])
             ->make(true);
+    }
+
+    private function deliveryPeriodHtml(CustomerPurchaseOrder $order): string
+    {
+        $start = $order->delivery_start_date;
+        $end = $order->delivery_end_date;
+
+        if (!$start || !$end) {
+            return '<div class="delivery-period-card delivery-period-muted">
+                <span class="delivery-period-badge">Sin plazo definido</span>
+            </div>';
+        }
+
+        $configuredDays = $order->delivery_days
+            ?? (int) $start->diffInDays($end);
+        $remainingDays = (int) today()->diffInDays($end, false);
+        $visualState = 'success';
+        $message = '';
+
+        if ($order->status === self::STATUS_ENTERED) {
+            $message = 'Abastecida';
+        } elseif ($order->status === self::STATUS_PARTIAL_ENTERED) {
+            if ($remainingDays < 0) {
+                $visualState = 'danger';
+                $message = 'Ingreso parcial vencido';
+            } elseif ($remainingDays === 0) {
+                $visualState = 'warning';
+                $message = 'Ingreso parcial · vence hoy';
+            } elseif ($remainingDays <= 5) {
+                $visualState = 'warning';
+                $message = "Ingreso parcial · faltan {$remainingDays} días";
+            } else {
+                $visualState = 'info';
+                $message = "Ingreso parcial · faltan {$remainingDays} días";
+            }
+        } elseif ($order->status === self::STATUS_CANCELLED) {
+            $visualState = 'muted';
+            $message = 'Cancelada';
+        } elseif ($remainingDays < 0) {
+            $visualState = 'danger';
+            $message = 'Vencido hace ' . abs($remainingDays) . ' días';
+        } elseif ($remainingDays === 0) {
+            $visualState = 'warning';
+            $message = 'Vence hoy';
+        } elseif ($remainingDays <= 5) {
+            $visualState = 'warning';
+            $message = "Por vencer · faltan {$remainingDays} días";
+        } else {
+            $message = "Faltan {$remainingDays} días";
+        }
+
+        return sprintf(
+            '<div class="delivery-period-card delivery-period-%s">
+                <div><strong>Desde:</strong> %s</div>
+                <div><strong>Hasta:</strong> %s</div>
+                <div class="delivery-period-days">%d días</div>
+                <span class="delivery-period-badge">%s</span>
+            </div>',
+            $visualState,
+            e($start->format('d/m/Y')),
+            e($end->format('d/m/Y')),
+            $configuredDays,
+            e($message)
+        );
     }
 
     public function generateCode()
@@ -492,7 +564,7 @@ class CustomerPurchaseOrderController extends Controller
             'currency',
             'creator',
             'updater',
-            'documents',
+            'documents.documentType',
             'items.quoteItem',
             'items.marketStudyItem',
             'items.article',
@@ -501,6 +573,9 @@ class CustomerPurchaseOrderController extends Controller
             'items.brand',
         ]);
         $this->appendSupplyProgress($customerPurchaseOrder);
+        $customerPurchaseOrder->documents->each(function (Document $document) {
+            $document->setAttribute('url', Storage::disk('public')->url($document->file_path));
+        });
 
         return response()->json([
             'status' => 'success',
@@ -611,6 +686,7 @@ class CustomerPurchaseOrderController extends Controller
             'currency_id' => ['required', 'exists:currencies,id'],
             'notification_date' => ['nullable', 'date'],
             'delivery_start_date' => ['nullable', 'date'],
+            'delivery_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'delivery_end_date' => ['nullable', 'date', 'after_or_equal:delivery_start_date'],
             'siaf_file_number' => ['nullable', 'string', 'max:100'],
             'acquisition_chart_number' => ['nullable', 'string', 'max:100'],
@@ -650,14 +726,35 @@ class CustomerPurchaseOrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.line_total' => ['required', 'numeric', 'min:0'],
             'items.*.status' => ['nullable', 'string', 'max:30'],
+            'documents' => ['nullable', 'array'],
+            'documents.*.file' => [
+                'required',
+                'file',
+                'mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx',
+                'max:10240',
+            ],
+            'documents.*.document_type_id' => ['nullable', 'exists:document_types,id'],
+            'documents.*.issue_date' => ['nullable', 'date'],
+            'documents.*.expiration_date' => ['nullable', 'date', 'after_or_equal:documents.*.issue_date'],
+            'deleted_documents' => ['nullable', 'array'],
+            'deleted_documents.*' => ['integer'],
         ]);
 
+        $storedDocumentPaths = [];
+
         try {
-            return DB::transaction(function () use ($validated, $order) {
+            return DB::transaction(function () use ($validated, $order, $request, &$storedDocumentPaths) {
                 $isCreating = $order === null;
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems, $affectIgv);
+                $deliveryEndDate = $validated['delivery_end_date'] ?? null;
+
+                if (!empty($validated['delivery_start_date']) && !empty($validated['delivery_days'])) {
+                    $deliveryEndDate = Carbon::parse($validated['delivery_start_date'])
+                        ->addDays((int) $validated['delivery_days'])
+                        ->toDateString();
+                }
 
                 $relatedQuote = null;
 
@@ -690,7 +787,8 @@ class CustomerPurchaseOrderController extends Controller
                     'currency_id' => $validated['currency_id'],
                     'notification_date' => $validated['notification_date'] ?? null,
                     'delivery_start_date' => $validated['delivery_start_date'] ?? null,
-                    'delivery_end_date' => $validated['delivery_end_date'] ?? null,
+                    'delivery_days' => $validated['delivery_days'] ?? null,
+                    'delivery_end_date' => $deliveryEndDate,
                     'siaf_file_number' => $this->upperOrNull(
                         $validated['siaf_file_number'] ?? null
                     ),
@@ -728,6 +826,17 @@ class CustomerPurchaseOrderController extends Controller
                     $order->items()->create($item);
                 }
 
+                $this->deleteOrderDocuments(
+                    $order,
+                    $validated['deleted_documents'] ?? []
+                );
+                $this->storeOrderDocuments(
+                    $order,
+                    $request->file('documents', []),
+                    $validated['documents'] ?? [],
+                    $storedDocumentPaths
+                );
+
                 if ($relatedQuote && $relatedQuote->status === Quote::STATUS_SENT) {
                     $relatedQuote->update([
                         'status' => Quote::STATUS_APPROVED,
@@ -739,18 +848,78 @@ class CustomerPurchaseOrderController extends Controller
                     'message' => $order->wasRecentlyCreated
                         ? 'Orden de compra de cliente registrada correctamente.'
                         : 'Orden de compra de cliente actualizada correctamente.',
-                    'data' => $order->fresh(['items']),
+                    'data' => $order->fresh(['items', 'documents.documentType']),
                 ], $order->wasRecentlyCreated ? 201 : 200);
             });
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
+            foreach ($storedDocumentPaths as $path) {
+                Storage::disk('public')->delete($path);
+            }
+
             Log::error('Error saving customer purchase order: ' . $e->getMessage());
 
             return response()->json([
                 'status' => 'error',
                 'message' => 'No se pudo guardar la orden de compra de cliente.',
             ], 500);
+        }
+    }
+
+    private function storeOrderDocuments(
+        CustomerPurchaseOrder $order,
+        array $uploadedDocuments,
+        array $documentData,
+        array &$storedPaths
+    ): void {
+        foreach ($uploadedDocuments as $index => $upload) {
+            $file = is_array($upload) ? ($upload['file'] ?? null) : null;
+
+            if (!$file) {
+                continue;
+            }
+
+            $storedName = Str::uuid() . '.' . strtolower($file->getClientOriginalExtension());
+            $path = $file->storeAs('customer-purchase-orders/documents', $storedName, 'public');
+            $storedPaths[] = $path;
+            $meta = $documentData[$index] ?? [];
+
+            $order->documents()->create([
+                'document_type_id' => $meta['document_type_id'] ?? null,
+                'original_name' => $file->getClientOriginalName(),
+                'stored_name' => $storedName,
+                'file_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'extension' => strtolower($file->getClientOriginalExtension()),
+                'file_size' => $file->getSize() ?: 0,
+                'issue_date' => $meta['issue_date'] ?? null,
+                'expiration_date' => $meta['expiration_date'] ?? null,
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+    }
+
+    private function deleteOrderDocuments(CustomerPurchaseOrder $order, array $documentIds): void
+    {
+        if (empty($documentIds)) {
+            return;
+        }
+
+        $documents = $order->documents()->whereKey($documentIds)->lockForUpdate()->get();
+
+        foreach ($documents as $document) {
+            $path = $document->file_path;
+            $document->update(['deleted_by' => Auth::id()]);
+            $document->delete();
+
+            DB::afterCommit(function () use ($path) {
+                if ($path && Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
+            });
         }
     }
 

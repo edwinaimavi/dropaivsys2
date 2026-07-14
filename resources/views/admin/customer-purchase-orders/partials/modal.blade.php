@@ -249,17 +249,23 @@
                                 </div>
 
                                 <div class="form-row">
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-3">
                                         <label>FECHA NOTIFICACIÓN</label>
                                         <input type="date" id="purchase_order_notification_date"
                                             name="notification_date" class="form-control form-control-sm">
                                     </div>
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-3">
                                         <label>PLAZO ENTREGA - DESDE</label>
                                         <input type="date" id="purchase_order_delivery_start_date"
                                             name="delivery_start_date" class="form-control form-control-sm">
                                     </div>
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-3">
+                                        <label>DÍAS DE ENTREGA</label>
+                                        <input type="number" id="purchase_order_delivery_days"
+                                            name="delivery_days" class="form-control form-control-sm"
+                                            min="1" max="365" step="1" placeholder="Ej. 15">
+                                    </div>
+                                    <div class="form-group col-md-3">
                                         <label>HASTA</label>
                                         <input type="date" id="purchase_order_delivery_end_date"
                                             name="delivery_end_date" class="form-control form-control-sm">
@@ -310,6 +316,44 @@
                                             placeholder="Observaciones de la orden"></textarea>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm purchase-order-documents-card">
+                            <div class="card-header bg-white border-0 py-2 px-3">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                    <div>
+                                        <h6 class="mb-0 font-weight-bold text-dark">
+                                            <i class="fas fa-paperclip text-primary mr-1"></i>
+                                            Documentación de la Orden
+                                        </h6>
+                                        <small class="text-muted">Adjunte documentos de hasta 10 MB.</small>
+                                    </div>
+                                    <button type="button" id="btnAddPurchaseOrderDocument"
+                                        class="btn btn-outline-primary btn-sm mt-2 mt-md-0">
+                                        <i class="fas fa-plus-circle mr-1"></i> Agregar documento
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0" id="purchaseOrderDocumentsTable">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th>TIPO</th>
+                                            <th>ARCHIVO</th>
+                                            <th>FECHA EMISIÓN</th>
+                                            <th>FECHA VENCIMIENTO</th>
+                                            <th class="text-center">ACCIÓN</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="purchaseOrderDocumentsTbody">
+                                        <tr class="purchase-order-documents-empty">
+                                            <td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -956,6 +1000,56 @@
         width: 100%;
         overflow-x: auto;
         scrollbar-width: thin;
+    }
+
+    #customerPurchaseOrderModal #purchaseOrderDocumentsTable th,
+    #customerPurchaseOrderModal #purchaseOrderDocumentsTable td {
+        padding: .45rem;
+        vertical-align: middle;
+        font-size: 11px;
+    }
+
+    #customerPurchaseOrderModal #purchaseOrderDocumentsTable .form-control {
+        min-width: 135px;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-file-picker {
+        display: flex;
+        align-items: center;
+        min-width: 285px;
+        padding: 3px;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-file-picker .custom-file-input-real {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-file-picker-label {
+        flex: 0 0 auto;
+        margin: 0 8px 0 0;
+        padding: 5px 9px;
+        border-radius: 4px;
+        color: #0d6efd;
+        background: #eaf3ff;
+        cursor: pointer;
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    #customerPurchaseOrderModal .purchase-order-file-name {
+        min-width: 0;
+        overflow: hidden;
+        color: #6c757d;
+        font-size: 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     #customerPurchaseOrderModal .purchase-order-table-scroll::-webkit-scrollbar {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Models\Bank;
 use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Currency;
@@ -74,6 +75,11 @@ class SupplierPurchaseOrderController extends Controller
             ->orderBy('description')
             ->get();
 
+        $banks = Bank::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('description')
+            ->get(['id', 'description', 'short_name']);
+
         $customerPurchaseOrders = CustomerPurchaseOrder::query()
             ->with(
                 'customer:id,business_name,full_name,first_name,last_name',
@@ -126,6 +132,7 @@ class SupplierPurchaseOrderController extends Controller
             'suppliers',
             'supplierAccounts',
             'currencies',
+            'banks',
             'customerPurchaseOrders',
             'articles',
             'units',
@@ -383,7 +390,9 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_account_id' => [
                 'required',
                 Rule::exists('supplier_accounts', 'id')
-                    ->where('supplier_id', $request->input('supplier_id')),
+                    ->where('supplier_id', $request->input('supplier_id'))
+                    ->where('status', 'ACTIVE')
+                    ->whereNull('deleted_at'),
             ],
             'currency_id' => ['required', 'exists:currencies,id'],
             'customer_purchase_order_ids' => ['required', 'array', 'min:1'],
@@ -456,8 +465,8 @@ class SupplierPurchaseOrderController extends Controller
         ], [
             'company_id.required' => 'La empresa es obligatoria.',
             'supplier_id.required' => 'El proveedor es obligatorio.',
-            'supplier_account_id.required' => 'Debe seleccionar una cuenta bancaria para generar el numero de orden.',
-            'supplier_account_id.exists' => 'La cuenta bancaria seleccionada no pertenece al proveedor.',
+            'supplier_account_id.required' => 'Debe seleccionar o registrar una cuenta bancaria del proveedor.',
+            'supplier_account_id.exists' => 'La cuenta bancaria debe pertenecer al proveedor y estar activa.',
             'currency_id.required' => 'La moneda es obligatoria.',
             'customer_purchase_order_ids.required' => 'Debe seleccionar al menos una orden de cliente.',
             'customer_purchase_order_ids.min' => 'Debe seleccionar al menos una orden de cliente.',

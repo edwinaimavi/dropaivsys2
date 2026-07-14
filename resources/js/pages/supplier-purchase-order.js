@@ -38,6 +38,25 @@ document.addEventListener('DOMContentLoaded', function () {
         saveSupplierPurchaseOrder(this);
     });
 
+    $(document).on('click', '#btnQuickSupplierForOrder', openQuickSupplierForOrderModal);
+    $(document).on('click', '#btnSearchQuickSupplierRuc', searchQuickSupplierForOrderRuc);
+    $(document).on('input', '#spo_quick_supplier_ruc', function () {
+        this.value = this.value.replace(/\D/g, '').slice(0, 11);
+    });
+    $(document).on('submit', '#quickSupplierForOrderForm', saveQuickSupplierForOrder);
+    $(document).on('click', '#btnQuickSupplierAccountForOrder', openQuickSupplierAccountForOrderModal);
+    $(document).on('submit', '#quickSupplierAccountForOrderForm', saveQuickSupplierAccountForOrder);
+
+    $('#quickSupplierForOrderModal').on('shown.bs.modal', initQuickSupplierForOrderUbigeo);
+    $('#quickSupplierForOrderModal').on('hidden.bs.modal', function () {
+        if ($('#supplierPurchaseOrderModal').hasClass('show')) {
+            $('body').addClass('modal-open');
+        }
+    });
+    $('#quickSupplierAccountForOrderModal').on('hidden.bs.modal', function () {
+        if ($('#supplierPurchaseOrderModal').hasClass('show')) $('body').addClass('modal-open');
+    });
+
     $(document).on('click', '#btnAddSupplierOrderItem', function () {
         addSupplierOrderItemRow();
     });
@@ -322,6 +341,206 @@ function resetSupplierPurchaseOrderForm() {
     syncPurchaseInstructions(true);
 }
 
+function clearQuickSupplierForOrderErrors() {
+    $('#quickSupplierForOrderErrors').addClass('d-none').empty();
+    $('#quickSupplierForOrderForm .is-invalid').removeClass('is-invalid');
+    $('#quickSupplierForOrderForm .invalid-feedback').text('');
+}
+
+function showQuickSupplierForOrderErrors(errors) {
+    clearQuickSupplierForOrderErrors();
+    const messages = [];
+
+    Object.entries(errors || {}).forEach(function ([field, fieldMessages]) {
+        const message = Array.isArray(fieldMessages) ? fieldMessages[0] : fieldMessages;
+        const inputName = field.replace(/\.([^.]+)/g, '[$1]');
+        const input = $(`#quickSupplierForOrderForm [name="${inputName}"]`);
+        messages.push(message);
+        input.addClass('is-invalid');
+        input.closest('.form-group').find('.invalid-feedback').first().text(message);
+    });
+
+    if (messages.length) {
+        $('#quickSupplierForOrderErrors').removeClass('d-none').html(messages.map(escapeSupplierOrderHtml).join('<br>'));
+    }
+}
+
+function openQuickSupplierForOrderModal() {
+    const form = $('#quickSupplierForOrderForm')[0];
+    form.reset();
+    clearQuickSupplierForOrderErrors();
+    $('#quickSupplierForOrderForm [name="igv_percentage"]').val('18.00');
+    $('#spo_quick_supplier_ubigeo_id').empty().append(new Option('Buscar ubigeo...', '', true, true));
+    $('#quickSupplierForOrderModal').modal('show');
+}
+
+function initQuickSupplierForOrderUbigeo() {
+    const select = $('#spo_quick_supplier_ubigeo_id');
+    if (!$.fn.select2) return;
+    if (select.hasClass('select2-hidden-accessible')) select.select2('destroy');
+    select.select2({
+        theme: 'bootstrap4', width: '100%', dropdownParent: $('#quickSupplierForOrderModal'),
+        placeholder: 'Buscar ubigeo...', allowClear: true, minimumInputLength: 2,
+        ajax: {
+            url: window.routes.supplierQuickSearchUbigeo, dataType: 'json', delay: 250,
+            data: params => ({ search: params.term || '' }),
+            processResults: response => ({ results: response || [] }), cache: true
+        }
+    });
+    $('#spo_quick_supplier_ruc').trigger('focus');
+}
+
+function fillQuickSupplierForOrderFromRuc(response) {
+    const data = response?.data || {};
+    $('#spo_quick_supplier_business_name').val(response?.razon_social || data.nombre || data.razonSocial || '');
+    $('#spo_quick_supplier_address').val(response?.direccion || data.direccion || data.domicilioFiscal || '');
+    $('#quickSupplierForOrderForm [name="bank_account[account_holder]"]').val(
+        response?.razon_social || data.nombre || data.razonSocial || ''
+    );
+
+    const location = [data.distrito, data.provincia, data.departamento].filter(Boolean).join(' ');
+    if (location) {
+        $.get(window.routes.supplierQuickSearchUbigeo, { search: location }).done(function (items) {
+            if (items?.length) {
+                const option = new Option(items[0].text, items[0].id, true, true);
+                $('#spo_quick_supplier_ubigeo_id').append(option).trigger('change');
+            }
+        });
+    }
+}
+
+function searchQuickSupplierForOrderRuc() {
+    clearQuickSupplierForOrderErrors();
+    const ruc = String($('#spo_quick_supplier_ruc').val() || '');
+    const button = $('#btnSearchQuickSupplierRuc');
+
+    if (!/^\d{11}$/.test(ruc)) {
+        showQuickSupplierForOrderErrors({ ruc: ['El RUC debe tener 11 dígitos.'] });
+        return;
+    }
+
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+    $.get(`${window.routes.supplierQuickByRuc}/${ruc}`)
+        .done(function () {
+            showQuickSupplierForOrderErrors({ ruc: ['Ya existe un proveedor registrado con este RUC.'] });
+            button.prop('disabled', false).html('<i class="fas fa-search"></i>');
+        })
+        .fail(function (xhr) {
+            if (xhr.status !== 404) {
+                showQuickSupplierForOrderErrors({ ruc: [xhr.responseJSON?.message || 'No se pudo validar el RUC.'] });
+                button.prop('disabled', false).html('<i class="fas fa-search"></i>');
+                return;
+            }
+
+            $.get(`${window.routes.supplierQuickConsultarRuc}/${ruc}`)
+                .done(function (response) {
+                    if (response.status) fillQuickSupplierForOrderFromRuc(response);
+                    else showQuickSupplierForOrderErrors({ ruc: ['No se encontraron datos para este RUC.'] });
+                })
+                .fail(function (consultXhr) {
+                    showQuickSupplierForOrderErrors({ ruc: [consultXhr.responseJSON?.message || 'No se encontraron datos para este RUC.'] });
+                })
+                .always(function () {
+                    button.prop('disabled', false).html('<i class="fas fa-search"></i>');
+                });
+        });
+}
+
+function saveQuickSupplierForOrder(event) {
+    event.preventDefault();
+    clearQuickSupplierForOrderErrors();
+    const form = this;
+    const button = $('#btnSaveQuickSupplierForOrder');
+
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+    $.ajax({
+        url: window.routes.supplierQuickStore, type: 'POST', data: new FormData(form),
+        processData: false, contentType: false,
+        success: function (response) {
+            const supplier = response.supplier || response.data || {};
+            const account = response.bank_account || {};
+            const optionText = supplier.text || [supplier.ruc, supplier.business_name].filter(Boolean).join(' | ');
+            const option = new Option(optionText, supplier.id, true, true);
+            $(option).attr('data-payment-condition', supplier.payment_condition || '');
+            $('#supplier_order_supplier_id').append(option).val(String(supplier.id)).trigger('change.select2');
+            $('#supplierOrderSideSupplier').text(optionText);
+            const paymentCondition = normalizeSupplierOrderOption(supplier.payment_condition || '');
+            if ($(`#supplier_order_payment_condition option[value="${paymentCondition}"]`).length) {
+                $('#supplier_order_payment_condition').val(paymentCondition).trigger('change.select2');
+            }
+            clearSupplierOrderPendingItems();
+            loadSupplierAccounts(supplier.id, account.id);
+            $('#quickSupplierForOrderModal').modal('hide');
+            Swal.fire({ icon: 'success', title: response.message || 'Proveedor y cuenta bancaria registrados correctamente.', toast: true, position: 'top-end', showConfirmButton: false, timer: 2800 });
+        },
+        error: function (xhr) {
+            if (xhr.status === 422) showQuickSupplierForOrderErrors(xhr.responseJSON?.errors || {});
+            else Swal.fire({ icon: 'error', title: 'Error', text: xhr.responseJSON?.message || 'No se pudo registrar el proveedor.' });
+        },
+        complete: function () {
+            button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar proveedor');
+        }
+    });
+}
+
+function clearQuickSupplierAccountForOrderErrors() {
+    $('#quickSupplierAccountForOrderErrors').addClass('d-none').empty();
+    $('#quickSupplierAccountForOrderForm .is-invalid').removeClass('is-invalid');
+    $('#quickSupplierAccountForOrderForm .invalid-feedback').text('');
+}
+
+function showQuickSupplierAccountForOrderErrors(errors) {
+    clearQuickSupplierAccountForOrderErrors();
+    const messages = [];
+    Object.entries(errors || {}).forEach(function ([field, values]) {
+        const message = Array.isArray(values) ? values[0] : values;
+        const input = $(`#quickSupplierAccountForOrderForm [name="${field}"]`);
+        messages.push(message); input.addClass('is-invalid');
+        input.closest('.form-group').find('.invalid-feedback').first().text(message);
+    });
+    if (messages.length) $('#quickSupplierAccountForOrderErrors').removeClass('d-none').html(messages.map(escapeSupplierOrderHtml).join('<br>'));
+}
+
+function openQuickSupplierAccountForOrderModal() {
+    if (!$('#supplier_order_supplier_id').val()) {
+        Swal.fire({ icon: 'warning', title: 'Primero seleccione un proveedor.' });
+        return;
+    }
+    $('#quickSupplierAccountForOrderForm')[0].reset();
+    clearQuickSupplierAccountForOrderErrors();
+    $('#quickSupplierAccountForOrderModal').modal('show');
+}
+
+function saveQuickSupplierAccountForOrder(event) {
+    event.preventDefault();
+    const supplierId = $('#supplier_order_supplier_id').val();
+    const form = this;
+    const button = $('#btnSaveQuickSupplierAccountForOrder');
+    clearQuickSupplierAccountForOrderErrors();
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+    $.ajax({
+        url: window.routes.supplierQuickAccountStore.replace(':id', supplierId),
+        type: 'POST', data: new FormData(form), processData: false, contentType: false,
+        success: function (response) {
+            const account = response.bank_account || {};
+            loadSupplierAccounts(supplierId, account.id);
+            $('#quickSupplierAccountForOrderModal').modal('hide');
+            Swal.fire({ icon: 'success', title: response.message || 'Cuenta bancaria registrada correctamente.', toast: true, position: 'top-end', showConfirmButton: false, timer: 2600 });
+        },
+        error: function (xhr) {
+            if (xhr.status === 422) showQuickSupplierAccountForOrderErrors(xhr.responseJSON?.errors || {});
+            else Swal.fire({ icon: 'error', title: 'Error', text: xhr.responseJSON?.message || 'No se pudo registrar la cuenta bancaria.' });
+        },
+        complete: function () { button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar cuenta'); }
+    });
+}
+
 function generateSupplierPurchaseOrderCode(supplierAccountId = null) {
     if (!supplierAccountId) {
         $('#supplier_order_code').val('Seleccione cuenta bancaria');
@@ -351,6 +570,11 @@ function saveSupplierPurchaseOrder(formElement) {
     refreshSupplierOrderItemIndexes();
     calculateSupplierOrderTotals();
     syncPurchaseInstructions(true);
+
+    if (!$('#supplier_order_supplier_account_id').val()) {
+        Swal.fire({ icon: 'warning', title: 'Debe seleccionar o registrar una cuenta bancaria del proveedor.' });
+        return;
+    }
 
     if ($('#supplierOrderItemsTbody tr.supplier-order-item-row').length === 0) {
         Swal.fire({
@@ -454,13 +678,18 @@ function loadSupplierAccounts(supplierId, selectedAccountId = null, options = {}
                 </option>`;
             });
 
-            select.html(accountOptions).prop('disabled', accounts.length === 0);
+            if (accounts.length === 0) {
+                accountOptions = '<option value="">Este proveedor no tiene cuentas bancarias registradas</option>';
+            }
+            select.html(accountOptions).prop('disabled', false);
 
             if (selectedAccountId) {
                 select.val(String(selectedAccountId));
+            } else if (accounts.length === 1) {
+                select.val(String(accounts[0].id));
             }
 
-            select.trigger('change.select2');
+            select.trigger('change');
 
             if (!options.suppressInstructionSync) {
                 syncPurchaseInstructions(true);

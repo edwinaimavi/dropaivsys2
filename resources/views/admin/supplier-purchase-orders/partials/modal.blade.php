@@ -171,6 +171,7 @@
                                 <div class="form-row">
                                     <div class="form-group col-md-6">
                                         <label>PROVEEDOR <span class="text-danger">*</span></label>
+                                        <div class="input-group input-group-sm supplier-order-supplier-picker">
                                         <select id="supplier_order_supplier_id" name="supplier_id"
                                             class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione proveedor</option>
@@ -181,11 +182,18 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                        <div class="input-group-append">
+                                            <button type="button" id="btnQuickSupplierForOrder"
+                                                class="btn btn-outline-success" data-toggle="tooltip"
+                                                title="Registrar nuevo proveedor"><i class="fas fa-plus"></i></button>
+                                        </div>
+                                        </div>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
                                     <div class="form-group col-md-6">
                                         <label>CUENTA DE BANCO <span class="text-danger">*</span></label>
+                                        <div class="input-group input-group-sm supplier-order-account-picker">
                                         <select id="supplier_order_supplier_account_id" name="supplier_account_id"
                                             class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione cuenta</option>
@@ -199,6 +207,12 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                        <div class="input-group-append">
+                                            <button type="button" id="btnQuickSupplierAccountForOrder"
+                                                class="btn btn-outline-success" data-toggle="tooltip"
+                                                title="Agregar cuenta bancaria"><i class="fas fa-plus"></i></button>
+                                        </div>
+                                        </div>
                                         <span class="invalid-feedback"></span>
                                     </div>
                                 </div>
@@ -1005,6 +1019,13 @@
         font-size: 12px;
         line-height: 29px !important;
     }
+
+    #supplierPurchaseOrderModal .supplier-order-supplier-picker { flex-wrap: nowrap; }
+    #supplierPurchaseOrderModal .supplier-order-account-picker { flex-wrap: nowrap; }
+    #supplierPurchaseOrderModal .supplier-order-supplier-picker .select2-container,
+    #supplierPurchaseOrderModal .supplier-order-account-picker .select2-container { flex: 1 1 auto; width: 1% !important; }
+    #supplierPurchaseOrderModal .supplier-order-supplier-picker .btn,
+    #supplierPurchaseOrderModal .supplier-order-account-picker .btn { height: 31px; min-width: 36px; }
 
     #supplierOrderPendingItemsModal .supplier-order-pending-modal {
         border-radius: 14px;
