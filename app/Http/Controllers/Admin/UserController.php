@@ -18,7 +18,7 @@ class UserController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.users.index')->only('index','list'); 
+        $this->middleware('can:admin.users.index')->only('index', 'list');
         $this->middleware('can:admin.users.store')->only('store');
         $this->middleware('can:admin.users.update')->only('update');
         $this->middleware('can:admin.users.destroy')->only('destroy');
@@ -26,15 +26,16 @@ class UserController extends Controller
     }
     public function index()
     {
-        $roles =Role::all();
-      
-        return view('admin.users.index',compact('roles'));
+        $roles = Role::all();
+
+        return view('admin.users.index', compact('roles'));
     }
 
-    public function list(){
+    public function list()
+    {
         $users = User::with('roles')
             ->where('status', '!=', -1)
-            ->orderBy('id','desc')
+            ->orderBy('id', 'desc')
             ->get();
 
         ////si te sale un erro ejecunta en la rais del proyecto esto   composer require yajra/laravel-datatables-oracle 
@@ -56,15 +57,15 @@ class UserController extends Controller
                     return '<span class="users-role-chip"><i class="fas fa-user-tag"></i>' . e($role) . '</span>';
                 })->implode(' ');
             })
-            ->addColumn('acciones',function($user){
+            ->addColumn('acciones', function ($user) {
                 $statusOriginal = $user->status;
                 $rutaFoto = $user->photo
-                    ? Storage::url($user->photo)
+                    ? asset('storage/' . $user->photo)
                     : 'https://www.shutterstock.com/image-vector/default-avatar-profile-icon-social-600nw-1906669723.jpg';
-                 $rol = $user->roles->first()?->id ?? ''; 
-                return view('admin.users.partials.acciones', compact('user','statusOriginal','rutaFoto','rol'))->render();
+                $rol = $user->roles->first()?->id ?? '';
+                return view('admin.users.partials.acciones', compact('user', 'statusOriginal', 'rutaFoto', 'rol'))->render();
             })
-            ->rawColumns(['status','roles_display','acciones'])
+            ->rawColumns(['status', 'roles_display', 'acciones'])
             ->make(true);
     }
     public function create()
@@ -78,33 +79,35 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'dni'=> 'required|min:8|max:8|unique:users,dni',
-            'name'=> 'required|min:3|max:50',
-            'lastname'=> 'required|min:3|max:50',
-            'email'=> 'required|email|unique:users,email',
-            'password'=> 'required|min:6|max:20',
-            'password_confirmation'=> 'required|same:password',
-            'phone'=> 'nullable|min:9|max:15',
-            'address'=> 'nullable|min:3|max:150',
-            'image'=> 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'status'=> 'required',
-            'role'=> 'required|exists:roles,id',
+            'dni' => 'required|min:8|max:8|unique:users,dni',
+            'name' => 'required|min:3|max:50',
+            'lastname' => 'required|min:3|max:50',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|min:6|max:20',
+            'password_confirmation' => 'required|same:password',
+            'phone' => 'nullable|min:9|max:15',
+            'address' => 'nullable|min:3|max:150',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'status' => 'required',
+            'role' => 'required|exists:roles,id',
 
         ]);
 
-        if ($request->hasFile('image')) {         
-             $data['photo'] = $request->file('image')->store('users');
-          }
+        if ($request->hasFile('image')) {
+            $data['photo'] = $request->file('image')->store('users', 'public');
+        }
+        $data['password'] = Hash::make($data['password']);
+        unset($data['password_confirmation']);
+
         $roleId = $data['role'];
         unset($data['role']);
 
-        $user=User::create($data);
+        $user = User::create($data);
 
         $user->roles()->sync([$roleId]);
 
 
         return response()->json(['message' => 'Usuario registrado correctamente']);
-        
     }
 
     /**
@@ -130,38 +133,39 @@ class UserController extends Controller
     {
         //
         $data = $request->validate([
-            'dni'=> 'required|min:8|max:8|unique:users,dni,'.$user->id,
-            'name'=> 'required|min:3|max:50',
-            'lastname'=> 'required|min:3|max:50',
-            'email'=> 'required|email|unique:users,email,'.$user->id,
-            'phone'=> 'nullable|min:9|max:15',
-            'address'=> 'nullable|min:3|max:150',
-            'image'=> 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'status'=> 'required',
-            'role'=> 'required|exists:roles,id',
+            'dni' => 'required|min:8|max:8|unique:users,dni,' . $user->id,
+            'name' => 'required|min:3|max:50',
+            'lastname' => 'required|min:3|max:50',
+            'email' => 'required|email|unique:users,email,' . $user->id,
+            'phone' => 'nullable|min:9|max:15',
+            'address' => 'nullable|min:3|max:150',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'status' => 'required',
+            'role' => 'required|exists:roles,id',
 
         ]);
         //VALIDAMOS LA CONTRASEÑA
         if ($request->filled('password')) {
             $request->validate([
-                'password'=> 'required|min:6|max:20',
-                'password_confirmation'=> 'required|same:password',
+                'password' => 'required|min:6|max:20',
+                'password_confirmation' => 'required|same:password',
             ]);
             $data['password'] = Hash::make($request->password);
         }
 
-         if ($request->hasFile('image')) {
-          if($user->photo){
-            Storage::delete($user->photo);
-          }
-            $data['photo'] = $request->file('image')->store('users');  
+        if ($request->hasFile('image')) {
+            if ($user->photo) {
+                Storage::disk('public')->delete($user->photo);
+            }
+
+            $data['photo'] = $request->file('image')->store('users', 'public');
         }
 
-         $roleId = $data['role'];
-         unset($data['role']);
+        $roleId = $data['role'];
+        unset($data['role']);
 
-         $user->update($data);
-         $role = Role::findById($roleId);
+        $user->update($data);
+        $role = Role::findById($roleId);
         $user->syncRoles([$role->name]);
 
         return response()->json(['message' => 'Usuario actualizado correctamente']);
