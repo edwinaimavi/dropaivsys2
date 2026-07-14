@@ -139,10 +139,10 @@
         }
 
         .rotulado-destino-label {
-            color: #555;
+            color: #4b5563;
             display: block;
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 14px;
+            font-size: 8px;
             font-weight: 800;
             letter-spacing: 1px;
             line-height: 1;
@@ -151,10 +151,10 @@
 
         .rotulado-destino-value,
         .destination-value {
-            color: #111827;
+            color: #0b1f44;
             display: block;
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 25px;
+            font-size: 27px;
             font-weight: 900;
             letter-spacing: .5px;
             line-height: 1.1;
@@ -183,11 +183,11 @@
         }
 
         .observation-tag {
-            background: #b91c1c;
-            border: .7px solid #991b1b;
+            background: #9f2d20;
+            border: .7px solid #7f1d1d;
             color: #fff;
             display: inline-block;
-            font-size: 8px;
+            font-size: 8.5px;
             font-weight: 900;
             line-height: 1.08;
             max-width: 100%;
@@ -202,9 +202,9 @@
         }
 
         .customer-name {
-            color: #111827;
+            color: #0f172a;
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 13.8px;
+            font-size: 14.5px;
             font-weight: 900;
             letter-spacing: .3px;
             line-height: 1.05;
@@ -219,11 +219,11 @@
         }
 
         .oc {
-            background: #f8fafc;
-            border: .8px solid #6b7280;
-            color: #111827;
+            background: #eef3f8;
+            border: .8px solid #64748b;
+            color: #0b1f44;
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 14.5px;
+            font-size: 15px;
             font-weight: 900;
             letter-spacing: .3px;
             line-height: 1.05;
@@ -247,11 +247,11 @@
         }
 
         .docs td {
-            border: .7px solid #6b7280;
-            color: #111827;
+            border: .65px solid #94a3b8;
+            color: #4b5563;
             font-family: Arial, Helvetica, sans-serif;
             font-size: 8.2px;
-            font-weight: 900;
+            font-weight: 700;
             letter-spacing: .2px;
             line-height: 1.05;
             padding: 3px;
@@ -264,6 +264,18 @@
         .labels-6 .docs td {
             font-size: 7.4px;
             padding: 2.5px;
+        }
+
+        .doc-label {
+            color: #4b5563;
+            font-size: 6.8px;
+            font-weight: 700;
+        }
+
+        .doc-value {
+            color: #0f172a;
+            font-size: 9px;
+            font-weight: 900;
         }
 
         .items {
@@ -289,32 +301,63 @@
             text-transform: uppercase;
         }
 
-        .description {
+        .items th.qty-heading {
+            background: #dce6f1;
+            color: #0b1f44;
+            font-weight: 900;
+        }
+
+        .description-cell {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 6.2px;
-            font-weight: 800;
-            letter-spacing: .2px;
-            line-height: 1.12;
+            font-size: 7px;
+            line-height: 1.25;
             overflow-wrap: anywhere;
+            padding: 3px 4px;
+            text-align: left;
+            vertical-align: top;
+            white-space: normal;
             word-break: break-word;
             word-wrap: break-word;
         }
 
-        .labels-6 .description {
+        .description-cell strong,
+        .description-cell span {
+            display: block;
+        }
+
+        .description-cell strong {
+            color: #0f172a;
+            font-size: 8px;
+            font-weight: 800;
+            line-height: 1.18;
+            margin-bottom: 1px;
+        }
+
+        .description-cell .description-meta {
+            color: #374151;
+            font-size: 6.7px;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+
+        .labels-6 .description-cell {
             font-size: 5.7px;
         }
 
         .unit {
-            font-size: 6px;
+            color: #374151;
+            font-size: 6.5px;
+            font-weight: 600;
             line-height: 1.05;
             text-align: center;
             word-wrap: break-word;
         }
 
         .qty {
-            font-size: 7.2px;
+            color: #0b1f44;
+            font-size: 9px;
             font-weight: 900;
-            text-align: right;
+            text-align: center;
             white-space: nowrap;
         }
 
@@ -326,7 +369,7 @@
 
         .box-number {
             float: left;
-            color: #111827;
+            color: #0b1f44;
             font-family: Arial, Helvetica, sans-serif;
             font-size: 29px;
             font-weight: 900;
@@ -341,9 +384,9 @@
         }
 
         .box-number span {
-            color: #6b7280;
+            color: #4b5563;
             display: block;
-            font-size: 6.2px;
+            font-size: 7px;
             font-weight: 900;
             line-height: 1;
             margin-bottom: 2px;
@@ -457,8 +500,14 @@
 
                                         <table class="docs">
                                             <tr>
-                                                <td>Factura: {{ $labeling->invoice_number ?? '-' }}</td>
-                                                <td>Guía: {{ $labeling->guide_number ?? '-' }}</td>
+                                                <td>
+                                                    <span class="doc-label">Factura:</span>
+                                                    <span class="doc-value">{{ $labeling->invoice_number ?? '-' }}</span>
+                                                </td>
+                                                <td>
+                                                    <span class="doc-label">Guía:</span>
+                                                    <span class="doc-value">{{ $labeling->guide_number ?? '-' }}</span>
+                                                </td>
                                             </tr>
                                         </table>
 
@@ -467,13 +516,33 @@
                                                 <tr>
                                                     <th>Descripción detallada</th>
                                                     <th style="width: 21%;">Unidad</th>
-                                                    <th style="width: 15%;">Cantidad</th>
+                                                    <th class="qty-heading" style="width: 15%;">Cantidad</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 @forelse ($box->items as $item)
+                                                    @php
+                                                        // Compatible con rotulados existentes cuya descripción fue
+                                                        // guardada como una sola cadena con todos los metadatos.
+                                                        $descriptionParts = preg_split(
+                                                            '/\s+-\s+LOTE\s*:/iu',
+                                                            trim((string) $item->description),
+                                                            2
+                                                        );
+                                                        $productDescription = trim($descriptionParts[0] ?? '') ?: 'ARTÍCULO';
+                                                        $expiration = $item->expiration_date
+                                                            ? $item->expiration_date->format('m/Y')
+                                                            : 'SIN VCTO';
+                                                        $lot = trim((string) $item->lot) ?: 'SIN LOTE';
+                                                        $brand = trim((string) $item->brand_name) ?: 'SIN MARCA';
+                                                        $origin = trim((string) $item->origin) ?: 'SIN PROCEDENCIA';
+                                                    @endphp
                                                     <tr>
-                                                        <td class="description">{{ $item->description }}</td>
+                                                        <td class="description-cell">
+                                                            <strong>{{ $productDescription }}</strong>
+                                                            <span class="description-meta">LOTE: {{ $lot }} - VCTO: {{ $expiration }}</span>
+                                                            <span class="description-meta">MARCA: {{ $brand }} - PROCEDENCIA: {{ $origin }}</span>
+                                                        </td>
                                                         <td class="unit">{{ $item->unit_name ?? '-' }}</td>
                                                         <td class="qty">{{ number_format((float) $item->quantity, 2) }}</td>
                                                     </tr>

@@ -719,28 +719,7 @@ class CustomerOrderLabelingController extends Controller
 
     private function labelsPerPageFor(CustomerOrderLabeling $labeling): int
     {
-        $destinationLength = mb_strlen((string) $labeling->destination, 'UTF-8');
-        $customerLength = mb_strlen($this->customerName($labeling->customer), 'UTF-8');
-
-        if ($destinationLength > 42 || $customerLength > 55) {
-            return 4;
-        }
-
-        foreach ($labeling->boxes as $box) {
-            $observationLength = mb_strlen((string) ($box->observation ?? $box->observations ?? ''), 'UTF-8');
-
-            if ($observationLength > 34 || $box->items->count() > 2) {
-                return 4;
-            }
-
-            foreach ($box->items as $item) {
-                if (mb_strlen((string) $item->description, 'UTF-8') > 175) {
-                    return 4;
-                }
-            }
-        }
-
-        return 6;
+        return 4;
     }
 
     private function defaultDestination(CustomerPurchaseOrder $order): ?string
