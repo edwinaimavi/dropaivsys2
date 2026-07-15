@@ -403,7 +403,11 @@ class SupplierController extends Controller
     private function validateQuickSupplierWithAccount(Request $request): array
     {
         return $request->validate(array_merge([
-            'ruc' => ['required', 'digits:11', 'unique:suppliers,ruc'],
+            'ruc' => [
+                'required',
+                'digits:11',
+                Rule::unique('suppliers', 'ruc')->whereNull('deleted_at'),
+            ],
             'business_name' => ['required', 'string', 'max:255'],
             'short_name' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -428,7 +432,19 @@ class SupplierController extends Controller
             'bank_id' => ['required', 'exists:banks,id'],
             'currency_id' => ['required', 'exists:currencies,id'],
             'account_holder' => ['required', 'string', 'max:255'],
-            'account_number' => ['required', 'string', 'max:100', Rule::unique('supplier_accounts')->where(fn ($query) => $query->where('supplier_id', $supplierId)->whereNull('deleted_at'))],
+            'account_number' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('supplier_accounts', 'account_number')
+                    ->where(function ($query) use ($supplierId) {
+                        $query->whereNull('deleted_at');
+
+                        if ($supplierId !== null) {
+                            $query->where('supplier_id', $supplierId);
+                        }
+                    }),
+            ],
             'cci' => ['nullable', 'string', 'max:100'],
             'is_detraction' => ['required', Rule::in(['YES', 'NO'])],
             'observation' => ['nullable', 'string'],
@@ -439,10 +455,12 @@ class SupplierController extends Controller
     {
         return [
             'bank_id.required' => 'Debe seleccionar el banco.',
-            'currency_id.required' => 'Debe seleccionar la moneda.',
-            'account_holder.required' => 'El titular es obligatorio.',
-            'account_number.required' => 'El número de cuenta es obligatorio.',
-            'account_number.unique' => 'Esta cuenta bancaria ya está registrada para el proveedor.',
+            'bank_id.exists' => 'El banco seleccionado no es válido.',
+            'currency_id.required' => 'Debe seleccionar la moneda de la cuenta.',
+            'currency_id.exists' => 'La moneda seleccionada no es válida.',
+            'account_holder.required' => 'Ingrese el titular de la cuenta.',
+            'account_number.required' => 'Ingrese el número de cuenta.',
+            'account_number.unique' => 'Este número de cuenta ya está registrado.',
         ];
     }
 

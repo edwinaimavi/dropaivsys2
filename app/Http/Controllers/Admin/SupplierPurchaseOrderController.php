@@ -86,7 +86,15 @@ class SupplierPurchaseOrderController extends Controller
                 'currency:id,code,symbol'
             )
             ->orderByDesc('id')
-            ->get(['id', 'code', 'customer_id', 'currency_id', 'grand_total', 'status']);
+            ->get([
+                'id',
+                'code',
+                'purchase_order_number',
+                'customer_id',
+                'currency_id',
+                'grand_total',
+                'status',
+            ]);
 
         $articles = Article::query()
             ->where('status', 'ACTIVE')
@@ -525,6 +533,7 @@ class SupplierPurchaseOrderController extends Controller
                     ? $this->customerPurchaseOrderIdsForSupplierOrder($order)
                     : collect();
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
+                $this->validateCustomerOrderItemUnitPrices($validated['items']);
                 $validated['items'] = $this->applySupplierAwardDataToItems(
                     (int) $validated['supplier_id'],
                     $customerOrderIds,
@@ -717,6 +726,54 @@ class SupplierPurchaseOrderController extends Controller
             ->all();
     }
 
+    private function validateCustomerOrderItemUnitPrices(array $items): void
+    {
+        $customerItems = CustomerPurchaseOrderItem::query()
+            ->with('purchaseOrder.currency:id,symbol,code')
+            ->whereIn(
+                'id',
+                collect($items)
+                    ->pluck('customer_purchase_order_item_id')
+                    ->filter()
+                    ->unique()
+                    ->all()
+            )
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $index => $item) {
+            $customerItemId = $item['customer_purchase_order_item_id'] ?? null;
+
+            if (! $customerItemId || ! $customerItems->has($customerItemId)) {
+                continue;
+            }
+
+            $customerItem = $customerItems->get($customerItemId);
+            $purchasePrice = round((float) ($item['unit_price'] ?? 0), 2);
+            $maximumPrice = round((float) $customerItem->unit_price, 2);
+
+            if ($purchasePrice <= $maximumPrice) {
+                continue;
+            }
+
+            $articleName = $customerItem->billing_name_snapshot
+                ?: $customerItem->article_code
+                ?: 'seleccionado';
+            $currency = $customerItem->purchaseOrder?->currency?->symbol
+                ?: $customerItem->purchaseOrder?->currency?->code
+                ?: 'S/';
+
+            throw ValidationException::withMessages([
+                "items.$index.unit_price" => sprintf(
+                    'El precio de compra del artículo %s no puede ser mayor al precio de la Orden de Compra del Cliente. Precio cliente: %s %s.',
+                    $articleName,
+                    $currency,
+                    number_format($maximumPrice, 2)
+                ),
+            ]);
+        }
+    }
+
     private function calculateTotals(array $items): array
     {
         $subtotal = round((float) collect($items)->sum('subtotal'), 2);
@@ -824,13 +881,16 @@ class SupplierPurchaseOrderController extends Controller
                 }
 
                 $payload['quantity'] = $progress['pending_quantity'];
+                // Precio de este item concreto en la OC Cliente. Es solo para UX;
+                // la validación real consulta nuevamente la BD usando el ID del item.
+                $payload['customer_unit_price'] = round((float) $item->unit_price, 2);
 
                 return array_merge(
                     $payload,
                     [
                         'customer_purchase_order_id' => $order->id,
-                        'customer_purchase_order_code' => $order->code,
-                        'customer_order_code' => $order->code,
+                        'customer_purchase_order_code' => $order->purchase_order_number ?: $order->code,
+                        'customer_order_code' => $order->purchase_order_number ?: $order->code,
                         'customer_name' => $customerName,
                         'article_name' => $payload['billing_name_snapshot'] ?? null,
                         'unit_name' => $item->unit?->abbreviation ?? $item->unit?->description,
@@ -1065,7 +1125,10 @@ class SupplierPurchaseOrderController extends Controller
             $winnerPrice = round((float) ($award->unit_price ?? 0), 2);
 
             $items[$index]['market_study_item_id'] = (int) $marketStudyItemId;
-            $items[$index]['unit_price'] = $winnerPrice;
+            $items[$index]['unit_price'] = round(
+                (float) ($item['unit_price'] ?? $winnerPrice),
+                2
+            );
             $items[$index]['reference_purchase_price'] = $winnerPrice;
 
             if (!empty($award->article_id)) {

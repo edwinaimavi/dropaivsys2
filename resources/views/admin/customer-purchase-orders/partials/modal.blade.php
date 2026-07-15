@@ -142,10 +142,11 @@
                                     </div>
 
                                     <div class="form-group col-md-4">
-                                        <label>NRO ORDEN DE COMPRA</label>
+                                        <label>NRO ORDEN DE COMPRA <span class="text-danger">*</span></label>
                                         <input type="text" id="purchase_order_number" name="purchase_order_number"
                                             class="form-control form-control-sm text-uppercase"
-                                            placeholder="NRO ORDEN DE COMPRA DEL CLIENTE">
+                                            placeholder="NRO ORDEN DE COMPRA DEL CLIENTE" required>
+                                        <span class="invalid-feedback"></span>
                                     </div>
                                 </div>
 
@@ -343,14 +344,12 @@
                                         <tr>
                                             <th>TIPO</th>
                                             <th>ARCHIVO</th>
-                                            <th>FECHA EMISIÓN</th>
-                                            <th>FECHA VENCIMIENTO</th>
                                             <th class="text-center">ACCIÓN</th>
                                         </tr>
                                     </thead>
                                     <tbody id="purchaseOrderDocumentsTbody">
                                         <tr class="purchase-order-documents-empty">
-                                            <td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td>
+                                            <td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -806,6 +805,7 @@
     <div class="modal-dialog modal-md modal-dialog-centered" role="document">
         <div class="modal-content border-0 shadow-lg">
             <form id="quickPurchaseOrderArticleForm" autocomplete="off">
+                <input type="hidden" name="quick_context" value="customer_purchase_order">
                 <div class="modal-header bg-white border-0">
                     <div>
                         <h5 class="modal-title mb-0 font-weight-bold" id="quickPurchaseOrderArticleModalLabel">
@@ -845,6 +845,39 @@
                                     <label>CÓDIGO INSTITUCIONAL</label>
                                     <input type="text" id="quick_article_institutional_code" name="institutional_code"
                                         class="form-control form-control-sm text-uppercase" maxlength="100">
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-2">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-tags mr-1 text-success"></i>
+                            Clasificación
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>PRESENTACIÓN <span class="text-danger">*</span></label>
+                                    <select id="quick_article_presentation_id" name="presentation_id"
+                                        class="form-control form-control-sm" required>
+                                        <option value="">Seleccione presentación</option>
+                                        @foreach ($presentations as $presentation)
+                                            <option value="{{ $presentation->id }}">{{ $presentation->description }}</option>
+                                        @endforeach
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>UNIDAD <span class="text-danger">*</span></label>
+                                    <select id="quick_article_unit_id" name="unit_id"
+                                        class="form-control form-control-sm" required>
+                                        <option value="">Seleccione unidad</option>
+                                        @foreach ($units as $unit)
+                                            <option value="{{ $unit->id }}">{{ $unit->description }}</option>
+                                        @endforeach
+                                    </select>
                                     <span class="invalid-feedback"></span>
                                 </div>
                             </div>

@@ -135,6 +135,8 @@
                                             required data-placeholder="Seleccione uno o varios pedidos">
                                             @foreach ($customerPurchaseOrders as $customerOrder)
                                                 @php
+                                                    $customerOrderNumber = $customerOrder->purchase_order_number
+                                                        ?: $customerOrder->code;
                                                     $customerName = $customerOrder->customer?->business_name
                                                         ?? $customerOrder->customer?->full_name
                                                         ?? trim(
@@ -145,7 +147,7 @@
                                                         ?: 'Sin cliente';
                                                 @endphp
                                                 <option value="{{ $customerOrder->id }}">
-                                                    {{ $customerOrder->code }} | {{ $customerName }} | {{ trim(($customerOrder->currency?->symbol ?? '') . ' ' . number_format((float) $customerOrder->grand_total, 2)) }}
+                                                    {{ $customerOrderNumber }} | {{ $customerName }} | {{ trim(($customerOrder->currency?->symbol ?? '') . ' ' . number_format((float) $customerOrder->grand_total, 2)) }}
                                                 </option>
                                             @endforeach
                                         </select>
@@ -582,6 +584,7 @@
                                     class="item-quote-item-id">
                                 <input type="hidden" name="items[__INDEX__][customer_purchase_order_item_id]"
                                     class="item-customer-purchase-order-item-id">
+                                <input type="hidden" class="item-customer-unit-price">
                                 <input type="hidden" name="items[__INDEX__][article_id]"
                                     class="item-article-id">
                                 <input type="hidden" name="items[__INDEX__][article_code]"
@@ -664,6 +667,8 @@
                             <td>
                                 <input type="number" step="0.01" min="0" name="items[__INDEX__][unit_price]"
                                     class="form-control form-control-sm text-right item-unit-price" value="0.00">
+                                <small class="text-muted item-max-price-reference d-none"></small>
+                                <span class="invalid-feedback"></span>
                             </td>
                             <td>
                                 <input type="number"

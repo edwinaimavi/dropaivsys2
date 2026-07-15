@@ -585,6 +585,12 @@ function saveSupplierPurchaseOrder(formElement) {
         return;
     }
 
+    const priceViolation = findSupplierOrderPriceViolation();
+    if (priceViolation) {
+        showSupplierOrderPriceViolation(priceViolation);
+        return;
+    }
+
     const id = $('#supplier_purchase_order_id').val();
     const formData = new FormData(formElement);
     const button = $('#btnSaveSupplierPurchaseOrder');
@@ -950,6 +956,7 @@ function renderSupplierOrderPendingItems(items) {
         const pending = parseFloat(item.pending_quantity || item.suggested_quantity || item.quantity || 0) || 0;
         const quantity = parseFloat(item.suggested_quantity || pending) || 0;
         const unitPrice = parseFloat(item.unit_price || 0) || 0;
+        const customerUnitPrice = parseFloat(item.customer_unit_price ?? 0) || 0;
         const total = quantity * unitPrice;
 
         return `
@@ -975,7 +982,12 @@ function renderSupplierOrderPendingItems(items) {
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm text-right pending-item-unit-price"
-                        value="${formatSupplierOrderMoney(unitPrice)}" min="0" step="0.01">
+                        value="${formatSupplierOrderMoney(unitPrice)}" min="0" step="0.01"
+                        data-customer-item-id="${item.customer_purchase_order_item_id || ''}"
+                        data-customer-unit-price="${customerUnitPrice}">
+                    ${customerUnitPrice > 0
+                        ? `<small class="text-muted d-block">Precio venta OC Cliente: ${escapeSupplierOrderHtml(supplierOrderCurrencyLabel())} ${formatSupplierOrderMoney(customerUnitPrice)}</small>`
+                        : ''}
                 </td>
                 <td class="text-right font-weight-bold pending-item-total">${formatSupplierOrderMoney(total)}</td>
             </tr>
@@ -992,7 +1004,10 @@ function updateSupplierOrderPendingItemTotal(row) {
     const quantityInput = row.find('.pending-item-quantity');
     const pending = parseFloat(quantityInput.attr('max')) || 0;
     let quantity = parseFloat(quantityInput.val()) || 0;
-    const unitPrice = parseFloat(row.find('.pending-item-unit-price').val()) || 0;
+    const priceInput = row.find('.pending-item-unit-price');
+    const unitPrice = parseFloat(priceInput.val()) || 0;
+    const customerUnitPrice = parseFloat(priceInput.data('customer-unit-price')) || 0;
+    priceInput.toggleClass('is-invalid', customerUnitPrice > 0 && unitPrice > customerUnitPrice);
 
     if (pending > 0 && quantity > pending) {
         quantity = pending;
@@ -1018,6 +1033,7 @@ function addSelectedSupplierPendingItems() {
     }
 
     let hasInvalidQuantity = false;
+    let priceViolation = null;
     selectedRows.each(function () {
         const row = $(this);
         const quantity = parseFloat(row.find('.pending-item-quantity').val()) || 0;
@@ -1025,6 +1041,18 @@ function addSelectedSupplierPendingItems() {
 
         if (quantity <= 0 || quantity > pending) {
             hasInvalidQuantity = true;
+        }
+
+        const priceInput = row.find('.pending-item-unit-price');
+        const price = parseFloat(priceInput.val()) || 0;
+        const maxPrice = parseFloat(priceInput.data('customer-unit-price')) || 0;
+        if (!priceViolation && maxPrice > 0 && price > maxPrice) {
+            const item = row.data('item') || {};
+            priceViolation = {
+                input: priceInput,
+                article: item.article_name || item.billing_name_snapshot || item.article_code || 'seleccionado',
+                maxPrice: maxPrice
+            };
         }
     });
 
@@ -1034,6 +1062,11 @@ function addSelectedSupplierPendingItems() {
             title: 'Cantidad no valida',
             text: 'La cantidad a comprar debe ser mayor a cero y no superar el saldo pendiente.'
         });
+        return;
+    }
+
+    if (priceViolation) {
+        showSupplierOrderPriceViolation(priceViolation);
         return;
     }
 
@@ -1096,16 +1129,62 @@ function addSupplierOrderItemRow(data = {}) {
     row.find('.item-expiration-date').val(formatSupplierOrderDate(data.expiration_date));
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
     row.find('.item-reference-purchase-price').val(formatSupplierOrderMoney(data.reference_purchase_price || 0));
+    const customerUnitPrice = parseFloat(
+        data.customer_unit_price ?? data.customer_purchase_order_item?.unit_price ?? 0
+    ) || 0;
+    row.find('.item-customer-unit-price').val(customerUnitPrice > 0 ? formatSupplierOrderMoney(customerUnitPrice) : '');
     row.find('.item-quantity')
         .val(formatSupplierOrderMoney(data.quantity || 1))
         .attr('max', data.pending_quantity ? formatSupplierOrderMoney(data.pending_quantity) : null);
-    row.find('.item-unit-price').val(formatSupplierOrderMoney(data.unit_price || 0));
+    row.find('.item-unit-price')
+        .val(formatSupplierOrderMoney(data.unit_price || 0))
+        .attr('data-customer-item-id', data.customer_purchase_order_item_id || '')
+        .attr('data-customer-unit-price', customerUnitPrice > 0 ? customerUnitPrice : '');
+    row.find('.item-max-price-reference')
+        .toggleClass('d-none', customerUnitPrice <= 0)
+        .text(customerUnitPrice > 0
+            ? `Precio venta OC Cliente: ${supplierOrderCurrencyLabel()} ${formatSupplierOrderMoney(customerUnitPrice)}`
+            : '');
 
     initSupplierOrderSelect2(row);
 
     supplierOrderItemIndex++;
     refreshSupplierOrderItemIndexes();
     calculateSupplierOrderTotals();
+}
+
+function supplierOrderCurrencyLabel() {
+    const option = $('#supplier_order_currency_id option:selected');
+    return option.data('symbol') || option.data('code') || option.text().split('|')[0].trim() || 'S/';
+}
+
+function findSupplierOrderPriceViolation() {
+    let violation = null;
+
+    $('#supplierOrderItemsTbody tr.supplier-order-item-row').each(function () {
+        const row = $(this);
+        const input = row.find('.item-unit-price');
+        const price = parseFloat(input.val()) || 0;
+        const maxPrice = parseFloat(input.attr('data-customer-unit-price')) || 0;
+
+        input.removeClass('is-invalid');
+        if (!violation && maxPrice > 0 && price > maxPrice) {
+            violation = {
+                input: input,
+                article: row.find('.item-billing-name').val() || row.find('.item-article-code').val() || 'seleccionado',
+                maxPrice: maxPrice
+            };
+        }
+    });
+
+    return violation;
+}
+
+function showSupplierOrderPriceViolation(violation) {
+    const message = `El precio de compra del artículo ${violation.article} no puede ser mayor al precio de la Orden de Compra del Cliente. Precio cliente: ${supplierOrderCurrencyLabel()} ${formatSupplierOrderMoney(violation.maxPrice)}.`;
+    violation.input.addClass('is-invalid').trigger('focus');
+    violation.input.closest('td').find('.invalid-feedback').text(message);
+    Swal.fire({ icon: 'warning', title: 'Precio no permitido', text: message });
 }
 
 function applySelectedSupplierOrderArticle(row) {
@@ -1172,6 +1251,13 @@ function calculateSupplierOrderTotals() {
         const maxQuantity = parseFloat(quantityInput.attr('max')) || 0;
         let quantity = parseFloat(quantityInput.val()) || 0;
         const unitPrice = parseFloat(row.find('.item-unit-price').val()) || 0;
+        const priceInput = row.find('.item-unit-price');
+        const customerUnitPrice = parseFloat(priceInput.attr('data-customer-unit-price')) || 0;
+        const exceedsCustomerPrice = customerUnitPrice > 0 && unitPrice > customerUnitPrice;
+        priceInput.toggleClass('is-invalid', exceedsCustomerPrice);
+        priceInput.closest('td').find('.invalid-feedback').text(exceedsCustomerPrice
+            ? `Precio cliente: ${supplierOrderCurrencyLabel()} ${formatSupplierOrderMoney(customerUnitPrice)}.`
+            : '');
 
         if (maxQuantity > 0 && quantity > maxQuantity) {
             quantity = maxQuantity;
@@ -1345,7 +1431,7 @@ function fillSupplierPurchaseOrderDetail(order) {
 
             return `<span class="supplier-order-related-badge">
                 <i class="fas fa-clipboard-check mr-1"></i>
-                ${escapeSupplierOrderHtml(customerOrder.code || '-')} | ${escapeSupplierOrderHtml(customerName)}
+                ${escapeSupplierOrderHtml(customerOrder.purchase_order_number || customerOrder.code || '-')} | ${escapeSupplierOrderHtml(customerName)}
             </span>`;
         }).join('')
         : '-');

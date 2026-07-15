@@ -111,8 +111,6 @@
                                 <tr>
                                     <th>TIPO</th>
                                     <th>ARCHIVO</th>
-                                    <th>EMISIÓN</th>
-                                    <th>VENCIMIENTO</th>
                                     <th class="text-center">ACCIÓN</th>
                                 </tr>
                             </thead>

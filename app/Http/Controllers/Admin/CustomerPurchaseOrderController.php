@@ -255,54 +255,58 @@ class CustomerPurchaseOrderController extends Controller
         }
 
         $configuredDays = $order->delivery_days
-            ?? (int) $start->diffInDays($end);
-        $remainingDays = (int) today()->diffInDays($end, false);
+            ?? ((int) $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()) + 1);
+        $remainingDays = (int) today()->startOfDay()->diffInDays($end->copy()->startOfDay(), false);
+        $dayLabel = fn (int $days) => $days === 1 ? 'día' : 'días';
         $visualState = 'success';
         $message = '';
 
         if ($order->status === self::STATUS_ENTERED) {
-            $message = 'Abastecida';
+            $message = 'Entrega completada';
         } elseif ($order->status === self::STATUS_PARTIAL_ENTERED) {
             if ($remainingDays < 0) {
                 $visualState = 'danger';
-                $message = 'Ingreso parcial vencido';
+                $expiredDays = abs($remainingDays);
+                $message = "Ingreso parcial · vencido hace {$expiredDays} {$dayLabel($expiredDays)}";
             } elseif ($remainingDays === 0) {
                 $visualState = 'warning';
                 $message = 'Ingreso parcial · vence hoy';
             } elseif ($remainingDays <= 5) {
                 $visualState = 'warning';
-                $message = "Ingreso parcial · faltan {$remainingDays} días";
+                $message = "Ingreso parcial · vence en {$remainingDays} {$dayLabel($remainingDays)}";
             } else {
                 $visualState = 'info';
-                $message = "Ingreso parcial · faltan {$remainingDays} días";
+                $message = "Ingreso parcial · vence en {$remainingDays} {$dayLabel($remainingDays)}";
             }
         } elseif ($order->status === self::STATUS_CANCELLED) {
             $visualState = 'muted';
             $message = 'Cancelada';
         } elseif ($remainingDays < 0) {
             $visualState = 'danger';
-            $message = 'Vencido hace ' . abs($remainingDays) . ' días';
+            $expiredDays = abs($remainingDays);
+            $message = "Vencido hace {$expiredDays} {$dayLabel($expiredDays)}";
         } elseif ($remainingDays === 0) {
             $visualState = 'warning';
             $message = 'Vence hoy';
         } elseif ($remainingDays <= 5) {
             $visualState = 'warning';
-            $message = "Por vencer · faltan {$remainingDays} días";
+            $message = "Vence en {$remainingDays} {$dayLabel($remainingDays)}";
         } else {
-            $message = "Faltan {$remainingDays} días";
+            $message = "Vence en {$remainingDays} {$dayLabel($remainingDays)}";
         }
 
         return sprintf(
             '<div class="delivery-period-card delivery-period-%s">
                 <div><strong>Desde:</strong> %s</div>
                 <div><strong>Hasta:</strong> %s</div>
-                <div class="delivery-period-days">%d días</div>
+                <div class="delivery-period-days"><strong>Plazo:</strong> %d %s calendario</div>
                 <span class="delivery-period-badge">%s</span>
             </div>',
             $visualState,
             e($start->format('d/m/Y')),
             e($end->format('d/m/Y')),
             $configuredDays,
+            $dayLabel($configuredDays),
             e($message)
         );
     }
@@ -682,12 +686,12 @@ class CustomerPurchaseOrderController extends Controller
                     ->where('customer_id', $request->input('customer_id')),
             ],
             'order_type' => ['required', Rule::in(['articles', 'services'])],
-            'purchase_order_number' => ['nullable', 'string', 'max:100'],
+            'purchase_order_number' => ['required', 'string', 'max:100'],
             'currency_id' => ['required', 'exists:currencies,id'],
-            'notification_date' => ['nullable', 'date'],
+            'notification_date' => ['nullable', 'date', 'required_with:delivery_days'],
             'delivery_start_date' => ['nullable', 'date'],
             'delivery_days' => ['nullable', 'integer', 'min:1', 'max:365'],
-            'delivery_end_date' => ['nullable', 'date', 'after_or_equal:delivery_start_date'],
+            'delivery_end_date' => ['nullable', 'date'],
             'siaf_file_number' => ['nullable', 'string', 'max:100'],
             'acquisition_chart_number' => ['nullable', 'string', 'max:100'],
             'process_type' => ['nullable', 'string', 'max:100'],
@@ -734,10 +738,10 @@ class CustomerPurchaseOrderController extends Controller
                 'max:10240',
             ],
             'documents.*.document_type_id' => ['nullable', 'exists:document_types,id'],
-            'documents.*.issue_date' => ['nullable', 'date'],
-            'documents.*.expiration_date' => ['nullable', 'date', 'after_or_equal:documents.*.issue_date'],
             'deleted_documents' => ['nullable', 'array'],
             'deleted_documents.*' => ['integer'],
+        ], [
+            'purchase_order_number.required' => 'El N° de Orden de Compra es obligatorio.',
         ]);
 
         $storedDocumentPaths = [];
@@ -748,12 +752,15 @@ class CustomerPurchaseOrderController extends Controller
                 $affectIgv = (bool) ($validated['affect_igv'] ?? false);
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems, $affectIgv);
-                $deliveryEndDate = $validated['delivery_end_date'] ?? null;
+                $deliveryStartDate = null;
+                $deliveryEndDate = null;
 
-                if (!empty($validated['delivery_start_date']) && !empty($validated['delivery_days'])) {
-                    $deliveryEndDate = Carbon::parse($validated['delivery_start_date'])
-                        ->addDays((int) $validated['delivery_days'])
-                        ->toDateString();
+                if (!empty($validated['notification_date'])) {
+                    $notificationDate = Carbon::parse($validated['notification_date']);
+                    $deliveryStartDate = $notificationDate->copy()->addDay()->toDateString();
+                    $deliveryEndDate = !empty($validated['delivery_days'])
+                        ? $notificationDate->copy()->addDays((int) $validated['delivery_days'])->toDateString()
+                        : null;
                 }
 
                 $relatedQuote = null;
@@ -786,7 +793,7 @@ class CustomerPurchaseOrderController extends Controller
                     ),
                     'currency_id' => $validated['currency_id'],
                     'notification_date' => $validated['notification_date'] ?? null,
-                    'delivery_start_date' => $validated['delivery_start_date'] ?? null,
+                    'delivery_start_date' => $deliveryStartDate,
                     'delivery_days' => $validated['delivery_days'] ?? null,
                     'delivery_end_date' => $deliveryEndDate,
                     'siaf_file_number' => $this->upperOrNull(
@@ -893,8 +900,8 @@ class CustomerPurchaseOrderController extends Controller
                 'mime_type' => $file->getMimeType(),
                 'extension' => strtolower($file->getClientOriginalExtension()),
                 'file_size' => $file->getSize() ?: 0,
-                'issue_date' => $meta['issue_date'] ?? null,
-                'expiration_date' => $meta['expiration_date'] ?? null,
+                'issue_date' => null,
+                'expiration_date' => null,
                 'status' => 'ACTIVE',
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),

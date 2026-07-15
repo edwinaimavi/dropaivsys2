@@ -44,6 +44,18 @@ class DocumentTypeSeeder extends Seeder
                 'status' => 'ACTIVE',
             ],
 
+            [
+                'code' => 'DOC006',
+                'description' => 'CERTIFICADO DE ANÁLISIS',
+                'status' => 'ACTIVE',
+            ],
+
+            [
+                'code' => 'DOC007',
+                'description' => 'FACTURA',
+                'status' => 'ACTIVE',
+            ],
+
         ];
 
         foreach ($documentTypes as $documentType) {

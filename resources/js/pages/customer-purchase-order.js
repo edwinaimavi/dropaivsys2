@@ -64,8 +64,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on(
         'input change',
-        '#purchase_order_delivery_start_date, #purchase_order_delivery_days',
-        calculateDeliveryEndDate
+        '#purchase_order_notification_date, #purchase_order_delivery_days',
+        recalculateCustomerOrderDeliveryDates
     );
 
     $(document).on('change', '.purchase-order-document-file', function () {
@@ -431,6 +431,26 @@ function saveCustomerPurchaseOrder(formElement) {
     clearCustomerPurchaseOrderErrors();
     refreshPurchaseOrderItemIndexes();
     calculatePurchaseOrderTotals();
+
+    const purchaseOrderNumberInput = $('#purchase_order_number');
+    const purchaseOrderNumber = String(purchaseOrderNumberInput.val() || '').trim();
+
+    if (!purchaseOrderNumber) {
+        const message = 'El N° de Orden de Compra es obligatorio.';
+        purchaseOrderNumberInput
+            .addClass('is-invalid')
+            .closest('.form-group')
+            .find('.invalid-feedback')
+            .text(message);
+        purchaseOrderNumberInput.trigger('focus');
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Dato obligatorio',
+            text: message
+        });
+        return;
+    }
 
     if ($('#purchaseOrderItemsTbody tr.purchase-order-item-row').length === 0) {
         Swal.fire({
@@ -947,6 +967,22 @@ function saveQuickPurchaseOrderArticle(formElement) {
     clearQuickPurchaseOrderErrors('#quickPurchaseOrderArticleForm', '#quickPurchaseOrderArticleErrors');
     normalizeQuickArticleNames();
 
+    const presentationId = $('#quick_article_presentation_id').val();
+    const unitId = $('#quick_article_unit_id').val();
+    if (!presentationId || !unitId) {
+        if (!presentationId) {
+            $('#quick_article_presentation_id').addClass('is-invalid')
+                .siblings('.invalid-feedback').text('Seleccione una presentación.');
+        }
+        if (!unitId) {
+            $('#quick_article_unit_id').addClass('is-invalid')
+                .siblings('.invalid-feedback').text('Seleccione una unidad.');
+        }
+        $('#quickPurchaseOrderArticleErrors').removeClass('d-none')
+            .text('Seleccione la presentación y la unidad del artículo.');
+        return;
+    }
+
     const button = $('#btnSaveQuickPurchaseOrderArticle');
     button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
 
@@ -1059,6 +1095,9 @@ function applyQuickArticleToPurchaseOrderRow(row, article) {
     row.find('.item-article-id').val(article.id || '');
     row.find('.item-article-code').val(article.code || '');
     row.find('.item-billing-name').val(article.billing_name || article.name || '');
+    row.find('.item-unit-id').val(String(article.unit_id || '')).trigger('change.select2');
+    row.find('.item-presentation-id').val(String(article.presentation_id || '')).trigger('change.select2');
+    row.find('.item-brand-id').val(String(article.brand_id || '')).trigger('change.select2');
     calculatePurchaseOrderTotals();
 }
 
@@ -1379,8 +1418,6 @@ function fillCustomerPurchaseOrderDetail(order) {
             <tr>
                 <td>${escapePurchaseOrderHtml(document.document_type?.description || 'Sin tipo')}</td>
                 <td>${escapePurchaseOrderHtml(document.original_name || 'Documento')}</td>
-                <td>${formatPurchaseOrderDisplayDate(document.issue_date)}</td>
-                <td>${formatPurchaseOrderDisplayDate(document.expiration_date)}</td>
                 <td class="text-center">
                     <a href="${escapePurchaseOrderHtml(document.url || '#')}" target="_blank"
                         rel="noopener" class="btn btn-outline-primary btn-sm">
@@ -1392,7 +1429,7 @@ function fillCustomerPurchaseOrderDetail(order) {
     }).join('');
 
     $('#vpo_documents_body').html(
-        documentRows || '<tr><td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>'
+        documentRows || '<tr><td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>'
     );
 }
 
@@ -1429,8 +1466,6 @@ function addPurchaseOrderDocumentRow() {
                     <span class="purchase-order-file-name">Ningún archivo seleccionado</span>
                 </div>
             </td>
-            <td><input type="date" name="documents[${index}][issue_date]" class="form-control form-control-sm"></td>
-            <td><input type="date" name="documents[${index}][expiration_date]" class="form-control form-control-sm"></td>
             <td class="text-center">
                 <button type="button" class="btn btn-outline-danger btn-sm remove-purchase-order-document" title="Quitar">
                     <i class="fas fa-trash-alt"></i>
@@ -1448,8 +1483,6 @@ function addExistingPurchaseOrderDocumentRow(document) {
                 <i class="fas fa-file-alt text-primary mr-1"></i>
                 ${escapePurchaseOrderHtml(document.original_name || 'Documento')}
             </td>
-            <td>${formatPurchaseOrderDisplayDate(document.issue_date)}</td>
-            <td>${formatPurchaseOrderDisplayDate(document.expiration_date)}</td>
             <td class="text-center text-nowrap">
                 <a href="${escapePurchaseOrderHtml(document.url || '#')}" target="_blank" rel="noopener"
                     class="btn btn-outline-primary btn-sm" title="Abrir"><i class="fas fa-eye"></i></a>
@@ -1464,28 +1497,51 @@ function addExistingPurchaseOrderDocumentRow(document) {
 function showEmptyPurchaseOrderDocumentsRow() {
     const tbody = $('#purchaseOrderDocumentsTbody');
     if (!tbody.find('.purchase-order-document-row').length) {
-        tbody.html('<tr class="purchase-order-documents-empty"><td colspan="5" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>');
+        tbody.html('<tr class="purchase-order-documents-empty"><td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>');
     }
 }
 
-function calculateDeliveryEndDate() {
-    const startDate = String($('#purchase_order_delivery_start_date').val() || '');
-    const rawDays = String($('#purchase_order_delivery_days').val() || '');
+function parseCustomerOrderLocalDate(value) {
+    if (!value) return null;
+    const parts = String(value).split('-').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
 
-    if (!startDate || !rawDays) {
+function formatCustomerOrderDateInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function addCustomerOrderDays(date, days) {
+    const result = new Date(date.getTime());
+    result.setDate(result.getDate() + Number(days));
+    return result;
+}
+
+function recalculateCustomerOrderDeliveryDates() {
+    const notificationDate = parseCustomerOrderLocalDate($('#purchase_order_notification_date').val());
+    const deliveryDays = Number.parseInt($('#purchase_order_delivery_days').val(), 10);
+
+    if (!notificationDate) {
+        $('#purchase_order_delivery_start_date, #purchase_order_delivery_end_date').val('');
         return;
     }
 
-    const days = Number.parseInt(rawDays, 10);
-    const parts = startDate.split('-').map(Number);
+    $('#purchase_order_delivery_start_date').val(
+        formatCustomerOrderDateInput(addCustomerOrderDays(notificationDate, 1))
+    );
 
-    if (!Number.isInteger(days) || days < 1 || parts.length !== 3 || parts.some(Number.isNaN)) {
+    if (!Number.isInteger(deliveryDays) || deliveryDays < 1) {
+        $('#purchase_order_delivery_end_date').val('');
         return;
     }
 
-    const endDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-    endDate.setUTCDate(endDate.getUTCDate() + days);
-    $('#purchase_order_delivery_end_date').val(endDate.toISOString().slice(0, 10));
+    $('#purchase_order_delivery_end_date').val(
+        formatCustomerOrderDateInput(addCustomerOrderDays(notificationDate, deliveryDays))
+    );
 }
 
 function deleteCustomerPurchaseOrder(id) {

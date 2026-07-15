@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use App\Models\Category;
 use App\Models\Subcategory;
@@ -491,6 +492,7 @@ class ArticleController extends Controller
 
     public function quickStore(Request $request)
     {
+        $requiresClassification = $request->input('quick_context') === 'customer_purchase_order';
         $baseName = $this->normalizeArticleText(
             $request->input('legal_name')
                 ?: $request->input('billing_name')
@@ -527,6 +529,11 @@ class ArticleController extends Controller
             'legal_name' => ['required', 'max:255'],
             'commercial_name' => ['nullable', 'max:255'],
             'billing_name' => ['required', 'max:255'],
+            'presentation_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:presentations,id'],
+            'unit_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:units,id'],
+            'brand_id' => ['nullable', 'exists:brands,id'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'subcategory_id' => ['nullable', 'exists:subcategories,id'],
         ], [
             'code.required' => 'El código del artículo es obligatorio.',
             'code.unique' => 'El código del artículo ya existe.',
@@ -534,6 +541,10 @@ class ArticleController extends Controller
             'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
             'billing_name.required' => 'El nombre de facturación es obligatorio.',
             'legal_name.required' => 'El nombre legal es obligatorio.',
+            'presentation_id.required' => 'La presentación es obligatoria.',
+            'presentation_id.exists' => 'La presentación seleccionada no es válida.',
+            'unit_id.required' => 'La unidad es obligatoria.',
+            'unit_id.exists' => 'La unidad seleccionada no es válida.',
         ]);
 
         $this->validateDuplicateArticleName($validated);
@@ -545,7 +556,7 @@ class ArticleController extends Controller
             ->orderBy('id')
             ->first();
 
-        if (!$defaultCategory || !$defaultUnit) {
+        if ((!$defaultCategory && empty($validated['category_id'])) || (!$defaultUnit && empty($validated['unit_id']))) {
             throw ValidationException::withMessages([
                 'article' => 'Debe registrar al menos una categoría y una unidad activas antes de crear artículos rápidos.',
             ]);
@@ -558,11 +569,11 @@ class ArticleController extends Controller
             $validated['institutional_code'] = !empty($validated['institutional_code'])
                 ? mb_strtoupper($validated['institutional_code'], 'UTF-8')
                 : null;
-            $validated['category_id'] = $defaultCategory->id;
-            $validated['subcategory_id'] = null;
-            $validated['presentation_id'] = null;
-            $validated['unit_id'] = $defaultUnit->id;
-            $validated['brand_id'] = null;
+            $validated['category_id'] = $validated['category_id'] ?? $defaultCategory->id;
+            $validated['subcategory_id'] = $validated['subcategory_id'] ?? null;
+            $validated['presentation_id'] = $validated['presentation_id'] ?? null;
+            $validated['unit_id'] = $validated['unit_id'] ?? $defaultUnit->id;
+            $validated['brand_id'] = $validated['brand_id'] ?? null;
             $validated['status'] = 'ACTIVE';
             $validated['is_taxable'] = 1;
             $validated['has_batch'] = 0;
@@ -599,8 +610,11 @@ class ArticleController extends Controller
                     'text' => $article->code . ' | ' . $article->billing_name,
                     'category_name' => $article->category?->description,
                     'subcategory_name' => $article->subcategory?->description,
+                    'presentation_id' => $article->presentation_id,
                     'presentation_name' => $article->presentation?->description,
+                    'unit_id' => $article->unit_id,
                     'unit_name' => $article->unit?->description,
+                    'brand_id' => $article->brand_id,
                     'brand_name' => $article->brand?->description,
                 ],
             ], 201);
