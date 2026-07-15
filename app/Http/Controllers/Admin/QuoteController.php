@@ -149,7 +149,7 @@ class QuoteController extends Controller
             })
             ->editColumn('created_at', function (Quote $quote) {
                 return $quote->created_at
-                    ? $quote->created_at->format('d/m/Y H:i')
+                    ? $quote->created_at->timezone(config('app.timezone'))->format('d/m/Y H:i')
                     : '-';
             })
             ->addColumn('acciones', function (Quote $quote) {

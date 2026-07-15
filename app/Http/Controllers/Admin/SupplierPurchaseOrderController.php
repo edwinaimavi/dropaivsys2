@@ -210,7 +210,7 @@ class SupplierPurchaseOrderController extends Controller
                 );
             })
             ->editColumn('created_at', function (SupplierPurchaseOrder $order) {
-                return $order->created_at?->format('d/m/Y H:i') ?? '-';
+                return $order->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-';
             })
             ->addColumn('acciones', function (SupplierPurchaseOrder $order) {
                 $pdfDocument = $order->documents

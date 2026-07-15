@@ -43,7 +43,7 @@ class CompanyController extends Controller
             })
             ->addColumn('location', fn (Company $company) => $company->address ?: '-')
             ->editColumn('status', fn (Company $company) => $this->statusBadge($company->status))
-            ->editColumn('created_at', fn (Company $company) => $company->created_at?->format('d/m/Y H:i') ?? '-')
+            ->editColumn('created_at', fn (Company $company) => $company->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('acciones', fn (Company $company) => view('admin.companies.partials.acciones', compact('company'))->render())
             ->rawColumns(['logo_preview', 'status', 'acciones'])
             ->make(true);

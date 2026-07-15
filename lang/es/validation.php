@@ -168,7 +168,7 @@ return [
         'quote_id' => 'cotización',
         'market_study_id' => 'estudio de mercado',
         'order_type' => 'tipo de orden',
-        'purchase_order_number' => 'N° de Orden de Compra',
+        'purchase_order_number' => 'N° de ',
         'notification_date' => 'fecha de notificación',
         'delivery_start_date' => 'plazo de entrega desde',
         'delivery_end_date' => 'fecha hasta',

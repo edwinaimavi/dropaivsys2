@@ -135,7 +135,7 @@ class WarehouseEntryController extends Controller
                 );
             })
             ->editColumn('created_at', fn (WarehouseEntry $entry) =>
-                $entry->created_at?->format('d/m/Y H:i') ?? '-')
+                $entry->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('acciones', function (WarehouseEntry $entry) {
                 $pdfUrl = route('admin.warehouse-entries.pdf', $entry);
 

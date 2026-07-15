@@ -56,7 +56,7 @@ class CustomerOrderLabelingController extends Controller
             ->addColumn('customer', fn (CustomerOrderLabeling $labeling) => $this->customerName($labeling->customer))
             ->editColumn('boxes_count', fn (CustomerOrderLabeling $labeling) => (int) $labeling->boxes_count)
             ->editColumn('status', fn (CustomerOrderLabeling $labeling) => $this->statusBadge($labeling->status))
-            ->editColumn('created_at', fn (CustomerOrderLabeling $labeling) => $labeling->created_at?->format('d/m/Y H:i') ?? '-')
+            ->editColumn('created_at', fn (CustomerOrderLabeling $labeling) => $labeling->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('acciones', function (CustomerOrderLabeling $labeling) {
                 return view('admin.labelings.partials.actions', compact('labeling'))->render();
             })
