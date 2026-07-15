@@ -237,7 +237,7 @@ class BrandController extends Controller
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
         ], [
             'description.required' => 'El nombre de la marca es obligatorio.',
-            'description.unique' => 'La marca ya existe.',
+            'description.unique' => 'La marca ya está registrada.',
         ]);
 
         try {
@@ -255,16 +255,20 @@ class BrandController extends Controller
 
             DB::commit();
 
+            $brandPayload = [
+                'id' => $brand->id,
+                'name' => $brand->description,
+                'description' => $brand->description,
+                'text' => $brand->description,
+                'status' => $brand->status,
+            ];
+
             return response()->json([
                 'success' => true,
                 'status' => 'success',
                 'message' => 'Marca registrada correctamente.',
-                'data' => [
-                    'id' => $brand->id,
-                    'name' => $brand->description,
-                    'description' => $brand->description,
-                    'status' => $brand->status,
-                ],
+                'brand' => $brandPayload,
+                'data' => $brandPayload,
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -274,7 +278,7 @@ class BrandController extends Controller
             return response()->json([
                 'success' => false,
                 'status' => 'error',
-                'message' => 'No se pudo guardar la marca.',
+                'message' => 'No se pudo registrar la marca.',
             ], 500);
         }
     }

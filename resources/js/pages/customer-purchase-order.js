@@ -928,14 +928,14 @@ function saveQuickPurchaseOrderBrand(formElement) {
         processData: false,
         contentType: false,
         success: function (response) {
-            const brand = response.data || {};
-            addBrandOptionToPurchaseOrderSelects(brand);
+            const brand = response.brand || response.data || {};
+            refreshCustomerPurchaseOrderBrandSelects(brand);
 
             if (quickBrandReturnTarget === 'row' && currentCustomerOrderItemRow && currentCustomerOrderItemRow.length) {
                 currentCustomerOrderItemRow
                     .find('.item-brand-id')
                     .val(String(brand.id))
-                    .trigger('change.select2');
+                    .trigger('change');
             }
 
             $('#quickPurchaseOrderBrandModal').modal('hide');
@@ -1025,19 +1025,37 @@ function saveQuickPurchaseOrderArticle(formElement) {
     });
 }
 
-function addBrandOptionToPurchaseOrderSelects(brand) {
+function refreshCustomerPurchaseOrderBrandSelects(brand) {
     if (!brand.id) {
         return;
     }
 
-    const text = brand.name || brand.description || 'MARCA';
-    $('.item-brand-id').each(function () {
-        const select = $(this);
+    const text = brand.text || brand.name || brand.description || 'MARCA';
 
-        if (!select.find(`option[value="${brand.id}"]`).length) {
-            select.append(new Option(text, brand.id, false, false));
+    const updateSelect = function (selectElement) {
+        const select = $(selectElement);
+        let option = select.find(`option[value="${brand.id}"]`);
+
+        if (!option.length) {
+            option = $(new Option(text, brand.id, false, false));
+            select.append(option);
+        } else {
+            option.text(text);
         }
+    };
+
+    // Selects ya visibles en las filas del modal.
+    $('.item-brand-id').each(function () {
+        updateSelect(this);
     });
+
+    // Fuente de opciones para las filas que se creen posteriormente. El
+    // contenido de <template> no forma parte del DOM consultado por jQuery.
+    const template = document.getElementById('purchaseOrderItemRowTemplate');
+    const templateSelect = template?.content?.querySelector('.item-brand-id');
+    if (templateSelect) {
+        updateSelect(templateSelect);
+    }
 }
 
 function refreshCustomerPurchaseOrderArticleSelects(article) {
