@@ -593,42 +593,49 @@ class ArticleController extends Controller
 
             DB::commit();
 
+            $articlePayload = [
+                'id' => $article->id,
+                'code' => $article->code,
+                'code_type' => $article->code_type,
+                'institutional_code' => $article->institutional_code,
+                'name' => $article->billing_name,
+                'legal_name' => $article->legal_name,
+                'commercial_name' => $article->commercial_name,
+                'billing_name' => $article->billing_name,
+                'invoice_name' => $article->billing_name,
+                'text' => $article->code . ' | ' . $article->billing_name,
+                'category_name' => $article->category?->description,
+                'subcategory_name' => $article->subcategory?->description,
+                'presentation_id' => $article->presentation_id,
+                'presentation_name' => $article->presentation?->description,
+                'unit_id' => $article->unit_id,
+                'unit_name' => $article->unit?->description,
+                'brand_id' => $article->brand_id,
+                'brand_name' => $article->brand?->description,
+                'is_taxable' => (bool) $article->is_taxable,
+            ];
+
             return response()->json([
                 'success' => true,
                 'status' => 'success',
                 'message' => 'Artículo registrado correctamente.',
-                'data' => [
-                    'id' => $article->id,
-                    'code' => $article->code,
-                    'code_type' => $article->code_type,
-                    'institutional_code' => $article->institutional_code,
-                    'name' => $article->billing_name,
-                    'legal_name' => $article->legal_name,
-                    'commercial_name' => $article->commercial_name,
-                    'billing_name' => $article->billing_name,
-                    'invoice_name' => $article->billing_name,
-                    'text' => $article->code . ' | ' . $article->billing_name,
-                    'category_name' => $article->category?->description,
-                    'subcategory_name' => $article->subcategory?->description,
-                    'presentation_id' => $article->presentation_id,
-                    'presentation_name' => $article->presentation?->description,
-                    'unit_id' => $article->unit_id,
-                    'unit_name' => $article->unit?->description,
-                    'brand_id' => $article->brand_id,
-                    'brand_name' => $article->brand?->description,
-                ],
+                'article' => $articlePayload,
+                'data' => $articlePayload,
             ], 201);
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
 
-            Log::error('Error quick creating article: ' . $e->getMessage());
+            Log::error('Error quick creating article', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
 
             return response()->json([
                 'success' => false,
                 'status' => 'error',
-                'message' => 'No se pudo guardar el artículo.',
+                'message' => 'No se pudo registrar el artículo. Revise los datos ingresados.',
             ], 500);
         }
     }

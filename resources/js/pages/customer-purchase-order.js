@@ -993,8 +993,8 @@ function saveQuickPurchaseOrderArticle(formElement) {
         processData: false,
         contentType: false,
         success: function (response) {
-            const article = response.data || {};
-            addArticleOptionToPurchaseOrderSelects(article);
+            const article = response.article || response.data || {};
+            refreshCustomerPurchaseOrderArticleSelects(article);
 
             if (currentCustomerOrderItemRow && currentCustomerOrderItemRow.length) {
                 applyQuickArticleToPurchaseOrderRow(currentCustomerOrderItemRow, article);
@@ -1040,19 +1040,23 @@ function addBrandOptionToPurchaseOrderSelects(brand) {
     });
 }
 
-function addArticleOptionToPurchaseOrderSelects(article) {
+function refreshCustomerPurchaseOrderArticleSelects(article) {
     if (!article.id) {
         return;
     }
 
-    const text = `${article.code || ''} | ${article.billing_name || article.name || ''}`.trim();
-    $('.item-article-picker').each(function () {
-        const select = $(this);
+    const text = article.text
+        || `${article.code || ''} | ${article.billing_name || article.name || ''}`.trim();
+
+    const updateSelect = function (selectElement) {
+        const select = $(selectElement);
         let option = select.find(`option[value="${article.id}"]`);
 
         if (!option.length) {
             option = $(new Option(text, article.id, false, false));
             select.append(option);
+        } else {
+            option.text(text);
         }
 
         option
@@ -1060,8 +1064,22 @@ function addArticleOptionToPurchaseOrderSelects(article) {
             .attr('data-billing-name', article.billing_name || article.name || '')
             .attr('data-unit-id', article.unit_id || '')
             .attr('data-presentation-id', article.presentation_id || '')
-            .attr('data-brand-id', article.brand_id || '');
+            .attr('data-brand-id', article.brand_id || '')
+            .attr('data-is-taxable', article.is_taxable ? '1' : '0');
+    };
+
+    // Selects que ya están montados en el modal actual.
+    $('.item-article-picker').each(function () {
+        updateSelect(this);
     });
+
+    // Fuente reutilizable de las filas futuras. El contenido de <template> vive
+    // en un DocumentFragment y no es encontrado por $('.item-article-picker').
+    const template = document.getElementById('purchaseOrderItemRowTemplate');
+    const templateSelect = template?.content?.querySelector('.item-article-picker');
+    if (templateSelect) {
+        updateSelect(templateSelect);
+    }
 }
 
 function selectCustomerForPurchaseOrder(customer, branch = null) {
