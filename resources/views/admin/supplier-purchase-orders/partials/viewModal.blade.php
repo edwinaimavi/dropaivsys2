@@ -234,8 +234,10 @@
                                     <th class="text-center">ESTADO</th>
                                     <th class="text-right">P. REF.</th>
                                     <th class="text-right">PRECIO</th>
+                                    <th class="text-right">P. TOTAL IGV</th>
+                                    <th class="text-right">B. IMPONIBLE</th>
+                                    <th class="text-right">% IGV</th>
                                     <th class="text-right">IGV</th>
-                                    <th class="text-right">TOTAL</th>
                                 </tr>
                             </thead>
                             <tbody id="vspo_items_body"></tbody>
@@ -247,7 +249,7 @@
                     <div class="col-md-6 col-lg-4">
                         <div class="supplier-order-view-totals shadow-sm">
                             <div>
-                                <span>Subtotal</span>
+                                <span>Base imponible</span>
                                 <strong id="vspo_subtotal">0.00</strong>
                             </div>
                             <div>

@@ -532,7 +532,7 @@ class SupplierPurchaseOrderController extends Controller
                 $previousCustomerOrderIds = $order
                     ? $this->customerPurchaseOrderIdsForSupplierOrder($order)
                     : collect();
-                $affectIgv = (bool) ($validated['affect_igv'] ?? false);
+                $affectIgv = (bool) ($validated['affect_igv'] ?? true);
                 $this->validateCustomerOrderItemUnitPrices($validated['items']);
                 $validated['items'] = $this->applySupplierAwardDataToItems(
                     (int) $validated['supplier_id'],
@@ -691,9 +691,14 @@ class SupplierPurchaseOrderController extends Controller
         return collect($items)
             ->map(function (array $item) use ($affectIgv) {
                 $quantity = round((float) $item['quantity'], 2);
-                $unitPrice = round((float) $item['unit_price'], 2);
-                $subtotal = round($quantity * $unitPrice, 2);
-                $taxAmount = $affectIgv ? round($subtotal * 0.18, 2) : 0;
+                $unitPrice = round((float) $item['unit_price'], 6);
+                $totalWithIgv = round($quantity * $unitPrice, 2);
+                $taxableBase = $affectIgv
+                    ? round($totalWithIgv / 1.18, 2)
+                    : $totalWithIgv;
+                $taxAmount = $affectIgv
+                    ? round($totalWithIgv - $taxableBase, 2)
+                    : 0;
 
                 return [
                     'article_id' => $item['article_id'],
@@ -717,9 +722,14 @@ class SupplierPurchaseOrderController extends Controller
                     ),
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
-                    'subtotal' => $subtotal,
+                    // Legacy fields remain synchronized for existing consumers.
+                    'subtotal' => $taxableBase,
                     'tax_amount' => $taxAmount,
-                    'line_total' => round($subtotal + $taxAmount, 2),
+                    'line_total' => $totalWithIgv,
+                    'total_with_igv' => $totalWithIgv,
+                    'taxable_base' => $taxableBase,
+                    'igv_percent' => $affectIgv ? 18.00 : 0.00,
+                    'igv_amount' => $taxAmount,
                     'status' => $item['status'] ?? 'active',
                 ];
             })
@@ -749,8 +759,8 @@ class SupplierPurchaseOrderController extends Controller
             }
 
             $customerItem = $customerItems->get($customerItemId);
-            $purchasePrice = round((float) ($item['unit_price'] ?? 0), 2);
-            $maximumPrice = round((float) $customerItem->unit_price, 2);
+            $purchasePrice = (float) ($item['unit_price'] ?? 0);
+            $maximumPrice = (float) $customerItem->unit_price;
 
             if ($purchasePrice <= $maximumPrice) {
                 continue;
@@ -768,7 +778,7 @@ class SupplierPurchaseOrderController extends Controller
                     'El precio de compra del artículo %s no puede ser mayor al precio de la Orden de Compra del Cliente. Precio cliente: %s %s.',
                     $articleName,
                     $currency,
-                    number_format($maximumPrice, 2)
+                rtrim(rtrim(number_format($maximumPrice, 6, '.', ''), '0'), '.')
                 ),
             ]);
         }
@@ -883,7 +893,7 @@ class SupplierPurchaseOrderController extends Controller
                 $payload['quantity'] = $progress['pending_quantity'];
                 // Precio de este item concreto en la OC Cliente. Es solo para UX;
                 // la validación real consulta nuevamente la BD usando el ID del item.
-                $payload['customer_unit_price'] = round((float) $item->unit_price, 2);
+                $payload['customer_unit_price'] = (float) $item->unit_price;
 
                 return array_merge(
                     $payload,
@@ -1122,12 +1132,12 @@ class SupplierPurchaseOrderController extends Controller
             }
 
             $award = $awardMap->get((int) $marketStudyItemId);
-            $winnerPrice = round((float) ($award->unit_price ?? 0), 2);
+            $winnerPrice = round((float) ($award->unit_price ?? 0), 6);
 
             $items[$index]['market_study_item_id'] = (int) $marketStudyItemId;
             $items[$index]['unit_price'] = round(
                 (float) ($item['unit_price'] ?? $winnerPrice),
-                2
+                6
             );
             $items[$index]['reference_purchase_price'] = $winnerPrice;
 
@@ -1155,7 +1165,7 @@ class SupplierPurchaseOrderController extends Controller
         $quantity = round((float) ($item->quantity ?? 1), 2);
         $unitPrice = round(
             (float) ($award->unit_price ?? $item->unit_price ?? $item->cost_price ?? 0),
-            2
+            6
         );
 
         return [

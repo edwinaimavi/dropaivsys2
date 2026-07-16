@@ -982,7 +982,7 @@ function renderSupplierOrderPendingItems(items) {
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm text-right pending-item-unit-price"
-                        value="${formatSupplierOrderMoney(unitPrice)}" min="0" step="0.01"
+                        value="${formatSupplierOrderUnitPrice(unitPrice)}" min="0" step="0.000001" inputmode="decimal"
                         data-customer-item-id="${item.customer_purchase_order_item_id || ''}"
                         data-customer-unit-price="${customerUnitPrice}">
                     ${customerUnitPrice > 0
@@ -1137,7 +1137,7 @@ function addSupplierOrderItemRow(data = {}) {
         .val(formatSupplierOrderMoney(data.quantity || 1))
         .attr('max', data.pending_quantity ? formatSupplierOrderMoney(data.pending_quantity) : null);
     row.find('.item-unit-price')
-        .val(formatSupplierOrderMoney(data.unit_price || 0))
+        .val(formatSupplierOrderUnitPrice(data.unit_price || 0))
         .attr('data-customer-item-id', data.customer_purchase_order_item_id || '')
         .attr('data-customer-unit-price', customerUnitPrice > 0 ? customerUnitPrice : '');
     row.find('.item-max-price-reference')
@@ -1231,7 +1231,7 @@ function showEmptySupplierOrderItemsRow() {
     if ($('#supplierOrderItemsTbody tr.supplier-order-item-row').length === 0) {
         $('#supplierOrderItemsTbody').html(`
             <tr id="supplierOrderItemsEmptyRow">
-                <td colspan="14" class="text-center text-muted py-4">
+                <td colspan="17" class="text-center text-muted py-4">
                     <i class="fas fa-box-open d-block mb-2"></i>
                     No hay items registrados.
                 </td>
@@ -1264,16 +1264,23 @@ function calculateSupplierOrderTotals() {
             quantityInput.val(formatSupplierOrderMoney(quantity));
         }
 
-        const lineSubtotal = quantity * unitPrice;
-        const taxAmount = affectIgv ? lineSubtotal * 0.18 : 0;
-        const lineTotal = lineSubtotal + taxAmount;
+        const lineTotal = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
+        const lineSubtotal = affectIgv
+            ? Math.round((lineTotal / 1.18 + Number.EPSILON) * 100) / 100
+            : lineTotal;
+        const taxAmount = affectIgv
+            ? Math.round((lineTotal - lineSubtotal + Number.EPSILON) * 100) / 100
+            : 0;
 
         row.find('.item-line-total').val(formatSupplierOrderMoney(lineTotal));
+        row.find('.item-taxable-base').val(formatSupplierOrderMoney(lineSubtotal));
+        row.find('.item-igv-percent').val(formatSupplierOrderMoney(affectIgv ? 18 : 0));
+        row.find('.item-igv-amount').val(formatSupplierOrderMoney(taxAmount));
         subtotal += lineSubtotal;
         igv += taxAmount;
     });
 
-    const grandTotal = subtotal + igv;
+    const grandTotal = Math.round((subtotal + igv + Number.EPSILON) * 100) / 100;
 
     setSupplierOrderValue('#supplier_order_subtotal', formatSupplierOrderMoney(subtotal));
     setSupplierOrderValue('#supplier_order_igv', formatSupplierOrderMoney(igv));
@@ -1502,14 +1509,16 @@ function fillSupplierPurchaseOrderDetail(order) {
                 </td>
                 <td class="text-right">${formatSupplierOrderMoney(item.reference_purchase_price)}</td>
                 <td class="text-right">${formatSupplierOrderMoney(item.unit_price)}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.tax_amount)}</td>
-                <td class="text-right font-weight-bold">${formatSupplierOrderMoney(item.line_total)}</td>
+                <td class="text-right font-weight-bold">${formatSupplierOrderMoney(item.total_with_igv ?? item.line_total)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(item.taxable_base ?? item.subtotal)}</td>
+                <td class="text-right">${formatSupplierOrderMoney(item.igv_percent ?? (order.affect_igv ? 18 : 0))}</td>
+                <td class="text-right">${formatSupplierOrderMoney(item.igv_amount ?? item.tax_amount)}</td>
             </tr>
         `;
     }).join('');
 
     $('#vspo_items_body').html(
-        rows || '<tr><td colspan="15" class="text-center text-muted py-3">Sin items registrados</td></tr>'
+        rows || '<tr><td colspan="17" class="text-center text-muted py-3">Sin items registrados</td></tr>'
     );
 }
 
@@ -1621,6 +1630,12 @@ function supplierName(supplier) {
 
 function formatSupplierOrderMoney(value) {
     return (parseFloat(value) || 0).toFixed(2);
+}
+
+function formatSupplierOrderUnitPrice(value) {
+    const parsed = parseFloat(String(value ?? 0).replace(',', '.')) || 0;
+
+    return parsed.toFixed(6).replace(/\.?0+$/, '');
 }
 
 function formatSupplierOrderDate(value) {

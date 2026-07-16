@@ -27,6 +27,10 @@ class SupplierPurchaseOrderItem extends Model
         'subtotal',
         'tax_amount',
         'line_total',
+        'total_with_igv',
+        'taxable_base',
+        'igv_percent',
+        'igv_amount',
         'status',
     ];
 
@@ -34,10 +38,14 @@ class SupplierPurchaseOrderItem extends Model
         'expiration_date' => 'date',
         'reference_purchase_price' => 'decimal:2',
         'quantity' => 'decimal:2',
-        'unit_price' => 'decimal:2',
+        'unit_price' => 'decimal:6',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'total_with_igv' => 'decimal:2',
+        'taxable_base' => 'decimal:2',
+        'igv_percent' => 'decimal:2',
+        'igv_amount' => 'decimal:2',
     ];
 
     public function purchaseOrder()

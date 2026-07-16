@@ -514,13 +514,16 @@
                                             <th>P. REF. COMPRA</th>
                                             <th>CANTIDAD</th>
                                             <th>PRECIO</th>
-                                            <th>P. TOTAL</th>
+                                            <th>P. TOTAL IGV</th>
+                                            <th>B. IMPONIBLE</th>
+                                            <th>% IGV</th>
+                                            <th>IGV</th>
                                             <th>ACCI&Oacute;N</th>
                                         </tr>
                                     </thead>
                                     <tbody id="supplierOrderItemsTbody">
                                         <tr id="supplierOrderItemsEmptyRow">
-                                            <td colspan="14" class="text-center text-muted py-4">
+                                            <td colspan="17" class="text-center text-muted py-4">
                                                 <i class="fas fa-box-open d-block mb-2"></i>
                                                 Carga un origen o inserta art&iacute;culos para registrar la compra.
                                             </td>
@@ -533,7 +536,7 @@
                                 <div class="row justify-content-end">
                                     <div class="col-lg-5 col-xl-4">
                                         <div class="supplier-order-total-line">
-                                            <span>Subtotal compra</span>
+                                            <span>Base imponible</span>
                                             <div class="input-group input-group-sm">
                                                 <div class="input-group-prepend">
                                                     <span
@@ -665,14 +668,30 @@
                                     class="form-control form-control-sm text-right item-quantity" value="1.00">
                             </td>
                             <td>
-                                <input type="number" step="0.01" min="0" name="items[__INDEX__][unit_price]"
-                                    class="form-control form-control-sm text-right item-unit-price" value="0.00">
+                                <input type="number" step="0.000001" min="0" inputmode="decimal"
+                                    name="items[__INDEX__][unit_price]"
+                                    class="form-control form-control-sm text-right item-unit-price" value="0">
                                 <small class="text-muted item-max-price-reference d-none"></small>
                                 <span class="invalid-feedback"></span>
                             </td>
                             <td>
                                 <input type="number"
                                     class="form-control form-control-sm text-right font-weight-bold item-line-total"
+                                    value="0.00" min="0" step="0.01" readonly>
+                            </td>
+                            <td>
+                                <input type="number"
+                                    class="form-control form-control-sm text-right item-taxable-base"
+                                    value="0.00" min="0" step="0.01" readonly>
+                            </td>
+                            <td>
+                                <input type="number"
+                                    class="form-control form-control-sm text-right item-igv-percent"
+                                    value="18.00" min="0" step="0.01" readonly>
+                            </td>
+                            <td>
+                                <input type="number"
+                                    class="form-control form-control-sm text-right item-igv-amount"
                                     value="0.00" min="0" step="0.01" readonly>
                             </td>
                             <td class="align-middle text-center">
@@ -883,7 +902,7 @@
     }
 
     #supplierPurchaseOrderModal #supplierOrderItemsTable {
-        min-width: 1540px;
+        min-width: 1810px;
     }
 
     #supplierPurchaseOrderModal #supplierOrderItemsTable thead th {
@@ -929,7 +948,10 @@
     #supplierPurchaseOrderModal #supplierOrderItemsTable .item-reference-purchase-price,
     #supplierPurchaseOrderModal #supplierOrderItemsTable .item-quantity,
     #supplierPurchaseOrderModal #supplierOrderItemsTable .item-unit-price,
-    #supplierPurchaseOrderModal #supplierOrderItemsTable .item-line-total {
+    #supplierPurchaseOrderModal #supplierOrderItemsTable .item-line-total,
+    #supplierPurchaseOrderModal #supplierOrderItemsTable .item-taxable-base,
+    #supplierPurchaseOrderModal #supplierOrderItemsTable .item-igv-percent,
+    #supplierPurchaseOrderModal #supplierOrderItemsTable .item-igv-amount {
         min-width: 90px;
     }
 

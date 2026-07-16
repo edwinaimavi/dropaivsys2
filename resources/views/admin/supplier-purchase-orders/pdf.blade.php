@@ -400,12 +400,15 @@
     <table class="items">
         <thead>
             <tr>
-                <th width="10%">Cod.</th>
-                <th width="50%">Descripcion</th>
-                <th width="8%">Cant.</th>
-                <th width="10%">Und.</th>
-                <th width="11%">P. Unit.</th>
-                <th width="11%">Total</th>
+                <th width="7%">Cod.</th>
+                <th width="33%">Descripcion</th>
+                <th width="7%">Cant.</th>
+                <th width="7%">Und.</th>
+                <th width="10%">P. Unit.</th>
+                <th width="10%">P. Total IGV</th>
+                <th width="10%">B. Imponible</th>
+                <th width="7%">% IGV</th>
+                <th width="9%">IGV</th>
             </tr>
         </thead>
         <tbody>
@@ -433,10 +436,13 @@
                     <td class="text-right">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td>{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
                     <td class="text-right">{{ $formatMoney($item->unit_price) }}</td>
-                    <td class="text-right">{{ $formatMoney($item->line_total) }}</td>
+                    <td class="text-right">{{ $formatMoney($item->total_with_igv ?? $item->line_total) }}</td>
+                    <td class="text-right">{{ $formatMoney($item->taxable_base ?? $item->subtotal) }}</td>
+                    <td class="text-right">{{ $formatMoney($item->igv_percent ?? ($order->affect_igv ? 18 : 0)) }}</td>
+                    <td class="text-right">{{ $formatMoney($item->igv_amount ?? $item->tax_amount) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="text-center">Sin articulos registrados</td></tr>
+                <tr><td colspan="9" class="text-center">Sin articulos registrados</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -450,8 +456,8 @@
             <td class="col-gap"></td>
             <td width="37%" style="vertical-align:top;">
                 <table class="totals">
-                    <tr><td>Subtotal</td><td class="text-right">{{ $formatMoney($order->subtotal) }}</td></tr>
-                    <tr><td>IGV 18%</td><td class="text-right">{{ $formatMoney($order->igv) }}</td></tr>
+                    <tr><td>Base imponible</td><td class="text-right">{{ $formatMoney($order->subtotal) }}</td></tr>
+                    <tr><td>IGV {{ $order->affect_igv ? '18%' : '0%' }}</td><td class="text-right">{{ $formatMoney($order->igv) }}</td></tr>
                     <tr class="grand"><td>TOTAL</td><td class="text-right">{{ $formatMoney($order->grand_total) }}</td></tr>
                 </table>
                 <div class="signature">
