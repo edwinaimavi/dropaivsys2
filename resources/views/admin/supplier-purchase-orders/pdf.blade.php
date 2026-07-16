@@ -419,23 +419,18 @@
     <table class="items">
         <thead>
             <tr>
-                <th width="7%">Cod.</th>
-                <th width="33%">Descripcion</th>
-                <th width="7%">Cant.</th>
-                <th width="7%">Und.</th>
+                <th width="10%">Cod.</th>
+                <th width="52%">Descripcion</th>
+                <th width="8%">Cant.</th>
+                <th width="10%">Und.</th>
                 <th width="10%">P. Unit.</th>
-                <th width="10%">P. Total IGV</th>
-                <th width="10%">B. Imponible</th>
-                <th width="7%">% IGV</th>
-                <th width="9%">IGV</th>
+                <th width="10%">P. Total</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($order->items as $item)
                 @php
                     $itemTotalWithIgv = $pdfLineTotal($item);
-                    $itemTaxableBase = $pdfTaxableBase($item);
-                    $itemIgvAmount = $pdfIgvAmount($item);
                 @endphp
                 <tr>
                     <td>{{ $item->article_code ?: '-' }}</td>
@@ -461,12 +456,9 @@
                     <td>{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
                     <td class="text-right">{{ $formatDecimal($item->unit_price) }}</td>
                     <td class="text-right">{{ $formatDecimal($itemTotalWithIgv) }}</td>
-                    <td class="text-right">{{ $formatDecimal($itemTaxableBase) }}</td>
-                    <td class="text-right">{{ $formatDecimal($item->igv_percent ?? ($order->affect_igv ? 18 : 0), 2) }}%</td>
-                    <td class="text-right">{{ $formatDecimal($itemIgvAmount) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="9" class="text-center">Sin articulos registrados</td></tr>
+                <tr><td colspan="6" class="text-center">Sin articulos registrados</td></tr>
             @endforelse
         </tbody>
     </table>
