@@ -692,12 +692,12 @@ class SupplierPurchaseOrderController extends Controller
             ->map(function (array $item) use ($affectIgv) {
                 $quantity = round((float) $item['quantity'], 2);
                 $unitPrice = round((float) $item['unit_price'], 6);
-                $totalWithIgv = round($quantity * $unitPrice, 2);
+                $totalWithIgv = $quantity * $unitPrice;
                 $taxableBase = $affectIgv
-                    ? round($totalWithIgv / 1.18, 2)
+                    ? $totalWithIgv / 1.18
                     : $totalWithIgv;
                 $taxAmount = $affectIgv
-                    ? round($totalWithIgv - $taxableBase, 2)
+                    ? $totalWithIgv - $taxableBase
                     : 0;
 
                 return [
@@ -788,11 +788,12 @@ class SupplierPurchaseOrderController extends Controller
     {
         $subtotal = round((float) collect($items)->sum('subtotal'), 2);
         $igv = round((float) collect($items)->sum('tax_amount'), 2);
+        $grandTotal = round((float) collect($items)->sum('total_with_igv'), 2);
 
         return [
             'subtotal' => $subtotal,
             'igv' => $igv,
-            'grand_total' => round($subtotal + $igv, 2),
+            'grand_total' => $grandTotal,
         ];
     }
 

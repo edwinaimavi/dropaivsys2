@@ -39,13 +39,13 @@ class SupplierPurchaseOrderItem extends Model
         'reference_purchase_price' => 'decimal:2',
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:6',
-        'subtotal' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'line_total' => 'decimal:2',
-        'total_with_igv' => 'decimal:2',
-        'taxable_base' => 'decimal:2',
+        'subtotal' => 'decimal:6',
+        'tax_amount' => 'decimal:6',
+        'line_total' => 'decimal:6',
+        'total_with_igv' => 'decimal:6',
+        'taxable_base' => 'decimal:6',
         'igv_percent' => 'decimal:2',
-        'igv_amount' => 'decimal:2',
+        'igv_amount' => 'decimal:6',
     ];
 
     public function purchaseOrder()

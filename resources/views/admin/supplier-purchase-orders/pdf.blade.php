@@ -8,7 +8,26 @@
     $shippingBranch = $order->shippingAgencyBranch;
     $shippingContact = $order->shippingAgencyContact;
     $ubigeo = $order->destinationUbigeo;
-    $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2));
+    $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2, '.', ','));
+    $formatDecimal = function ($value, int $maxDecimals = 6): string {
+        $formatted = rtrim(rtrim(number_format((float) $value, $maxDecimals, '.', ''), '0'), '.');
+
+        return $formatted === '' ? '0' : $formatted;
+    };
+    $pdfLineTotal = fn ($item) => $item->total_with_igv !== null
+        ? (float) $item->total_with_igv
+        : ($item->line_total !== null
+            ? (float) $item->line_total
+            : (float) $item->quantity * (float) $item->unit_price);
+    $pdfTaxableBase = fn ($item) => $item->taxable_base !== null
+        ? (float) $item->taxable_base
+        : ($order->affect_igv ? $pdfLineTotal($item) / 1.18 : $pdfLineTotal($item));
+    $pdfIgvAmount = fn ($item) => $item->igv_amount !== null
+        ? (float) $item->igv_amount
+        : ($order->affect_igv ? $pdfLineTotal($item) - $pdfTaxableBase($item) : 0.0);
+    $pdfSubtotal = $order->items->sum(fn ($item) => $pdfTaxableBase($item));
+    $pdfIgv = $order->items->sum(fn ($item) => $pdfIgvAmount($item));
+    $pdfGrandTotal = $order->items->sum(fn ($item) => $pdfLineTotal($item));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d-m-Y') : null;
     $optionLabel = function (?string $value): string {
         $labels = [
@@ -413,6 +432,11 @@
         </thead>
         <tbody>
             @forelse ($order->items as $item)
+                @php
+                    $itemTotalWithIgv = $pdfLineTotal($item);
+                    $itemTaxableBase = $pdfTaxableBase($item);
+                    $itemIgvAmount = $pdfIgvAmount($item);
+                @endphp
                 <tr>
                     <td>{{ $item->article_code ?: '-' }}</td>
                     <td>
@@ -435,11 +459,11 @@
                     </td>
                     <td class="text-right">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td>{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
-                    <td class="text-right">{{ $formatMoney($item->unit_price) }}</td>
-                    <td class="text-right">{{ $formatMoney($item->total_with_igv ?? $item->line_total) }}</td>
-                    <td class="text-right">{{ $formatMoney($item->taxable_base ?? $item->subtotal) }}</td>
-                    <td class="text-right">{{ $formatMoney($item->igv_percent ?? ($order->affect_igv ? 18 : 0)) }}</td>
-                    <td class="text-right">{{ $formatMoney($item->igv_amount ?? $item->tax_amount) }}</td>
+                    <td class="text-right">{{ $formatDecimal($item->unit_price) }}</td>
+                    <td class="text-right">{{ $formatDecimal($itemTotalWithIgv) }}</td>
+                    <td class="text-right">{{ $formatDecimal($itemTaxableBase) }}</td>
+                    <td class="text-right">{{ $formatDecimal($item->igv_percent ?? ($order->affect_igv ? 18 : 0), 2) }}%</td>
+                    <td class="text-right">{{ $formatDecimal($itemIgvAmount) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="9" class="text-center">Sin articulos registrados</td></tr>
@@ -456,9 +480,9 @@
             <td class="col-gap"></td>
             <td width="37%" style="vertical-align:top;">
                 <table class="totals">
-                    <tr><td>Base imponible</td><td class="text-right">{{ $formatMoney($order->subtotal) }}</td></tr>
-                    <tr><td>IGV {{ $order->affect_igv ? '18%' : '0%' }}</td><td class="text-right">{{ $formatMoney($order->igv) }}</td></tr>
-                    <tr class="grand"><td>TOTAL</td><td class="text-right">{{ $formatMoney($order->grand_total) }}</td></tr>
+                    <tr><td>Base imponible</td><td class="text-right">{{ $formatMoney($pdfSubtotal) }}</td></tr>
+                    <tr><td>IGV {{ $order->affect_igv ? '18%' : '0%' }}</td><td class="text-right">{{ $formatMoney($pdfIgv) }}</td></tr>
+                    <tr class="grand"><td>TOTAL</td><td class="text-right">{{ $formatMoney($pdfGrandTotal) }}</td></tr>
                 </table>
                 <div class="signature">
                     <div>Autorizado por</div>

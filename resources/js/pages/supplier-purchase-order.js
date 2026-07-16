@@ -1264,23 +1264,23 @@ function calculateSupplierOrderTotals() {
             quantityInput.val(formatSupplierOrderMoney(quantity));
         }
 
-        const lineTotal = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
+        const lineTotal = quantity * unitPrice;
         const lineSubtotal = affectIgv
-            ? Math.round((lineTotal / 1.18 + Number.EPSILON) * 100) / 100
+            ? lineTotal / 1.18
             : lineTotal;
         const taxAmount = affectIgv
-            ? Math.round((lineTotal - lineSubtotal + Number.EPSILON) * 100) / 100
+            ? lineTotal - lineSubtotal
             : 0;
 
-        row.find('.item-line-total').val(formatSupplierOrderMoney(lineTotal));
-        row.find('.item-taxable-base').val(formatSupplierOrderMoney(lineSubtotal));
+        row.find('.item-line-total').val(formatSupplierOrderDecimal(lineTotal));
+        row.find('.item-taxable-base').val(formatSupplierOrderDecimal(lineSubtotal));
         row.find('.item-igv-percent').val(formatSupplierOrderMoney(affectIgv ? 18 : 0));
-        row.find('.item-igv-amount').val(formatSupplierOrderMoney(taxAmount));
+        row.find('.item-igv-amount').val(formatSupplierOrderDecimal(taxAmount));
         subtotal += lineSubtotal;
         igv += taxAmount;
     });
 
-    const grandTotal = Math.round((subtotal + igv + Number.EPSILON) * 100) / 100;
+    const grandTotal = subtotal + igv;
 
     setSupplierOrderValue('#supplier_order_subtotal', formatSupplierOrderMoney(subtotal));
     setSupplierOrderValue('#supplier_order_igv', formatSupplierOrderMoney(igv));
@@ -1508,11 +1508,11 @@ function fillSupplierPurchaseOrderDetail(order) {
                     </span>
                 </td>
                 <td class="text-right">${formatSupplierOrderMoney(item.reference_purchase_price)}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.unit_price)}</td>
-                <td class="text-right font-weight-bold">${formatSupplierOrderMoney(item.total_with_igv ?? item.line_total)}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.taxable_base ?? item.subtotal)}</td>
+                <td class="text-right">${formatSupplierOrderDecimal(item.unit_price)}</td>
+                <td class="text-right font-weight-bold">${formatSupplierOrderDecimal(item.total_with_igv ?? item.line_total)}</td>
+                <td class="text-right">${formatSupplierOrderDecimal(item.taxable_base ?? item.subtotal)}</td>
                 <td class="text-right">${formatSupplierOrderMoney(item.igv_percent ?? (order.affect_igv ? 18 : 0))}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.igv_amount ?? item.tax_amount)}</td>
+                <td class="text-right">${formatSupplierOrderDecimal(item.igv_amount ?? item.tax_amount)}</td>
             </tr>
         `;
     }).join('');
@@ -1633,9 +1633,13 @@ function formatSupplierOrderMoney(value) {
 }
 
 function formatSupplierOrderUnitPrice(value) {
+    return formatSupplierOrderDecimal(value);
+}
+
+function formatSupplierOrderDecimal(value, decimals = 6) {
     const parsed = parseFloat(String(value ?? 0).replace(',', '.')) || 0;
 
-    return parsed.toFixed(6).replace(/\.?0+$/, '');
+    return parsed.toFixed(decimals).replace(/\.?0+$/, '');
 }
 
 function formatSupplierOrderDate(value) {

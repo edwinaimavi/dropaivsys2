@@ -677,12 +677,12 @@
                             <td>
                                 <input type="number"
                                     class="form-control form-control-sm text-right font-weight-bold item-line-total"
-                                    value="0.00" min="0" step="0.01" readonly>
+                                    value="0" min="0" step="0.000001" readonly>
                             </td>
                             <td>
                                 <input type="number"
                                     class="form-control form-control-sm text-right item-taxable-base"
-                                    value="0.00" min="0" step="0.01" readonly>
+                                    value="0" min="0" step="0.000001" readonly>
                             </td>
                             <td>
                                 <input type="number"
@@ -692,7 +692,7 @@
                             <td>
                                 <input type="number"
                                     class="form-control form-control-sm text-right item-igv-amount"
-                                    value="0.00" min="0" step="0.01" readonly>
+                                    value="0" min="0" step="0.000001" readonly>
                             </td>
                             <td class="align-middle text-center">
                                 <button type="button"
