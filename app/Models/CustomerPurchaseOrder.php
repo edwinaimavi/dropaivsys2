@@ -44,10 +44,10 @@ class CustomerPurchaseOrder extends Model
         'delivery_days' => 'integer',
         'delivery_end_date' => 'date',
         'affect_igv' => 'boolean',
-        'subtotal_exonerated' => 'decimal:2',
-        'subtotal_taxed' => 'decimal:2',
-        'igv' => 'decimal:2',
-        'grand_total' => 'decimal:2',
+        'subtotal_exonerated' => 'decimal:10',
+        'subtotal_taxed' => 'decimal:10',
+        'igv' => 'decimal:10',
+        'grand_total' => 'decimal:10',
     ];
 
     public function company()

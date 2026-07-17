@@ -38,7 +38,7 @@
                                     <small class="text-muted d-block">Total de venta</small>
                                     <div class="purchase-order-view-total">
                                         <span id="vpo_currency_symbol">S/</span>
-                                        <span id="vpo_grand_total">0.00</span>
+                                        <span id="vpo_grand_total">0.000</span>
                                     </div>
                                 </div>
                             </div>
@@ -122,10 +122,10 @@
                 <div class="row justify-content-end mt-3">
                     <div class="col-md-5 col-lg-4">
                         <div class="purchase-order-view-totals">
-                            <div><span>Venta exonerada</span><strong id="vpo_subtotal_exonerated">0.00</strong></div>
-                            <div><span>Venta gravada</span><strong id="vpo_subtotal_taxed">0.00</strong></div>
-                            <div><span>IGV</span><strong id="vpo_igv">0.00</strong></div>
-                            <div class="grand"><span>Total</span><strong id="vpo_total">0.00</strong></div>
+                            <div><span>Venta exonerada</span><strong id="vpo_subtotal_exonerated">0.000</strong></div>
+                            <div><span>Venta gravada</span><strong id="vpo_subtotal_taxed">0.000</strong></div>
+                            <div><span>IGV</span><strong id="vpo_igv">0.000</strong></div>
+                            <div class="grand"><span>Total</span><strong id="vpo_total">0.000</strong></div>
                         </div>
                     </div>
                 </div>

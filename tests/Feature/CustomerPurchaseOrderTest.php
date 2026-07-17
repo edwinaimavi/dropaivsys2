@@ -148,7 +148,7 @@ test('customer purchase order backend flow works', function () {
         ->assertOk()
         ->assertJsonPath('customer_id', $this->customerId)
         ->assertJsonPath('items.0.quote_item_id', $this->quoteItemId)
-        ->assertJsonPath('items.0.line_total', 236);
+        ->assertJsonPath('items.0.line_total', '200.0000000000');
 
     $payload = [
         'company_id' => $this->companyId,
@@ -170,9 +170,9 @@ test('customer purchase order backend flow works', function () {
             'presentation_id' => $this->presentationId,
             'brand_id' => $this->brandId,
             'quoted_quantity' => 10,
-            'quantity' => 3,
-            'unit_price' => 20,
-            'line_total' => 70.80,
+            'quantity' => 1800,
+            'unit_price' => '23.950',
+            'line_total' => '43110.000',
         ]],
     ];
 
@@ -196,7 +196,7 @@ test('customer purchase order backend flow works', function () {
         ->assertCreated()
         ->assertJsonPath('data.code', 'P00001')
         ->assertJsonPath('data.status', 'registered')
-        ->assertJsonPath('data.grand_total', '70.80');
+        ->assertJsonPath('data.grand_total', '43110.0000000000');
 
     $orderId = $storeResponse->json('data.id');
 
@@ -218,9 +218,9 @@ test('customer purchase order backend flow works', function () {
     $this->assertDatabaseHas('customer_purchase_orders', [
         'id' => $orderId,
         'code' => 'P00001',
-        'subtotal_taxed' => 60,
-        'igv' => 10.80,
-        'grand_total' => 70.80,
+        'subtotal_taxed' => '36533.8983050847',
+        'igv' => '6576.1016949153',
+        'grand_total' => '43110.0000000000',
         'status' => 'registered',
     ]);
 
@@ -231,7 +231,9 @@ test('customer purchase order backend flow works', function () {
 
     $this->getJson(route('admin.customer-purchase-orders.show', $orderId))
         ->assertOk()
-        ->assertJsonPath('data.items.0.quantity', '3.00');
+        ->assertJsonPath('data.items.0.quantity', '1800.00')
+        ->assertJsonPath('data.items.0.unit_price', '23.9500000000')
+        ->assertJsonPath('data.items.0.line_total', '43110.0000000000');
 
     $payload['affect_igv'] = 0;
     $payload['status'] = 'registered';
@@ -243,8 +245,8 @@ test('customer purchase order backend flow works', function () {
         $payload
     )
         ->assertOk()
-        ->assertJsonPath('data.subtotal_exonerated', '40.00')
-        ->assertJsonPath('data.grand_total', '40.00');
+        ->assertJsonPath('data.subtotal_exonerated', '47.9000000000')
+        ->assertJsonPath('data.grand_total', '47.9000000000');
 
     $this->deleteJson(route('admin.customer-purchase-orders.destroy', $orderId))
         ->assertOk();

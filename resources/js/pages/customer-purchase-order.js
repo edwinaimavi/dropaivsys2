@@ -666,12 +666,13 @@ function addPurchaseOrderItemRow(data = {}) {
     row.find('.item-origin').val(data.origin || '');
     row.find('.item-expiration-date').val(formatPurchaseOrderDate(data.expiration_date));
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
-    row.find('.item-quoted-quantity').val(formatPurchaseOrderMoney(data.quoted_quantity || data.quantity || 0));
-    row.find('.item-quantity').val(formatPurchaseOrderMoney(data.quantity || 1));
-    row.find('.item-unit-price').val(formatPurchaseOrderMoney(data.unit_price || 0));
-    row.find('.item-subtotal').val(formatPurchaseOrderMoney(data.subtotal || 0));
-    row.find('.item-tax-amount').val(formatPurchaseOrderMoney(data.tax_amount || 0));
-    row.find('.item-line-total').val(formatPurchaseOrderMoney(data.line_total || 0));
+    row.find('.item-quoted-quantity').val(formatPurchaseOrderRaw(data.quoted_quantity || data.quantity || 0));
+    row.find('.item-quantity').val(formatPurchaseOrderRaw(data.quantity || 1));
+    row.find('.item-unit-price').val(formatPurchaseOrderRaw(data.unit_price || 0));
+    row.find('.item-subtotal').val(formatPurchaseOrderRaw(data.subtotal || 0));
+    row.find('.item-tax-amount').val(formatPurchaseOrderRaw(data.tax_amount || 0));
+    row.find('.item-line-total-raw').val(formatPurchaseOrderRaw(data.line_total || 0));
+    row.find('.item-line-total').val(formatDecimalView(data.line_total || 0));
 
     initPurchaseOrderSelect2(row);
 
@@ -1263,34 +1264,40 @@ function showEmptyPurchaseOrderItemsRow() {
 }
 
 function calculatePurchaseOrderTotals() {
-    let subtotal = 0;
+    let saleTotal = 0;
     const affectIgv = $('#purchase_order_affect_igv').val() === '1';
 
     $('#purchaseOrderItemsTbody tr.purchase-order-item-row').each(function () {
         const row = $(this);
         const quantity = parseFloat(row.find('.item-quantity').val()) || 0;
         const unitPrice = parseFloat(row.find('.item-unit-price').val()) || 0;
-        const lineSubtotal = quantity * unitPrice;
-        const taxAmount = affectIgv ? lineSubtotal * 0.18 : 0;
-        const lineTotal = lineSubtotal + taxAmount;
+        // En la orden del cliente el precio unitario ya incluye IGV.
+        const lineTotal = quantity * unitPrice;
+        const lineSubtotal = affectIgv ? lineTotal / 1.18 : lineTotal;
+        const taxAmount = affectIgv ? lineTotal - lineSubtotal : 0;
 
-        row.find('.item-subtotal').val(formatPurchaseOrderMoney(lineSubtotal));
-        row.find('.item-tax-amount').val(formatPurchaseOrderMoney(taxAmount));
-        row.find('.item-line-total').val(formatPurchaseOrderMoney(lineTotal));
+        row.find('.item-subtotal').val(formatPurchaseOrderRaw(lineSubtotal));
+        row.find('.item-tax-amount').val(formatPurchaseOrderRaw(taxAmount));
+        row.find('.item-line-total-raw').val(formatPurchaseOrderRaw(lineTotal));
+        row.find('.item-line-total').val(formatDecimalView(lineTotal));
 
-        subtotal += lineSubtotal;
+        saleTotal += lineTotal;
     });
 
-    const subtotalExonerated = affectIgv ? 0 : subtotal;
-    const subtotalTaxed = affectIgv ? subtotal : 0;
-    const igv = affectIgv ? subtotal * 0.18 : 0;
-    const grandTotal = subtotal + igv;
+    const subtotalExonerated = affectIgv ? 0 : saleTotal;
+    const subtotalTaxed = affectIgv ? saleTotal / 1.18 : 0;
+    const igv = affectIgv ? saleTotal - subtotalTaxed : 0;
+    const grandTotal = saleTotal;
 
-    $('#purchase_order_subtotal_exonerated').val(formatPurchaseOrderMoney(subtotalExonerated));
-    $('#purchase_order_subtotal_taxed').val(formatPurchaseOrderMoney(subtotalTaxed));
-    $('#purchase_order_igv').val(formatPurchaseOrderMoney(igv));
-    $('#purchase_order_grand_total').val(formatPurchaseOrderMoney(grandTotal));
-    $('#purchaseOrderSideGrandTotal').text(formatPurchaseOrderMoney(grandTotal));
+    $('#purchase_order_subtotal_exonerated').val(formatDecimalView(subtotalExonerated));
+    $('#purchase_order_subtotal_taxed').val(formatDecimalView(subtotalTaxed));
+    $('#purchase_order_igv').val(formatDecimalView(igv));
+    $('#purchase_order_grand_total').val(formatDecimalView(grandTotal));
+    $('#purchase_order_subtotal_exonerated_raw').val(formatPurchaseOrderRaw(subtotalExonerated));
+    $('#purchase_order_subtotal_taxed_raw').val(formatPurchaseOrderRaw(subtotalTaxed));
+    $('#purchase_order_igv_raw').val(formatPurchaseOrderRaw(igv));
+    $('#purchase_order_grand_total_raw').val(formatPurchaseOrderRaw(grandTotal));
+    $('#purchaseOrderSideGrandTotal').text(formatDecimalView(grandTotal));
 }
 
 function loadCustomerPurchaseOrderForEdit(id) {
@@ -1398,7 +1405,7 @@ function fillCustomerPurchaseOrderDetail(order) {
         [currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '—'
     );
     $('#vpo_currency_symbol').text(currencySymbol);
-    $('#vpo_grand_total').text(formatPurchaseOrderMoney(order.grand_total));
+    $('#vpo_grand_total').text(formatDecimalView(order.grand_total));
     $('#vpo_order_type').text(order.order_type === 'services' ? 'SERVICIOS' : 'ARTÍCULOS');
     $('#vpo_billing_type').text(order.billing_type === 'export' ? 'EXPORTACIÓN' : 'LOCAL');
     $('#vpo_affect_igv').text(order.affect_igv ? 'SÍ' : 'NO');
@@ -1409,10 +1416,10 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_chart').text(order.acquisition_chart_number || '—');
     $('#vpo_process').text(order.process_type || '—');
     $('#vpo_observations').text(order.observations || 'Sin observaciones');
-    $('#vpo_subtotal_exonerated').text(`${currencyCode} ${formatPurchaseOrderMoney(order.subtotal_exonerated)}`);
-    $('#vpo_subtotal_taxed').text(`${currencyCode} ${formatPurchaseOrderMoney(order.subtotal_taxed)}`);
-    $('#vpo_igv').text(`${currencyCode} ${formatPurchaseOrderMoney(order.igv)}`);
-    $('#vpo_total').text(`${currencyCode} ${formatPurchaseOrderMoney(order.grand_total)}`);
+    $('#vpo_subtotal_exonerated').text(`${currencyCode} ${formatDecimalView(order.subtotal_exonerated)}`);
+    $('#vpo_subtotal_taxed').text(`${currencyCode} ${formatDecimalView(order.subtotal_taxed)}`);
+    $('#vpo_igv').text(`${currencyCode} ${formatDecimalView(order.igv)}`);
+    $('#vpo_total').text(`${currencyCode} ${formatDecimalView(order.grand_total)}`);
 
     const items = order.items || [];
     const supplyStatuses = {
@@ -1434,10 +1441,10 @@ function fillCustomerPurchaseOrderDetail(order) {
                         ${item.brand?.description ? ` | ${escapePurchaseOrderHtml(item.brand.description)}` : ''}
                     </small>
                 </td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.requested_quantity ?? item.quantity)}</td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.purchase_quantity)}</td>
-                <td class="text-right">${formatPurchaseOrderMoney(item.entered_quantity)}</td>
-                <td class="text-right font-weight-bold">${formatPurchaseOrderMoney(item.pending_quantity)}</td>
+                <td class="text-right">${formatDecimalView(item.requested_quantity ?? item.quantity)}</td>
+                <td class="text-right">${formatDecimalView(item.purchase_quantity)}</td>
+                <td class="text-right">${formatDecimalView(item.entered_quantity)}</td>
+                <td class="text-right font-weight-bold">${formatDecimalView(item.pending_quantity)}</td>
                 <td class="text-center">
                     <span class="badge ${itemStatus[1]} px-2 py-1">${itemStatus[0]}</span>
                 </td>
@@ -1704,8 +1711,29 @@ function getPurchaseOrderSelectedText(selector, fallback = '') {
     return text || fallback;
 }
 
-function formatPurchaseOrderMoney(value) {
-    return (parseFloat(value) || 0).toFixed(2);
+function formatPurchaseOrderRaw(value) {
+    if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim())) {
+        const normalized = value.trim().replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+
+        return normalized === '-0' ? '0' : normalized;
+    }
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return '0';
+    }
+
+    return number.toLocaleString('en-US', {
+        useGrouping: false,
+        maximumFractionDigits: 10,
+    });
+}
+
+function formatDecimalView(value, decimals = 3) {
+    const number = Number.parseFloat(value || 0);
+
+    return Number.isNaN(number) ? (0).toFixed(decimals) : number.toFixed(decimals);
 }
 
 function formatPurchaseOrderDate(value) {

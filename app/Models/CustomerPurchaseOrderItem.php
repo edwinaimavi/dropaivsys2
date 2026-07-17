@@ -33,10 +33,10 @@ class CustomerPurchaseOrderItem extends Model
         'expiration_date' => 'date',
         'quoted_quantity' => 'decimal:2',
         'quantity' => 'decimal:2',
-        'unit_price' => 'decimal:2',
-        'subtotal' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'line_total' => 'decimal:2',
+        'unit_price' => 'decimal:10',
+        'subtotal' => 'decimal:10',
+        'tax_amount' => 'decimal:10',
+        'line_total' => 'decimal:10',
     ];
 
     public function purchaseOrder()

@@ -164,7 +164,7 @@ class CustomerPurchaseOrderController extends Controller
             ->editColumn('grand_total', function (CustomerPurchaseOrder $order) {
                 $symbol = $order->currency?->symbol ?? '';
 
-                return trim($symbol . ' ' . number_format((float) $order->grand_total, 2));
+                return trim($symbol . ' ' . $this->formatDecimal($order->grand_total));
             })
             ->addColumn('delivery_period', fn (CustomerPurchaseOrder $order) => $this->deliveryPeriodHtml($order))
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
@@ -510,10 +510,11 @@ class CustomerPurchaseOrderController extends Controller
         $affectIgv = (bool) $quote->affect_igv;
 
         $items = $quote->items->map(function (QuoteItem $item) use ($affectIgv) {
-            $quantity = round((float) $item->quantity, 2);
-            $unitPrice = round((float) $item->unit_price, 2);
-            $subtotal = round($quantity * $unitPrice, 2);
-            $taxAmount = $affectIgv ? round($subtotal * 0.18, 2) : 0;
+            $quantity = (string) $item->quantity;
+            $unitPrice = (string) $item->unit_price;
+            $lineTotal = bcmul($quantity, $unitPrice, 10);
+            $subtotal = $affectIgv ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
+            $taxAmount = $affectIgv ? bcsub($lineTotal, $subtotal, 10) : '0';
 
             return [
                 'quote_item_id' => $item->id,
@@ -537,7 +538,7 @@ class CustomerPurchaseOrderController extends Controller
                 'unit_price' => $unitPrice,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'line_total' => round($subtotal + $taxAmount, 2),
+                'line_total' => $lineTotal,
             ];
         })->values();
 
@@ -947,10 +948,11 @@ class CustomerPurchaseOrderController extends Controller
                     ? $quoteItems->get($item['quote_item_id'])
                     : null;
 
-                $quantity = round((float) $item['quantity'], 2);
-                $unitPrice = round((float) $item['unit_price'], 2);
-                $subtotal = round($quantity * $unitPrice, 2);
-                $taxAmount = $affectIgv ? round($subtotal * 0.18, 2) : 0;
+                $quantity = (string) $item['quantity'];
+                $unitPrice = (string) $item['unit_price'];
+                $lineTotal = bcmul($quantity, $unitPrice, 10);
+                $subtotal = $affectIgv ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
+                $taxAmount = $affectIgv ? bcsub($lineTotal, $subtotal, 10) : '0';
 
                 return [
                     'quote_item_id' => $item['quote_item_id'] ?? null,
@@ -987,7 +989,7 @@ class CustomerPurchaseOrderController extends Controller
                     'unit_price' => $unitPrice,
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
-                    'line_total' => round($subtotal + $taxAmount, 2),
+                    'line_total' => $lineTotal,
                     'status' => $item['status'] ?? 'active',
                 ];
             })
@@ -996,15 +998,25 @@ class CustomerPurchaseOrderController extends Controller
 
     private function calculateTotals(array $items, bool $affectIgv): array
     {
-        $subtotal = round((float) collect($items)->sum('subtotal'), 2);
-        $igv = round((float) collect($items)->sum('tax_amount'), 2);
+        $grandTotal = array_reduce(
+            $items,
+            fn (string $total, array $item) => bcadd($total, (string) $item['line_total'], 10),
+            '0'
+        );
+        $subtotalTaxed = $affectIgv ? bcdiv($grandTotal, '1.18', 10) : '0';
+        $igv = $affectIgv ? bcsub($grandTotal, $subtotalTaxed, 10) : '0';
 
         return [
-            'subtotal_exonerated' => $affectIgv ? 0 : $subtotal,
-            'subtotal_taxed' => $affectIgv ? $subtotal : 0,
+            'subtotal_exonerated' => $affectIgv ? '0' : $grandTotal,
+            'subtotal_taxed' => $subtotalTaxed,
             'igv' => $igv,
-            'grand_total' => round($subtotal + $igv, 2),
+            'grand_total' => $grandTotal,
         ];
+    }
+
+    private function formatDecimal(string|int|float|null $value): string
+    {
+        return number_format((float) ($value ?? 0), 3, '.', '');
     }
 
     private function nextCode(): string

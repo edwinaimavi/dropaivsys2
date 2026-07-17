@@ -73,7 +73,7 @@
                                     <small class="text-muted d-block">Total de venta</small>
                                     <div class="purchase-order-side-total mt-1">
                                         <span class="purchase-order-currency-symbol">S/</span>
-                                        <span id="purchaseOrderSideGrandTotal">0.00</span>
+                                        <span id="purchaseOrderSideGrandTotal">0.000</span>
                                     </div>
                                 </div>
 
@@ -420,8 +420,9 @@
                                                         class="input-group-text purchase-order-currency-code">PEN</span>
                                                 </div>
                                                 <input type="text" id="purchase_order_subtotal_exonerated"
-                                                    name="subtotal_exonerated" class="form-control text-right"
-                                                    value="0.00" readonly>
+                                                    class="form-control text-right" value="0.000" readonly>
+                                                <input type="hidden" id="purchase_order_subtotal_exonerated_raw"
+                                                    name="subtotal_exonerated" value="0">
                                             </div>
                                         </div>
 
@@ -433,8 +434,9 @@
                                                         class="input-group-text purchase-order-currency-code">PEN</span>
                                                 </div>
                                                 <input type="text" id="purchase_order_subtotal_taxed"
-                                                    name="subtotal_taxed" class="form-control text-right"
-                                                    value="0.00" readonly>
+                                                    class="form-control text-right" value="0.000" readonly>
+                                                <input type="hidden" id="purchase_order_subtotal_taxed_raw"
+                                                    name="subtotal_taxed" value="0">
                                             </div>
                                         </div>
 
@@ -445,8 +447,9 @@
                                                     <span
                                                         class="input-group-text purchase-order-currency-code">PEN</span>
                                                 </div>
-                                                <input type="text" id="purchase_order_igv" name="igv"
-                                                    class="form-control text-right" value="0.00" readonly>
+                                                <input type="text" id="purchase_order_igv"
+                                                    class="form-control text-right" value="0.000" readonly>
+                                                <input type="hidden" id="purchase_order_igv_raw" name="igv" value="0">
                                             </div>
                                         </div>
 
@@ -457,9 +460,10 @@
                                                     <span
                                                         class="input-group-text purchase-order-currency-code">PEN</span>
                                                 </div>
-                                                <input type="text" id="purchase_order_grand_total" name="grand_total"
-                                                    class="form-control text-right font-weight-bold" value="0.00"
-                                                    readonly>
+                                                <input type="text" id="purchase_order_grand_total"
+                                                    class="form-control text-right font-weight-bold" value="0.000" readonly>
+                                                <input type="hidden" id="purchase_order_grand_total_raw"
+                                                    name="grand_total" value="0">
                                             </div>
                                         </div>
                                     </div>
@@ -567,17 +571,18 @@
                             </td>
                             <td>
                                 <input type="number" class="form-control form-control-sm text-right item-unit-price"
-                                    name="items[__INDEX__][unit_price]" value="0.00" min="0" step="0.01">
+                                    name="items[__INDEX__][unit_price]" value="0" min="0" step="0.0000000001">
                             </td>
                             <td>
                                 <input type="hidden" class="item-subtotal" name="items[__INDEX__][subtotal]"
                                     value="0.00">
                                 <input type="hidden" class="item-tax-amount" name="items[__INDEX__][tax_amount]"
                                     value="0.00">
+                                <input type="hidden" class="item-line-total-raw"
+                                    name="items[__INDEX__][line_total]" value="0">
                                 <input type="number"
                                     class="form-control form-control-sm text-right font-weight-bold item-line-total"
-                                    name="items[__INDEX__][line_total]" value="0.00" min="0" step="0.01"
-                                    readonly>
+                                    value="0.000" min="0" step="0.001" readonly>
                             </td>
                             <td class="align-middle text-center">
                                 <button type="button"
