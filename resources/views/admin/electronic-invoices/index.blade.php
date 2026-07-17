@@ -378,6 +378,7 @@
             electronicInvoiceUpdate: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceDelete: "{{ url('admin/electronic-invoices') }}",
             electronicInvoicePayload: "{{ url('admin/electronic-invoices') }}",
+            electronicInvoiceSend: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceSeriesNextNumber: "{{ route('admin.electronic-invoice-series.nextNumber') }}"
         });
     </script>

@@ -19,7 +19,7 @@ class UnitController extends Controller
     public function __construct()
     {
         $this->middleware('can:admin.units.index')->only(['index', 'list', 'search']);
-        $this->middleware('can:admin.units.store')->only(['store']);
+        $this->middleware('can:admin.units.store')->only(['store', 'quickStore']);
         $this->middleware('can:admin.units.update')->only(['update']);
         $this->middleware('can:admin.units.destroy')->only(['destroy']);
     }
@@ -219,6 +219,60 @@ class UnitController extends Controller
 
                 'error' => $e->getMessage()
 
+            ], 500);
+        }
+    }
+
+    public function quickStore(Request $request)
+    {
+        $validated = $request->validate([
+            'abbreviation' => ['required', 'string', 'max:20'],
+            'description' => ['required', 'string', 'max:255'],
+            'decimal_quantity' => ['required', 'boolean'],
+        ], [
+            'abbreviation.required' => 'La abreviatura es obligatoria.',
+            'abbreviation.max' => 'La abreviatura no debe superar los 20 caracteres.',
+            'description.required' => 'La unidad es obligatoria.',
+            'description.max' => 'La descripción no debe superar los 255 caracteres.',
+            'decimal_quantity.required' => 'Debe indicar si la unidad permite decimales.',
+            'decimal_quantity.boolean' => 'La opción de decimales no es válida.',
+        ]);
+
+        $validated['abbreviation'] = mb_strtoupper(trim($validated['abbreviation']));
+        $validated['description'] = mb_strtoupper(trim($validated['description']));
+
+        if (Unit::withTrashed()->where('abbreviation', $validated['abbreviation'])->exists()) {
+            return response()->json([
+                'message' => 'Ya existe una unidad con esa abreviatura.',
+                'errors' => ['abbreviation' => ['Ya existe una unidad con esa abreviatura.']],
+            ], 422);
+        }
+
+        try {
+            $unit = DB::transaction(function () use ($validated) {
+                return Unit::create($validated + [
+                    'status' => 'ACTIVE',
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Unidad registrada correctamente.',
+                'data' => [
+                    'id' => $unit->id,
+                    'text' => $unit->description,
+                    'description' => $unit->description,
+                    'abbreviation' => $unit->abbreviation,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('Error quick creating unit.', ['exception' => $e]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo registrar la unidad. Inténtelo nuevamente.',
             ], 500);
         }
     }

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\ElectronicInvoice;
+use App\Models\ElectronicInvoiceItem;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryItem;
 use App\Models\WarehouseKardexMovement;
@@ -102,6 +104,244 @@ class WarehouseKardexService
                 $this->reverseEntryMovement($movement, $entry, $reason);
             }
         });
+    }
+
+    public function registerExitFromElectronicInvoice(ElectronicInvoice $invoice): void
+    {
+        DB::transaction(function () use ($invoice) {
+            $invoice = ElectronicInvoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($invoice->status !== 'generated' || $invoice->is_voided || $invoice->stock_moved_at) {
+                return;
+            }
+
+            $invoice->loadMissing(['customer', 'warehouseEntry', 'items.article.category']);
+            $stockItems = $invoice->items->filter(function (ElectronicInvoiceItem $item) {
+                $categoryType = mb_strtoupper((string) $item->article?->category?->type, 'UTF-8');
+
+                return $item->article_id && $categoryType !== 'SERVICIO';
+            });
+
+            if ($stockItems->isEmpty()) {
+                return;
+            }
+
+            if (! $invoice->warehouseEntry?->warehouse_id) {
+                throw ValidationException::withMessages([
+                    'warehouse_entry_id' => 'Seleccione un ingreso de almacén para identificar el almacén de salida.',
+                ]);
+            }
+
+            foreach ($stockItems as $item) {
+                $this->registerElectronicInvoiceItemExit($invoice, $item);
+            }
+
+            $invoice->update([
+                'stock_moved_at' => now(),
+                'stock_reversed_at' => null,
+                'updated_by' => Auth::id(),
+            ]);
+        });
+    }
+
+    public function reverseElectronicInvoiceExit(ElectronicInvoice $invoice, ?string $reason = null): void
+    {
+        DB::transaction(function () use ($invoice, $reason) {
+            $invoice = ElectronicInvoice::withTrashed()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $movements = WarehouseKardexMovement::query()
+                ->where('source_type', ElectronicInvoice::class)
+                ->where('source_id', $invoice->id)
+                ->where('operation_type', 'electronic_invoice')
+                ->where('movement_type', 'exit')
+                ->where('status', self::STATUS_REGISTERED)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($movements as $movement) {
+                $stock = WarehouseStock::query()
+                    ->whereKey($movement->warehouse_stock_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $quantity = round((float) $movement->quantity_out, 4);
+                $costIn = round((float) $movement->total_cost_out, 2);
+                $newQuantity = round((float) $stock->current_quantity + $quantity, 4);
+                $newTotalCost = round((float) $stock->total_cost + $costIn, 2);
+                $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
+
+                $stock->update([
+                    'current_quantity' => $newQuantity,
+                    'average_unit_cost' => $averageCost,
+                    'total_cost' => $newTotalCost,
+                    'updated_by' => Auth::id(),
+                ]);
+
+                WarehouseKardexMovement::create([
+                    'movement_number' => $this->generateMovementNumber(),
+                    'warehouse_stock_id' => $stock->id,
+                    'warehouse_id' => $movement->warehouse_id,
+                    'article_id' => $movement->article_id,
+                    'unit_id' => $movement->unit_id,
+                    'presentation_id' => $movement->presentation_id,
+                    'brand_id' => $movement->brand_id,
+                    'lot_number' => $movement->lot_number,
+                    'expiration_date' => $movement->expiration_date,
+                    'origin' => $movement->origin,
+                    'cost_type' => $movement->cost_type,
+                    'movement_date' => now(),
+                    'movement_type' => 'exit_reversal',
+                    'operation_type' => 'electronic_invoice_cancel',
+                    'source_type' => ElectronicInvoice::class,
+                    'source_id' => $invoice->id,
+                    'source_item_type' => $movement->source_item_type,
+                    'source_item_id' => $movement->source_item_id,
+                    'document_type' => $movement->document_type,
+                    'document_series' => $movement->document_series,
+                    'document_number' => $movement->document_number,
+                    'related_party_type' => 'customer',
+                    'related_party_id' => $invoice->customer_id,
+                    'related_party_name' => $invoice->client_name,
+                    'quantity_in' => $quantity,
+                    'quantity_out' => 0,
+                    'balance_quantity' => $newQuantity,
+                    'unit_cost' => $movement->unit_cost,
+                    'total_cost_in' => $costIn,
+                    'total_cost_out' => 0,
+                    'average_unit_cost' => $averageCost,
+                    'balance_total_cost' => $newTotalCost,
+                    'currency_id' => $movement->currency_id,
+                    'exchange_rate' => $movement->exchange_rate,
+                    'observations' => $reason ?: 'Anulación de salida por comprobante electrónico',
+                    'status' => self::STATUS_REGISTERED,
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+
+                $movement->update(['status' => self::STATUS_REVERSED, 'updated_by' => Auth::id()]);
+            }
+
+            if ($movements->isNotEmpty() || $invoice->stock_moved_at) {
+                $invoice->update([
+                    'stock_moved_at' => null,
+                    'stock_reversed_at' => now(),
+                    'updated_by' => Auth::id(),
+                ]);
+            }
+        });
+    }
+
+    private function registerElectronicInvoiceItemExit(
+        ElectronicInvoice $invoice,
+        ElectronicInvoiceItem $item
+    ): void {
+        $required = round((float) $item->quantity, 4);
+        $warehouseId = (int) $invoice->warehouseEntry->warehouse_id;
+        $stocksQuery = WarehouseStock::query()
+            ->where('warehouse_id', $warehouseId)
+            ->where('article_id', $item->article_id)
+            ->where('status', 'ACTIVE')
+            ->where('current_quantity', '>', 0);
+
+        if ($item->lot_number) {
+            $stocksQuery->whereRaw('UPPER(lot_number) = ?', [mb_strtoupper($item->lot_number, 'UTF-8')]);
+        }
+        if ($item->expiration_date) {
+            $stocksQuery->whereDate('expiration_date', $item->expiration_date);
+        }
+
+        $stocks = $stocksQuery
+            ->orderByRaw('expiration_date IS NULL')
+            ->orderBy('expiration_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $available = round((float) $stocks->sum('current_quantity'), 4);
+
+        if ($available < $required) {
+            $articleName = $item->article?->billing_name ?: $item->description;
+            throw ValidationException::withMessages([
+                'items' => sprintf(
+                    'No hay stock suficiente para el artículo %s. Stock disponible: %s, cantidad requerida: %s.',
+                    $articleName,
+                    number_format($available, 4, '.', ''),
+                    number_format($required, 4, '.', '')
+                ),
+            ]);
+        }
+
+        $pending = $required;
+        $firstMovementId = null;
+        foreach ($stocks as $stock) {
+            if ($pending <= 0) {
+                break;
+            }
+            $stockQuantity = round((float) $stock->current_quantity, 4);
+            $quantityOut = min($pending, $stockQuantity);
+            $unitCost = round((float) $stock->average_unit_cost, 6);
+            $costOut = round($quantityOut * $unitCost, 2);
+            $newQuantity = round($stockQuantity - $quantityOut, 4);
+            $newTotalCost = max(round((float) $stock->total_cost - $costOut, 2), 0);
+            $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
+
+            $stock->update([
+                'current_quantity' => $newQuantity,
+                'average_unit_cost' => $averageCost,
+                'total_cost' => $newTotalCost,
+                'updated_by' => Auth::id(),
+            ]);
+
+            $movement = WarehouseKardexMovement::create([
+                'movement_number' => $this->generateMovementNumber(),
+                'warehouse_stock_id' => $stock->id,
+                'warehouse_id' => $warehouseId,
+                'article_id' => $item->article_id,
+                'unit_id' => $stock->unit_id,
+                'presentation_id' => $stock->presentation_id,
+                'brand_id' => $stock->brand_id,
+                'lot_number' => $stock->lot_number,
+                'expiration_date' => $stock->expiration_date,
+                'origin' => $stock->origin,
+                'cost_type' => $stock->cost_type,
+                'movement_date' => now(),
+                'movement_type' => 'exit',
+                'operation_type' => 'electronic_invoice',
+                'source_type' => ElectronicInvoice::class,
+                'source_id' => $invoice->id,
+                'source_item_type' => ElectronicInvoiceItem::class,
+                'source_item_id' => $item->id,
+                'document_type' => $invoice->document_type === '01' ? 'FACTURA' : 'BOLETA',
+                'document_series' => $invoice->serie,
+                'document_number' => $invoice->correlativo,
+                'related_party_type' => 'customer',
+                'related_party_id' => $invoice->customer_id,
+                'related_party_name' => $invoice->client_name,
+                'quantity_in' => 0,
+                'quantity_out' => $quantityOut,
+                'balance_quantity' => $newQuantity,
+                'unit_cost' => $unitCost,
+                'total_cost_in' => 0,
+                'total_cost_out' => $costOut,
+                'average_unit_cost' => $averageCost,
+                'balance_total_cost' => $newTotalCost,
+                'currency_id' => $invoice->currency_id,
+                'exchange_rate' => 1,
+                'observations' => 'Salida por facturación',
+                'status' => self::STATUS_REGISTERED,
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+            $firstMovementId ??= $movement->id;
+            $pending = round($pending - $quantityOut, 4);
+        }
+
+        $item->update(['kardex_movement_id' => $firstMovementId]);
     }
 
     private function registerEntryItem(WarehouseEntry $entry, WarehouseEntryItem $item): void

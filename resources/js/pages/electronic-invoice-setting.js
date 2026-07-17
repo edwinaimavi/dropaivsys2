@@ -88,8 +88,8 @@ function loadSetting(id, editable) {
         $('#setting_provider').val(item.provider || 'apisperu');
         $('#setting_environment').val(item.environment || 'beta');
         $('#setting_api_base_url').val(item.api_base_url || '');
-        $('#setting_api_token').val(item.api_token || '');
-        $('#setting_user_token').val(item.user_token || '');
+        $('#setting_api_token').val('').attr('placeholder', item.has_api_token ? '******** (conservado)' : '');
+        $('#setting_user_token').val('').attr('placeholder', item.has_user_token ? '******** (conservado)' : '');
         $('#setting_ruc').val(item.ruc || '');
         $('#setting_business_name').val(item.business_name || '');
         $('#setting_trade_name').val(item.trade_name || '');
@@ -99,7 +99,7 @@ function loadSetting(id, editable) {
         $('#setting_province').val(item.province || '');
         $('#setting_district').val(item.district || '');
         $('#setting_sol_user').val(item.sol_user || '');
-        $('#setting_sol_password').val(item.sol_password || '');
+        $('#setting_sol_password').val('').attr('placeholder', item.has_sol_password ? '******** (conservada)' : '');
         $('#setting_is_active').val(item.is_active ? '1' : '0');
 
         setSettingReadonly(!editable);

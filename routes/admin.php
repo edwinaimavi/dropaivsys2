@@ -146,6 +146,7 @@ Route::delete(
 
 //RUTAS PARA UNIDADES DE MEDIDA 
 Route::get('units/list', [UnitController::class, 'list'])->name('units.list');
+Route::post('units/quick-store', [UnitController::class, 'quickStore'])->name('units.quick-store');
 Route::get(
     'units/search',
     [UnitController::class, 'search']
@@ -154,6 +155,7 @@ Route::resource('units', UnitController::class)->except(['create', 'show']);
 
 //RUTAS PARA PRESENTACIONES
 Route::get('presentations/list', [PresentationController::class, 'list'])->name('presentations.list');
+Route::post('presentations/quick-store', [PresentationController::class, 'quickStore'])->name('presentations.quick-store');
 Route::get(
     'presentations/search',
     [PresentationController::class, 'search']

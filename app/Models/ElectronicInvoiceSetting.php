@@ -35,6 +35,9 @@ class ElectronicInvoiceSetting extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'api_token' => 'encrypted',
+        'user_token' => 'encrypted',
+        'sol_password' => 'encrypted',
     ];
 
     public function company()

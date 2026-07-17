@@ -169,6 +169,14 @@ class ElectronicInvoiceSeriesController extends Controller
             ]);
         }
 
+        $prefix = $validated['document_type'] === '01' ? 'F'
+            : ($validated['document_type'] === '03' ? 'B' : null);
+        if ($prefix && ! str_starts_with(mb_strtoupper($validated['serie']), $prefix)) {
+            throw ValidationException::withMessages([
+                'serie' => "La serie para este tipo de comprobante debe comenzar con {$prefix}.",
+            ]);
+        }
+
         try {
             $data = array_merge($validated, [
                 'serie' => mb_strtoupper($validated['serie']),
@@ -182,6 +190,15 @@ class ElectronicInvoiceSeriesController extends Controller
             } else {
                 $data['created_by'] = Auth::id();
                 $series = ElectronicInvoiceSeries::create($data);
+            }
+
+            if ($series->is_default) {
+                ElectronicInvoiceSeries::query()
+                    ->where('company_id', $series->company_id)
+                    ->where('document_type', $series->document_type)
+                    ->where('environment', $series->environment)
+                    ->whereKeyNot($series->id)
+                    ->update(['is_default' => false, 'updated_by' => Auth::id()]);
             }
 
             return response()->json([

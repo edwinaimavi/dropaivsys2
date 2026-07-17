@@ -143,7 +143,8 @@ function kardexMovementBadge(type) {
         adjustment_out: ['Ajuste Salida', 'kardex-badge-adjustment-out', 'fa-minus-circle'],
         transfer_in: ['Transferencia Entrada', 'kardex-badge-transfer-in', 'fa-exchange-alt'],
         transfer_out: ['Transferencia Salida', 'kardex-badge-transfer-out', 'fa-exchange-alt'],
-        reversal: ['Reversa', 'kardex-badge-reversal', 'fa-undo-alt']
+        reversal: ['Reversa', 'kardex-badge-reversal', 'fa-undo-alt'],
+        exit_reversal: ['Reversa de salida', 'kardex-badge-reversal', 'fa-undo-alt']
     };
     const item = map[type] || [type || '-', 'kardex-badge-reversal', 'fa-circle'];
 

@@ -130,6 +130,7 @@
                         <option value="transfer_in">Transferencia Entrada</option>
                         <option value="transfer_out">Transferencia Salida</option>
                         <option value="reversal">Reversa</option>
+                        <option value="exit_reversal">Reversa de salida</option>
                     </select>
                 </div>
                 <div class="form-group col-md-3">

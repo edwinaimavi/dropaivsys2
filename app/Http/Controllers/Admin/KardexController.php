@@ -43,7 +43,7 @@ class KardexController extends Controller
                 ->sum('quantity_in'),
             'month_exits' => WarehouseKardexMovement::query()
                 ->where('status', 'registered')
-                ->whereIn('movement_type', ['exit', 'reversal', 'adjustment_out', 'transfer_out'])
+                ->whereIn('movement_type', ['exit', 'adjustment_out', 'transfer_out'])
                 ->whereMonth('movement_date', now()->month)
                 ->whereYear('movement_date', now()->year)
                 ->sum('quantity_out'),
@@ -126,7 +126,11 @@ class KardexController extends Controller
             'data' => $movement,
             'movement_type_label' => $this->movementTypePresentation($movement->movement_type)['label'],
             'status_label' => $this->statusPresentation($movement->status)['label'],
-            'source_label' => $movement->source_type ? class_basename($movement->source_type) : '-',
+            'source_label' => match ($movement->operation_type) {
+                'electronic_invoice', 'electronic_invoice_cancel' => 'Facturación',
+                'warehouse_entry', 'warehouse_entry_cancel' => 'Ingreso de almacén',
+                default => $movement->source_type ? class_basename($movement->source_type) : '-',
+            },
             'source_item_label' => $movement->source_item_type ? class_basename($movement->source_item_type) : '-',
         ]);
     }
@@ -196,6 +200,7 @@ class KardexController extends Controller
             'transfer_in' => ['label' => 'Transferencia Entrada', 'class' => 'badge-info text-white'],
             'transfer_out' => ['label' => 'Transferencia Salida', 'class' => 'badge-purple text-white'],
             'reversal' => ['label' => 'Reversa', 'class' => 'badge-secondary text-white'],
+            'exit_reversal' => ['label' => 'Reversa de salida', 'class' => 'badge-info text-white'],
         ][$type] ?? ['label' => ucfirst((string) $type), 'class' => 'badge-light text-dark border'];
     }
 

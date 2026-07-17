@@ -164,6 +164,8 @@
             customerPurchaseOrderCustomerDocumentConsult: "{{ route('admin.customers.consultar', ['numero' => 'DOC_PLACEHOLDER']) }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
+            quickStorePresentation: "{{ route('admin.presentations.quick-store') }}",
+            quickStoreUnit: "{{ route('admin.units.quick-store') }}",
             generateArticleCode: "{{ route('admin.articles.generateCode') }}"
         };
         window.purchaseOrderDocumentTypes = @json($documentTypes);

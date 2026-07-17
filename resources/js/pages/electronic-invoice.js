@@ -15,6 +15,8 @@ $(function () {
 
     $('#electronicInvoiceForm').on('submit', function (event) {
         event.preventDefault();
+        const status = event.originalEvent?.submitter?.dataset?.status || $('#ei_requested_status').val() || 'draft';
+        $('#ei_requested_status').val(status);
         saveElectronicInvoice(this);
     });
 
@@ -30,6 +32,7 @@ $(function () {
     $(document).on('change', '#ei_serie_id', updateElectronicInvoiceCorrelative);
     $(document).on('change input', '#ei_issue_date, #ei_currency_id, #ei_correlativo_preview', updateElectronicInvoiceSummary);
     $(document).on('change', '#ei_customer_id', applyElectronicInvoiceCustomer);
+    $(document).on('change', '#ei_customer_branch_id', applyElectronicInvoiceBranch);
     $(document).on('change', '#ei_customer_purchase_order_id', applyElectronicInvoiceOrigin);
     $(document).on('change', '#ei_payment_type', toggleElectronicInvoicePayments);
     $(document).on('change', '.item-article', applyElectronicInvoiceArticle);
@@ -52,6 +55,12 @@ $(function () {
     });
     $(document).on('click', '.previewElectronicInvoicePayload', function () {
         previewElectronicInvoicePayload($(this).data('id'));
+    });
+    $(document).on('click', '.sendElectronicInvoiceToApi', function () {
+        sendElectronicInvoiceToApi($(this).data('id'));
+    });
+    $(document).on('click', '.apiNotConfiguredElectronicInvoice', function () {
+        Swal.fire('API no configurada', 'Configura APIs Perú antes de enviar a SUNAT.', 'info');
     });
     $(document).on('click', '.disabledElectronicInvoiceApiAction', function () {
         Swal.fire({
@@ -101,6 +110,8 @@ function resetElectronicInvoiceForm() {
     const form = $('#electronicInvoiceForm')[0];
     form.reset();
     $('#electronic_invoice_id').val('');
+    $('#ei_requested_status').val('draft');
+    $('#btnSaveElectronicInvoiceDraft').show();
     $('#electronicInvoiceErrors').addClass('d-none').empty();
     $('#electronicInvoiceForm .is-invalid').removeClass('is-invalid');
     $('#electronicInvoiceForm .invalid-feedback').text('');
@@ -152,7 +163,22 @@ function applyElectronicInvoiceCustomer() {
     $('#ei_client_name').val(option.data('name') || '');
     $('#ei_client_email').val(option.data('email') || '');
     $('#ei_client_address').val(option.data('address') || '');
+    $('#ei_customer_branch_id option').each(function () {
+        const branch = $(this);
+        const visible = !branch.val() || String(branch.data('customer-id')) === String(option.val());
+        branch.prop('disabled', !visible).toggle(visible);
+    });
+    $('#ei_customer_branch_id').val('').trigger('change.select2');
     updateElectronicInvoiceSummary();
+}
+
+function applyElectronicInvoiceBranch() {
+    const address = $('#ei_customer_branch_id option:selected').data('address');
+    if (address) {
+        $('#ei_client_address').val(address);
+    } else {
+        $('#ei_client_address').val($('#ei_customer_id option:selected').data('address') || '');
+    }
 }
 
 function applyElectronicInvoiceOrigin() {
@@ -211,9 +237,9 @@ function calculateElectronicInvoiceTotals() {
         const quantity = parseFloat(row.find('.item-quantity').val()) || 0;
         const price = parseFloat(row.find('.item-price').val()) || 0;
         const affectation = row.find('.item-tax-affectation').val();
-        const subtotal = quantity * price;
-        const igv = affectation === '10' ? subtotal * 0.18 : 0;
-        const lineTotal = subtotal + igv;
+        const lineTotal = quantity * price;
+        const subtotal = affectation === '10' ? lineTotal / 1.18 : lineTotal;
+        const igv = affectation === '10' ? lineTotal - subtotal : 0;
 
         if (affectation === '10') taxable += subtotal;
         if (affectation === '20') exonerated += subtotal;
@@ -300,7 +326,7 @@ function saveElectronicInvoice(form) {
         .done(function (response) {
             $('#electronicInvoiceModal').modal('hide');
             tableElectronicInvoice.ajax.reload(null, false);
-            if (!id && response.pdf_url) window.open(response.pdf_url, '_blank');
+            if (response.data?.status === 'generated' && response.pdf_url) window.open(response.pdf_url, '_blank');
             Swal.fire({ icon: 'success', title: response.message, toast: true, position: 'top-end', showConfirmButton: false, timer: 2800 });
         })
         .fail(function (xhr) {
@@ -318,12 +344,15 @@ function loadElectronicInvoiceForEdit(id) {
             resetElectronicInvoiceForm();
             const invoice = response.data;
             $('#electronic_invoice_id').val(invoice.id);
+            $('#ei_requested_status').val(invoice.status === 'generated' ? 'generated' : 'draft');
+            $('#btnSaveElectronicInvoiceDraft').toggle(invoice.status === 'draft');
             $('#electronicInvoiceModalLabel').text('Editar Comprobante');
             $('#ei_company_id').val(invoice.company_id).trigger('change.select2').trigger('change');
             $('#ei_document_type').val(invoice.document_type).trigger('change.select2').trigger('change');
             $('#ei_serie_id').val(invoice.serie_id).trigger('change.select2').trigger('change');
             $('#ei_currency_id').val(invoice.currency_id).trigger('change.select2');
             $('#ei_customer_id').val(invoice.customer_id).trigger('change.select2').trigger('change');
+            $('#ei_customer_branch_id').val(invoice.customer_branch_id || '').trigger('change.select2').trigger('change');
             $('#ei_quote_id').val(invoice.quote_id || '').trigger('change.select2');
             $('#ei_customer_purchase_order_id').val(invoice.customer_purchase_order_id || '').trigger('change.select2');
             $('#ei_warehouse_entry_id').val(invoice.warehouse_entry_id || '').trigger('change.select2');
@@ -406,6 +435,17 @@ function previewElectronicInvoicePayload(id) {
         });
 }
 
+function sendElectronicInvoiceToApi(id) {
+    $.post(`${window.routes.electronicInvoiceSend}/${id}/send`)
+        .done(function (response) {
+            tableElectronicInvoice.ajax.reload(null, false);
+            Swal.fire({ icon: 'info', title: response.message, confirmButtonText: 'Entendido' });
+        })
+        .fail(function (xhr) {
+            Swal.fire('No se pudo preparar el envío', xhr.responseJSON?.message || 'Revise la configuración electrónica.', 'warning');
+        });
+}
+
 function deleteElectronicInvoice(id) {
     Swal.fire({
         icon: 'warning',
@@ -443,7 +483,7 @@ function showElectronicInvoiceValidation(errors) {
 }
 
 function formatElectronicInvoiceMoney(value) {
-    return (parseFloat(value) || 0).toFixed(2);
+    return (parseFloat(value) || 0).toFixed(3);
 }
 
 function formatElectronicInvoiceInputDate(value) {

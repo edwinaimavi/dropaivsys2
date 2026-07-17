@@ -1,5 +1,5 @@
 @php
-    $formatMoney = fn ($value) => trim(($invoice->currency?->symbol ?? '') . ' ' . number_format((float) $value, 2));
+    $formatMoney = fn ($value) => trim(($invoice->currency?->symbol ?? '') . ' ' . number_format((float) $value, 3));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
     $title = $invoice->document_type === '03' ? 'BOLETA DE VENTA ELECTRONICA' : 'FACTURA ELECTRONICA';
 @endphp
@@ -49,7 +49,7 @@
             <div class="doc-number">
                 <div class="title">{{ $title }}</div>
                 <div class="number">{{ $invoice->full_number }}</div>
-                <div class="muted">PDF local preliminar</div>
+                <div class="muted">{{ $invoice->status === 'draft' ? 'BORRADOR - SIN VALIDEZ INTERNA' : 'GENERADO INTERNAMENTE' }}</div>
             </div>
         </div>
     </div>
@@ -81,7 +81,7 @@
                 <th width="9%">Marca</th>
                 <th width="8%">Proced.</th>
                 <th width="7%">Cant.</th>
-                <th width="7%">Precio</th>
+                <th width="7%">Precio c/ IGV</th>
                 <th width="6%">Total</th>
             </tr>
         </thead>
@@ -95,7 +95,7 @@
                     <td class="text-center">{{ $formatDate($item->expiration_date) }}</td>
                     <td>{{ $item->brand_name ?: '-' }}</td>
                     <td>{{ $item->origin ?: '-' }}</td>
-                    <td class="text-right">{{ number_format((float) $item->quantity, 4) }}</td>
+                    <td class="text-right">{{ number_format((float) $item->quantity, 3) }}</td>
                     <td class="text-right">{{ $formatMoney($item->unit_price) }}</td>
                     <td class="text-right">{{ $formatMoney($item->line_total) }}</td>
                 </tr>
@@ -119,7 +119,13 @@
     </table>
 
     <div class="footer">
-        Documento local preliminar generado por DropaivSys. El PDF oficial, XML y CDR vendran de APIs Peru cuando se active la integracion.
+        @if ($invoice->status === 'draft')
+            Borrador interno generado por DropaivSys. No mueve stock y no ha sido enviado a SUNAT.
+        @elseif ($invoice->sunat_status === 'not_configured')
+            Comprobante generado internamente - API no configurada, pendiente de env&iacute;o SUNAT.
+        @else
+            Comprobante generado internamente - pendiente de env&iacute;o SUNAT.
+        @endif
     </div>
 </body>
 </html>

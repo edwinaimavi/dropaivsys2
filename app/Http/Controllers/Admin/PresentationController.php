@@ -21,7 +21,7 @@ class PresentationController extends Controller
     public function __construct()
     {
         $this->middleware('can:admin.presentations.index')->only(['index', 'list', 'search']);
-        $this->middleware('can:admin.presentations.store')->only(['store']);
+        $this->middleware('can:admin.presentations.store')->only(['store', 'quickStore']);
         $this->middleware('can:admin.presentations.update')->only(['update']);
         $this->middleware('can:admin.presentations.destroy')->only(['destroy']);
     }
@@ -226,6 +226,59 @@ class PresentationController extends Controller
 
                 'error' => $e->getMessage()
 
+            ], 500);
+        }
+    }
+
+    public function quickStore(Request $request)
+    {
+        $validated = $request->validate([
+            'description' => ['required', 'string', 'max:255'],
+            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'unit_id' => ['required', 'exists:units,id'],
+        ], [
+            'description.required' => 'La presentación es obligatoria.',
+            'description.max' => 'La descripción no debe superar los 255 caracteres.',
+            'quantity.required' => 'La cantidad es obligatoria.',
+            'quantity.numeric' => 'La cantidad debe ser un número válido.',
+            'quantity.min' => 'La cantidad debe ser mayor a cero.',
+            'unit_id.required' => 'Debe seleccionar una unidad.',
+            'unit_id.exists' => 'La unidad seleccionada no existe.',
+        ]);
+
+        $validated['description'] = mb_strtoupper(trim($validated['description']));
+
+        if (Presentation::withTrashed()->where('description', $validated['description'])->exists()) {
+            return response()->json([
+                'message' => 'Ya existe una presentación con ese nombre.',
+                'errors' => ['description' => ['Ya existe una presentación con ese nombre.']],
+            ], 422);
+        }
+
+        try {
+            $presentation = DB::transaction(function () use ($validated) {
+                return Presentation::create($validated + [
+                    'status' => 'ACTIVE',
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Presentación registrada correctamente.',
+                'data' => [
+                    'id' => $presentation->id,
+                    'text' => $presentation->description,
+                    'description' => $presentation->description,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('Error quick creating presentation.', ['exception' => $e]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo registrar la presentación. Inténtelo nuevamente.',
             ], 500);
         }
     }

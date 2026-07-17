@@ -4,6 +4,7 @@
         <form id="electronicInvoiceForm" class="modal-content border-0 shadow electronic-invoice-modal">
             @csrf
             <input type="hidden" id="electronic_invoice_id">
+            <input type="hidden" id="ei_requested_status" name="requested_status" value="draft">
 
             <div class="modal-header border-0 text-white invoice-modal-header">
                 <div class="d-flex align-items-center">
@@ -181,7 +182,20 @@
                                     <label>Email</label>
                                     <input id="ei_client_email" type="text" class="form-control form-control-sm invoice-compact-input" readonly>
                                 </div>
-                                <div class="form-group col-12">
+                                <div class="form-group col-lg-4 col-md-6">
+                                    <label>Sucursal / direcci&oacute;n</label>
+                                    <select id="ei_customer_branch_id" name="customer_branch_id"
+                                        class="form-control form-control-sm invoice-compact-input">
+                                        <option value="">Direcci&oacute;n principal</option>
+                                        @foreach ($customerBranches as $branch)
+                                            <option value="{{ $branch->id }}" data-customer-id="{{ $branch->customer_id }}"
+                                                data-address="{{ $branch->address }}">
+                                                {{ $branch->branch_name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="form-group col-lg-8 col-md-6">
                                     <label>Direcci&oacute;n</label>
                                     <input id="ei_client_address" type="text" class="form-control form-control-sm invoice-compact-input" readonly>
                                 </div>
@@ -319,8 +333,13 @@
                 <button type="button" class="btn btn-light border px-4" data-dismiss="modal">
                     <i class="fas fa-times mr-1"></i> Cancelar
                 </button>
-                <button type="submit" class="btn btn-success px-4">
-                    <i class="fas fa-save mr-1"></i> Guardar comprobante
+                <button type="submit" id="btnSaveElectronicInvoiceDraft" class="btn btn-outline-secondary px-4"
+                    data-status="draft">
+                    <i class="fas fa-pencil-alt mr-1"></i> Guardar borrador
+                </button>
+                <button type="submit" id="btnGenerateElectronicInvoice" class="btn btn-success px-4"
+                    data-status="generated">
+                    <i class="fas fa-check-circle mr-1"></i> Generar interno
                 </button>
             </div>
         </form>
@@ -350,8 +369,8 @@
         <td><input name="items[__INDEX__][presentation_name]" class="form-control form-control-sm text-uppercase"></td>
         <td><input name="items[__INDEX__][origin]" class="form-control form-control-sm text-uppercase"></td>
         <td><input name="items[__INDEX__][unit_code]" class="form-control form-control-sm text-uppercase" value="NIU"></td>
-        <td><input name="items[__INDEX__][quantity]" type="number" min="0.0001" step="0.0001" class="form-control form-control-sm item-quantity" value="1"></td>
-        <td><input name="items[__INDEX__][unit_price]" type="number" min="0" step="0.000001" class="form-control form-control-sm item-price" value="0"></td>
+        <td><input name="items[__INDEX__][quantity]" type="number" min="0.0000000001" step="0.0000000001" class="form-control form-control-sm item-quantity" value="1"></td>
+        <td><input name="items[__INDEX__][unit_price]" type="number" min="0" step="0.0000000001" class="form-control form-control-sm item-price" value="0"></td>
         <td>
             <select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation">
                 @foreach ($taxAffectations as $tax)

@@ -18,16 +18,16 @@ class ElectronicInvoiceItem extends Model
 
     protected $casts = [
         'expiration_date' => 'date',
-        'quantity' => 'decimal:4',
-        'unit_value' => 'decimal:6',
-        'unit_price' => 'decimal:6',
-        'discount_amount' => 'decimal:2',
-        'subtotal' => 'decimal:2',
-        'igv_base' => 'decimal:2',
-        'igv_amount' => 'decimal:2',
+        'quantity' => 'decimal:10',
+        'unit_value' => 'decimal:10',
+        'unit_price' => 'decimal:10',
+        'discount_amount' => 'decimal:10',
+        'subtotal' => 'decimal:10',
+        'igv_base' => 'decimal:10',
+        'igv_amount' => 'decimal:10',
         'igv_percentage' => 'decimal:2',
-        'total_taxes' => 'decimal:2',
-        'line_total' => 'decimal:2',
+        'total_taxes' => 'decimal:10',
+        'line_total' => 'decimal:10',
     ];
 
     public function invoice() { return $this->belongsTo(ElectronicInvoice::class, 'electronic_invoice_id'); }
@@ -35,4 +35,9 @@ class ElectronicInvoiceItem extends Model
     public function quoteItem() { return $this->belongsTo(QuoteItem::class); }
     public function customerPurchaseOrderItem() { return $this->belongsTo(CustomerPurchaseOrderItem::class); }
     public function warehouseEntryItem() { return $this->belongsTo(WarehouseEntryItem::class); }
+    public function kardexMovement() { return $this->belongsTo(WarehouseKardexMovement::class); }
+    public function kardexMovements()
+    {
+        return $this->morphMany(WarehouseKardexMovement::class, 'sourceItem');
+    }
 }

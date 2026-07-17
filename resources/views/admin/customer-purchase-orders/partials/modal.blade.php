@@ -865,24 +865,44 @@
                             <div class="form-row">
                                 <div class="form-group col-md-6 mb-0">
                                     <label>PRESENTACIÓN <span class="text-danger">*</span></label>
-                                    <select id="quick_article_presentation_id" name="presentation_id"
-                                        class="form-control form-control-sm" required>
-                                        <option value="">Seleccione presentación</option>
-                                        @foreach ($presentations as $presentation)
-                                            <option value="{{ $presentation->id }}">{{ $presentation->description }}</option>
-                                        @endforeach
-                                    </select>
+                                    <div class="input-group input-group-sm">
+                                        <select id="quick_article_presentation_id" name="presentation_id"
+                                            class="form-control form-control-sm" required>
+                                            <option value="">Seleccione presentación</option>
+                                            @foreach ($presentations as $presentation)
+                                                <option value="{{ $presentation->id }}">{{ $presentation->description }}</option>
+                                            @endforeach
+                                        </select>
+                                        @can('admin.presentations.store')
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-outline-primary btnQuickCreatePresentation"
+                                                    title="Nueva presentación" aria-label="Nueva presentación">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </div>
+                                        @endcan
+                                    </div>
                                     <span class="invalid-feedback"></span>
                                 </div>
                                 <div class="form-group col-md-6 mb-0">
                                     <label>UNIDAD <span class="text-danger">*</span></label>
-                                    <select id="quick_article_unit_id" name="unit_id"
-                                        class="form-control form-control-sm" required>
-                                        <option value="">Seleccione unidad</option>
-                                        @foreach ($units as $unit)
-                                            <option value="{{ $unit->id }}">{{ $unit->description }}</option>
-                                        @endforeach
-                                    </select>
+                                    <div class="input-group input-group-sm">
+                                        <select id="quick_article_unit_id" name="unit_id"
+                                            class="form-control form-control-sm" required>
+                                            <option value="">Seleccione unidad</option>
+                                            @foreach ($units as $unit)
+                                                <option value="{{ $unit->id }}">{{ $unit->description }}</option>
+                                            @endforeach
+                                        </select>
+                                        @can('admin.units.store')
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-outline-primary btnQuickCreateUnit"
+                                                    title="Nueva unidad" aria-label="Nueva unidad">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </div>
+                                        @endcan
+                                    </div>
                                     <span class="invalid-feedback"></span>
                                 </div>
                             </div>
@@ -929,6 +949,99 @@
         </div>
     </div>
 </div>
+
+@can('admin.presentations.store')
+<div class="modal fade purchase-order-child-modal" id="quickPurchaseOrderPresentationModal" tabindex="-1"
+    role="dialog" aria-labelledby="quickPurchaseOrderPresentationModalLabel" aria-hidden="true"
+    data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickPurchaseOrderPresentationForm" autocomplete="off">
+                <div class="modal-header bg-white py-2">
+                    <h5 class="modal-title font-weight-bold" id="quickPurchaseOrderPresentationModalLabel">Nueva presentación</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div id="quickPurchaseOrderPresentationErrors" class="alert alert-danger d-none"></div>
+                    <div class="form-group">
+                        <label>DESCRIPCIÓN <span class="text-danger">*</span></label>
+                        <input type="text" id="quick_presentation_description" name="description"
+                            class="form-control form-control-sm text-uppercase" maxlength="255" required>
+                        <span class="invalid-feedback"></span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-5">
+                            <label>CANTIDAD <span class="text-danger">*</span></label>
+                            <input type="number" name="quantity" class="form-control form-control-sm" value="1" min="0.01" step="0.01" required>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                        <div class="form-group col-7">
+                            <label>UNIDAD <span class="text-danger">*</span></label>
+                            <select id="quick_presentation_unit_id" name="unit_id" class="form-control form-control-sm" required>
+                                <option value="">Seleccione</option>
+                                @foreach ($units as $unit)
+                                    <option value="{{ $unit->id }}">{{ $unit->description }}</option>
+                                @endforeach
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSaveQuickPurchaseOrderPresentation">
+                        <i class="fas fa-save mr-1"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endcan
+
+@can('admin.units.store')
+<div class="modal fade purchase-order-child-modal" id="quickPurchaseOrderUnitModal" tabindex="-1"
+    role="dialog" aria-labelledby="quickPurchaseOrderUnitModalLabel" aria-hidden="true"
+    data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="quickPurchaseOrderUnitForm" autocomplete="off">
+                <div class="modal-header bg-white py-2">
+                    <h5 class="modal-title font-weight-bold" id="quickPurchaseOrderUnitModalLabel">Nueva unidad</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div id="quickPurchaseOrderUnitErrors" class="alert alert-danger d-none"></div>
+                    <div class="form-group">
+                        <label>ABREVIATURA <span class="text-danger">*</span></label>
+                        <input type="text" id="quick_unit_abbreviation" name="abbreviation"
+                            class="form-control form-control-sm text-uppercase" maxlength="20" required>
+                        <span class="invalid-feedback"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>DESCRIPCIÓN <span class="text-danger">*</span></label>
+                        <input type="text" name="description" class="form-control form-control-sm text-uppercase" maxlength="255" required>
+                        <span class="invalid-feedback"></span>
+                    </div>
+                    <div class="form-group mb-0">
+                        <label>¿PERMITE CANTIDADES DECIMALES?</label>
+                        <select name="decimal_quantity" class="form-control form-control-sm">
+                            <option value="0">NO</option>
+                            <option value="1">SÍ</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSaveQuickPurchaseOrderUnit">
+                        <i class="fas fa-save mr-1"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endcan
 
 <style>
     #customerPurchaseOrderModal .purchase-order-modal-dialog {
@@ -1007,6 +1120,9 @@
         font-size: 11px;
         font-weight: 700;
     }
+
+    .purchase-order-child-modal .modal-content { border-radius: 12px; }
+    .purchase-order-child-modal label { margin-bottom: 3px; font-size: 11px; font-weight: 700; }
 
     #customerPurchaseOrderModal .form-group {
         margin-bottom: .5rem;

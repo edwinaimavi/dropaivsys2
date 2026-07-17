@@ -35,7 +35,13 @@ class ElectronicInvoiceSettingController extends Controller
         $settings = ElectronicInvoiceSetting::query()
             ->leftJoin('companies', 'companies.id', '=', "{$table}.company_id")
             ->select([
-                "{$table}.*",
+                "{$table}.id",
+                "{$table}.company_id",
+                "{$table}.provider",
+                "{$table}.environment",
+                "{$table}.ruc",
+                "{$table}.business_name",
+                "{$table}.is_active",
                 'companies.id as company_table_id',
                 'companies.business_name as company_business_name',
                 'companies.trade_name as company_trade_name',
@@ -77,9 +83,19 @@ class ElectronicInvoiceSettingController extends Controller
 
     public function show(ElectronicInvoiceSetting $electronicInvoiceSetting)
     {
+        $data = $electronicInvoiceSetting->only([
+            'id', 'company_id', 'provider', 'environment', 'api_base_url', 'ruc',
+            'business_name', 'trade_name', 'address', 'ubigeo', 'department',
+            'province', 'district', 'sol_user', 'certificate_path', 'logo_path', 'is_active',
+        ]);
+        $data['has_api_token'] = filled($electronicInvoiceSetting->api_token);
+        $data['has_user_token'] = filled($electronicInvoiceSetting->user_token);
+        $data['has_sol_password'] = filled($electronicInvoiceSetting->sol_password);
+        $data['company'] = $electronicInvoiceSetting->company;
+
         return response()->json([
             'status' => 'success',
-            'data' => $electronicInvoiceSetting->load('company'),
+            'data' => $data,
         ]);
     }
 
@@ -139,6 +155,12 @@ class ElectronicInvoiceSettingController extends Controller
                 'is_active' => (bool) ($validated['is_active'] ?? true),
                 'updated_by' => Auth::id(),
             ]);
+
+            foreach (['api_token', 'user_token', 'sol_password'] as $credential) {
+                if ($setting && blank($validated[$credential] ?? null)) {
+                    unset($data[$credential]);
+                }
+            }
 
             if ($setting) {
                 $setting->update($data);
