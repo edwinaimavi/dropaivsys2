@@ -497,10 +497,14 @@ Route::get('electronic-invoices/{electronicInvoice}/payload', [ElectronicInvoice
     ->name('electronic-invoices.payload');
 Route::post('electronic-invoices/{electronicInvoice}/send', [ElectronicInvoiceController::class, 'sendToApi'])
     ->name('electronic-invoices.send');
+Route::get('electronic-invoices/customer-purchase-order/{customerPurchaseOrder}', [ElectronicInvoiceController::class, 'customerPurchaseOrderData'])
+    ->name('electronic-invoices.customer-purchase-order');
 Route::resource('electronic-invoices', ElectronicInvoiceController::class)->except(['create']);
 
 Route::get('electronic-invoice-settings/list', [ElectronicInvoiceSettingController::class, 'list'])
     ->name('electronic-invoice-settings.list');
+Route::get('electronic-invoice-settings/consult-ruc/{numero}', [ElectronicInvoiceSettingController::class, 'consultRuc'])
+    ->name('electronic-invoice-settings.consult-ruc');
 Route::resource('electronic-invoice-settings', ElectronicInvoiceSettingController::class)
     ->only(['index', 'store', 'show', 'update']);
 

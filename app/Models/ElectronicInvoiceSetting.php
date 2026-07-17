@@ -37,6 +37,7 @@ class ElectronicInvoiceSetting extends Model
         'is_active' => 'boolean',
         'api_token' => 'encrypted',
         'user_token' => 'encrypted',
+        'sol_user' => 'encrypted',
         'sol_password' => 'encrypted',
     ];
 

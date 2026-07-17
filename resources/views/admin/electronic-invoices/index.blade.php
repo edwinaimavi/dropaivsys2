@@ -379,8 +379,10 @@
             electronicInvoiceDelete: "{{ url('admin/electronic-invoices') }}",
             electronicInvoicePayload: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceSend: "{{ url('admin/electronic-invoices') }}",
+            electronicInvoiceCustomerPurchaseOrder: "{{ url('admin/electronic-invoices/customer-purchase-order') }}",
             electronicInvoiceSeriesNextNumber: "{{ route('admin.electronic-invoice-series.nextNumber') }}"
         });
+        window.electronicInvoiceCompanyEnvironments = @json($companyEnvironments);
     </script>
     @vite('resources/js/pages/electronic-invoice.js')
 @endpush

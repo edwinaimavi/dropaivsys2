@@ -16,6 +16,7 @@ class ElectronicInvoice extends Model
         'quote_id',
         'customer_purchase_order_id',
         'warehouse_entry_id',
+        'warehouse_id',
         'currency_id',
         'serie_id',
         'document_type',
@@ -135,6 +136,7 @@ class ElectronicInvoice extends Model
     public function quote() { return $this->belongsTo(Quote::class); }
     public function customerPurchaseOrder() { return $this->belongsTo(CustomerPurchaseOrder::class); }
     public function warehouseEntry() { return $this->belongsTo(WarehouseEntry::class); }
+    public function warehouse() { return $this->belongsTo(Warehouse::class); }
     public function currency() { return $this->belongsTo(Currency::class); }
     public function serie() { return $this->belongsTo(ElectronicInvoiceSeries::class, 'serie_id'); }
     public function electronicSeries() { return $this->belongsTo(ElectronicInvoiceSeries::class, 'serie_id'); }

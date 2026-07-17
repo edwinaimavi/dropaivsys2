@@ -125,6 +125,7 @@
                                     <div class="form-group col-md-6">
                                         <label>Ambiente <span class="text-danger">*</span></label>
                                         <select class="form-control form-control-sm" id="series_environment" name="environment">
+                                            <option value="internal">Interno</option>
                                             <option value="beta">Beta</option>
                                             <option value="production">Producción</option>
                                         </select>
@@ -140,7 +141,8 @@
                                     </div>
                                     <div class="form-group col-md-4">
                                         <label>N° siguiente <span class="text-danger">*</span></label>
-                                        <input type="number" class="form-control form-control-sm" id="series_next_number" name="next_number" min="1" value="1">
+                                        <input type="number" class="form-control form-control-sm" id="series_next_number" name="next_number" min="1" value="1" readonly>
+                                        <span class="invalid-feedback" id="series_next_number-error"></span>
                                     </div>
                                     <div class="form-group col-md-8">
                                         <label>Descripción</label>
@@ -216,6 +218,7 @@
             electronicInvoiceSeriesStore: "{{ route('admin.electronic-invoice-series.store') }}",
             electronicInvoiceSeriesBase: "{{ url('admin/electronic-invoice-series') }}"
         });
+        window.electronicInvoiceSeriesCompanyEnvironments = @json($companyEnvironments);
     </script>
     @vite(['resources/js/pages/electronic-invoice-series.js'])
 @endpush

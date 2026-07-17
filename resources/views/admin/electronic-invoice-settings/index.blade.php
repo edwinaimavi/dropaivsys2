@@ -52,11 +52,12 @@
                     <thead class="bg-light">
                         <tr>
                             <th>Empresa</th>
+                            <th>RUC</th>
                             <th>Proveedor</th>
                             <th>Ambiente</th>
-                            <th>RUC</th>
-                            <th>Razón social</th>
+                            <th>Credenciales</th>
                             <th>Activo</th>
+                            <th>Fecha registro</th>
                             <th width="110">Acciones</th>
                         </tr>
                     </thead>
@@ -94,7 +95,7 @@
                                         </div>
                                     </div>
                                     <small class="text-muted d-block">Proveedor</small>
-                                    <strong>APIs Perú / SUNAT</strong>
+                                    <strong id="settingProviderSummary">Modo interno / sin envío SUNAT</strong>
                                     <hr>
                                     <small class="text-muted d-block">Alcance</small>
                                     <span>Credenciales, empresa y ambiente</span>
@@ -102,10 +103,14 @@
                             </div>
                             <div class="col-lg-9">
                                 <div class="form-row">
+                                    <div class="col-12 mb-2">
+                                        <h6 class="font-weight-bold text-dark mb-1"><i class="fas fa-building text-warning mr-1"></i> Datos del emisor</h6>
+                                        <div class="border-bottom"></div>
+                                    </div>
                                     <div class="form-group col-md-6">
-                                        <label>Empresa</label>
-                                        <select class="form-control form-control-sm" id="setting_company_id" name="company_id">
-                                            <option value="">Sin empresa vinculada</option>
+                                        <label>Empresa <span class="text-danger">*</span></label>
+                                        <select class="form-control form-control-sm" id="setting_company_id" name="company_id" required>
+                                            <option value="">Seleccione empresa</option>
                                             @foreach ($companies as $company)
                                                 <option value="{{ $company->id }}">{{ $company->trade_name ?: $company->business_name }}</option>
                                             @endforeach
@@ -113,12 +118,16 @@
                                     </div>
                                     <div class="form-group col-md-3">
                                         <label>Proveedor <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control form-control-sm" id="setting_provider" name="provider" value="apisperu">
+                                        <select class="form-control form-control-sm" id="setting_provider" name="provider">
+                                            <option value="internal">Modo interno / sin envío SUNAT</option>
+                                            <option value="apisperu">APIs Perú / SUNAT</option>
+                                        </select>
                                     </div>
                                     <div class="form-group col-md-3">
                                         <label>Ambiente <span class="text-danger">*</span></label>
                                         <select class="form-control form-control-sm" id="setting_environment" name="environment">
-                                            <option value="beta">Beta</option>
+                                            <option value="internal">Interno</option>
+                                            <option value="beta">Beta / Pruebas</option>
                                             <option value="production">Producción</option>
                                         </select>
                                     </div>
@@ -127,8 +136,15 @@
                                         <input type="text" class="form-control form-control-sm" id="setting_api_base_url" name="api_base_url">
                                     </div>
                                     <div class="form-group col-md-3">
-                                        <label>RUC</label>
-                                        <input type="text" class="form-control form-control-sm" id="setting_ruc" name="ruc" maxlength="20">
+                                        <label>RUC <span class="text-danger">*</span></label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control" id="setting_ruc" name="ruc" maxlength="11" inputmode="numeric">
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-outline-warning" id="btnSearchSettingRuc" title="Buscar RUC">
+                                                    <i class="fas fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="form-group col-md-3">
                                         <label>Activo</label>
@@ -138,7 +154,7 @@
                                         </select>
                                     </div>
                                     <div class="form-group col-md-6">
-                                        <label>Razón social</label>
+                                        <label>Razón social <span class="text-danger">*</span></label>
                                         <input type="text" class="form-control form-control-sm" id="setting_business_name" name="business_name">
                                     </div>
                                     <div class="form-group col-md-6">
@@ -165,13 +181,18 @@
                                         <label>Distrito</label>
                                         <input type="text" class="form-control form-control-sm" id="setting_district" name="district">
                                     </div>
+                                    <div class="col-12 mt-2 mb-2">
+                                        <h6 class="font-weight-bold text-dark mb-1"><i class="fas fa-key text-warning mr-1"></i> Credenciales de integración</h6>
+                                        <small class="text-muted">Déjelas vacías para conservar las actuales o trabajar en modo interno.</small>
+                                        <div class="border-bottom mt-1"></div>
+                                    </div>
                                     <div class="form-group col-md-6">
                                         <label>Token API</label>
-                                        <textarea class="form-control form-control-sm" id="setting_api_token" name="api_token" rows="2"></textarea>
+                                        <textarea class="form-control form-control-sm" id="setting_api_token" name="api_token" rows="2" placeholder="Completar solo si desea cambiar"></textarea>
                                     </div>
                                     <div class="form-group col-md-6">
                                         <label>Token usuario</label>
-                                        <textarea class="form-control form-control-sm" id="setting_user_token" name="user_token" rows="2"></textarea>
+                                        <textarea class="form-control form-control-sm" id="setting_user_token" name="user_token" rows="2" placeholder="Completar solo si desea cambiar"></textarea>
                                     </div>
                                     <div class="form-group col-md-6">
                                         <label>Usuario SOL</label>
@@ -179,7 +200,7 @@
                                     </div>
                                     <div class="form-group col-md-6">
                                         <label>Clave SOL</label>
-                                        <input type="password" class="form-control form-control-sm" id="setting_sol_password" name="sol_password">
+                                        <input type="password" class="form-control form-control-sm" id="setting_sol_password" name="sol_password" placeholder="Completar solo si desea cambiar">
                                     </div>
                                 </div>
                                 <div id="setting_general_errors" class="alert alert-danger d-none mt-2 mb-0"></div>
@@ -206,12 +227,29 @@
 @stop
 
 @push('js')
+    @php
+        $electronicInvoiceSettingCompanies = $companies->map(function ($company) {
+            return [
+                'id' => $company->id,
+                'ruc' => $company->ruc ?? '',
+                'business_name' => $company->business_name ?? '',
+                'trade_name' => $company->trade_name ?? '',
+                'address' => $company->address ?? '',
+                'ubigeo' => $company->ubigeo ?? '',
+                'department' => $company->department ?? '',
+                'province' => $company->province ?? '',
+                'district' => $company->district ?? '',
+            ];
+        })->values();
+    @endphp
     <script>
         window.routes = Object.assign(window.routes || {}, {
             electronicInvoiceSettingList: "{{ route('admin.electronic-invoice-settings.list') }}",
             electronicInvoiceSettingStore: "{{ route('admin.electronic-invoice-settings.store') }}",
-            electronicInvoiceSettingBase: "{{ url('admin/electronic-invoice-settings') }}"
+            electronicInvoiceSettingBase: "{{ url('admin/electronic-invoice-settings') }}",
+            electronicInvoiceSettingConsultRuc: "{{ url('admin/electronic-invoice-settings/consult-ruc') }}"
         });
+        window.electronicInvoiceSettingCompanies = @json($electronicInvoiceSettingCompanies);
     </script>
     @vite(['resources/js/pages/electronic-invoice-setting.js'])
 @endpush

@@ -118,6 +118,8 @@ function resetElectronicInvoiceForm() {
     $('#ei_issue_date').val(new Date().toISOString().slice(0, 10));
     $('#ei_document_type').val('01').trigger('change.select2');
     $('#ei_payment_type').val('Contado').trigger('change.select2');
+    const defaultWarehouse = $('#ei_warehouse_id option[value]').filter(function () { return this.value; }).first();
+    $('#ei_warehouse_id').val(defaultWarehouse.val() || '').trigger('change.select2');
     $('#electronicInvoiceItemsTbody').empty();
     $('#electronicInvoicePaymentsList').empty();
     electronicInvoiceItemIndex = 0;
@@ -129,21 +131,42 @@ function resetElectronicInvoiceForm() {
     updateElectronicInvoiceSummary();
 }
 
-function filterElectronicInvoiceSeries() {
+function filterElectronicInvoiceSeries(event) {
     const companyId = $('#ei_company_id').val();
     const documentType = $('#ei_document_type').val();
+    const environment = window.electronicInvoiceCompanyEnvironments?.[String(companyId)];
+
+    if (companyId && !environment) {
+        $('#ei_serie_id').val('').trigger('change.select2');
+        if (event?.target?.id === 'ei_company_id') {
+            Swal.fire({ icon: 'warning', title: 'Configuración requerida', text: 'La empresa seleccionada no tiene configuración electrónica activa.' });
+        }
+    }
 
     $('#ei_serie_id option').each(function () {
         const option = $(this);
         const visible = !option.val()
             || (String(option.data('company-id')) === String(companyId)
-                && String(option.data('document-type')) === String(documentType));
+                && String(option.data('document-type')) === String(documentType)
+                && String(option.data('environment')) === String(environment));
         option.prop('disabled', !visible).toggle(visible);
     });
 
     const selected = $('#ei_serie_id option:selected');
     if (selected.prop('disabled')) {
         $('#ei_serie_id').val('').trigger('change.select2');
+    }
+    if (!$('#ei_serie_id').val()) {
+        const defaults = $('#ei_serie_id option').filter(function () {
+            return this.value && !this.disabled && String($(this).data('is-default')) === '1';
+        });
+        const internalDefault = defaults.filter(function () {
+            return $(this).data('environment') === 'internal';
+        }).first();
+        const preferred = internalDefault.length ? internalDefault : defaults.first();
+        if (preferred.length) {
+            $('#ei_serie_id').val(preferred.val()).trigger('change.select2');
+        }
     }
     updateElectronicInvoiceCorrelative();
     updateElectronicInvoiceSummary();
@@ -185,12 +208,27 @@ function applyElectronicInvoiceOrigin() {
     const option = $('#ei_customer_purchase_order_id option:selected');
     if (!option.val()) return;
 
-    $('#ei_customer_id').val(option.data('customer-id') || '').trigger('change.select2').trigger('change');
-    $('#ei_quote_id').val(option.data('quote-id') || '').trigger('change.select2');
-    $('#ei_purchase_order_number').val(option.data('purchase-order-number') || option.data('code') || '');
-    $('#ei_siaf_number').val(option.data('siaf') || '');
-    $('#ei_process_number').val(option.data('process') || '');
-    updateElectronicInvoiceSummary();
+    $.get(`${window.routes.electronicInvoiceCustomerPurchaseOrder}/${option.val()}`)
+        .done(function (response) {
+            const order = response.data || {};
+            $('#ei_customer_id').val(order.customer_id || '').trigger('change.select2').trigger('change');
+            $('#ei_customer_branch_id').val(order.customer_branch_id || '').trigger('change.select2').trigger('change');
+            $('#ei_quote_id').val(order.quote_id || '').trigger('change.select2');
+            $('#ei_currency_id').val(order.currency_id || '').trigger('change.select2');
+            $('#ei_purchase_order_number').val(order.purchase_order_number || '');
+            $('#ei_siaf_number').val(order.siaf_number || '');
+            $('#ei_process_number').val(order.process_number || '');
+            $('#ei_contract_number').val(order.contract_number || '');
+            $('#electronicInvoiceItemsTbody').empty();
+            electronicInvoiceItemIndex = 0;
+            (order.items || []).forEach(addElectronicInvoiceItemRow);
+            if (!(order.items || []).length) addElectronicInvoiceItemRow();
+            calculateElectronicInvoiceTotals();
+            updateElectronicInvoiceSummary();
+        })
+        .fail(function (xhr) {
+            Swal.fire({ icon: 'warning', title: 'Orden no disponible', text: xhr.responseJSON?.message || 'No se pudo cargar la orden de compra.' });
+        });
 }
 
 function addElectronicInvoiceItemRow(data = {}) {
@@ -200,6 +238,7 @@ function addElectronicInvoiceItemRow(data = {}) {
     row.find('.item-article').select2({ width: '100%', dropdownParent: $('#electronicInvoiceModal') });
 
     if (data.article_id) row.find('.item-article').val(data.article_id).trigger('change.select2');
+    row.find('[name$="[customer_purchase_order_item_id]"]').val(data.customer_purchase_order_item_id || '');
     row.find('[name$="[description]"]').val(data.description || '');
     row.find('[name$="[product_code]"]').val(data.product_code || '');
     row.find('[name$="[lot_number]"]').val(data.lot_number || '');
@@ -355,7 +394,7 @@ function loadElectronicInvoiceForEdit(id) {
             $('#ei_customer_branch_id').val(invoice.customer_branch_id || '').trigger('change.select2').trigger('change');
             $('#ei_quote_id').val(invoice.quote_id || '').trigger('change.select2');
             $('#ei_customer_purchase_order_id').val(invoice.customer_purchase_order_id || '').trigger('change.select2');
-            $('#ei_warehouse_entry_id').val(invoice.warehouse_entry_id || '').trigger('change.select2');
+            $('#ei_warehouse_id').val(invoice.warehouse_id || '').trigger('change.select2');
             $('#ei_issue_date').val(formatElectronicInvoiceInputDate(invoice.issue_date));
             $('#ei_due_date').val(formatElectronicInvoiceInputDate(invoice.due_date));
             $('#ei_payment_type').val(invoice.payment_type || 'Contado').trigger('change.select2').trigger('change');

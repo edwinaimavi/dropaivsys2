@@ -94,6 +94,8 @@
                                             <option value="{{ $serie->id }}"
                                                 data-company-id="{{ $serie->company_id }}"
                                                 data-document-type="{{ $serie->document_type }}"
+                                                data-environment="{{ $serie->environment }}"
+                                                data-is-default="{{ $serie->is_default ? 1 : 0 }}"
                                                 data-serie="{{ $serie->serie }}"
                                                 data-next-number="{{ str_pad((string) $serie->next_number, 8, '0', STR_PAD_LEFT) }}">
                                                 {{ $serie->serie }} | {{ $serie->environment }}
@@ -234,13 +236,14 @@
                                     </select>
                                 </div>
                                 <div class="form-group col-lg-3 col-md-6">
-                                    <label>Ingreso almac&eacute;n</label>
-                                    <select id="ei_warehouse_entry_id" name="warehouse_entry_id" class="form-control form-control-sm invoice-compact-input">
-                                        <option value="">Sin ingreso</option>
-                                        @foreach ($warehouseEntries as $entry)
-                                            <option value="{{ $entry->id }}">{{ $entry->entry_number }}</option>
+                                    <label>Almac&eacute;n de salida <span class="text-danger">*</span></label>
+                                    <select id="ei_warehouse_id" name="warehouse_id" class="form-control form-control-sm invoice-compact-input">
+                                        <option value="">Seleccione almac&eacute;n</option>
+                                        @foreach ($warehouses as $warehouse)
+                                            <option value="{{ $warehouse->id }}">{{ $warehouse->code }} | {{ $warehouse->name }}</option>
                                         @endforeach
                                     </select>
+                                    <span class="invalid-feedback"></span>
                                 </div>
                                 <div class="form-group col-lg-3 col-md-6">
                                     <label>Nro OC cliente</label>
@@ -349,6 +352,7 @@
 <script type="text/template" id="electronicInvoiceItemRowTemplate">
     <tr class="electronic-invoice-item-row">
         <td class="invoice-article-cell">
+            <input type="hidden" name="items[__INDEX__][customer_purchase_order_item_id]">
             <select name="items[__INDEX__][article_id]" class="form-control form-control-sm item-article">
                 <option value="">Manual</option>
                 @foreach ($articles as $article)
@@ -370,7 +374,7 @@
         <td><input name="items[__INDEX__][origin]" class="form-control form-control-sm text-uppercase"></td>
         <td><input name="items[__INDEX__][unit_code]" class="form-control form-control-sm text-uppercase" value="NIU"></td>
         <td><input name="items[__INDEX__][quantity]" type="number" min="0.0000000001" step="0.0000000001" class="form-control form-control-sm item-quantity" value="1"></td>
-        <td><input name="items[__INDEX__][unit_price]" type="number" min="0" step="0.0000000001" class="form-control form-control-sm item-price" value="0"></td>
+        <td><input name="items[__INDEX__][unit_price]" type="number" min="0" step="any" class="form-control form-control-sm item-price" value="0"></td>
         <td>
             <select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation">
                 @foreach ($taxAffectations as $tax)

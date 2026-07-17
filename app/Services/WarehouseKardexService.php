@@ -129,9 +129,9 @@ class WarehouseKardexService
                 return;
             }
 
-            if (! $invoice->warehouseEntry?->warehouse_id) {
+            if (! ($invoice->warehouse_id ?: $invoice->warehouseEntry?->warehouse_id)) {
                 throw ValidationException::withMessages([
-                    'warehouse_entry_id' => 'Seleccione un ingreso de almacén para identificar el almacén de salida.',
+                    'warehouse_id' => 'Seleccione el almacén de salida.',
                 ]);
             }
 
@@ -242,7 +242,7 @@ class WarehouseKardexService
         ElectronicInvoiceItem $item
     ): void {
         $required = round((float) $item->quantity, 4);
-        $warehouseId = (int) $invoice->warehouseEntry->warehouse_id;
+        $warehouseId = (int) ($invoice->warehouse_id ?: $invoice->warehouseEntry?->warehouse_id);
         $stocksQuery = WarehouseStock::query()
             ->where('warehouse_id', $warehouseId)
             ->where('article_id', $item->article_id)

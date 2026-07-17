@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ElectronicInvoiceSeries;
+use App\Models\ElectronicInvoiceSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -26,8 +27,17 @@ class ElectronicInvoiceSeriesController extends Controller
     public function index()
     {
         $companies = Company::query()->where('status', true)->orderBy('business_name')->get();
+        $companyEnvironments = ElectronicInvoiceSetting::query()
+            ->where('is_active', true)
+            ->whereNotNull('company_id')
+            ->orderByRaw("CASE WHEN environment = 'internal' THEN 0 WHEN environment = 'beta' THEN 1 ELSE 2 END")
+            ->get(['company_id', 'environment'])
+            ->groupBy('company_id')
+            ->map(function ($settings) {
+                return $settings->first()->environment;
+            });
 
-        return view('admin.electronic-invoice-series.index', compact('companies'));
+        return view('admin.electronic-invoice-series.index', compact('companies', 'companyEnvironments'));
     }
 
     public function list()
@@ -133,7 +143,7 @@ class ElectronicInvoiceSeriesController extends Controller
             'serie' => ['required', 'string', 'max:10'],
             'current_number' => ['nullable', 'integer', 'min:0'],
             'next_number' => ['required', 'integer', 'min:1'],
-            'environment' => ['required', Rule::in(['beta', 'production'])],
+            'environment' => ['required', Rule::in(['internal', 'beta', 'production'])],
             'description' => ['nullable', 'string', 'max:255'],
             'is_default' => ['nullable', 'boolean'],
             'status' => ['required', Rule::in(['ACTIVE', 'INACTIVE'])],
@@ -177,10 +187,34 @@ class ElectronicInvoiceSeriesController extends Controller
             ]);
         }
 
+        $upperSeries = mb_strtoupper($validated['serie']);
+        $notePattern = $validated['document_type'] === '07' ? '/^(FC|BC)[A-Z0-9]{2}$/'
+            : ($validated['document_type'] === '08' ? '/^(FD|BD)[A-Z0-9]{2}$/' : null);
+        if ($notePattern && ! preg_match($notePattern, $upperSeries)) {
+            throw ValidationException::withMessages([
+                'serie' => $validated['document_type'] === '07'
+                    ? 'La nota de crédito debe usar una serie como FC01 o BC01.'
+                    : 'La nota de débito debe usar una serie como FD01 o BD01.',
+            ]);
+        }
+
+        $currentNumber = (int) ($validated['current_number'] ?? 0);
+        if ((int) $validated['next_number'] !== $currentNumber + 1) {
+            throw ValidationException::withMessages([
+                'next_number' => 'El número siguiente debe ser exactamente el número actual más uno.',
+            ]);
+        }
+        if (($validated['is_default'] ?? false) && $validated['status'] !== 'ACTIVE') {
+            throw ValidationException::withMessages([
+                'is_default' => 'Solo una serie activa puede marcarse como predeterminada.',
+            ]);
+        }
+
         try {
             $data = array_merge($validated, [
                 'serie' => mb_strtoupper($validated['serie']),
-                'current_number' => (int) ($validated['current_number'] ?? 0),
+                'current_number' => $currentNumber,
+                'next_number' => $currentNumber + 1,
                 'is_default' => (bool) ($validated['is_default'] ?? false),
                 'updated_by' => Auth::id(),
             ]);

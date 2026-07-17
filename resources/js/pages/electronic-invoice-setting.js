@@ -20,11 +20,12 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         columns: [
             { data: 'company', name: 'companies.business_name' },
-            { data: 'provider', name: 'electronic_invoice_settings.provider' },
-            { data: 'environment_label', name: 'electronic_invoice_settings.environment' },
             { data: 'ruc', name: 'electronic_invoice_settings.ruc', defaultContent: '-' },
-            { data: 'business_name', name: 'electronic_invoice_settings.business_name', defaultContent: '-' },
+            { data: 'provider_label', name: 'electronic_invoice_settings.provider' },
+            { data: 'environment_label', name: 'electronic_invoice_settings.environment' },
+            { data: 'credentials_status', name: 'credentials_status', orderable: false, searchable: false },
             { data: 'is_active', name: 'electronic_invoice_settings.is_active' },
+            { data: 'created_at', name: 'electronic_invoice_settings.created_at' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],
         responsive: true,
@@ -70,6 +71,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('#electronicInvoiceSettingModal').on('hidden.bs.modal', resetSettingForm);
 
+    $('#setting_company_id').on('change', fillSettingFromCompany);
+    $('#setting_provider').on('change', syncSettingProviderLabel);
+    $('#btnSearchSettingRuc').on('click', searchSettingRuc);
+    $('#setting_ruc').on('input', function () {
+        $(this).val(String($(this).val() || '').replace(/\D/g, '').slice(0, 11));
+    }).on('keydown', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            searchSettingRuc();
+        }
+    });
+
     $(document).on('click', '.editElectronicInvoiceSetting', function () {
         loadSetting($(this).data('id'), true);
     });
@@ -98,7 +111,7 @@ function loadSetting(id, editable) {
         $('#setting_department').val(item.department || '');
         $('#setting_province').val(item.province || '');
         $('#setting_district').val(item.district || '');
-        $('#setting_sol_user').val(item.sol_user || '');
+        $('#setting_sol_user').val('').attr('placeholder', item.has_sol_user ? '******** (conservado)' : 'Completar solo si desea cambiar');
         $('#setting_sol_password').val('').attr('placeholder', item.has_sol_password ? '******** (conservada)' : '');
         $('#setting_is_active').val(item.is_active ? '1' : '0');
 
@@ -116,13 +129,138 @@ function resetSettingForm() {
     }
 
     $('#setting_id').val('');
-    $('#setting_provider').val('apisperu');
-    $('#setting_environment').val('beta');
+    $('#setting_provider').val('internal');
+    $('#setting_environment').val('internal');
     $('#setting_is_active').val('1');
+    $('#setting_api_token, #setting_user_token, #setting_sol_user, #setting_sol_password')
+        .val('').attr('placeholder', 'Completar solo si desea cambiar');
     $('#electronicInvoiceSettingModalTitle').text('Nueva Configuración');
     $('#btnSaveElectronicInvoiceSetting').show();
     setSettingReadonly(false);
     clearSettingErrors();
+    syncSettingProviderLabel();
+}
+
+function syncSettingProviderLabel() {
+    const internal = $('#setting_provider').val() === 'internal';
+    $('#settingProviderSummary').text(internal ? 'Modo interno / sin envío SUNAT' : 'APIs Perú / SUNAT');
+}
+
+function fillSettingFromCompany() {
+    const companyId = String($('#setting_company_id').val() || '');
+    const company = (window.electronicInvoiceSettingCompanies || [])
+        .find(item => String(item.id) === companyId);
+
+    if (!company) {
+        return;
+    }
+
+    fillIssuerData(company);
+    clearSettingErrors();
+}
+
+function fillIssuerData(company) {
+    if (!company) {
+        return;
+    }
+
+    $('#setting_ruc').val(company.ruc || '');
+    $('#setting_business_name').val(company.business_name || '');
+    $('#setting_trade_name').val(company.trade_name || company.business_name || '');
+    $('#setting_address').val(company.address || '');
+    $('#setting_ubigeo').val(company.ubigeo || '');
+    $('#setting_department').val(company.department || '');
+    $('#setting_province').val(company.province || '');
+    $('#setting_district').val(company.district || '');
+
+    if ((!company.department || !company.province || !company.district) && company.address) {
+        const location = parseLocationFromAddress(company.address);
+        if (!$('#setting_department').val()) $('#setting_department').val(location.department || '');
+        if (!$('#setting_province').val()) $('#setting_province').val(location.province || '');
+        if (!$('#setting_district').val()) $('#setting_district').val(location.district || '');
+    }
+}
+
+function parseLocationFromAddress(address) {
+    const parts = String(address || '')
+        .split(/\s+-\s+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (parts.length < 3) {
+        return {};
+    }
+
+    const candidates = parts.slice(-3);
+    const isLocationName = part =>
+        part.length >= 2
+        && part.length <= 80
+        && /^[A-ZÁÉÍÓÚÜÑ .']+$/i.test(part)
+    ;
+    const looksLikeLocation = candidates.every(isLocationName);
+
+    if (looksLikeLocation) {
+        return {
+            department: candidates[0],
+            province: candidates[1],
+            district: candidates[2]
+        };
+    }
+
+    const province = parts.at(-2);
+    const district = parts.at(-1);
+    if (!isLocationName(province) || !isLocationName(district)) {
+        return {};
+    }
+
+    const departments = [
+        'AMAZONAS', 'ANCASH', 'APURIMAC', 'AREQUIPA', 'AYACUCHO', 'CAJAMARCA',
+        'CALLAO', 'CUSCO', 'HUANCAVELICA', 'HUANUCO', 'ICA', 'JUNIN', 'LA LIBERTAD',
+        'LAMBAYEQUE', 'LIMA', 'LORETO', 'MADRE DE DIOS', 'MOQUEGUA', 'PASCO',
+        'PIURA', 'PUNO', 'SAN MARTIN', 'TACNA', 'TUMBES', 'UCAYALI'
+    ];
+    const prefix = parts.slice(0, -2).join(' - ').toUpperCase();
+    const department = departments
+        .sort((left, right) => right.length - left.length)
+        .find(name => prefix === name || prefix.endsWith(` ${name}`));
+
+    return department ? { department, province, district } : {};
+}
+
+function searchSettingRuc() {
+    const ruc = String($('#setting_ruc').val() || '').trim();
+    if (!/^\d{11}$/.test(ruc)) {
+        toast('warning', 'El RUC debe tener 11 dígitos.');
+        return;
+    }
+
+    const button = $('#btnSearchSettingRuc');
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+    $.get(`${window.routes.electronicInvoiceSettingConsultRuc}/${ruc}`)
+        .done(function (response) {
+            const businessName = response.razon_social || '';
+            fillIssuerData({
+                ruc,
+                business_name: businessName,
+                trade_name: response.nombre_comercial || businessName,
+                address: response.direccion || '',
+                ubigeo: response.ubigeo || '',
+                department: response.departamento || '',
+                province: response.provincia || '',
+                district: response.distrito || ''
+            });
+            toast('success', 'Datos del RUC cargados correctamente.');
+        })
+        .fail(function (xhr) {
+            const message = xhr.status === 404
+                ? 'No se encontraron datos para el RUC ingresado.'
+                : (xhr.responseJSON?.message || 'No se pudo consultar el RUC. Puede completar los datos manualmente.');
+            toast('warning', message);
+        })
+        .always(function () {
+            button.prop('disabled', false).html('<i class="fas fa-search"></i>');
+        });
 }
 
 function setSettingReadonly(readonly) {

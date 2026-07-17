@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $('#electronicInvoiceSeriesModal').on('hidden.bs.modal', resetSeriesForm);
+    $('#series_company_id').on('change', suggestSeriesEnvironment);
+    $('#series_current_number').on('input change', syncSeriesNextNumber);
 
     $(document).on('click', '.editElectronicInvoiceSeries', function () {
         loadSeries($(this).data('id'), true);
@@ -150,8 +152,22 @@ function resetSeriesForm() {
     $('#series_id').val('');
     $('#series_current_number').val(0);
     $('#series_next_number').val(1);
+    $('#series_environment').val('internal');
     $('#electronicInvoiceSeriesModalTitle').text('Nueva Serie');
     clearSeriesErrors();
+}
+
+function suggestSeriesEnvironment() {
+    const companyId = String($('#series_company_id').val() || '');
+    const environment = window.electronicInvoiceSeriesCompanyEnvironments?.[companyId];
+    if (environment) {
+        $('#series_environment').val(environment);
+    }
+}
+
+function syncSeriesNextNumber() {
+    const current = Math.max(0, parseInt($('#series_current_number').val(), 10) || 0);
+    $('#series_next_number').val(current + 1);
 }
 
 function clearSeriesErrors() {
@@ -183,7 +199,7 @@ function showSeriesErrors(errors) {
 }
 
 function renderEnvironment(data, type) {
-    const label = data === 'production' ? 'Producción' : 'Beta';
+    const label = data === 'production' ? 'Producción' : (data === 'internal' ? 'Interno' : 'Beta');
 
     if (type !== 'display') {
         return label;

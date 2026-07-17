@@ -122,9 +122,9 @@
         @if ($invoice->status === 'draft')
             Borrador interno generado por DropaivSys. No mueve stock y no ha sido enviado a SUNAT.
         @elseif ($invoice->sunat_status === 'not_configured')
-            Comprobante generado internamente - API no configurada, pendiente de env&iacute;o SUNAT.
+            Comprobante interno no enviado a SUNAT. API no configurada.
         @else
-            Comprobante generado internamente - pendiente de env&iacute;o SUNAT.
+            Comprobante interno no enviado a SUNAT. Pendiente de env&iacute;o.
         @endif
     </div>
 </body>

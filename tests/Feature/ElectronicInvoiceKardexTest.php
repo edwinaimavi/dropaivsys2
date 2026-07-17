@@ -7,8 +7,11 @@ use App\Models\WarehouseStock;
 use App\Services\WarehouseKardexService;
 use App\Services\ElectronicBilling\ApiPeruBillingService;
 use App\Http\Controllers\Admin\ElectronicInvoiceSettingController;
+use App\Http\Controllers\Admin\ElectronicInvoiceSeriesController;
+use App\Models\ElectronicInvoiceSeries;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Request;
 
 function electronicInvoiceStockFixture(float $invoiceQuantity = 4, string $status = 'generated'): array
 {
@@ -56,7 +59,7 @@ function electronicInvoiceStockFixture(float $invoiceQuantity = 4, string $statu
         'total_cost' => 100, 'status' => 'ACTIVE',
     ]);
     $invoice = ElectronicInvoice::create([
-        'warehouse_entry_id' => $warehouseEntryId, 'currency_id' => $currencyId,
+        'warehouse_entry_id' => $warehouseEntryId, 'warehouse_id' => $warehouseId, 'currency_id' => $currencyId,
         'document_type' => '01', 'serie' => 'F001', 'correlativo' => '00000001',
         'full_number' => 'F001-00000001', 'issue_date' => now()->toDateString(),
         'client_name' => 'CLIENTE TEST', 'status' => $status,
@@ -124,14 +127,66 @@ test('electronic billing credentials are encrypted and never returned by show en
     $setting = ElectronicInvoiceSetting::create([
         'provider' => 'apisperu', 'environment' => 'beta', 'api_base_url' => 'https://api.invalid',
         'api_token' => 'TOKEN-SECRETO', 'user_token' => 'USUARIO-SECRETO',
-        'sol_password' => 'CLAVE-SECRETA', 'is_active' => true,
+        'sol_user' => 'USUARIO-SOL', 'sol_password' => 'CLAVE-SECRETA', 'is_active' => true,
     ]);
 
     $rawToken = DB::table('electronic_invoice_settings')->where('id', $setting->id)->value('api_token');
+    $rawSolUser = DB::table('electronic_invoice_settings')->where('id', $setting->id)->value('sol_user');
     $response = app(ElectronicInvoiceSettingController::class)->show($setting)->getData(true);
 
     expect($rawToken)->not->toBe('TOKEN-SECRETO')
         ->and($response['data'])->not->toHaveKeys(['api_token', 'user_token', 'sol_password'])
+        ->and($rawSolUser)->not->toBe('USUARIO-SOL')
+        ->and($response['data'])->not->toHaveKey('sol_user')
         ->and($response['data']['has_api_token'])->toBeTrue()
         ->and($response['data']['has_sol_password'])->toBeTrue();
+});
+
+test('internal electronic billing setting needs no credentials and prevents an active duplicate', function () {
+    $companyId = DB::table('companies')->insertGetId([
+        'business_name' => 'EMISOR INTERNO', 'ruc' => '20111111111', 'status' => true,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $payload = [
+        'company_id' => $companyId,
+        'provider' => 'internal',
+        'environment' => 'internal',
+        'ruc' => '20111111111',
+        'business_name' => 'EMISOR INTERNO',
+        'is_active' => 1,
+    ];
+    $controller = app(ElectronicInvoiceSettingController::class);
+
+    $response = $controller->store(Request::create('/', 'POST', $payload));
+
+    expect($response->getStatusCode())->toBe(201)
+        ->and(ElectronicInvoiceSetting::where('provider', 'internal')->value('api_token'))->toBeNull();
+
+    expect(fn () => $controller->store(Request::create('/', 'POST', $payload)))
+        ->toThrow(ValidationException::class, 'Ya existe una configuración activa');
+});
+
+test('internal electronic series support invoice and receipt with unique defaults and correlatives', function () {
+    $companyId = DB::table('companies')->insertGetId([
+        'business_name' => 'EMISOR SERIES', 'ruc' => '20222222222', 'status' => true,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $controller = app(ElectronicInvoiceSeriesController::class);
+    $payload = fn (string $type, string $serie) => [
+        'company_id' => $companyId, 'document_type' => $type, 'serie' => $serie,
+        'current_number' => 0, 'next_number' => 1, 'environment' => 'internal',
+        'is_default' => 1, 'status' => 'ACTIVE',
+    ];
+
+    expect($controller->store(Request::create('/', 'POST', $payload('01', 'F001')))->getStatusCode())->toBe(201)
+        ->and($controller->store(Request::create('/', 'POST', $payload('03', 'B001')))->getStatusCode())->toBe(201)
+        ->and(ElectronicInvoiceSeries::where('serie', 'F001')->value('next_number'))->toBe(1)
+        ->and(ElectronicInvoiceSeries::where('serie', 'B001')->value('is_default'))->toBeTrue();
+
+    $controller->store(Request::create('/', 'POST', $payload('01', 'F002')));
+    expect(ElectronicInvoiceSeries::where('serie', 'F001')->value('is_default'))->toBeFalse()
+        ->and(ElectronicInvoiceSeries::where('serie', 'F002')->value('is_default'))->toBeTrue();
+
+    expect(fn () => $controller->store(Request::create('/', 'POST', $payload('01', 'F001'))))
+        ->toThrow(ValidationException::class, 'Ya existe una serie');
 });
