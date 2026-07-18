@@ -161,15 +161,15 @@ class CustomerPurchaseOrderController extends Controller
 
                 if (! $branch) {
                     return sprintf(
-                        '<div class="dp-table-main text-left"><span class="dp-main-text">%s</span></div>',
+                        '<div class="customer-cell"><span class="customer-name-main">%s</span></div>',
                         e($customer)
                     );
                 }
 
                 return sprintf(
-                    '<div class="dp-table-main text-left">
-                        <span class="dp-main-text">%s</span>
-                        <span class="dp-sub-text"><span aria-hidden="true">|</span> <i class="fas fa-store mr-1" aria-hidden="true"></i>%s</span>
+                    '<div class="customer-cell">
+                        <span class="customer-name-main">%s</span>
+                        <span class="customer-branch-badge"><i class="fas fa-map-marker-alt" aria-hidden="true"></i>%s</span>
                     </div>',
                     e($customer),
                     e($branch)

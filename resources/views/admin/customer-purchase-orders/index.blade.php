@@ -102,6 +102,56 @@
             background: #fafafa;
         }
 
+        #tableCustomerPurchaseOrder .customer-cell {
+            display: flex;
+            min-width: 190px;
+            max-width: 290px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            text-align: left;
+        }
+
+        #tableCustomerPurchaseOrder .customer-name-main {
+            color: #1f2937;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        #tableCustomerPurchaseOrder .customer-branch-badge {
+            display: inline-flex;
+            max-width: 100%;
+            align-items: flex-start;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 5px 10px;
+            border: 1px solid rgba(16, 185, 129, .20);
+            border-radius: 999px;
+            background: rgba(16, 185, 129, .12);
+            color: #0f766e;
+            font-size: 11.5px;
+            font-weight: 750;
+            line-height: 1.25;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        #tableCustomerPurchaseOrder .customer-branch-badge i {
+            margin-top: 1px;
+            color: #0f766e;
+            font-size: 11px;
+            line-height: 1.25;
+            opacity: .95;
+        }
+
+        @media (max-width: 991.98px) {
+            #tableCustomerPurchaseOrder .customer-cell {
+                min-width: 170px;
+                max-width: 240px;
+            }
+        }
+
         .delivery-period-card {
             min-width: 165px;
             padding: 7px 9px;
