@@ -24,15 +24,30 @@
         .info td { border: 1px solid #ccfbf1; padding: 5px 6px; vertical-align: top; }
         .label { color: #64748b; display: block; font-size: 8px; text-transform: uppercase; }
         .value { font-weight: 700; }
-        .items th { background: #0f766e; color: #fff; border: 1px solid #0f766e; padding: 5px 3px; font-size: 8px; }
-        .items td { border: 1px solid #ccfbf1; padding: 5px 3px; font-size: 8px; vertical-align: top; }
-        .items tbody tr:nth-child(even) td { background: #f6fffd; }
+        .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .detail-table th,
+        .detail-table td {
+            border: 1px solid #ccfbf1;
+            padding: 5px 3px;
+            font-size: 8px;
+            line-height: 1.25;
+            vertical-align: top;
+            word-wrap: break-word;
+            word-break: break-word;
+            white-space: normal;
+        }
+        .detail-table th { background: #0f766e; color: #fff; border-color: #0f766e; }
+        .detail-table tbody tr:nth-child(even) td { background: #f6fffd; }
+        .detail-table thead { display: table-header-group; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        .totals { width: 38%; float: right; margin-top: 10px; }
-        .totals td { border: 1px solid #ccfbf1; padding: 6px; }
-        .totals .grand td { background: #ccfbf1; color: #134e4a; font-size: 13px; font-weight: 900; }
-        .notes { width: 58%; display: inline-block; border: 1px solid #ccfbf1; min-height: 56px; padding: 8px; margin-top: 10px; }
+        .bottom-summary { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: avoid; }
+        .bottom-summary > tbody > tr > td { vertical-align: top; }
+        .letters-box { width: 62%; border: 1px solid #ccfbf1; padding: 8px; font-size: 10px; line-height: 1.35; word-wrap: break-word; word-break: break-word; white-space: normal; }
+        .totals-box { width: 38%; padding: 0 0 0 10px; }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { border: 1px solid #ccfbf1; padding: 6px; font-size: 10px; }
+        .totals-table .grand td { background: #ccfbf1; color: #134e4a; font-size: 13px; font-weight: 900; }
         .footer { position: fixed; bottom: 0; left: 0; right: 0; border-top: 1px solid #e5e7eb; color: #64748b; font-size: 8px; padding-top: 6px; }
     </style>
 </head>
@@ -70,7 +85,7 @@
     </table>
 
     <div class="section-title">Detalle</div>
-    <table class="items">
+    <table class="detail-table">
         <thead>
             <tr>
                 <th width="4%">#</th>
@@ -103,19 +118,25 @@
         </tbody>
     </table>
 
-    <div class="notes">
-        <span class="label">Monto en letras</span>
-        <div class="value">{{ $invoice->total_text }}</div>
-        <br>
-        <span class="label">Observaci&oacute;n</span>
-        <div>{{ $invoice->observations ?: '-' }}</div>
-    </div>
-    <table class="totals">
-        <tr><td>Gravada</td><td class="text-right">{{ $formatMoney($invoice->taxable_amount) }}</td></tr>
-        <tr><td>Exonerada</td><td class="text-right">{{ $formatMoney($invoice->exonerated_amount) }}</td></tr>
-        <tr><td>Inafecta</td><td class="text-right">{{ $formatMoney($invoice->unaffected_amount) }}</td></tr>
-        <tr><td>IGV</td><td class="text-right">{{ $formatMoney($invoice->igv_amount) }}</td></tr>
-        <tr class="grand"><td>Total</td><td class="text-right">{{ $formatMoney($invoice->total_amount) }}</td></tr>
+    <table class="bottom-summary">
+        <tr>
+            <td class="letters-box">
+                <span class="label">Monto en letras</span>
+                <div class="value">{{ $invoice->total_text }}</div>
+                <br>
+                <span class="label">Observaci&oacute;n</span>
+                <div>{{ $invoice->observations ?: '-' }}</div>
+            </td>
+            <td class="totals-box">
+                <table class="totals-table">
+                    <tr><td>Gravada</td><td class="text-right">{{ $formatMoney($invoice->taxable_amount) }}</td></tr>
+                    <tr><td>Exonerada</td><td class="text-right">{{ $formatMoney($invoice->exonerated_amount) }}</td></tr>
+                    <tr><td>Inafecta</td><td class="text-right">{{ $formatMoney($invoice->unaffected_amount) }}</td></tr>
+                    <tr><td>IGV</td><td class="text-right">{{ $formatMoney($invoice->igv_amount) }}</td></tr>
+                    <tr class="grand"><td>Total</td><td class="text-right">{{ $formatMoney($invoice->total_amount) }}</td></tr>
+                </table>
+            </td>
+        </tr>
     </table>
 
     <div class="footer">

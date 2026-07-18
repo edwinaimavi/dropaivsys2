@@ -7,6 +7,7 @@ export default defineConfig({
             input: [
                 'resources/sass/app.scss',
                 'resources/css/admin-modern.css',
+                'resources/css/welcome.css',
                 'resources/js/app.js',
                 'resources/js/pages/article.js',
                 'resources/js/pages/brand.js',

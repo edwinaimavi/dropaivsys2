@@ -139,6 +139,7 @@ class CustomerPurchaseOrderController extends Controller
             ->with([
                 'company:id,business_name,trade_name',
                 'customer:id,business_name,full_name,first_name,last_name',
+                'customerBranch:id,branch_name',
                 'currency:id,code,symbol,description',
             ])
             ->orderByDesc('id');
@@ -151,10 +152,54 @@ class CustomerPurchaseOrderController extends Controller
                     ?? '-';
             })
             ->addColumn('customer', function (CustomerPurchaseOrder $order) {
-                return $order->customer?->business_name
+                $customer = $order->customer?->business_name
                     ?? $order->customer?->full_name
                     ?? trim(($order->customer?->first_name ?? '') . ' ' . ($order->customer?->last_name ?? ''))
                     ?: '-';
+
+                $branch = $order->customerBranch?->branch_name;
+
+                if (! $branch) {
+                    return sprintf(
+                        '<div class="dp-table-main text-left"><span class="dp-main-text">%s</span></div>',
+                        e($customer)
+                    );
+                }
+
+                return sprintf(
+                    '<div class="dp-table-main text-left">
+                        <span class="dp-main-text">%s</span>
+                        <span class="dp-sub-text"><span aria-hidden="true">|</span> <i class="fas fa-store mr-1" aria-hidden="true"></i>%s</span>
+                    </div>',
+                    e($customer),
+                    e($branch)
+                );
+            })
+            ->addColumn('customer_text', function (CustomerPurchaseOrder $order) {
+                $customer = $order->customer?->business_name
+                    ?? $order->customer?->full_name
+                    ?? trim(($order->customer?->first_name ?? '') . ' ' . ($order->customer?->last_name ?? ''))
+                    ?: '-';
+                $branch = $order->customerBranch?->branch_name;
+
+                return $branch ? $customer . ' | ' . $branch : $customer;
+            })
+            ->filterColumn('customer', function ($query, string $keyword) {
+                $query->where(function ($customerQuery) use ($keyword) {
+                    $customerQuery
+                        ->whereHas('customer', function ($relation) use ($keyword) {
+                            $relation->where(function ($nameQuery) use ($keyword) {
+                                $nameQuery
+                                    ->where('business_name', 'like', "%{$keyword}%")
+                                    ->orWhere('full_name', 'like', "%{$keyword}%")
+                                    ->orWhere('first_name', 'like', "%{$keyword}%")
+                                    ->orWhere('last_name', 'like', "%{$keyword}%");
+                            });
+                        })
+                        ->orWhereHas('customerBranch', function ($relation) use ($keyword) {
+                            $relation->where('branch_name', 'like', "%{$keyword}%");
+                        });
+                });
             })
             ->addColumn('currency', function (CustomerPurchaseOrder $order) {
                 return $order->currency?->code
@@ -239,7 +284,7 @@ class CustomerPurchaseOrderController extends Controller
                     compact('order')
                 )->render();
             })
-            ->rawColumns(['delivery_period', 'status', 'acciones'])
+            ->rawColumns(['customer', 'delivery_period', 'status', 'acciones'])
             ->make(true);
     }
 

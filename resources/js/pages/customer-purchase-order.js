@@ -294,7 +294,14 @@ function initCustomerPurchaseOrderTable() {
             { data: 'id', name: 'id' },
             { data: 'code', name: 'code' },
             { data: 'purchase_order_number', name: 'purchase_order_number', defaultContent: '-' },
-            { data: 'customer', name: 'customer.business_name', orderable: false },
+            {
+                data: 'customer',
+                name: 'customer',
+                orderable: false,
+                render: function (data, type, row) {
+                    return type === 'export' ? (row.customer_text || '-') : data;
+                }
+            },
             { data: 'company', name: 'company.business_name', orderable: false },
             { data: 'currency', name: 'currency.code', orderable: false },
             { data: 'grand_total', name: 'grand_total' },
@@ -325,19 +332,19 @@ function initCustomerPurchaseOrderTable() {
                 extend: 'excel',
                 className: 'btn btn-success btn-sm',
                 text: '<i class="fas fa-file-excel"></i> Excel',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
             },
             {
                 extend: 'pdf',
                 className: 'btn btn-danger btn-sm',
                 text: '<i class="fas fa-file-pdf"></i> PDF',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
             },
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
                 text: '<i class="fas fa-print"></i> Imprimir',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
             }
         ],
         drawCallback: function () {
