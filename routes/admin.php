@@ -18,7 +18,9 @@ use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SupplierAccountController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierPurchaseOrderController;
+use App\Http\Controllers\Admin\SupplierPurchaseOrderTrackingController;
 use App\Http\Controllers\Admin\UnitController;
+use App\Http\Controllers\Admin\UserPreferenceController;
 use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
@@ -37,6 +39,9 @@ use App\Http\Controllers\Admin\ShippingAgencyController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateTheme'])
+    ->name('user-preferences.theme.update');
 
 
 //Rutas para la gestión de usuarios en el panel de administración|
@@ -446,6 +451,15 @@ Route::get(
     'supplier-purchase-orders/customer-order-items',
     [SupplierPurchaseOrderController::class, 'loadCustomerOrderItems']
 )->name('supplier-purchase-orders.customerOrderItems');
+
+Route::get('supplier-purchase-orders/{supplierPurchaseOrder}/trackings', [SupplierPurchaseOrderTrackingController::class, 'list'])
+    ->name('supplier-purchase-orders.trackings.list');
+Route::post('supplier-purchase-orders/{supplierPurchaseOrder}/trackings', [SupplierPurchaseOrderTrackingController::class, 'store'])
+    ->name('supplier-purchase-orders.trackings.store');
+Route::put('supplier-purchase-order-trackings/{tracking}', [SupplierPurchaseOrderTrackingController::class, 'update'])
+    ->name('supplier-purchase-order-trackings.update');
+Route::delete('supplier-purchase-order-trackings/{tracking}', [SupplierPurchaseOrderTrackingController::class, 'destroy'])
+    ->name('supplier-purchase-order-trackings.destroy');
 
 Route::resource(
     'supplier-purchase-orders',

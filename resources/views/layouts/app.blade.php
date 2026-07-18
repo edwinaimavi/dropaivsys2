@@ -1,5 +1,7 @@
 @extends('adminlte::page')
 
+@inject('layoutHelper', 'JeroenNoten\LaravelAdminLte\Helpers\LayoutHelper')
+
 {{-- @section('title', 'Dashboard') --}}
 @section('title')
     {{ config('adminlte.title') }}
@@ -9,6 +11,14 @@
 @stop
 
 @section('meta_tags')
+    <script>
+        (() => {
+            const preference = @json(auth()->user()?->themeMode() ?? 'light');
+            const dark = preference === 'dark' || (preference === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
+            document.documentElement.dataset.themePreference = preference;
+        })();
+    </script>
     <link rel="icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
     <link rel="shortcut icon" type="image/x-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img1.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('vendor/adminlte/dist/img/logo_img.png') }}">
@@ -24,14 +34,29 @@
     use Illuminate\Support\Facades\Storage;
 
     $user = Auth::user();
+    $themeMode = $user?->themeMode() ?? 'light';
     $rutaFoto =
         $user && $user->photo
             ? Storage::url($user->photo)
             : 'https://www.shutterstock.com/image-vector/default-avatar-profile-icon-social-600nw-1906669723.jpg';
 @endphp
 
+@section('classes_body', $layoutHelper->makeBodyClasses() . ' theme-' . $themeMode)
+
 {{-- 🔽 AGREGA ESTO --}}
 @section('content_top_nav_right')
+    <li class="nav-item dropdown dp-theme-selector">
+        <a class="nav-link dp-theme-toggle" data-toggle="dropdown" href="#" role="button" aria-label="Cambiar tema" title="Tema visual">
+            <i class="fas fa-adjust" id="dpThemeNavbarIcon"></i>
+            <span class="d-none d-lg-inline ml-1" id="dpThemeNavbarText">Tema</span>
+        </a>
+        <div class="dropdown-menu dropdown-menu-right dp-theme-menu">
+            <div class="dp-theme-menu-header"><span>APARIENCIA</span><strong>Elige tu tema</strong></div>
+            <button type="button" class="dropdown-item dp-theme-option" data-theme="light"><span class="dp-theme-option-icon light"><i class="fas fa-sun"></i></span><span><strong>Claro</strong><small>Interfaz luminosa</small></span><i class="fas fa-check dp-theme-check"></i></button>
+            <button type="button" class="dropdown-item dp-theme-option" data-theme="dark"><span class="dp-theme-option-icon dark"><i class="fas fa-moon"></i></span><span><strong>Oscuro</strong><small>Menor luminosidad</small></span><i class="fas fa-check dp-theme-check"></i></button>
+            <button type="button" class="dropdown-item dp-theme-option" data-theme="system"><span class="dp-theme-option-icon system"><i class="fas fa-desktop"></i></span><span><strong>Sistema</strong><small>Usar preferencia del equipo</small></span><i class="fas fa-check dp-theme-check"></i></button>
+        </div>
+    </li>
     <li class="nav-item dropdown">
         <a class="nav-link dp-user-toggle" data-toggle="dropdown" href="#" role="button">
             <span class="dp-user-meta d-none d-md-inline-flex">
@@ -94,6 +119,14 @@
     <script> console.log("Hi, I'm using the Laravel-AdminLTE package!"); </script>
 @stop --}}
 @push('js')
+    <script>
+        window.DropaivTheme = {
+            current: @json($themeMode),
+            updateUrl: @json(route('admin.user-preferences.theme.update')),
+            csrf: @json(csrf_token())
+        };
+    </script>
+    @vite('resources/js/pages/theme-preferences.js')
     {{--     <script src="{{ asset('vendor/datatables/js/popper.min.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.bootstrap4.js') }}"></script>    
@@ -770,5 +803,5 @@
             }
         }
     </style>
-    @vite(['resources/css/admin-modern.css'])
+    @vite(['resources/css/admin-modern.css', 'resources/css/theme-preferences.css'])
 @endpush

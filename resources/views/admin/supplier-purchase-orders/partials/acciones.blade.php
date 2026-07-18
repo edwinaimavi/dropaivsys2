@@ -19,6 +19,12 @@
         <i class="fas fa-eye"></i>
     </button>
     @endcan
+    @can('admin.supplier-purchase-orders.trackings.index')
+    <button type="button" class="btn btn-outline-success btn-sm trackingSupplierPurchaseOrder mr-2"
+        data-id="{{ $order->id }}" title="Seguimiento log&iacute;stico" data-toggle="tooltip">
+        <i class="fas fa-route"></i>
+    </button>
+    @endcan
     @can('admin.supplier-purchase-orders.update')
     <button type="button" class="btn btn-outline-primary btn-sm editSupplierPurchaseOrder mr-2"
         data-id="{{ $order->id }}" title="Editar" data-toggle="tooltip">

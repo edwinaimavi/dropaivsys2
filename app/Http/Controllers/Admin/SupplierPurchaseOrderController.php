@@ -17,6 +17,7 @@ use App\Models\Supplier;
 use App\Models\SupplierAccount;
 use App\Models\SupplierPurchaseOrder;
 use App\Models\SupplierPurchaseOrderItem;
+use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Ubigeo;
 use App\Models\Unit;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -616,6 +617,18 @@ class SupplierPurchaseOrderController extends Controller
                 }
 
                 $wasRecentlyCreated = $order->wasRecentlyCreated;
+
+                if ($wasRecentlyCreated) {
+                    $order->trackings()->firstOrCreate(
+                        ['status' => 'registered'],
+                        [
+                            'title' => 'Orden registrada',
+                            'event_date' => now(),
+                            'created_by' => Auth::id(),
+                            'updated_by' => Auth::id(),
+                        ]
+                    );
+                }
 
                 foreach ($preparedItems as $item) {
                     $order->items()->create($item);

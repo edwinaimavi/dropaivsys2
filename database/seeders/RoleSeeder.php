@@ -181,6 +181,10 @@ class RoleSeeder extends Seeder
             'admin.supplier-purchase-orders.show' => 'Ver detalle de ordenes de compra a proveedores',
             'admin.supplier-purchase-orders.pdf' => 'Ver PDF de ordenes de compra a proveedores',
             'admin.supplier-purchase-orders.load-items' => 'Cargar items de orden de cliente',
+            'admin.supplier-purchase-orders.trackings.index' => 'Ver seguimiento logistico de ordenes a proveedores',
+            'admin.supplier-purchase-orders.trackings.store' => 'Registrar seguimiento logistico de ordenes a proveedores',
+            'admin.supplier-purchase-orders.trackings.update' => 'Actualizar seguimiento logistico de ordenes a proveedores',
+            'admin.supplier-purchase-orders.trackings.destroy' => 'Eliminar seguimiento logistico de ordenes a proveedores',
 
             'admin.warehouse-entries.index' => 'Ver ingresos de almacen',
             'admin.warehouse-entries.store' => 'Crear ingresos de almacen',

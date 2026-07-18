@@ -128,6 +128,11 @@ class SupplierPurchaseOrder extends Model
         return $this->hasMany(SupplierPurchaseOrderItem::class);
     }
 
+    public function trackings()
+    {
+        return $this->hasMany(SupplierPurchaseOrderTracking::class);
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

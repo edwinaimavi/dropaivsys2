@@ -74,9 +74,11 @@
     @include('admin.supplier-purchase-orders.partials.quickSupplierModal')
     @include('admin.supplier-purchase-orders.partials.quickSupplierAccountModal')
     @include('admin.supplier-purchase-orders.partials.viewModal')
+    @include('admin.supplier-purchase-orders.partials.trackingModal')
 @stop
 
 @push('css')
+    @vite('resources/css/supplier-purchase-order-tracking.css')
     <style>
         .rounded-xl {
             border-radius: 18px;
@@ -168,9 +170,14 @@
             supplierQuickAccountStore: "{{ url('admin/suppliers/:id/quick-account') }}",
             supplierQuickByRuc: "{{ url('admin/suppliers/by-ruc') }}",
             supplierQuickConsultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
-            supplierQuickSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}"
+            supplierQuickSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}",
+            supplierPurchaseOrderTrackings: "{{ url('admin/supplier-purchase-orders') }}",
+            supplierPurchaseOrderTrackingEvents: "{{ url('admin/supplier-purchase-order-trackings') }}"
         });
+        window.spoTrackingPermissions = {
+            destroy: @json(auth()->user()->can('admin.supplier-purchase-orders.trackings.destroy'))
+        };
     </script>
 
-    @vite(['resources/js/pages/supplier-purchase-order.js'])
+    @vite(['resources/js/pages/supplier-purchase-order.js', 'resources/js/pages/supplier-purchase-order-tracking.js'])
 @endpush

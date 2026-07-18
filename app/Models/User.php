@@ -55,6 +55,16 @@ class User extends Authenticatable
         ];
     }
 
+    public function preference()
+    {
+        return $this->hasOne(UserPreference::class);
+    }
+
+    public function themeMode(): string
+    {
+        return $this->preference?->theme_mode ?? 'light';
+    }
+
     /**
      * Get the user's initials
      */
