@@ -8,6 +8,17 @@
     $shippingBranch = $order->shippingAgencyBranch;
     $shippingContact = $order->shippingAgencyContact;
     $ubigeo = $order->destinationUbigeo;
+    $companyNameNormalized = mb_strtoupper(\Illuminate\Support\Str::ascii(trim(
+        ($company?->business_name ?? '') . ' ' . ($company?->trade_name ?? '')
+    )));
+    $isPraga = (string) $company?->ruc === '20612701904'
+        || str_contains($companyNameNormalized, 'PRAGA');
+    $primaryColor = $isPraga ? '#123f91' : '#08712f';
+    $primaryTextColor = $isPraga ? '#123f91' : '#14532d';
+    $lightColor = $isPraga ? '#eaf1ff' : '#eaf5ee';
+    $rowColor = $isPraga ? '#f5f8ff' : '#f6fff8';
+    $totalColor = $isPraga ? '#dbe8ff' : '#dcfce7';
+    $borderColor = $isPraga ? '#b7c9f5' : '#cfd8d3';
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2, '.', ','));
     $formatDecimal = function ($value, int $maxDecimals = 6): string {
         $formatted = rtrim(rtrim(number_format((float) $value, $maxDecimals, '.', ''), '0'), '.');
@@ -99,7 +110,10 @@
             $shippingContact->whatsapp ? 'WhatsApp: ' . $shippingContact->whatsapp : null,
         ])->filter()->join(' | ')
         : null;
-    $billingEmail = $company?->email ?: 'gerencia@dropaiv.com';
+    $companyEmail = trim((string) $company?->email);
+    $billingEmail = $companyEmail !== ''
+        ? $companyEmail
+        : ($isPraga ? 'CORREO NO CONFIGURADO' : 'gerencia@dropaiv.com');
     $deliveryText = $order->delivery_text ?: 'EN AGENCIA DE TRANSPORTES - ENVIO A PROVINCIA';
     $departmentText = $order->request_department ?: 'COMPRAS';
     $requestedBy = $userName($order->updater ?: $order->creator);
@@ -113,7 +127,24 @@
         $bankLabel,
         $account?->account_number ?: $account?->cci,
     ])->filter()->join(' - ') ?: '-';
-    $importantNote = $order->important_note ?: "ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTIC@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:\n1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE\n2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE\n3. REGISTRO SANITARIO DEL BIEN ADQUIRIDO - VIGENTE";
+    $importantNote = $order->important_note ?: "ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: {$billingEmail}, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:\n1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE\n2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE\n3. REGISTRO SANITARIO DEL BIEN ADQUIRIDO - VIGENTE";
+    $importantNote = preg_replace(
+        '/(AL\s+CORREO\s*:\s*)[^,\s]+/iu',
+        '$1' . $billingEmail,
+        $importantNote,
+        1
+    );
+    $importantNoteHtml = str_replace(
+        e($billingEmail),
+        '<span class="important-email">' . e($billingEmail) . '</span>',
+        e($importantNote)
+    );
+    $authorizedBy = $isPraga
+        ? 'ROSA L. VINCES VALDERRAMA'
+        : ($order->authorized_by_name ?: 'IVAN CUBAS BINCES');
+    $authorizedPosition = $isPraga
+        ? 'GERENTE GENERAL'
+        : ($order->authorized_by_position ?: 'GERENTE GENERAL');
     $relatedCustomer = $order->customerPurchaseOrders->first()?->customer;
     $relatedCustomerName = $relatedCustomer
         ? ($relatedCustomer->business_name
@@ -140,7 +171,7 @@
         table { border-collapse: collapse; width: 100%; }
         .header-table td { vertical-align: top; }
         .company-box {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             padding: 5px;
         }
         .company-box img {
@@ -153,14 +184,14 @@
             text-align: center;
         }
         .title-box h1 {
-            color: #08712f;
+            color: {{ $primaryColor }};
             font-size: 18px;
             line-height: 1;
             margin: 2px 0 7px;
             white-space: nowrap;
         }
         .destination-box {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             text-align: center;
         }
         .destination-label {
@@ -171,19 +202,19 @@
             padding: 3px 4px;
         }
         .destination-value {
-            color: #08712f;
+            color: {{ $primaryColor }};
             font-size: 18px;
             font-weight: 900;
             letter-spacing: .7px;
             padding: 7px 4px 8px;
         }
         .order-box td {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             padding: 4px 5px;
         }
         .order-box .label {
-            background: #eaf5ee;
-            color: #14532d;
+            background: {{ $lightColor }};
+            color: {{ $primaryTextColor }};
             font-weight: 800;
             width: 38%;
         }
@@ -196,12 +227,12 @@
         }
         .col-gap { width: 7px; }
         .block {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             min-height: 66px;
         }
         .block-title,
         .section-title {
-            background: #08712f;
+            background: {{ $primaryColor }};
             color: #fff;
             font-size: 7.8px;
             font-weight: 800;
@@ -213,7 +244,7 @@
         }
         .gray-title {
             background: #e5e7eb;
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             border-bottom: 0;
             color: #111827;
             font-size: 8px;
@@ -241,7 +272,7 @@
         .items th,
         .items td,
         .totals td {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             padding: 3px 4px;
             vertical-align: top;
             word-wrap: break-word;
@@ -252,34 +283,34 @@
             margin-bottom: 1px;
         }
         .items th {
-            background: #08712f;
+            background: {{ $primaryColor }};
             color: #fff;
             font-size: 7px;
             padding: 3px 4px;
             text-transform: uppercase;
         }
         .items td { font-size: 7.4px; }
-        .items tbody tr:nth-child(even) td { background: #f6fff8; }
+        .items tbody tr:nth-child(even) td { background: {{ $rowColor }}; }
         .description-main { font-weight: 800; }
         .description-meta { color: #374151; font-size: 7px; margin-top: 1px; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .bottom-table { margin-top: 5px; }
         .box {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             min-height: 31px;
             padding: 5px;
             white-space: pre-line;
         }
         .totals td { padding: 4px 5px; }
         .totals .grand td {
-            background: #dcfce7;
-            color: #14532d;
+            background: {{ $totalColor }};
+            color: {{ $primaryTextColor }};
             font-size: 10px;
             font-weight: 900;
         }
         .signature {
-            border: 1px solid #cfd8d3;
+            border: 1px solid {{ $borderColor }};
             margin-top: 5px;
             min-height: 43px;
             padding: 5px;
@@ -293,6 +324,10 @@
             padding-top: 3px;
         }
         .note-block { margin-top: 5px; }
+        .important-email {
+            color: {{ $primaryColor }};
+            font-weight: 800;
+        }
         .footer {
             border-top: 1px solid #e5e7eb;
             bottom: 0;
@@ -312,7 +347,7 @@
             <td width="32%">
                 <div class="company-box">
                     @if (!empty($logoUrl))
-                        <img src="{{ $logoUrl }}" alt="Dropaiv">
+                        <img src="{{ $logoUrl }}" alt="{{ $company?->business_name ?? 'Dropaiv' }}">
                     @endif
                     <div class="value">{{ $company?->business_name ?? 'DROPAIV S.A.C.' }}</div>
                     <div>RUC: {{ $company?->ruc ?? '-' }}</div>
@@ -466,7 +501,13 @@
     <table class="bottom-table">
         <tr>
             <td width="61%" style="vertical-align:top;">
-                <div class="gray-title">Instrucciones</div>
+                @if (filled($order->observations))
+                    <div class="gray-title">Observaci&oacute;n</div>
+                    <div class="box">{{ $order->observations }}</div>
+                @endif
+                <div class="gray-title" @if (filled($order->observations)) style="margin-top:5px;" @endif>
+                    Instrucciones
+                </div>
                 <div class="box">{{ $purchaseInstructions }}</div>
             </td>
             <td class="col-gap"></td>
@@ -479,8 +520,8 @@
                 <div class="signature">
                     <div>Autorizado por</div>
                     <div class="signature-line">
-                        <strong>{{ $order->authorized_by_name ?: 'IVAN CUBAS BINCES' }}</strong><br>
-                        <span>{{ $order->authorized_by_position ?: 'GERENTE GENERAL' }}</span>
+                        <strong>{{ $authorizedBy }}</strong><br>
+                        <span>{{ $authorizedPosition }}</span>
                     </div>
                 </div>
             </td>
@@ -489,7 +530,7 @@
 
     <div class="note-block">
         <div class="gray-title">Nota importante</div>
-        <div class="box">{{ $importantNote }}</div>
+        <div class="box">{!! nl2br($importantNoteHtml) !!}</div>
     </div>
 
     <div class="footer">

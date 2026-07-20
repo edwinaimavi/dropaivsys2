@@ -223,6 +223,7 @@ class SupplierPurchaseOrderController extends Controller
                         && Storage::disk('public')->exists($document->file_path));
                 $pdfUrl = $pdfDocument
                     ? Storage::disk('public')->url($pdfDocument->file_path)
+                        . '?v=' . $pdfDocument->updated_at?->timestamp
                     : null;
 
                 return view(
@@ -554,6 +555,14 @@ class SupplierPurchaseOrderController extends Controller
                 $supplierAccount = SupplierAccount::query()
                     ->with('bank')
                     ->findOrFail($validated['supplier_account_id']);
+                $company = Company::query()->findOrFail($validated['company_id']);
+                $isPraga = $this->isPragaCompany($company);
+                $authorizedByName = $isPraga
+                    ? 'ROSA L. VINCES VALDERRAMA'
+                    : ($validated['authorized_by_name'] ?? 'IVAN CUBAS BINCES');
+                $authorizedByPosition = $isPraga
+                    ? 'GERENTE GENERAL'
+                    : ($validated['authorized_by_position'] ?? 'GERENTE GENERAL');
 
                 $orderData = [
                     'company_id' => $validated['company_id'],
@@ -585,8 +594,8 @@ class SupplierPurchaseOrderController extends Controller
                     'affect_igv' => $affectIgv,
                     'observations' => $this->upperOrNull($validated['observations'] ?? null),
                     'request_department' => $this->upperOrNull($validated['request_department'] ?? null),
-                    'authorized_by_name' => $this->upperOrNull($validated['authorized_by_name'] ?? null),
-                    'authorized_by_position' => $this->upperOrNull($validated['authorized_by_position'] ?? null),
+                    'authorized_by_name' => $this->upperOrNull($authorizedByName),
+                    'authorized_by_position' => $this->upperOrNull($authorizedByPosition),
                     'delivery_text' => $this->upperOrNull($validated['delivery_text'] ?? null),
                     'purchase_instructions' => $this->buildPurchaseInstructionsText(
                         $supplierAccount,
@@ -1283,7 +1292,7 @@ class SupplierPurchaseOrderController extends Controller
 
         $pdf = Pdf::loadView('admin.supplier-purchase-orders.pdf', [
             'order' => $order,
-            'logoUrl' => $this->supplierOrderLogoUrl(),
+            'logoUrl' => $this->supplierOrderLogoUrl($order),
         ])
             ->setPaper('a4', 'portrait')
             ->setOption(['isRemoteEnabled' => true]);
@@ -1312,7 +1321,8 @@ class SupplierPurchaseOrderController extends Controller
 
         return [
             'path' => $storedPath,
-            'url' => Storage::disk('public')->url($storedPath),
+            'url' => Storage::disk('public')->url($storedPath)
+                . '?v=' . now()->format('YmdHisv'),
             'document' => $document,
         ];
     }
@@ -1342,13 +1352,34 @@ class SupplierPurchaseOrderController extends Controller
         return preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
     }
 
-    private function supplierOrderLogoUrl(): ?string
+    private function supplierOrderLogoUrl(SupplierPurchaseOrder $order): ?string
     {
-        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
+        $defaultLogo = 'vendor/adminlte/dist/img/logo_img.png';
+        $logo = $this->isPragaCompany($order->company)
+            ? 'vendor/adminlte/dist/img/logopraga.png'
+            : $defaultLogo;
 
-        return file_exists($logoPath)
-            ? url('vendor/adminlte/dist/img/logo_img.png')
+        if (! file_exists(public_path($logo))) {
+            $logo = $defaultLogo;
+        }
+
+        return file_exists(public_path($logo))
+            ? url($logo)
             : null;
+    }
+
+    private function isPragaCompany(?Company $company): bool
+    {
+        if (! $company) {
+            return false;
+        }
+
+        $companyName = mb_strtoupper(Str::ascii(trim(
+            ($company->business_name ?? '') . ' ' . ($company->trade_name ?? '')
+        )));
+
+        return (string) $company->ruc === '20612701904'
+            || str_contains($companyName, 'PRAGA');
     }
 
     private function statusPresentation(): array

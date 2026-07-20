@@ -98,6 +98,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
 
+    $(document).on('change', '#supplier_order_company_id', applySupplierOrderCompanyDefaults);
+
     $(document).on('input', '#supplierPurchaseOrderForm .text-uppercase', function () {
         this.value = this.value.toUpperCase();
     });
@@ -635,7 +637,7 @@ function saveSupplierPurchaseOrder(formElement) {
             tableSupplierPurchaseOrder.ajax.reload(null, false);
 
             if (response.pdf_url) {
-                window.open(response.pdf_url, '_blank');
+                window.open(response.pdf_url, '_blank', 'noopener');
             }
 
             Swal.fire({
@@ -670,6 +672,30 @@ function saveSupplierPurchaseOrder(formElement) {
             });
         }
     });
+}
+
+function applySupplierOrderCompanyDefaults() {
+    const company = $('#supplier_order_company_id option:selected');
+    const ruc = String(company.data('ruc') || '').trim();
+    const companyName = String(
+        company.data('business-name') || company.data('trade-name') || ''
+    ).toUpperCase();
+    const isPraga = ruc === '20612701904' || companyName.includes('PRAGA');
+
+    $('#supplier_order_authorized_by_name').val(
+        isPraga ? 'ROSA L. VINCES VALDERRAMA' : 'IVAN CUBAS BINCES'
+    );
+    $('#supplier_order_authorized_by_position').val('GERENTE GENERAL');
+
+    const companyEmail = String(company.data('email') || '').trim();
+    const importantNote = $('#supplier_order_important_note');
+
+    if (companyEmail && importantNote.length) {
+        importantNote.val(
+            String(importantNote.val() || defaultSupplierOrderImportantNote)
+                .replace(/(AL\s+CORREO\s*:\s*)[^,\s]+/i, `$1${companyEmail}`)
+        );
+    }
 }
 
 function loadSupplierAccounts(supplierId, selectedAccountId = null, options = {}) {
@@ -913,7 +939,7 @@ function loadSupplierOrderSourceItems(options = {}) {
     })
         .done(function (response) {
             if (response.company_id) {
-                $('#supplier_order_company_id').val(response.company_id).trigger('change.select2');
+                $('#supplier_order_company_id').val(response.company_id).trigger('change');
             }
 
             if (response.currency_id) {
@@ -1381,6 +1407,7 @@ function fillSupplierPurchaseOrderForm(order) {
             isDefaultPurchaseInstructionText(order.purchase_instructions) ? order.purchase_instructions : ''
         );
     $('#supplier_order_important_note').val(order.important_note || defaultSupplierOrderImportantNote);
+    applySupplierOrderCompanyDefaults();
     $('#supplierOrderSideSupplier').text(supplierName(order.supplier));
 
     clearSupplierOrderItemRows();

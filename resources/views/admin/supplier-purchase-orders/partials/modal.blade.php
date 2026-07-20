@@ -119,7 +119,11 @@
                                             class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione empresa</option>
                                             @foreach ($companies as $company)
-                                                <option value="{{ $company->id }}">
+                                                <option value="{{ $company->id }}"
+                                                    data-ruc="{{ $company->ruc }}"
+                                                    data-business-name="{{ $company->business_name }}"
+                                                    data-trade-name="{{ $company->trade_name }}"
+                                                    data-email="{{ $company->email }}">
                                                     {{ $company->trade_name ?? $company->business_name }}
                                                 </option>
                                             @endforeach
