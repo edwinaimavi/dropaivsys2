@@ -13,7 +13,7 @@
                     <h1 class="mb-1 font-weight-bold text-dark">
                         Kardex de Almac&eacute;n
                     </h1>
-                    <small class="text-muted">Control de movimientos, saldos y valorizaci&oacute;n del inventario</small>
+                    <small class="text-muted">Control de movimientos, saldos y valorización del inventario</small>
                 </div>
             </div>
         </div>

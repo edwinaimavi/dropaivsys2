@@ -17,7 +17,7 @@
             ['permission' => 'admin.supplier-purchase-orders.index', 'tone' => 'blue', 'icon' => 'fas fa-truck-loading', 'label' => '&Oacute;rdenes a proveedores', 'value' => number_format($metrics['totalSupplierPurchaseOrders']), 'meta' => $metrics['monthSupplierPurchaseOrders'] . ' este mes'],
             ['permission' => 'admin.warehouse-entries.index', 'tone' => 'violet', 'icon' => 'fas fa-warehouse', 'label' => 'Ingresos a almac&eacute;n', 'value' => number_format($metrics['totalWarehouseEntries']), 'meta' => $metrics['monthWarehouseEntries'] . ' este mes'],
             ['permission' => 'admin.kardex.index', 'tone' => 'amber', 'icon' => 'fas fa-boxes', 'label' => 'Art&iacute;culos con stock', 'value' => number_format($metrics['articlesWithStock']), 'meta' => $metrics['lowStockItems'] . ' con stock bajo'],
-            ['permission' => 'admin.kardex.index', 'tone' => 'rose', 'icon' => 'fas fa-coins', 'label' => 'Valor de inventario', 'value' => $money($metrics['inventoryValue']), 'meta' => 'Valorizaci&oacute;n actual'],
+            ['permission' => 'admin.kardex.index', 'tone' => 'rose', 'icon' => 'fas fa-coins', 'label' => 'Valor de inventario', 'value' => $money($metrics['inventoryValue']), 'meta' => 'Valorizacización actual'],
         ];
 
         $flow = [
@@ -56,14 +56,14 @@
                 <div class="command-trust">
                     <span><i class="fas fa-shield-alt"></i> Operaci&oacute;n segura</span>
                     <span><i class="fas fa-heartbeat"></i> Sector salud</span>
-                    <span><i class="fas fa-landmark"></i> Contrataci&oacute;n estatal</span>
+                    <span><i class="fas fa-landmark"></i> Contratación estatal</span>
                 </div>
             </div>
 
             <aside class="operation-console">
                 <div class="operation-console__head">
-                    <div><small>Estado del sistema</small><strong>Operaci&oacute;n activa</strong></div>
-                    <span class="live-indicator"><i></i> EN L&Iacute;NEA</span>
+                    <div><small>Estado del sistema</small><strong>Operación activa</strong></div>
+                    <span class="live-indicator"><i></i> EN LÍNEA</span>
                 </div>
                 <div class="operation-console__score">
                     <div class="score-ring"><span>{{ $monthlyOperations }}</span><small>mes</small></div>
@@ -78,7 +78,7 @@
         </section>
 
         <section class="dashboard-section kpi-section">
-            <div class="section-heading"><div><span>Visi&oacute;n ejecutiva</span><h2>Indicadores clave</h2></div><p>Panorama acumulado y actividad del mes.</p></div>
+            <div class="section-heading"><div><span>Visión ejecutiva</span><h2>Indicadores clave</h2></div><p>Panorama acumulado y actividad del mes.</p></div>
             <div class="kpi-grid">
                 @foreach ($kpis as $kpi)
                     @can($kpi['permission'])
@@ -103,7 +103,7 @@
 
         <section class="executive-workspace">
             <div class="analytics-column">
-                <div class="section-heading"><div><span>Anal&iacute;tica</span><h2>Rendimiento anual</h2></div><p>Evoluci&oacute;n mensual de la operaci&oacute;n.</p></div>
+                <div class="section-heading"><div><span>Analítica</span><h2>Rendimiento anual</h2></div><p>Evoluci&oacute;n mensual de la operaci&oacute;n.</p></div>
                 @can('admin.quotes.index')
                     <article class="analytics-card analytics-card--wide">
                         <div class="analytics-card__head"><div><span>Cotizaciones emitidas</span><strong>{{ number_format($metrics['totalQuotes']) }}</strong></div><i class="fas fa-file-invoice-dollar"></i></div>
