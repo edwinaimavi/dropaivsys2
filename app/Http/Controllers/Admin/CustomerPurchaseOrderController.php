@@ -137,7 +137,7 @@ class CustomerPurchaseOrderController extends Controller
         ));
     }
 
-    public function list()
+    public function list(Request $request)
     {
         $orders = CustomerPurchaseOrder::query()
             ->with([
@@ -150,7 +150,24 @@ class CustomerPurchaseOrderController extends Controller
                         $documentTypeQuery->where('description', 'ORDEN DE COMPRA');
                     });
                 },
-            ])
+            ]);
+
+        if (! $request->boolean('show_supplied')) {
+            $orders->where('status', '!=', self::STATUS_ENTERED);
+        }
+
+        $today = today()->toDateString();
+        $orders
+            ->orderByRaw(
+                'CASE
+                    WHEN delivery_end_date IS NULL THEN 3
+                    WHEN delivery_end_date < ? THEN 0
+                    WHEN delivery_end_date >= ? THEN 1
+                    ELSE 2
+                END ASC',
+                [$today, $today]
+            )
+            ->orderBy('delivery_end_date')
             ->orderByDesc('id');
 
         return DataTables::of($orders)

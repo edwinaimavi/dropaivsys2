@@ -1,4 +1,5 @@
 let tableCustomerPurchaseOrder;
+let showSuppliedCustomerPurchaseOrders = false;
 let purchaseOrderItemIndex = 0;
 let currentCustomerOrderItemRow = null;
 let quickBrandReturnTarget = 'row';
@@ -36,6 +37,20 @@ document.addEventListener('DOMContentLoaded', function () {
     initPurchaseOrderSelect2($('#customerPurchaseOrderModal'));
     initPurchaseOrderSelect2($('#quickCustomerModalForCustomerOrder'));
     initCustomerPurchaseOrderTable();
+
+    $(document).on('click', '#btnToggleSuppliedOrders', function () {
+        showSuppliedCustomerPurchaseOrders = !showSuppliedCustomerPurchaseOrders;
+
+        $(this)
+            .toggleClass('btn-outline-secondary', !showSuppliedCustomerPurchaseOrders)
+            .toggleClass('btn-primary', showSuppliedCustomerPurchaseOrders)
+            .attr('aria-pressed', showSuppliedCustomerPurchaseOrders ? 'true' : 'false')
+            .html(showSuppliedCustomerPurchaseOrders
+                ? '<i class="fas fa-eye-slash mr-1"></i> Ocultar'
+                : '<i class="fas fa-eye mr-1"></i> Mostrar Todos');
+
+        tableCustomerPurchaseOrder.ajax.reload(null, false);
+    });
 
     $(document).on('click', '#btnCreateCustomerPurchaseOrder', function () {
         resetCustomerPurchaseOrderForm();
@@ -294,7 +309,12 @@ function initCustomerPurchaseOrderTable() {
     tableCustomerPurchaseOrder = $('#tableCustomerPurchaseOrder').DataTable({
         processing: true,
         serverSide: true,
-        ajax: window.routes.customerPurchaseOrderList,
+        ajax: {
+            url: window.routes.customerPurchaseOrderList,
+            data: function (data) {
+                data.show_supplied = showSuppliedCustomerPurchaseOrders ? 1 : 0;
+            }
+        },
         columns: [
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'id', name: 'id' },
@@ -318,6 +338,7 @@ function initCustomerPurchaseOrderTable() {
         ],
         responsive: true,
         autoWidth: false,
+        order: [],
         language: {
             url: '/vendor/datatables/js/i18n/es-ES.json'
         },

@@ -40,11 +40,22 @@
 @section('content_body')
     <div class="card border-0 shadow-lg rounded-xl">
         <div class="card-header bg-white border-0 pt-4 pb-2">
-            <h5 class="mb-1 font-weight-bold text-dark">
-                <i class="fas fa-list text-primary"></i>
-                Lista de Órdenes de Compra
-            </h5>
-            <small class="text-muted">Pedidos registrados en el sistema</small>
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div class="mb-2">
+                    <h5 class="mb-1 font-weight-bold text-dark">
+                        <i class="fas fa-list text-primary"></i>
+                        Lista de Órdenes de Compra
+                    </h5>
+                    <small class="text-muted">Pedidos pendientes ordenados por urgencia de vencimiento</small>
+                </div>
+
+                <button id="btnToggleSuppliedOrders" type="button"
+                    class="btn btn-outline-secondary btn-sm mb-2"
+                    aria-pressed="false">
+                    <i class="fas fa-eye mr-1"></i>
+                    Mostrar Todos
+                </button>
+            </div>
         </div>
 
         <div class="card-body pt-2">
