@@ -378,6 +378,22 @@ function initPurchaseOrderSelect2(scope) {
             allowClear: !select.prop('required')
         };
 
+        if (select.hasClass('item-article-picker')) {
+            config.matcher = function (params, data) {
+                const term = String(params.term || '').trim().toLocaleLowerCase();
+
+                if (!term) {
+                    return data;
+                }
+
+                const searchText = data.element
+                    ? String($(data.element).attr('data-search') || data.text || '').toLocaleLowerCase()
+                    : String(data.text || '').toLocaleLowerCase();
+
+                return searchText.includes(term) ? data : null;
+            };
+        }
+
         if (
             select.attr('id') === 'purchase_order_customer_id'
             && window.routes.customerPurchaseOrderCustomersSearch
@@ -1228,8 +1244,21 @@ function refreshCustomerPurchaseOrderArticleSelects(article) {
         return;
     }
 
-    const text = article.text
-        || `${article.code || ''} | ${article.billing_name || article.name || ''}`.trim();
+    const institutionalLabel = article.institutional_code
+        ? `${article.code_type || 'C.I.'}: ${article.institutional_code}`
+        : '';
+    const text = [
+        article.code,
+        institutionalLabel,
+        article.billing_name || article.name
+    ].filter(Boolean).join(' | ');
+    const searchText = [
+        article.code,
+        article.legal_name,
+        article.commercial_name,
+        article.billing_name || article.name,
+        article.institutional_code
+    ].filter(Boolean).join(' ');
 
     const updateSelect = function (selectElement) {
         const select = $(selectElement);
@@ -1245,6 +1274,7 @@ function refreshCustomerPurchaseOrderArticleSelects(article) {
         option
             .attr('data-code', article.code || '')
             .attr('data-billing-name', article.billing_name || article.name || '')
+            .attr('data-search', searchText)
             .attr('data-unit-id', article.unit_id || '')
             .attr('data-presentation-id', article.presentation_id || '')
             .attr('data-brand-id', article.brand_id || '')

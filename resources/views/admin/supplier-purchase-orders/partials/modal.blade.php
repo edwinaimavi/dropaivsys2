@@ -598,12 +598,23 @@
                                     class="form-control form-control-sm item-article-picker js-supplier-order-row-select">
                                     <option value="">Seleccione art&iacute;culo</option>
                                     @foreach ($articles as $article)
+                                        @php
+                                            $institutionalLabel = $article->institutional_code
+                                                ? ($article->code_type ?: 'C.I.') . ': ' . $article->institutional_code
+                                                : null;
+                                            $articleOptionText = implode(' | ', array_filter([
+                                                $article->code,
+                                                $institutionalLabel,
+                                                $article->billing_name,
+                                            ]));
+                                        @endphp
                                         <option value="{{ $article->id }}" data-code="{{ $article->code }}"
                                             data-billing-name="{{ $article->billing_name }}"
+                                            data-search="{{ implode(' ', array_filter([$article->code, $article->legal_name, $article->commercial_name, $article->billing_name, $article->institutional_code])) }}"
                                             data-unit-id="{{ $article->unit_id }}"
                                             data-presentation-id="{{ $article->presentation_id }}"
                                             data-brand-id="{{ $article->brand_id }}">
-                                            {{ $article->code }} | {{ $article->billing_name }}
+                                            {{ $articleOptionText }}
                                         </option>
                                     @endforeach
                                 </select>

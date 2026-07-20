@@ -190,9 +190,30 @@ function initWarehouseEntrySelect2(context) {
         return;
     }
 
-    context.find('.js-warehouse-entry-select, .js-warehouse-entry-row-select').select2({
-        width: '100%',
-        dropdownParent: $('#warehouseEntryModal')
+    context.find('.js-warehouse-entry-select, .js-warehouse-entry-row-select').each(function () {
+        const select = $(this);
+        const config = {
+            width: '100%',
+            dropdownParent: $('#warehouseEntryModal')
+        };
+
+        if (select.hasClass('item-article-picker')) {
+            config.matcher = function (params, data) {
+                const term = String(params.term || '').trim().toLocaleLowerCase();
+
+                if (!term) {
+                    return data;
+                }
+
+                const searchText = data.element
+                    ? String($(data.element).attr('data-search') || data.text || '').toLocaleLowerCase()
+                    : String(data.text || '').toLocaleLowerCase();
+
+                return searchText.includes(term) ? data : null;
+            };
+        }
+
+        select.select2(config);
     });
 }
 

@@ -60,7 +60,18 @@ class WarehouseEntryController extends Controller
         $articles = Article::query()
             ->where('status', 'ACTIVE')
             ->orderBy('billing_name')
-            ->get(['id', 'code', 'billing_name', 'unit_id', 'presentation_id', 'brand_id']);
+            ->get([
+                'id',
+                'code',
+                'code_type',
+                'institutional_code',
+                'legal_name',
+                'commercial_name',
+                'billing_name',
+                'unit_id',
+                'presentation_id',
+                'brand_id',
+            ]);
         $units = Unit::query()->where('status', 'ACTIVE')->orderBy('description')->get();
         $presentations = Presentation::query()->where('status', 'ACTIVE')->orderBy('description')->get();
         $brands = Brand::query()->where('status', 'ACTIVE')->orderBy('description')->get();

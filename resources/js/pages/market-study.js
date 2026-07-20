@@ -818,7 +818,38 @@ $('#articlePickerModal').on('shown.bs.modal', function () {
             },
 
             {
-                data: 'code'
+                data: 'code',
+                name: 'code'
+            },
+
+            {
+                data: 'code_type',
+                name: 'code_type',
+                defaultContent: '-',
+                render: function (data, type) {
+                    if (type !== 'display') {
+                        return data || '';
+                    }
+
+                    return data
+                        ? `<span class="article-code-type">${escapeHtml(data)}</span>`
+                        : '-';
+                }
+            },
+
+            {
+                data: 'institutional_code',
+                name: 'institutional_code',
+                defaultContent: '-',
+                render: function (data, type) {
+                    if (type !== 'display') {
+                        return data || '';
+                    }
+
+                    return data
+                        ? `<span class="article-institutional-code" title="${escapeHtml(data)}">${escapeHtml(data)}</span>`
+                        : '-';
+                }
             },
 
             {

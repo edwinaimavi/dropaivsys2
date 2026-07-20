@@ -259,13 +259,31 @@ function initSupplierOrderSelect2(scope) {
             return;
         }
 
-        select.select2({
+        const config = {
             theme: 'bootstrap4',
             width: '100%',
             dropdownParent: $('#supplierPurchaseOrderModal'),
             placeholder: select.data('placeholder') || select.find('option:first').text().trim(),
             allowClear: !select.prop('required')
-        });
+        };
+
+        if (select.hasClass('item-article-picker')) {
+            config.matcher = function (params, data) {
+                const term = String(params.term || '').trim().toLocaleLowerCase();
+
+                if (!term) {
+                    return data;
+                }
+
+                const searchText = data.element
+                    ? String($(data.element).attr('data-search') || data.text || '').toLocaleLowerCase()
+                    : String(data.text || '').toLocaleLowerCase();
+
+                return searchText.includes(term) ? data : null;
+            };
+        }
+
+        select.select2(config);
     });
 }
 

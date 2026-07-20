@@ -103,6 +103,10 @@ class SupplierPurchaseOrderController extends Controller
             ->get([
                 'id',
                 'code',
+                'code_type',
+                'institutional_code',
+                'legal_name',
+                'commercial_name',
                 'billing_name',
                 'unit_id',
                 'presentation_id',

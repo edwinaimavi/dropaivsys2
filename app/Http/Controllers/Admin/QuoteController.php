@@ -585,7 +585,8 @@ class QuoteController extends Controller
                     $q->where('code', 'like', "%{$term}%")
                         ->orWhere('legal_name', 'like', "%{$term}%")
                         ->orWhere('commercial_name', 'like', "%{$term}%")
-                        ->orWhere('billing_name', 'like', "%{$term}%");
+                        ->orWhere('billing_name', 'like', "%{$term}%")
+                        ->orWhere('institutional_code', 'like', "%{$term}%");
                 });
             })
             ->orderBy('billing_name')
@@ -1161,11 +1162,21 @@ class QuoteController extends Controller
     private function quoteArticlePayload(Article $article): array
     {
         $article->loadMissing(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
+        $institutionalCode = trim((string) $article->institutional_code);
+        $institutionalLabel = $institutionalCode !== ''
+            ? trim(($article->code_type ?: 'C.I.') . ': ' . $institutionalCode)
+            : null;
 
         return [
             'id' => $article->id,
-            'text' => trim($article->code . ' | ' . $article->billing_name),
+            'text' => implode(' | ', array_filter([
+                $article->code,
+                $institutionalLabel,
+                $article->billing_name,
+            ])),
             'code' => $article->code,
+            'code_type' => $article->code_type,
+            'institutional_code' => $article->institutional_code,
             'legal_name' => $article->legal_name,
             'commercial_name' => $article->commercial_name,
             'billing_name' => $article->billing_name,

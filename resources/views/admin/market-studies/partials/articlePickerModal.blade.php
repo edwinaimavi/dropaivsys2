@@ -124,6 +124,10 @@
 
                                     <th width="120">CÓDIGO</th>
 
+                                    <th width="130">TIPO CÓDIGO</th>
+
+                                    <th width="160">CÓDIGO INSTITUCIONAL</th>
+
                                     <th>NOMBRE FACTURACIÓN</th>
 
                                     <th>CATEGORÍA</th>
@@ -319,6 +323,23 @@
 
         background: #f8fff9;
         font-size: 12px;
+    }
+
+    #tableMarketStudyArticlePicker .article-code-type {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #e8f5ee;
+        color: #146c43;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    #tableMarketStudyArticlePicker .article-institutional-code {
+        color: #495057;
+        font-weight: 600;
+        white-space: nowrap;
     }
 
     /* DATATABLE */
