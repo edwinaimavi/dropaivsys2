@@ -6,6 +6,9 @@ let lastQuickCustomerDocumentLookup = '';
 let quickCustomerDocumentRequest = null;
 let purchaseOrderDocumentIndex = 0;
 let deletedPurchaseOrderDocuments = [];
+let purchaseOrderNumberIsDuplicate = false;
+let purchaseOrderNumberCheckRequest = null;
+let lastCheckedPurchaseOrderNumber = '';
 const quickPurchaseOrderCatalog = {
     presentations: new Map(),
     units: new Map()
@@ -49,6 +52,9 @@ document.addEventListener('DOMContentLoaded', function () {
         event.preventDefault();
         saveCustomerPurchaseOrder(this);
     });
+
+    $(document).on('input', '#purchase_order_number', resetPurchaseOrderNumberValidation);
+    $(document).on('blur change', '#purchase_order_number', checkPurchaseOrderNumber);
 
     $(document).on('click', '#btnAddPurchaseOrderDocument', function () {
         addPurchaseOrderDocumentRow();
@@ -438,6 +444,7 @@ function resetCustomerPurchaseOrderForm() {
     $('#btnSaveCustomerPurchaseOrder')
         .prop('disabled', false)
         .html('<i class="fas fa-save mr-1"></i> Guardar');
+    resetPurchaseOrderNumberValidation();
 
     $('#purchaseOrderItemsTbody tr.purchase-order-item-row').each(function () {
         destroyPurchaseOrderRowSelect2($(this));
@@ -485,12 +492,18 @@ function generateCustomerPurchaseOrderCode() {
 }
 
 function saveCustomerPurchaseOrder(formElement) {
+    if (purchaseOrderNumberIsDuplicate) {
+        showDuplicatePurchaseOrderNumber();
+        return;
+    }
+
     clearCustomerPurchaseOrderErrors();
     refreshPurchaseOrderItemIndexes();
     calculatePurchaseOrderTotals();
 
     const purchaseOrderNumberInput = $('#purchase_order_number');
     const purchaseOrderNumber = String(purchaseOrderNumberInput.val() || '').trim();
+    purchaseOrderNumberInput.val(purchaseOrderNumber);
 
     if (!purchaseOrderNumber) {
         const message = 'El N° de Orden de Compra es obligatorio.';
@@ -562,11 +575,16 @@ function saveCustomerPurchaseOrder(formElement) {
                 .html(`<i class="fas fa-save mr-1"></i> ${id ? 'Actualizar' : 'Guardar'}`);
 
             if (xhr.status === 422) {
-                showCustomerPurchaseOrderErrors(xhr.responseJSON.errors || {});
+                const errors = xhr.responseJSON.errors || {};
+                showCustomerPurchaseOrderErrors(errors);
+                if (errors.purchase_order_number?.some(message => message.includes('Ya se registró'))) {
+                    purchaseOrderNumberIsDuplicate = true;
+                }
                 Swal.fire({
                     icon: 'warning',
                     title: 'Revisa el formulario',
-                    text: 'Hay campos obligatorios o con formato incorrecto.'
+                    text: errors.purchase_order_number?.[0]
+                        || 'Hay campos obligatorios o con formato incorrecto.'
                 });
                 return;
             }
@@ -578,6 +596,93 @@ function saveCustomerPurchaseOrder(formElement) {
             });
         }
     });
+}
+
+function resetPurchaseOrderNumberValidation() {
+    purchaseOrderNumberIsDuplicate = false;
+    lastCheckedPurchaseOrderNumber = '';
+
+    const input = $('#purchase_order_number');
+    input.removeClass('is-invalid');
+    input.closest('.form-group').find('.invalid-feedback').text('');
+    $('#btnSaveCustomerPurchaseOrder').prop('disabled', false);
+}
+
+function showDuplicatePurchaseOrderNumber(message = 'Ya se registró una Orden de Compra del Cliente con este Nro de Orden de Compra.') {
+    const input = $('#purchase_order_number');
+
+    purchaseOrderNumberIsDuplicate = true;
+    input
+        .addClass('is-invalid')
+        .closest('.form-group')
+        .find('.invalid-feedback')
+        .text('Este número de orden ya fue registrado.');
+    $('#btnSaveCustomerPurchaseOrder').prop('disabled', true);
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Número de orden duplicado',
+        text: message,
+        confirmButtonText: 'Corregir'
+    }).then(function () {
+        input.trigger('focus').select();
+    });
+}
+
+function checkPurchaseOrderNumber() {
+    const input = $('#purchase_order_number');
+    const purchaseOrderNumber = String(input.val() || '').trim();
+    const orderId = $('#customer_purchase_order_id').val();
+
+    input.val(purchaseOrderNumber);
+
+    if (!purchaseOrderNumber || !window.routes.customerPurchaseOrderCheckNumber) {
+        resetPurchaseOrderNumberValidation();
+        return;
+    }
+
+    const checkKey = `${orderId || 'new'}:${purchaseOrderNumber}`;
+    if (checkKey === lastCheckedPurchaseOrderNumber) {
+        return;
+    }
+
+    if (purchaseOrderNumberCheckRequest) {
+        purchaseOrderNumberCheckRequest.abort();
+    }
+
+    $('#btnSaveCustomerPurchaseOrder').prop('disabled', true);
+
+    const request = $.get(window.routes.customerPurchaseOrderCheckNumber, {
+        purchase_order_number: purchaseOrderNumber,
+        id: orderId || undefined
+    });
+    purchaseOrderNumberCheckRequest = request;
+
+    request
+        .done(function (response) {
+            lastCheckedPurchaseOrderNumber = checkKey;
+
+            if (response.exists) {
+                showDuplicatePurchaseOrderNumber(response.message);
+                return;
+            }
+
+            purchaseOrderNumberIsDuplicate = false;
+            input.removeClass('is-invalid');
+            input.closest('.form-group').find('.invalid-feedback').text('');
+            $('#btnSaveCustomerPurchaseOrder').prop('disabled', false);
+        })
+        .fail(function (xhr, status) {
+            if (status !== 'abort') {
+                lastCheckedPurchaseOrderNumber = '';
+            }
+        })
+        .always(function () {
+            if (purchaseOrderNumberCheckRequest === request) {
+                purchaseOrderNumberCheckRequest = null;
+                $('#btnSaveCustomerPurchaseOrder').prop('disabled', purchaseOrderNumberIsDuplicate);
+            }
+        });
 }
 
 function loadPurchaseOrderQuoteItems(quoteId) {

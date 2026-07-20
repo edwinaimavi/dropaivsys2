@@ -41,7 +41,7 @@ class CustomerPurchaseOrderController extends Controller
 
     public function __construct()
     {
-        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'customerBranches', 'searchCustomers']);
+        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'checkPurchaseOrderNumber', 'customerBranches', 'searchCustomers']);
         $this->middleware('can:admin.customer-purchase-orders.load-items')->only(['quoteItems']);
         $this->middleware('can:admin.customer-purchase-orders.store')->only(['store', 'quickStoreCustomer']);
         $this->middleware('can:admin.customer-purchase-orders.update')->only(['update']);
@@ -394,6 +394,30 @@ class CustomerPurchaseOrderController extends Controller
         ]);
     }
 
+    public function checkPurchaseOrderNumber(Request $request)
+    {
+        $validated = $request->validate([
+            'purchase_order_number' => ['required', 'string', 'max:100'],
+            'id' => ['nullable', 'integer', 'exists:customer_purchase_orders,id'],
+        ]);
+
+        $purchaseOrderNumber = mb_strtoupper(trim($validated['purchase_order_number']));
+        $exists = CustomerPurchaseOrder::query()
+            ->where('purchase_order_number', $purchaseOrderNumber)
+            ->when(
+                ! empty($validated['id']),
+                fn ($query) => $query->whereKeyNot($validated['id'])
+            )
+            ->exists();
+
+        return response()->json([
+            'exists' => $exists,
+            'message' => $exists
+                ? 'Ya se registró una Orden de Compra del Cliente con este Nro de Orden de Compra.'
+                : null,
+        ]);
+    }
+
     public function customerBranches(string $customerId)
     {
         $branches = CustomerBranch::query()
@@ -740,6 +764,12 @@ class CustomerPurchaseOrderController extends Controller
         Request $request,
         ?CustomerPurchaseOrder $order = null
     ) {
+        $request->merge([
+            'purchase_order_number' => mb_strtoupper(
+                trim((string) $request->input('purchase_order_number'))
+            ),
+        ]);
+
         if ($order === null) {
             $request->merge(['status' => self::STATUS_REGISTERED]);
         }
@@ -763,7 +793,14 @@ class CustomerPurchaseOrderController extends Controller
                     ->where('customer_id', $request->input('customer_id')),
             ],
             'order_type' => ['required', Rule::in(['articles', 'services'])],
-            'purchase_order_number' => ['required', 'string', 'max:100'],
+            'purchase_order_number' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('customer_purchase_orders', 'purchase_order_number')
+                    ->ignore($order?->id)
+                    ->whereNull('deleted_at'),
+            ],
             'currency_id' => ['required', 'exists:currencies,id'],
             'notification_date' => ['nullable', 'date', 'required_with:delivery_days'],
             'delivery_start_date' => ['nullable', 'date'],
@@ -819,6 +856,7 @@ class CustomerPurchaseOrderController extends Controller
             'deleted_documents.*' => ['integer'],
         ], [
             'purchase_order_number.required' => 'El N° de Orden de Compra es obligatorio.',
+            'purchase_order_number.unique' => 'Ya se registró una Orden de Compra del Cliente con este Nro de Orden de Compra.',
         ]);
 
         $storedDocumentPaths = [];

@@ -397,6 +397,11 @@ Route::get(
 )->name('customer-purchase-orders.generateCode');
 
 Route::get(
+    'customer-purchase-orders/check-purchase-order-number',
+    [CustomerPurchaseOrderController::class, 'checkPurchaseOrderNumber']
+)->name('customer-purchase-orders.checkPurchaseOrderNumber');
+
+Route::get(
     'customer-purchase-orders/quote/{quote}/items',
     [CustomerPurchaseOrderController::class, 'quoteItems']
 )->name('customer-purchase-orders.quoteItems');

@@ -231,6 +231,7 @@
             customerPurchaseOrderDelete: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderShow: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderGenerateCode: "{{ route('admin.customer-purchase-orders.generateCode') }}",
+            customerPurchaseOrderCheckNumber: "{{ route('admin.customer-purchase-orders.checkPurchaseOrderNumber') }}",
             customerPurchaseOrderQuoteItems: "{{ url('admin/customer-purchase-orders/quote/:id/items') }}",
             customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}",
             customerPurchaseOrderCustomersSearch: "{{ route('admin.customer-purchase-orders.customers.search') }}",
