@@ -141,6 +141,11 @@ class CustomerPurchaseOrderController extends Controller
                 'customer:id,business_name,full_name,first_name,last_name',
                 'customerBranch:id,branch_name',
                 'currency:id,code,symbol,description',
+                'documents' => function ($query) {
+                    $query->whereHas('documentType', function ($documentTypeQuery) {
+                        $documentTypeQuery->where('description', 'ORDEN DE COMPRA');
+                    });
+                },
             ])
             ->orderByDesc('id');
 
@@ -205,6 +210,28 @@ class CustomerPurchaseOrderController extends Controller
                 return $order->currency?->code
                     ?? $order->currency?->description
                     ?? '-';
+            })
+            ->editColumn('purchase_order_number', function (CustomerPurchaseOrder $order) {
+                $purchaseOrderNumber = trim((string) $order->purchase_order_number);
+
+                if ($purchaseOrderNumber === '') {
+                    return '-';
+                }
+
+                $purchaseOrderDocument = $order->documents->first();
+
+                if (! $purchaseOrderDocument?->file_path) {
+                    return e($purchaseOrderNumber);
+                }
+
+                return sprintf(
+                    '<a href="%s" target="_blank" rel="noopener" class="customer-order-doc-link" title="Abrir orden de compra adjunta">
+                        <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                        <span>%s</span>
+                    </a>',
+                    e(Storage::disk('public')->url($purchaseOrderDocument->file_path)),
+                    e($purchaseOrderNumber)
+                );
             })
             ->editColumn('grand_total', function (CustomerPurchaseOrder $order) {
                 $symbol = $order->currency?->symbol ?? '';
@@ -284,7 +311,7 @@ class CustomerPurchaseOrderController extends Controller
                     compact('order')
                 )->render();
             })
-            ->rawColumns(['customer', 'delivery_period', 'status', 'acciones'])
+            ->rawColumns(['purchase_order_number', 'customer', 'delivery_period', 'status', 'acciones'])
             ->make(true);
     }
 

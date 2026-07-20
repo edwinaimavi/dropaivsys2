@@ -102,6 +102,30 @@
             background: #fafafa;
         }
 
+        #tableCustomerPurchaseOrder .customer-order-doc-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(14, 165, 233, .10);
+            color: #0369a1;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-doc-link:hover,
+        #tableCustomerPurchaseOrder .customer-order-doc-link:focus {
+            background: rgba(14, 165, 233, .18);
+            color: #075985;
+            text-decoration: none;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-doc-link i {
+            color: #ef4444;
+        }
+
         #tableCustomerPurchaseOrder .customer-cell {
             display: flex;
             min-width: 190px;
