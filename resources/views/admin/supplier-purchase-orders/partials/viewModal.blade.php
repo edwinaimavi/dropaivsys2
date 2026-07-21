@@ -207,6 +207,18 @@
                     </div>
                 </div>
 
+                <div class="card border-0 shadow-sm mb-3 supplier-order-view-card">
+                    <div class="card-header bg-white border-0 pb-0">
+                        <h6 class="mb-0 font-weight-bold text-dark">
+                            <i class="fas fa-folder-open text-danger mr-1"></i>
+                            Documentaci&oacute;n del proveedor
+                        </h6>
+                    </div>
+                    <div class="card-body pt-2" id="vspo_documents">
+                        <span class="text-muted">Sin documentos adjuntos.</span>
+                    </div>
+                </div>
+
                 <div class="card border-0 shadow-sm supplier-order-view-card">
                     <div class="card-header bg-white border-0">
                         <div class="d-flex justify-content-between align-items-center flex-wrap">

@@ -1,4 +1,5 @@
 let tableSupplierPurchaseOrder;
+let supplierOrderDocumentIndex = 0;
 let supplierOrderItemIndex = 0;
 let supplierOrderSourceLoadRequest = null;
 let supplierOrderSourceLoadTimer = null;
@@ -37,6 +38,12 @@ document.addEventListener('DOMContentLoaded', function () {
         event.preventDefault();
         saveSupplierPurchaseOrder(this);
     });
+
+    $(document).on('click', '#btnAddSupplierOrderDocument', addSupplierOrderDocumentRow);
+    $(document).on('click', '.btnRemoveSupplierOrderDocument', function () {
+        $(this).closest('.supplier-order-document-row').remove();
+    });
+    $(document).on('click', '.btnDeleteExistingSupplierOrderDocument', deleteExistingSupplierOrderDocument);
 
     $(document).on('click', '#btnQuickSupplierForOrder', openQuickSupplierForOrderModal);
     $(document).on('click', '#btnSearchQuickSupplierRuc', searchQuickSupplierForOrderRuc);
@@ -353,6 +360,8 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_delivery_text').val('EN AGENCIA DE TRANSPORTES - ENVIO A PROVINCIA');
     $('#supplier_order_purchase_instructions').val('').data('last-auto-value', '');
     $('#supplier_order_important_note').val(defaultSupplierOrderImportantNote);
+    supplierOrderDocumentIndex = 0;
+    $('#supplierOrderDocumentsContainer, #supplierOrderExistingDocuments').empty();
 
     setDefaultSupplierOrderCurrency();
     $('#supplierOrderSideSupplier').text('Seleccione proveedor');
@@ -671,6 +680,95 @@ function saveSupplierPurchaseOrder(formElement) {
                 text: xhr.responseJSON?.message || 'No se pudo guardar la orden.'
             });
         }
+    });
+}
+
+function addSupplierOrderDocumentRow() {
+    const index = supplierOrderDocumentIndex++;
+
+    $('#supplierOrderDocumentsContainer').append(`
+        <div class="supplier-order-document-row border rounded bg-light p-2 mb-2">
+            <div class="form-row align-items-end">
+                <div class="form-group col-md-3 mb-1">
+                    <label>TIPO DE DOCUMENTO</label>
+                    <select name="supplier_documents[${index}][type]" class="form-control form-control-sm">
+                        <option value="supplier_quote">Cotización del proveedor</option>
+                        <option value="other">Otro documento</option>
+                    </select>
+                </div>
+                <div class="form-group col-md-4 mb-1">
+                    <label>ARCHIVO</label>
+                    <input type="file" name="supplier_documents[${index}][file]"
+                        class="form-control-file form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+                <div class="form-group col-md-4 mb-1">
+                    <label>OBSERVACIÓN</label>
+                    <input type="text" name="supplier_documents[${index}][observation]"
+                        class="form-control form-control-sm" maxlength="500"
+                        placeholder="Ej. Enviada por WhatsApp">
+                </div>
+                <div class="form-group col-md-1 mb-1 text-right">
+                    <button type="button" class="btn btn-outline-danger btn-sm btnRemoveSupplierOrderDocument" title="Quitar">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+}
+
+function renderExistingSupplierOrderDocuments(documents) {
+    const container = $('#supplierOrderExistingDocuments');
+
+    if (!documents?.length) {
+        container.empty();
+        return;
+    }
+
+    container.html(documents.map(document => `
+        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-2 mb-2 bg-white">
+            <div class="mr-2 text-truncate">
+                <i class="fas fa-file-alt text-danger mr-1"></i>
+                <strong>${escapeSupplierOrderHtml(document.original_name || 'Documento')}</strong>
+                <small class="text-muted d-block">${escapeSupplierOrderHtml(document.document_type?.description || 'Documento del proveedor')}${document.observation ? ` · ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
+            </div>
+            <div class="text-nowrap">
+                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-external-link-alt"></i>
+                </a>
+                <button type="button" class="btn btn-outline-danger btn-sm btnDeleteExistingSupplierOrderDocument"
+                    data-url="${escapeSupplierOrderHtml(document.delete_url)}">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join(''));
+}
+
+function deleteExistingSupplierOrderDocument() {
+    const button = $(this);
+    const url = button.data('url');
+
+    Swal.fire({
+        icon: 'warning',
+        title: '¿Eliminar documento?',
+        text: 'El archivo adjunto será eliminado de la orden.',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+        $.ajax({
+            url,
+            type: 'POST',
+            data: { _method: 'DELETE' },
+            success: response => {
+                button.closest('.d-flex').remove();
+                Swal.fire('Correcto', response.message || 'Documento eliminado.', 'success');
+            },
+            error: xhr => Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el documento.', 'error')
+        });
     });
 }
 
@@ -1407,6 +1505,7 @@ function fillSupplierPurchaseOrderForm(order) {
             isDefaultPurchaseInstructionText(order.purchase_instructions) ? order.purchase_instructions : ''
         );
     $('#supplier_order_important_note').val(order.important_note || defaultSupplierOrderImportantNote);
+    renderExistingSupplierOrderDocuments(order.supplier_documents || []);
     applySupplierOrderCompanyDefaults();
     $('#supplierOrderSideSupplier').text(supplierName(order.supplier));
 
@@ -1525,6 +1624,21 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_subtotal').text(`${currencyCode} ${formatSupplierOrderMoney(order.subtotal)}`);
     $('#vspo_igv').text(`${currencyCode} ${formatSupplierOrderMoney(order.igv)}`);
     $('#vspo_total').text(`${currencyCode} ${formatSupplierOrderMoney(order.grand_total)}`);
+
+    const supplierDocuments = order.supplier_documents || [];
+    $('#vspo_documents').html(supplierDocuments.length
+        ? supplierDocuments.map(document => `
+            <div class="d-flex justify-content-between align-items-center border rounded px-2 py-2 mb-2 bg-white">
+                <div>
+                    <strong>${escapeSupplierOrderHtml(document.document_type?.description || 'Documento del proveedor')}</strong>
+                    <small class="text-muted d-block">${escapeSupplierOrderHtml(document.original_name || '-')}${document.observation ? ` · ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
+                </div>
+                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-external-link-alt mr-1"></i>Abrir
+                </a>
+            </div>
+        `).join('')
+        : '<span class="text-muted">Sin documentos adjuntos.</span>');
 
     const rows = (order.items || []).map(function (item, index) {
         const orderedQuantity = item.ordered_quantity ?? item.quantity ?? 0;

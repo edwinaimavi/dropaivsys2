@@ -471,6 +471,16 @@ Route::put('supplier-purchase-order-trackings/{tracking}', [SupplierPurchaseOrde
 Route::delete('supplier-purchase-order-trackings/{tracking}', [SupplierPurchaseOrderTrackingController::class, 'destroy'])
     ->name('supplier-purchase-order-trackings.destroy');
 
+Route::get(
+    'supplier-purchase-orders/{supplierPurchaseOrder}/documents/{document}',
+    [SupplierPurchaseOrderController::class, 'viewDocument']
+)->name('supplier-purchase-orders.documents.view');
+
+Route::delete(
+    'supplier-purchase-orders/{supplierPurchaseOrder}/documents/{document}',
+    [SupplierPurchaseOrderController::class, 'destroyDocument']
+)->name('supplier-purchase-orders.documents.destroy');
+
 Route::resource(
     'supplier-purchase-orders',
     SupplierPurchaseOrderController::class

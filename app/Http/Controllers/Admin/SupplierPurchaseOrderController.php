@@ -11,6 +11,7 @@ use App\Models\Currency;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\CustomerPurchaseOrderItem;
 use App\Models\Document;
+use App\Models\DocumentType;
 use App\Models\Presentation;
 use App\Models\ShippingAgency;
 use App\Models\Supplier;
@@ -48,9 +49,9 @@ class SupplierPurchaseOrderController extends Controller
         $this->middleware('can:admin.supplier-purchase-orders.index')->only(['index', 'list', 'generateCode', 'supplierAccounts', 'customerPurchaseOrderItems']);
         $this->middleware('can:admin.supplier-purchase-orders.load-items')->only(['loadCustomerOrderItems']);
         $this->middleware('can:admin.supplier-purchase-orders.store')->only(['store']);
-        $this->middleware('can:admin.supplier-purchase-orders.update')->only(['update']);
+        $this->middleware('can:admin.supplier-purchase-orders.update')->only(['update', 'destroyDocument']);
         $this->middleware('can:admin.supplier-purchase-orders.destroy')->only(['destroy']);
-        $this->middleware('can:admin.supplier-purchase-orders.show')->only(['show']);
+        $this->middleware('can:admin.supplier-purchase-orders.show')->only(['show', 'viewDocument']);
     }
 
     public function index()
@@ -343,7 +344,7 @@ class SupplierPurchaseOrderController extends Controller
             'shippingAgencyContact',
             'creator',
             'updater',
-            'documents',
+            'documents.documentType',
             'items.article',
             'items.marketStudyItem',
             'items.quoteItem',
@@ -353,6 +354,28 @@ class SupplierPurchaseOrderController extends Controller
             'items.brand',
         ]);
         $this->appendEntryProgress($supplierPurchaseOrder);
+        $supplierPurchaseOrder->setAttribute(
+            'supplier_documents',
+            $supplierPurchaseOrder->documents
+                ->filter(fn (Document $document) => in_array(
+                    $document->documentType?->code,
+                    ['SPO_QUOTE', 'SPO_OTHER'],
+                    true
+                ))
+                ->map(function (Document $document) use ($supplierPurchaseOrder) {
+                    $document->setAttribute('view_url', route(
+                        'admin.supplier-purchase-orders.documents.view',
+                        [$supplierPurchaseOrder, $document]
+                    ));
+                    $document->setAttribute('delete_url', route(
+                        'admin.supplier-purchase-orders.documents.destroy',
+                        [$supplierPurchaseOrder, $document]
+                    ));
+
+                    return $document;
+                })
+                ->values()
+        );
 
         return response()->json([
             'status' => 'success',
@@ -363,6 +386,30 @@ class SupplierPurchaseOrderController extends Controller
     public function edit(SupplierPurchaseOrder $supplierPurchaseOrder)
     {
         return $this->show($supplierPurchaseOrder);
+    }
+
+    public function viewDocument(SupplierPurchaseOrder $supplierPurchaseOrder, Document $document)
+    {
+        $this->ensureSupplierOrderDocument($supplierPurchaseOrder, $document);
+        abort_unless(Storage::disk('public')->exists($document->file_path), 404);
+
+        return Storage::disk('public')->response($document->file_path, $document->original_name, [
+            'Content-Type' => $document->mime_type ?: 'application/octet-stream',
+        ]);
+    }
+
+    public function destroyDocument(SupplierPurchaseOrder $supplierPurchaseOrder, Document $document)
+    {
+        $this->ensureSupplierOrderDocument($supplierPurchaseOrder, $document);
+
+        if ($document->file_path && Storage::disk('public')->exists($document->file_path)) {
+            Storage::disk('public')->delete($document->file_path);
+        }
+
+        $document->update(['deleted_by' => Auth::id()]);
+        $document->delete();
+
+        return response()->json(['message' => 'Documento eliminado correctamente.']);
     }
 
     public function update(
@@ -476,6 +523,10 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.status' => ['nullable', 'string', 'max:30'],
+            'supplier_documents' => ['nullable', 'array'],
+            'supplier_documents.*.type' => ['nullable', 'required_with:supplier_documents.*.file', Rule::in(['supplier_quote', 'other'])],
+            'supplier_documents.*.observation' => ['nullable', 'string', 'max:500'],
+            'supplier_documents.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ], [
             'company_id.required' => 'La empresa es obligatoria.',
             'supplier_id.required' => 'El proveedor es obligatorio.',
@@ -498,6 +549,8 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.quantity.min' => 'La cantidad debe ser mayor a cero.',
             'items.*.unit_price.required' => 'El precio unitario es obligatorio.',
             'items.*.unit_price.min' => 'El precio debe ser mayor o igual a cero.',
+            'supplier_documents.*.file.mimes' => 'Solo se permiten archivos PDF, JPG, JPEG o PNG.',
+            'supplier_documents.*.file.max' => 'El archivo no debe superar los 10 MB.',
         ]);
 
         if (! empty($validated['shipping_agency_contact_id'])) {
@@ -520,6 +573,7 @@ class SupplierPurchaseOrderController extends Controller
         $generatedPdfUrl = null;
         $generatedDocumentId = null;
         $pdfError = null;
+        $uploadedDocumentPaths = [];
 
         try {
             return DB::transaction(function () use (
@@ -528,7 +582,8 @@ class SupplierPurchaseOrderController extends Controller
                 &$generatedPdfPath,
                 &$generatedPdfUrl,
                 &$generatedDocumentId,
-                &$pdfError
+                &$pdfError,
+                &$uploadedDocumentPaths
             ) {
                 $customerOrderIds = collect($validated['customer_purchase_order_ids'])
                     ->map(fn ($id) => (int) $id)
@@ -648,6 +703,10 @@ class SupplierPurchaseOrderController extends Controller
                 }
 
                 $order->customerPurchaseOrders()->sync($customerOrderIds);
+                $uploadedDocumentPaths = $this->storeSupplierOrderDocuments(
+                    $order,
+                    $validated['supplier_documents'] ?? []
+                );
                 $order->refreshEntryStatus();
                 $this->refreshCustomerPurchaseOrderStatuses(
                     $previousCustomerOrderIds
@@ -701,6 +760,12 @@ class SupplierPurchaseOrderController extends Controller
         } catch (\Throwable $e) {
             if ($generatedPdfPath && Storage::disk('public')->exists($generatedPdfPath)) {
                 Storage::disk('public')->delete($generatedPdfPath);
+            }
+
+            foreach ($uploadedDocumentPaths as $uploadedDocumentPath) {
+                if (Storage::disk('public')->exists($uploadedDocumentPath)) {
+                    Storage::disk('public')->delete($uploadedDocumentPath);
+                }
             }
 
             Log::error('Error saving supplier purchase order: ' . $e->getMessage());
@@ -1325,6 +1390,74 @@ class SupplierPurchaseOrderController extends Controller
                 . '?v=' . now()->format('YmdHisv'),
             'document' => $document,
         ];
+    }
+
+    private function storeSupplierOrderDocuments(SupplierPurchaseOrder $order, array $documents): array
+    {
+        $storedPaths = [];
+
+        foreach ($documents as $documentData) {
+            $file = $documentData['file'] ?? null;
+
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+
+            $type = $this->resolveSupplierOrderDocumentType($documentData['type'] ?? 'other');
+            $storedPath = $file->store(
+                'supplier-purchase-orders/documents/' . $order->id,
+                'public'
+            );
+            $storedPaths[] = $storedPath;
+
+            $order->documents()->create([
+                'document_type_id' => $type->id,
+                'original_name' => $file->getClientOriginalName(),
+                'stored_name' => basename($storedPath),
+                'file_path' => $storedPath,
+                'mime_type' => $file->getMimeType(),
+                'extension' => strtolower($file->getClientOriginalExtension()),
+                'file_size' => $file->getSize(),
+                'observation' => $this->upperOrNull($documentData['observation'] ?? null),
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+
+        return $storedPaths;
+    }
+
+    private function resolveSupplierOrderDocumentType(string $type): DocumentType
+    {
+        $types = [
+            'supplier_quote' => ['code' => 'SPO_QUOTE', 'description' => 'COTIZACION DEL PROVEEDOR'],
+            'other' => ['code' => 'SPO_OTHER', 'description' => 'OTRO DOCUMENTO DEL PROVEEDOR'],
+        ];
+        $definition = $types[$type] ?? $types['other'];
+
+        return DocumentType::query()->firstOrCreate(
+            ['code' => $definition['code']],
+            [
+                'description' => $definition['description'],
+                'observation' => 'Sustento interno de orden de compra a proveedor',
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]
+        );
+    }
+
+    private function ensureSupplierOrderDocument(
+        SupplierPurchaseOrder $supplierPurchaseOrder,
+        Document $document
+    ): void {
+        abort_unless(
+            $document->documentable_type === SupplierPurchaseOrder::class
+                && (int) $document->documentable_id === (int) $supplierPurchaseOrder->id
+                && in_array($document->documentType?->code, ['SPO_QUOTE', 'SPO_OTHER'], true),
+            404
+        );
     }
 
     private function deletePreviousGeneratedSupplierPurchaseOrderPdfs(
