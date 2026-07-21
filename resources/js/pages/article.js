@@ -436,8 +436,36 @@ document.addEventListener('DOMContentLoaded', function () {
             },
 
             {
+                data: 'code_type',
+                name: 'code_type',
+                defaultContent: '-',
+                render: function (data, type) {
+                    if (type !== 'display') {
+                        return data || '';
+                    }
+
+                    const value = $('<div>').text(data || '-').html();
+                    return `<span class="badge badge-light border text-secondary px-2 py-1">${value}</span>`;
+                }
+            },
+
+            {
+                data: 'institutional_code',
+                name: 'institutional_code',
+                defaultContent: '-',
+                render: function (data, type) {
+                    if (type !== 'display') {
+                        return data || '';
+                    }
+
+                    const value = $('<div>').text(data || '-').html();
+                    return `<span class="badge badge-info px-2 py-1">${value}</span>`;
+                }
+            },
+
+            {
                 data: 'brand',
-                name: 'brand'
+                name: 'brand.description'
             },
 
             {

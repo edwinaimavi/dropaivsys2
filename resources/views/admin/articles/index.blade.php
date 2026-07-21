@@ -119,6 +119,10 @@
 
                             <th>CÓDIGO</th>
 
+                            <th>TIPO CÓDIGO</th>
+
+                            <th>CÓDIGO INSTITUCIONAL</th>
+
                             <th>MARCA</th>
 
                             <th>NOMBRE LEGAL</th>

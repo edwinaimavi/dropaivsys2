@@ -95,10 +95,32 @@ class ArticleController extends Controller
             'creator',
             'editor'
         ])
-            ->orderBy('id', 'desc')
-            ->get();
+            ->orderBy('id', 'desc');
 
-        return DataTables::of($articles)
+        return DataTables::eloquent($articles)
+
+            ->filter(function ($query) {
+                $search = trim((string) request('search.value', ''));
+
+                if ($search === '') {
+                    return;
+                }
+
+                $query->where(function ($articleQuery) use ($search) {
+                    $like = '%' . $search . '%';
+
+                    $articleQuery
+                        ->where('code', 'like', $like)
+                        ->orWhere('code_type', 'like', $like)
+                        ->orWhere('institutional_code', 'like', $like)
+                        ->orWhere('legal_name', 'like', $like)
+                        ->orWhere('commercial_name', 'like', $like)
+                        ->orWhere('billing_name', 'like', $like)
+                        ->orWhereHas('brand', function ($brandQuery) use ($like) {
+                            $brandQuery->where('description', 'like', $like);
+                        });
+                });
+            })
 
             ->addIndexColumn()
 
