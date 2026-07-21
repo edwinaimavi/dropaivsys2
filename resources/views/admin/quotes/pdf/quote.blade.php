@@ -6,6 +6,8 @@
         ?? trim(($quote->customer?->first_name ?? '') . ' ' . ($quote->customer?->last_name ?? ''));
     $customerRuc = $quote->customer?->ruc ?? $quote->customer?->document_number ?? null;
     $companyName = $quote->company?->trade_name ?? $quote->company?->business_name ?? '-';
+    $branchName = $quote->customerBranch?->branch_name ?? '-';
+    $registeredBy = trim(($quote->creator?->name ?? '') . ' ' . ($quote->creator?->lastname ?? '')) ?: '-';
 
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
@@ -13,6 +15,7 @@
         ->map(fn ($line) => trim(preg_replace('/^[\-\*\x{2022}\s]+/u', '', $line)))
         ->filter()
         ->values();
+    $additionalObservations = trim((string) $quote->additional_observations);
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -34,7 +37,7 @@
         }
 
         .header {
-            border-bottom: 2px solid #16a34a;
+            border-bottom: 2px solid {{ $brandColor }};
             padding-bottom: 10px;
             margin-bottom: 10px;
         }
@@ -43,24 +46,24 @@
             width: 62%;
             display: inline-block;
             vertical-align: top;
-            text-align: center;
+            text-align: left;
         }
 
         .logo {
-            text-align: center;
+            text-align: left;
             margin: 0 0 5px;
         }
 
         .logo img {
-            width: 260px;
+            width: 145px;
             max-width: 100%;
-            max-height: 92px;
+            max-height: 58px;
             object-fit: contain;
         }
 
         .brand-info {
             width: 100%;
-            text-align: center;
+            text-align: left;
         }
 
         .brand h1 {
@@ -91,8 +94,8 @@
 
         .quote-number {
             display: inline-block;
-            border: 1px solid #86efac;
-            background: #f0fdf4;
+            border: 1px solid {{ $brandBorderColor }};
+            background: {{ $brandLightColor }};
             border-radius: 6px;
             padding: 8px 12px;
             text-align: center;
@@ -106,45 +109,71 @@
         }
 
         .quote-number .value {
-            color: #15803d;
+            color: {{ $brandColor }};
             font-size: 17px;
             font-weight: 700;
         }
 
         .section-title {
-            color: #15803d;
-            font-size: 11px;
+            color: {{ $brandColor }};
+            font-size: 9.5px;
             font-weight: 700;
-            margin: 9px 0 5px;
+            margin: 6px 0 3px;
             text-transform: uppercase;
         }
 
-        .info-grid {
+        .info-layout {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 6px;
+            margin: 0 0 6px;
             table-layout: fixed;
+            border: 1px solid {{ $brandBorderColor }};
         }
 
-        .info-grid td {
-            border: 1px solid #d9eadf;
-            padding: 5px 6px;
+        .info-layout th,
+        .info-layout td {
+            border: 1px solid {{ $brandBorderColor }};
             vertical-align: top;
             word-wrap: break-word;
         }
 
-        .info-grid .label {
-            color: #64748b;
+        .info-title {
+            color: {{ $brandColor }};
             font-size: 9px;
+            font-weight: 800;
+            padding: 3px 5px;
+            background: {{ $brandLightColor }};
+            text-align: center;
             text-transform: uppercase;
-            display: block;
-            margin-bottom: 2px;
+            line-height: 1.05;
         }
 
-        .info-grid .value {
+        .info-cell {
+            padding: 3px 5px;
+            font-size: 8px;
+            line-height: 1.05;
+        }
+
+        .contact-start {
+            border-left: 2px solid {{ $brandColor }} !important;
+        }
+
+        .info-cell .label {
+            color: #64748b;
+            font-size: 6.8px;
+            text-transform: uppercase;
+            display: block;
+            margin: 0 0 1px;
+            line-height: 1;
+        }
+
+        .info-cell .value {
+            display: block;
             color: #111827;
             font-weight: 700;
             word-wrap: break-word;
+            font-size: 8px;
+            line-height: 1.08;
         }
 
         .items {
@@ -155,9 +184,9 @@
         }
 
         .items th {
-            background: #15803d;
+            background: {{ $brandColor }};
             color: #ffffff;
-            border: 1px solid #15803d;
+            border: 1px solid {{ $brandColor }};
             padding: 4px 3px;
             text-transform: uppercase;
             font-size: 8px;
@@ -165,7 +194,7 @@
         }
 
         .items td {
-            border: 1px solid #d9eadf;
+            border: 1px solid {{ $brandBorderColor }};
             padding: 4px 3px;
             vertical-align: top;
             word-wrap: break-word;
@@ -173,7 +202,7 @@
         }
 
         .items tbody tr:nth-child(even) td {
-            background: #f7fdf9;
+            background: {{ $brandLightColor }};
         }
 
         .text-right {
@@ -193,25 +222,33 @@
             color: #64748b;
         }
 
-        .totals-wrapper {
+        .bottom-layout {
             width: 100%;
-            margin-top: 8px;
+            border-collapse: separate;
+            border-spacing: 6px 0;
+            margin: 6px -6px 0;
+            table-layout: fixed;
+            page-break-inside: avoid;
+        }
+
+        .bottom-left,
+        .bottom-right {
+            vertical-align: top;
         }
 
         .notes {
-            width: 58%;
-            display: inline-block;
-            vertical-align: top;
-            border: 1px solid #d9eadf;
+            border: 1px solid {{ $brandBorderColor }};
             border-radius: 6px;
-            padding: 6px;
-            min-height: 58px;
+            padding: 5px 7px;
+            font-size: 8px;
+            line-height: 1.15;
             word-wrap: break-word;
         }
 
         .notes-title {
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
+            font-size: 8.5px;
             font-weight: 800;
         }
 
@@ -221,27 +258,24 @@
         }
 
         .notes-list li {
-            margin: 0 0 3px;
-            padding-left: 2px;
-            line-height: 1.25;
+            margin: 0 0 2px;
+            padding-left: 1px;
+            line-height: 1.15;
         }
 
         .totals {
-            width: 40%;
-            margin-left: 1%;
-            float: right;
-            vertical-align: top;
+            width: 100%;
             border-collapse: collapse;
         }
 
         .totals td {
-            border: 1px solid #d9eadf;
+            border: 1px solid {{ $brandBorderColor }};
             padding: 5px 6px;
         }
 
         .totals .grand td {
-            background: #dcfce7;
-            color: #14532d;
+            background: {{ $brandLightColor }};
+            color: {{ $brandColor }};
             font-size: 12px;
             font-weight: 800;
         }
@@ -256,15 +290,30 @@
             font-size: 9px;
             padding-top: 6px;
         }
+
+        .signature {
+            width: 72%;
+            margin: 12px 0 2px;
+            text-align: center;
+            font-size: 8px;
+            line-height: 1.15;
+            page-break-inside: avoid;
+        }
+
+        .signature-line {
+            border-top: 1px solid #475569;
+            padding-top: 5px;
+            font-weight: 800;
+        }
     </style>
 </head>
 
 <body>
     <div class="header">
         <div class="brand">
-            @if (!empty($logoUrl))
+            @if (!empty($logoPath))
                 <div class="logo">
-                    <img src="{{ $logoUrl }}" alt="Logo">
+                    <img src="{{ $logoPath }}" alt="Logo">
                 </div>
             @else
                 <h1>{{ $companyName }}</h1>
@@ -289,44 +338,69 @@
         </div>
     </div>
 
-    <div class="section-title">Datos de cabecera</div>
-    <table class="info-grid">
+    <table class="info-layout">
+        <colgroup>
+            <col width="25%">
+            <col width="25%">
+            <col width="25%">
+            <col width="25%">
+        </colgroup>
+        <thead>
+            <tr>
+                <th class="info-title" colspan="2">Datos del cliente</th>
+                <th class="info-title contact-start" colspan="2">Datos de contacto</th>
+            </tr>
+        </thead>
+        <tbody>
         <tr>
-            <td width="32%">
-                <span class="label">Cliente</span>
+            <td class="info-cell">
+                <span class="label">Razón social</span>
                 <span class="value">{{ $customerName ?: '-' }}</span>
             </td>
-            <td width="16%">
-                <span class="label">RUC</span>
-                <span class="value">{{ $customerRuc ?: '-' }}</span>
+            <td class="info-cell">
+                <span class="label">Sucursal / tienda</span>
+                <span class="value">{{ $branchName }}</span>
             </td>
-            <td width="16%">
-                <span class="label">Moneda</span>
-                <span class="value">{{ trim($currencyCode . ' ' . $currencySymbol) ?: '-' }}</span>
+            <td class="info-cell contact-start">
+                <span class="label">Registrado por</span>
+                <span class="value">{{ $registeredBy }}</span>
             </td>
-            <td width="20%">
-                <span class="label">Condicion de pago</span>
-                <span class="value">{{ $quote->payment_condition ?? '-' }}</span>
-            </td>
-            <td width="16%">
-                <span class="label">Total</span>
-                <span class="value">{{ $formatMoney($quote->grand_total) }}</span>
+            <td class="info-cell">
+                <span class="label">Fecha de emisión</span>
+                <span class="value">{{ $formatDate($quote->created_at) }}</span>
             </td>
         </tr>
         <tr>
-            <td colspan="3">
-                <span class="label">Direccion de entrega</span>
+            <td class="info-cell">
+                <span class="label">RUC / DNI</span>
+                <span class="value">{{ $customerRuc ?: '-' }}</span>
+            </td>
+            <td class="info-cell">
+                <span class="label">Dirección de entrega</span>
                 <span class="value">{{ $quote->delivery_address ?? '-' }}</span>
             </td>
-            <td>
+            <td class="info-cell contact-start">
                 <span class="label">Fecha de validez</span>
                 <span class="value">{{ $formatDate($quote->validity_date) }}</span>
             </td>
-            <td>
-                <span class="label">Dias de entrega</span>
-                <span class="value">{{ $quote->delivery_days ?? '-' }}</span>
+            <td class="info-cell">
+                <span class="label">Condición de pago</span>
+                <span class="value">{{ $quote->payment_condition ?? '-' }}</span>
             </td>
         </tr>
+        <tr>
+            <td class="info-cell">&nbsp;</td>
+            <td class="info-cell">&nbsp;</td>
+            <td class="info-cell contact-start">
+                <span class="label">Moneda</span>
+                <span class="value">{{ trim($currencyCode . ' ' . $currencySymbol) ?: '-' }}</span>
+            </td>
+            <td class="info-cell">
+                <span class="label">Correo empresa</span>
+                <span class="value">{{ $quote->company?->email ?? '-' }}</span>
+            </td>
+        </tr>
+        </tbody>
     </table>
 
     <div class="section-title">Detalle de productos o servicios</div>
@@ -378,9 +452,11 @@
         </tbody>
     </table>
 
-    <div class="totals-wrapper">
-        <div class="notes">
-            <span class="notes-title">Observaciones</span>
+    <table class="bottom-layout">
+        <tr>
+        <td class="bottom-left" width="60%">
+          <div class="notes">
+            <span class="notes-title">TÉRMINOS Y CONDICIONES</span>
 
             @if ($observationItems->isNotEmpty())
                 <ul class="notes-list">
@@ -389,11 +465,24 @@
                     @endforeach
                 </ul>
             @else
-                <span class="muted">Sin observaciones.</span>
+                <span class="muted">Sin términos y condiciones.</span>
             @endif
-        </div>
 
-        <table class="totals">
+            @if ($additionalObservations !== '')
+                <div class="section-title">Observaciones</div>
+                <div>{{ $additionalObservations }}</div>
+            @endif
+          </div>
+
+            <div class="signature">
+                <div class="muted">Autorizado por</div>
+                <div class="signature-line">{{ $authorizedName }}</div>
+                <div>{{ $authorizedPosition }}</div>
+            </div>
+        </td>
+
+        <td class="bottom-right" width="40%">
+          <table class="totals">
             <tr>
                 <td>Venta exonerada</td>
                 <td class="text-right">{{ $formatMoney($quote->subtotal_exonerated) }}</td>
@@ -410,8 +499,10 @@
                 <td>Total</td>
                 <td class="text-right">{{ $formatMoney($quote->grand_total) }}</td>
             </tr>
-        </table>
-    </div>
+          </table>
+        </td>
+        </tr>
+    </table>
 
     <div class="footer">
         Documento generado automaticamente por DroPaivSys. Archivo:

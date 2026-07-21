@@ -353,9 +353,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 btn.prop('disabled', false)
                     .html('<i class="fas fa-save mr-1"></i> ' + saveButtonText);
 
+                const response = xhr.responseJSON || {};
+                const validationErrors = response.errors || {};
+                const firstErrorKey = Object.keys(validationErrors)[0];
+                const firstError = firstErrorKey ? validationErrors[firstErrorKey] : null;
+                const errorMessage = Array.isArray(firstError)
+                    ? firstError[0]
+                    : (firstError || response.message || 'Error al guardar la cotización.');
+
                 if (xhr.status === 422) {
 
-                    showQuoteErrors(xhr.responseJSON.errors);
+                    showQuoteErrors(validationErrors);
 
                     Swal.fire({
 
@@ -363,8 +371,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         title: 'Revisa el formulario',
 
-                        text: xhr.responseJSON?.message
-                            || 'Hay campos obligatorios o con formato incorrecto.'
+                        text: errorMessage
 
                     });
 
@@ -378,9 +385,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     title: 'Error',
 
-                    text:
-                        xhr.responseJSON?.message
-                        || 'Error al guardar la cotización'
+                    text: errorMessage
 
                 });
 
@@ -1295,13 +1300,15 @@ function fillQuoteForm(quote) {
         .val(quote.market_study_id || '')
         .trigger('change.select2');
     $('#observations').val(quote.observations || '');
+    $('#additional_observations').val(quote.additional_observations || '');
 
     $('#quoteSideCustomer').text(getSelectedText('#customer_id', 'Seleccione cliente'));
     $('#quoteSideBranch').text('Seleccione sucursal');
 
     if (quote.customer_id) {
         loadCustomerBranches(quote.customer_id, {
-            autoSelectSingle: false
+            autoSelectSingle: false,
+            selectedBranchId: quote.customer_branch_id || null
         });
     }
 
@@ -1494,9 +1501,10 @@ function calculateQuoteTotals() {
 
     if (affectIgv) {
 
-        subtotalTaxed = subtotal;
-        igv = subtotalTaxed * 0.18;
-        grandTotal = subtotalTaxed + igv;
+        // El precio de venta ya incluye IGV: se desglosa sin sumarlo al total.
+        grandTotal = subtotal;
+        subtotalTaxed = grandTotal / 1.18;
+        igv = grandTotal - subtotalTaxed;
 
     } else {
 

@@ -330,7 +330,7 @@
                                                 class="form-control form-control-sm">
 
                                                 <option value="">
-                                                    Seleccione
+                                                    Sin marca
                                                 </option>
 
                                                 @foreach ($brands as $brand)

@@ -158,7 +158,7 @@ class QuoteController extends Controller
                         && Storage::disk('public')->exists($document->file_path));
 
                 $pdfUrl = $pdfDocument
-                    ? Storage::disk('public')->url($pdfDocument->file_path)
+                    ? Storage::disk('public')->url($pdfDocument->file_path) . '?v=' . $pdfDocument->id
                     : null;
 
                 return view('admin.quotes.partials.acciones', compact('quote', 'pdfUrl'))->render();
@@ -765,6 +765,7 @@ class QuoteController extends Controller
     {
         $quote = Quote::with([
             'customer',
+            'customerBranch',
             'company',
             'currency',
             'marketStudy',
@@ -879,6 +880,7 @@ class QuoteController extends Controller
             'delivery_days' => ['nullable', 'integer', 'min:0'],
             'delivery_time' => ['nullable', 'string', 'max:255'],
             'observations' => ['nullable', 'string'],
+            'additional_observations' => ['nullable', 'string', 'max:5000'],
             'status' => [
                 'nullable',
                 Rule::in([
@@ -938,6 +940,7 @@ class QuoteController extends Controller
                 'quote_number' => $validated['quote_number'],
                 'market_study_id' => $validated['market_study_id'] ?? null,
                 'customer_id' => $validated['customer_id'],
+                'customer_branch_id' => $validated['customer_branch_id'] ?? null,
                 'company_id' => $validated['company_id'],
                 'currency_id' => $validated['currency_id'],
                 'payment_condition' => $this->upperOrNull($validated['payment_condition'] ?? null),
@@ -950,6 +953,7 @@ class QuoteController extends Controller
                 'delivery_days' => $validated['delivery_days'] ?? null,
                 'delivery_time' => $this->upperOrNull($validated['delivery_time'] ?? null),
                 'observations' => $this->upperOrNull($validated['observations'] ?? null),
+                'additional_observations' => $this->upperOrNull($validated['additional_observations'] ?? null),
                 'subtotal_exonerated' => $totals['subtotal_exonerated'],
                 'subtotal_taxed' => $totals['subtotal_taxed'],
                 'igv' => $totals['igv'],
@@ -1002,8 +1006,10 @@ class QuoteController extends Controller
             try {
                 $pdfData = $this->generateQuotePdf($quote->fresh([
                     'customer',
+                    'customerBranch',
                     'company',
                     'currency',
+                    'creator',
                     'items.unit',
                     'items.presentation',
                     'items.brand',
@@ -1042,7 +1048,9 @@ class QuoteController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al guardar la cotización.',
+                'message' => app()->isLocal()
+                    ? 'Error al guardar la cotización: ' . $e->getMessage()
+                    : 'Error al guardar la cotización.',
             ], 500);
         }
     }
@@ -1131,14 +1139,17 @@ class QuoteController extends Controller
         }
 
         if ($affectIgv) {
-            $subtotalTaxed = round($subtotal, 2);
-            $igv = round($subtotalTaxed * 0.18, 2);
+            // En cotizaciones el precio unitario ya incluye IGV. Solo se
+            // desglosa la base imponible; el impuesto no se suma nuevamente.
+            $grandTotal = round($subtotal, 2);
+            $subtotalTaxed = round($grandTotal / 1.18, 2);
+            $igv = round($grandTotal - $subtotalTaxed, 2);
 
             return [
                 'subtotal_exonerated' => 0,
                 'subtotal_taxed' => $subtotalTaxed,
                 'igv' => $igv,
-                'grand_total' => round($subtotalTaxed + $igv, 2),
+                'grand_total' => $grandTotal,
             ];
         }
 
@@ -1280,10 +1291,12 @@ class QuoteController extends Controller
         $fileName = 'cotizacion_' . $this->sanitizeFileName($quote->quote_number) . '.pdf';
         $storedPath = 'quotes/' . $fileName;
 
+        $branding = $this->quoteBranding($quote);
+
         $pdf = Pdf::loadView('admin.quotes.pdf.quote', [
             'quote' => $quote,
             'orientation' => $orientation,
-            'logoUrl' => $this->quoteLogoUrl(),
+            ...$branding,
         ])
             ->setPaper('a4', $orientation)
             ->setOption(['isRemoteEnabled' => true]);
@@ -1312,7 +1325,7 @@ class QuoteController extends Controller
 
         return [
             'path' => $storedPath,
-            'url' => Storage::disk('public')->url($storedPath),
+            'url' => Storage::disk('public')->url($storedPath) . '?v=' . $document->id,
             'document' => $document,
         ];
     }
@@ -1322,7 +1335,7 @@ class QuoteController extends Controller
         $quote->documents()
             ->where('observation', 'PDF_GENERATED_QUOTE')
             ->get()
-            ->each(function (Document $document) {
+            ->each(function (Document $document) use ($currentPath) {
                 if (
                     $document->file_path
                     && $document->file_path !== $currentPath
@@ -1340,12 +1353,25 @@ class QuoteController extends Controller
         return preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
     }
 
-    private function quoteLogoUrl(): ?string
+    private function quoteBranding(Quote $quote): array
     {
-        $logoPath = public_path('vendor/adminlte/dist/img/logo_img.png');
+        $companyIdentity = mb_strtoupper(trim(implode(' ', array_filter([
+            $quote->company?->business_name,
+            $quote->company?->trade_name,
+        ]))), 'UTF-8');
+        $isPraga = str_contains($companyIdentity, 'PRAGA');
+        $relativeLogoPath = $isPraga
+            ? 'vendor/adminlte/dist/img/logopraga.png'
+            : 'vendor/adminlte/dist/img/logo_img.png';
+        $logoPath = public_path($relativeLogoPath);
 
-        return file_exists($logoPath)
-            ? url('vendor/adminlte/dist/img/logo_img.png')
-            : null;
+        return [
+            'brandColor' => $isPraga ? '#1d4ed8' : '#15803d',
+            'brandLightColor' => $isPraga ? '#dbeafe' : '#dcfce7',
+            'brandBorderColor' => $isPraga ? '#93c5fd' : '#86efac',
+            'logoPath' => file_exists($logoPath) ? $logoPath : null,
+            'authorizedName' => $isPraga ? 'ROSA L. VINCES VALDERRAMA' : 'IVAN CUBAS BINCES',
+            'authorizedPosition' => 'GERENTE GENERAL',
+        ];
     }
 }

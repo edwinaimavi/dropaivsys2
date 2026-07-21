@@ -126,7 +126,7 @@ class ArticleController extends Controller
 
             ->addColumn('brand', function ($article) {
 
-                return $article->brand->description ?? '-';
+                return $article->brand?->description ?? '-';
             })
 
             ->addColumn('legal_name', function ($article) {
@@ -269,7 +269,8 @@ class ArticleController extends Controller
             ],
 
             'brand_id' => [
-                'required'
+                'nullable',
+                'exists:brands,id'
             ],
 
             'legal_name' => [
@@ -327,6 +328,7 @@ class ArticleController extends Controller
 
             $validated['created_by'] = Auth::id();
             $validated['updated_by'] = Auth::id();
+            $validated['brand_id'] = $validated['brand_id'] ?? null;
 
             $validated['minimum_stock'] =
                 $request->minimum_stock ?? 0;
@@ -757,7 +759,8 @@ class ArticleController extends Controller
             ],
 
             'brand_id' => [
-                'required'
+                'nullable',
+                'exists:brands,id'
             ],
 
             'legal_name' => [
@@ -789,6 +792,8 @@ class ArticleController extends Controller
         ]);
 
         $this->validateDuplicateArticleName($validated, $article->id);
+
+        $validated['brand_id'] = $validated['brand_id'] ?? null;
 
         try {
 
@@ -1309,7 +1314,7 @@ class ArticleController extends Controller
             })
 
             ->addColumn('brand_name', function ($article) {
-                return $article->brand?->description;
+                return $article->brand?->description ?? '-';
             })
 
             ->addColumn('cost_condition', function () {

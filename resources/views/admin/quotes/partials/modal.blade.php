@@ -494,7 +494,7 @@
 
                                 <h6 class="mb-0 text-dark font-weight-bold">
                                     <i class="fas fa-search-dollar text-primary mr-1"></i>
-                                    Estudio de mercado y observaciones
+                                    Estudio de mercado, términos y observaciones
                                 </h6>
 
                                 <small class="text-muted">
@@ -558,7 +558,7 @@
                                     <div class="form-group col-md-12">
 
                                         <label class="small font-weight-bold text-secondary">
-                                            OBSERVACIONES
+                                            TÉRMINOS Y CONDICIONES
                                         </label>
 
                                         <textarea id="observations" name="observations" rows="6" class="form-control form-control-sm text-uppercase"
@@ -576,6 +576,16 @@ GARANTÍA : 12 MESES</textarea>
 
                                     </div>
 
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group col-md-12">
+                                        <label class="small font-weight-bold text-secondary">OBSERVACIONES</label>
+                                        <textarea id="additional_observations" name="additional_observations" rows="3"
+                                            class="form-control form-control-sm text-uppercase"
+                                            placeholder="Ingrese observaciones adicionales para mostrar en la cotización."></textarea>
+                                        <span class="invalid-feedback" id="additional_observations-error"></span>
+                                    </div>
                                 </div>
 
                             </div>

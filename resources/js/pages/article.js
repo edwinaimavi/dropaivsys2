@@ -1402,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     $('#brand_id')
                         .val(
-                            article.brand_id
+                            article.brand_id || ''
                         );
 
                     $('#legal_name')

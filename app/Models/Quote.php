@@ -26,6 +26,7 @@ class Quote extends Model
         'quote_number',
         'market_study_id',
         'customer_id',
+        'customer_branch_id',
       
         'company_id',
         'currency_id',
@@ -44,6 +45,7 @@ class Quote extends Model
         'delivery_time',
 
         'observations',
+        'additional_observations',
 
         'subtotal_exonerated',
         'subtotal_taxed',
@@ -81,6 +83,16 @@ class Quote extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function customerBranch()
+    {
+        return $this->belongsTo(CustomerBranch::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function company()
