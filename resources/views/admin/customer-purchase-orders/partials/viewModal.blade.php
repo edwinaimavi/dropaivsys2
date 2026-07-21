@@ -119,6 +119,30 @@
                     </div>
                 </div>
 
+                <div id="vpo_attention_closure" class="card border-0 shadow-sm mt-3 d-none">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0 font-weight-bold">
+                            <i class="fas fa-clipboard-check text-primary mr-1"></i>
+                            Cierre de atención
+                        </h6>
+                    </div>
+                    <div class="card-body pt-0">
+                        <div class="row purchase-order-view-grid">
+                            <div class="col-md-4"><small>Resultado</small><strong id="vpo_attention_result">—</strong></div>
+                            <div class="col-md-4"><small>Fecha de cierre</small><strong id="vpo_attention_closed_at">—</strong></div>
+                            <div class="col-md-4"><small>Cerrado por</small><strong id="vpo_attention_closed_by">—</strong></div>
+                            <div class="col-12"><small>Motivo / observación</small><strong id="vpo_attention_observation">—</strong></div>
+                            <div id="vpo_attention_document_wrapper" class="col-12 d-none">
+                                <small>Cargo / sustento</small>
+                                <a id="vpo_attention_document" href="#" target="_blank" rel="noopener"
+                                    class="btn btn-outline-primary btn-sm mt-1">
+                                    <i class="fas fa-external-link-alt mr-1"></i> Abrir sustento
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row justify-content-end mt-3">
                     <div class="col-md-5 col-lg-4">
                         <div class="purchase-order-view-totals">

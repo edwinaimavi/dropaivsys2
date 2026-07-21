@@ -10,6 +10,10 @@ class CustomerPurchaseOrder extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_ENTERED = 'entered';
+    public const STATUS_ATTENDED = 'attended';
+    public const STATUS_NOT_ATTENDED = 'not_attended';
+
     protected $fillable = [
         'code',
         'company_id',
@@ -34,6 +38,13 @@ class CustomerPurchaseOrder extends Model
         'igv',
         'grand_total',
         'status',
+        'attention_result',
+        'attention_observation',
+        'attention_closed_at',
+        'attention_closed_by',
+        'attention_document_path',
+        'attention_document_name',
+        'attention_document_mime',
         'created_by',
         'updated_by',
     ];
@@ -48,6 +59,7 @@ class CustomerPurchaseOrder extends Model
         'subtotal_taxed' => 'decimal:10',
         'igv' => 'decimal:10',
         'grand_total' => 'decimal:10',
+        'attention_closed_at' => 'datetime',
     ];
 
     public function company()
@@ -98,6 +110,11 @@ class CustomerPurchaseOrder extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
+    public function attentionClosedBy()
+    {
+        return $this->belongsTo(User::class, 'attention_closed_by');
+    }
+
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
@@ -105,7 +122,13 @@ class CustomerPurchaseOrder extends Model
 
     public function refreshSupplyStatus(): void
     {
-        if (in_array($this->status, ['cancelled', 'delivered', 'invoiced'], true)) {
+        if (in_array($this->status, [
+            'cancelled',
+            'delivered',
+            'invoiced',
+            self::STATUS_ATTENDED,
+            self::STATUS_NOT_ATTENDED,
+        ], true)) {
             return;
         }
 

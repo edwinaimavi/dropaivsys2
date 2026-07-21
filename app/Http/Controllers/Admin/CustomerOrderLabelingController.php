@@ -227,6 +227,7 @@ class CustomerOrderLabelingController extends Controller
                 $requested = [];
                 $distributed = [];
                 $boxes = [];
+                $boxNumbers = [];
 
                 if (count($validated['boxes']) !== (int) $validated['boxes_count']) {
                     throw ValidationException::withMessages([
@@ -256,6 +257,15 @@ class CustomerOrderLabelingController extends Controller
                 }
 
                 foreach ($validated['boxes'] as $box) {
+                    $boxNumber = (int) $box['box_number'];
+
+                    if ($boxNumber > (int) $validated['boxes_count'] || isset($boxNumbers[$boxNumber])) {
+                        throw ValidationException::withMessages([
+                            'boxes' => 'La numeración de las cajas debe ser única y correlativa del 1 al ' . $validated['boxes_count'] . '.',
+                        ]);
+                    }
+
+                    $boxNumbers[$boxNumber] = true;
                     $items = collect($box['items'] ?? [])
                         ->filter(fn ($item) => (float) ($item['quantity'] ?? 0) > 0)
                         ->values();
@@ -267,7 +277,7 @@ class CustomerOrderLabelingController extends Controller
                     }
 
                     $boxes[] = [
-                        'box_number' => (int) $box['box_number'],
+                        'box_number' => $boxNumber,
                         'observation' => $this->upperOrNull($box['observation'] ?? null),
                         'items' => $items->all(),
                     ];
@@ -293,16 +303,19 @@ class CustomerOrderLabelingController extends Controller
 
                 foreach ($requested as $itemId => $quantity) {
                     $distributedQuantity = round((float) ($distributed[$itemId] ?? 0), 2);
+                    $difference = round($distributedQuantity - $quantity, 2);
 
-                    if ($distributedQuantity > $quantity) {
+                    if ($difference > 0) {
                         throw ValidationException::withMessages([
-                            'items' => 'La cantidad distribuida del artículo ' . $this->itemDescription($itemMap[$itemId]) . ' supera la cantidad a rotular.',
+                            'items' => 'La distribución por cajas del artículo ' . $this->itemDescription($itemMap[$itemId])
+                                . ' excede la cantidad a rotular por ' . number_format($difference, 2) . ' unidades.',
                         ]);
                     }
 
-                    if ($distributedQuantity !== $quantity) {
+                    if ($difference < 0) {
                         throw ValidationException::withMessages([
-                            'items' => 'Hay artículos seleccionados que aún no fueron distribuidos completamente. Revise ' . $this->itemDescription($itemMap[$itemId]) . '.',
+                            'items' => 'La distribución por cajas del artículo ' . $this->itemDescription($itemMap[$itemId])
+                                . ' no cuadra. Faltan ' . number_format(abs($difference), 2) . ' unidades por distribuir.',
                         ]);
                     }
                 }

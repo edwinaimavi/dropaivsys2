@@ -153,7 +153,7 @@
                     </div>
 
                     <div class="card labeling-card border-0 shadow-sm mb-0">
-                        <div class="card-header labeling-section-header border-0 d-flex justify-content-between align-items-center">
+                        <div class="card-header labeling-section-header border-0">
                             <div>
                                 <h6 class="mb-0">
                                     <i class="fas fa-tags mr-1 text-success"></i>
@@ -161,12 +161,51 @@
                                 </h6>
                                 <small class="text-muted">Reparto automático o edición manual</small>
                             </div>
-                            <button type="button" class="btn btn-outline-success btn-sm" id="btnAutoDistributeLabeling">
-                                <i class="fas fa-magic mr-1"></i>
-                                Distribuir automáticamente
-                            </button>
                         </div>
                         <div class="card-body">
+                            <div class="labeling-quick-distribution mb-3">
+                                <div class="d-flex align-items-center mb-2">
+                                    <span class="labeling-quick-icon mr-2"><i class="fas fa-magic"></i></span>
+                                    <div>
+                                        <h6 class="font-weight-bold mb-0">Distribución rápida</h6>
+                                        <small class="text-muted">La última caja recibirá el saldo para cuadrar el total.</small>
+                                    </div>
+                                </div>
+                                <div class="form-row align-items-end">
+                                    <div class="form-group col-md-3 mb-2">
+                                        <label>MODO DE DISTRIBUCIÓN</label>
+                                        <select id="labeling_distribution_mode" class="form-control form-control-sm">
+                                            <option value="fixed" selected>Cajas fijas del proveedor</option>
+                                            <option value="automatic">Calcular cajas por capacidad</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-md-4 mb-2">
+                                        <label>ARTÍCULO A DISTRIBUIR</label>
+                                        <select id="labeling_quick_item_id" class="form-control form-control-sm">
+                                            <option value="">Seleccione un artículo</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-md-2 mb-2">
+                                        <label>TOTAL A ROTULAR</label>
+                                        <input type="text" id="labeling_quick_total" class="form-control form-control-sm text-right" readonly value="0.00">
+                                    </div>
+                                    <div class="form-group col-md-2 mb-2">
+                                        <label id="labeling_quantity_per_box_label">CANTIDAD REFERENCIAL POR CAJA</label>
+                                        <input type="number" id="labeling_quantity_per_box" class="form-control form-control-sm text-right"
+                                            min="0.01" step="0.01" placeholder="Ej. 1800">
+                                    </div>
+                                    <div class="form-group col-md-1 mb-2">
+                                        <label>CAJAS</label>
+                                        <input type="number" id="labeling_quick_boxes_count" class="form-control form-control-sm text-right"
+                                            min="1" step="1" value="1" readonly>
+                                    </div>
+                                    <div class="form-group col-md-12 mb-0">
+                                        <button type="button" class="btn btn-success btn-sm btn-block" id="btnAutoDistributeLabeling">
+                                            <i class="fas fa-magic mr-1"></i> Distribuir automáticamente
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <div id="labelingBoxesContainer" class="row">
                                 <div class="col-12 text-center text-muted py-3">Ingrese la cantidad de cajas.</div>
                             </div>

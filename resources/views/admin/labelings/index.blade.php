@@ -266,6 +266,24 @@
             background: #fff;
         }
 
+        .labeling-quick-distribution {
+            background: #f2fbf6;
+            border: 1px solid #bfe7ce;
+            border-radius: 9px;
+            padding: 12px;
+        }
+
+        .labeling-quick-icon {
+            align-items: center;
+            background: #28a745;
+            border-radius: 50%;
+            color: #fff;
+            display: inline-flex;
+            height: 32px;
+            justify-content: center;
+            width: 32px;
+        }
+
         .labeling-box-card .card-header {
             border-radius: 8px 8px 0 0;
             background: #fffaf0;

@@ -28,13 +28,8 @@
             font-size: 7px;
         }
 
-        .sheet {
+        .label-grid-break {
             page-break-after: always;
-            width: 100%;
-        }
-
-        .sheet:last-child {
-            page-break-after: auto;
         }
 
         .label-grid {
@@ -435,24 +430,18 @@
         $companyName = $labeling->company?->business_name ?? $labeling->company?->trade_name ?? null;
         $companyRuc = $labeling->company?->ruc;
         $labelsPerPage = (int) ($labelsPerPage ?? 4);
-        $rowsPerPage = $labelsPerPage === 6 ? 3 : 2;
+        $boxes = $labeling->boxes->sortBy('box_number')->values();
+        $totalBoxes = $boxes->count();
         $destinationLength = mb_strlen((string) $destination, 'UTF-8');
         $destinationClass = $destinationLength > 55 ? 'is-very-long' : ($destinationLength > 34 ? 'is-long' : '');
     @endphp
 
-    @foreach ($labeling->boxes->chunk($labelsPerPage) as $pageBoxes)
-        <div class="sheet labels-{{ $labelsPerPage }}">
-            <table class="label-grid">
-                @for ($row = 0; $row < $rowsPerPage; $row++)
+    @foreach ($boxes->chunk($labelsPerPage) as $pageBoxes)
+            <table class="label-grid labels-{{ $labelsPerPage }}{{ $loop->last ? '' : ' label-grid-break' }}">
+                @foreach ($pageBoxes->chunk(2) as $rowBoxes)
                     <tr>
-                        @for ($col = 0; $col < 2; $col++)
-                            @php
-                                $slot = ($row * 2) + $col;
-                                $box = $pageBoxes->get($slot);
-                            @endphp
-
+                        @foreach ($rowBoxes as $box)
                             <td class="label-cell">
-                                @if ($box)
                                     @php
                                         $boxObservation = trim((string) ($box->observation ?? $box->observations ?? ''));
                                     @endphp
@@ -557,7 +546,7 @@
                                         <div class="footer">
                                             <div class="box-number">
                                                 <span>Caja</span>
-                                                {{ $box->box_label }}
+                                                {{ $box->box_number }}/{{ $totalBoxes }}
                                             </div>
                                             <div class="qr">
                                                 @if (!empty($qrCodes[$box->id] ?? null))
@@ -568,13 +557,14 @@
                                             <div class="clear"></div>
                                         </div>
                                     </div>
-                                @endif
                             </td>
-                        @endfor
+                        @endforeach
+                        @if ($rowBoxes->count() === 1)
+                            <td class="label-cell"></td>
+                        @endif
                     </tr>
-                @endfor
+                @endforeach
             </table>
-        </div>
     @endforeach
 </body>
 

@@ -34,17 +34,19 @@ class CustomerPurchaseOrderController extends Controller
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_IN_PURCHASE = 'in_purchase';
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
-    private const STATUS_ENTERED = 'entered';
+    private const STATUS_ENTERED = CustomerPurchaseOrder::STATUS_ENTERED;
     private const STATUS_CANCELLED = 'cancelled';
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_INVOICED = 'invoiced';
+    private const STATUS_ATTENDED = CustomerPurchaseOrder::STATUS_ATTENDED;
+    private const STATUS_NOT_ATTENDED = CustomerPurchaseOrder::STATUS_NOT_ATTENDED;
 
     public function __construct()
     {
         $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'checkPurchaseOrderNumber', 'customerBranches', 'searchCustomers']);
         $this->middleware('can:admin.customer-purchase-orders.load-items')->only(['quoteItems']);
         $this->middleware('can:admin.customer-purchase-orders.store')->only(['store', 'quickStoreCustomer']);
-        $this->middleware('can:admin.customer-purchase-orders.update')->only(['update']);
+        $this->middleware('can:admin.customer-purchase-orders.update')->only(['update', 'closeAttention']);
         $this->middleware('can:admin.customer-purchase-orders.destroy')->only(['destroy']);
         $this->middleware('can:admin.customer-purchase-orders.show')->only(['show']);
     }
@@ -152,8 +154,11 @@ class CustomerPurchaseOrderController extends Controller
                 },
             ]);
 
-        if (! $request->boolean('show_supplied')) {
-            $orders->where('status', '!=', self::STATUS_ENTERED);
+        if (! $request->boolean('show_all')) {
+            $orders->whereNotIn('status', [
+                self::STATUS_ATTENDED,
+                self::STATUS_NOT_ATTENDED,
+            ]);
         }
 
         $today = today()->toDateString();
@@ -286,6 +291,16 @@ class CustomerPurchaseOrderController extends Controller
                         'label' => 'Abastecida',
                         'class' => 'badge-success text-white',
                         'icon' => 'fas fa-warehouse',
+                    ],
+                    self::STATUS_ATTENDED => [
+                        'label' => 'Atendida',
+                        'class' => 'badge-primary text-white',
+                        'icon' => 'fas fa-check-circle',
+                    ],
+                    self::STATUS_NOT_ATTENDED => [
+                        'label' => 'No atendida',
+                        'class' => 'badge-dark text-white',
+                        'icon' => 'fas fa-times-circle',
                     ],
                     self::STATUS_CANCELLED => [
                         'label' => 'Cancelada',
@@ -686,6 +701,7 @@ class CustomerPurchaseOrderController extends Controller
             'currency',
             'creator',
             'updater',
+            'attentionClosedBy',
             'documents.documentType',
             'items.quoteItem',
             'items.marketStudyItem',
@@ -698,6 +714,12 @@ class CustomerPurchaseOrderController extends Controller
         $customerPurchaseOrder->documents->each(function (Document $document) {
             $document->setAttribute('url', Storage::disk('public')->url($document->file_path));
         });
+        $customerPurchaseOrder->setAttribute(
+            'attention_document_url',
+            $customerPurchaseOrder->attention_document_path
+                ? Storage::disk('public')->url($customerPurchaseOrder->attention_document_path)
+                : null
+        );
 
         return response()->json([
             'status' => 'success',
@@ -715,6 +737,88 @@ class CustomerPurchaseOrderController extends Controller
         CustomerPurchaseOrder $customerPurchaseOrder
     ) {
         return $this->saveOrder($request, $customerPurchaseOrder);
+    }
+
+    public function closeAttention(
+        Request $request,
+        CustomerPurchaseOrder $customerPurchaseOrder
+    ) {
+        $validated = $request->validate([
+            'result' => ['required', Rule::in(['attended', 'not_attended'])],
+            'closed_at' => ['required', 'date'],
+            'observation' => [
+                Rule::requiredIf($request->input('result') === 'not_attended'),
+                'nullable',
+                'string',
+            ],
+            'file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ], [
+            'result.required' => 'Seleccione el resultado de atención.',
+            'closed_at.required' => 'La fecha de cierre es obligatoria.',
+            'observation.required' => 'Debe ingresar el motivo por el cual no se pudo atender la orden.',
+            'file.mimes' => 'El sustento debe ser PDF, JPG, JPEG o PNG.',
+            'file.max' => 'El sustento no debe superar los 10 MB.',
+        ]);
+
+        $storedPath = null;
+
+        try {
+            if ($request->hasFile('file')) {
+                $file = $request->file('file');
+                $storedName = Str::uuid() . '.' . $file->getClientOriginalExtension();
+                $storedPath = $file->storeAs(
+                    'customer-purchase-orders/attention-closures',
+                    $storedName,
+                    'public'
+                );
+            }
+
+            DB::transaction(function () use (
+                $customerPurchaseOrder,
+                $validated,
+                $request,
+                $storedPath
+            ) {
+                $order = CustomerPurchaseOrder::query()
+                    ->whereKey($customerPurchaseOrder->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($order->status !== self::STATUS_ENTERED) {
+                    throw ValidationException::withMessages([
+                        'status' => 'Solo se puede cerrar la atención de una orden abastecida.',
+                    ]);
+                }
+
+                $file = $request->file('file');
+                $order->update([
+                    'status' => $validated['result'] === 'attended'
+                        ? self::STATUS_ATTENDED
+                        : self::STATUS_NOT_ATTENDED,
+                    'attention_result' => $validated['result'],
+                    'attention_observation' => $this->upperOrNull(
+                        $validated['observation'] ?? null
+                    ),
+                    'attention_closed_at' => $validated['closed_at'],
+                    'attention_closed_by' => Auth::id(),
+                    'attention_document_path' => $storedPath,
+                    'attention_document_name' => $file?->getClientOriginalName(),
+                    'attention_document_mime' => $file?->getMimeType(),
+                    'updated_by' => Auth::id(),
+                ]);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'La atención de la orden fue cerrada correctamente.',
+            ]);
+        } catch (\Throwable $e) {
+            if ($storedPath) {
+                Storage::disk('public')->delete($storedPath);
+            }
+
+            throw $e;
+        }
     }
 
     public function destroy(CustomerPurchaseOrder $customerPurchaseOrder)
@@ -1184,6 +1288,8 @@ class CustomerPurchaseOrderController extends Controller
             self::STATUS_CANCELLED,
             self::STATUS_DELIVERED,
             self::STATUS_INVOICED,
+            self::STATUS_ATTENDED,
+            self::STATUS_NOT_ATTENDED,
         ];
     }
 

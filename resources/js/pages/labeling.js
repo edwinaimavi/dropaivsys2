@@ -32,10 +32,24 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('input change', '#labeling_boxes_count', function () {
+        if ($('#labeling_distribution_mode').val() === 'fixed') {
+            $('#labeling_quick_boxes_count').val($(this).val());
+        }
         renderLabelingBoxes(getCurrentBoxDistribution());
     });
 
-    $(document).on('input', '.labeling-item-distribute', updateLabelingAvailableSummary);
+    $(document).on('input', '.labeling-item-distribute', function () {
+        updateLabelingAvailableSummary();
+        updateQuickDistributionTotal();
+    });
+    $(document).on('change', '#labeling_quick_item_id', updateQuickDistributionTotal);
+    $(document).on('change', '#labeling_distribution_mode', updateLabelingDistributionMode);
+    $(document).on('input', '#labeling_quantity_per_box', updateAutomaticBoxesPreview);
+    $(document).on('input', '#labeling_quick_boxes_count', function () {
+        if ($('#labeling_distribution_mode').val() === 'fixed') {
+            $('#labeling_boxes_count').val($(this).val()).trigger('change');
+        }
+    });
 
     $(document).on('click', '.btnAddLabelingBoxItem', function () {
         addLabelingBoxItemRow($(this).closest('.labeling-box-card').data('box-number'));
@@ -122,6 +136,12 @@ function resetLabelingForm() {
         .html('<option value="">Seleccione orden abastecida</option>');
     $('#labeling_customer_name, #labeling_company_name, #labeling_order_number, #labeling_destination').val('');
     $('#labeling_boxes_count').val(1);
+    $('#labeling_quick_item_id').html('<option value="">Seleccione un artículo</option>');
+    $('#labeling_quick_total').val('0.00');
+    $('#labeling_quantity_per_box').val('');
+    $('#labeling_distribution_mode').val('fixed');
+    $('#labeling_quick_boxes_count').val(1);
+    updateLabelingDistributionMode();
     currentLabelingOrder = null;
     clearLabelingErrors();
     resetLabelingSideSummary();
@@ -183,6 +203,7 @@ function renderLabelingOrderItems(items) {
 
     if (!items.length) {
         tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">Seleccione una orden abastecida.</td></tr>');
+        refreshQuickDistributionItems([]);
         return;
     }
 
@@ -209,6 +230,79 @@ function renderLabelingOrderItems(items) {
             </tr>
         `;
     }).join(''));
+
+    refreshQuickDistributionItems(items);
+}
+
+function refreshQuickDistributionItems(items) {
+    const select = $('#labeling_quick_item_id');
+    const previousValue = select.val();
+    select.html('<option value="">Seleccione un artículo</option>');
+
+    items.forEach(function (item) {
+        select.append(new Option(item.article_name || item.description || `Artículo ${item.id}`, item.id));
+    });
+
+    if (items.some(item => String(item.id) === String(previousValue))) {
+        select.val(previousValue);
+    } else if (items.length === 1) {
+        select.val(items[0].id);
+    }
+
+    updateQuickDistributionTotal();
+}
+
+function updateQuickDistributionTotal() {
+    const itemId = $('#labeling_quick_item_id').val();
+    const input = $(`.labeling-item-distribute[data-item-id="${itemId}"]`);
+    const total = roundLabeling(parseFloat(input.val()) || 0);
+    $('#labeling_quick_total').val(total.toFixed(2));
+    updateAutomaticBoxesPreview();
+}
+
+function updateLabelingDistributionMode() {
+    const automatic = $('#labeling_distribution_mode').val() === 'automatic';
+    $('#labeling_boxes_count').prop('readonly', automatic);
+    $('#labeling_quick_boxes_count').prop('readonly', automatic);
+    $('#labeling_quantity_per_box_label').text(
+        automatic ? 'CANTIDAD MÁXIMA POR CAJA' : 'CANTIDAD REFERENCIAL POR CAJA'
+    );
+
+    if (automatic) {
+        updateAutomaticBoxesPreview();
+    } else {
+        $('#labeling_quick_boxes_count').val($('#labeling_boxes_count').val() || 1);
+    }
+}
+
+function updateAutomaticBoxesPreview() {
+    if ($('#labeling_distribution_mode').val() !== 'automatic') {
+        return;
+    }
+
+    const total = roundLabeling(parseFloat($('#labeling_quick_total').val()) || 0);
+    const perBox = roundLabeling(parseFloat($('#labeling_quantity_per_box').val()) || 0);
+    const requiredBoxes = total > 0 && perBox > 0 ? Math.ceil(total / perBox) : 0;
+    let highestOccupiedBox = 0;
+
+    $('.labeling-box-card').each(function () {
+        const hasItems = $(this).find('.labeling-box-item-row').toArray().some(row => {
+            const itemId = $(row).find('.labeling-box-item-select').val();
+            const quantity = parseFloat($(row).find('.labeling-box-item-quantity').val()) || 0;
+            return itemId && quantity > 0;
+        });
+
+        if (hasItems) {
+            highestOccupiedBox = Math.max(highestOccupiedBox, parseInt($(this).data('box-number'), 10));
+        }
+    });
+
+    const totalBoxes = Math.max(requiredBoxes, highestOccupiedBox);
+    $('#labeling_quick_boxes_count').val(totalBoxes || '');
+    if (totalBoxes > 0) {
+        $('#labeling_boxes_count').val(totalBoxes);
+        $('#labelingSideBoxes').text(totalBoxes);
+    }
 }
 
 function renderLabelingBoxes(existingDistribution = {}) {
@@ -283,46 +377,135 @@ function addLabelingBoxItemRow(boxNumber, itemId = '', quantity = '') {
     `);
 }
 
-function autoDistributeLabeling() {
-    const count = parseInt($('#labeling_boxes_count').val(), 10) || 0;
+async function autoDistributeLabeling() {
+    const mode = $('#labeling_distribution_mode').val() || 'automatic';
+    const configuredCount = parseInt($('#labeling_quick_boxes_count').val(), 10)
+        || parseInt($('#labeling_boxes_count').val(), 10)
+        || 0;
+    const itemId = $('#labeling_quick_item_id').val();
+    const totalInput = $(`.labeling-item-distribute[data-item-id="${itemId}"]`);
+    const total = roundLabeling(parseFloat(totalInput.val()) || 0);
+    const perBox = roundLabeling(parseFloat($('#labeling_quantity_per_box').val()) || 0);
 
-    if (!currentLabelingOrder || count < 1) {
-        Swal.fire('Atención', 'Seleccione una orden y registre la cantidad de cajas.', 'info');
+    if (!currentLabelingOrder) {
+        Swal.fire('Atención', 'Seleccione una orden abastecida.', 'info');
         return;
     }
 
-    const existingDistribution = getCurrentBoxDistribution();
-    renderLabelingBoxes();
+    if (!itemId || total <= 0) {
+        Swal.fire('Atención', 'Seleccione un artículo con una cantidad total a rotular mayor a cero.', 'info');
+        return;
+    }
 
-    $('.labeling-item-distribute').each(function () {
-        const input = $(this);
-        const itemId = input.data('item-id');
-        const total = roundLabeling(parseFloat(input.val()) || 0);
+    const orderItem = findLabelingOrderItem(itemId);
+    const available = roundLabeling(parseFloat(orderItem?.available_quantity) || 0);
+    if (total > available) {
+        Swal.fire('Distribución inválida', `La cantidad a rotular supera lo disponible por ${formatLabelingNumber(total - available)} unidades.`, 'warning');
+        return;
+    }
 
-        if (total <= 0) {
+    if (perBox <= 0) {
+        Swal.fire('Atención', 'La cantidad por caja debe ser mayor a cero.', 'warning');
+        return;
+    }
+
+    const requiredBoxes = Math.ceil(total / perBox);
+    let distributionCount = mode === 'automatic' ? requiredBoxes : configuredCount;
+
+    if (distributionCount < 1 || distributionCount > 200) {
+        Swal.fire('Distribución inválida', 'La cantidad de cajas debe estar entre 1 y 200.', 'warning');
+        return;
+    }
+
+    const lastQuantity = mode === 'automatic'
+        ? roundLabeling(total - (perBox * (requiredBoxes - 1)))
+        : roundLabeling(total - (perBox * (distributionCount - 1)));
+
+    if (lastQuantity <= 0) {
+        const message = mode === 'fixed'
+            ? 'La cantidad referencial por caja no es válida para la cantidad de cajas indicada.'
+            : 'La cantidad máxima por caja no permite generar una distribución válida.';
+        Swal.fire('Distribución inválida', message, 'warning');
+        return;
+    }
+
+    if (mode === 'fixed' && lastQuantity > perBox) {
+        const warning = await Swal.fire({
+            icon: 'warning',
+            title: 'Saldo final mayor al referencial',
+            text: `La última caja tendrá ${formatLabelingNumber(lastQuantity)} unidades, mayor a la cantidad referencial. ¿Desea continuar?`,
+            showCancelButton: true,
+            confirmButtonText: 'Sí, continuar',
+            cancelButtonText: 'Revisar datos'
+        });
+
+        if (!warning.isConfirmed) {
             return;
         }
+    }
 
-        const cents = Math.round(total * 100);
-        const baseCents = Math.floor(cents / count);
-        const remainder = cents % count;
+    const existingRows = $(`.labeling-box-item-select`).filter(function () {
+        return String($(this).val()) === String(itemId);
+    });
 
-        for (let box = 1; box <= count; box++) {
-            const quantity = (baseCents + (box <= remainder ? 1 : 0)) / 100;
+    if (existingRows.length) {
+        const confirmation = await Swal.fire({
+            icon: 'question',
+            title: '¿Redistribuir este artículo?',
+            text: 'Se reemplazarán únicamente sus cantidades actuales. La edición manual y los demás artículos se conservarán.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, redistribuir',
+            cancelButtonText: 'Cancelar'
+        });
 
-            if (quantity > 0) {
-                addLabelingBoxItemRow(box, itemId, quantity.toFixed(2));
-            }
+        if (!confirmation.isConfirmed) {
+            return;
+        }
+    }
+
+    const preservedDistribution = getCurrentBoxDistribution();
+    let highestOccupiedBox = 0;
+
+    Object.entries(preservedDistribution).forEach(function ([boxNumber, boxData]) {
+        boxData.items = boxData.items.filter(item => String(item.itemId) !== String(itemId));
+        if (boxData.items.some(item => item.itemId && parseFloat(item.quantity) > 0)) {
+            highestOccupiedBox = Math.max(highestOccupiedBox, parseInt(boxNumber, 10));
         }
     });
 
-    Object.entries(existingDistribution).forEach(function ([boxNumber, boxData]) {
-        $(`.labeling-box-card[data-box-number="${boxNumber}"]`)
-            .find('.labeling-box-observation')
-            .val(boxData.observation || '');
-    });
+    if (mode === 'fixed' && distributionCount < highestOccupiedBox) {
+        Swal.fire('Distribución inválida', `No puede reducir a ${distributionCount} cajas porque otros artículos ocupan hasta la caja ${highestOccupiedBox}.`, 'warning');
+        return;
+    }
+
+    const totalBoxes = Math.max(distributionCount, highestOccupiedBox);
+    $('#labeling_boxes_count, #labeling_quick_boxes_count').val(totalBoxes);
+    renderLabelingBoxes(preservedDistribution);
+
+    for (let box = 1; box <= distributionCount; box++) {
+        const quantity = box === distributionCount ? lastQuantity : perBox;
+        addLabelingBoxItemRow(box, itemId, quantity.toFixed(2));
+    }
+
+    if (lastQuantity !== perBox) {
+        const observation = $(`.labeling-box-card[data-box-number="${distributionCount}"] .labeling-box-observation`);
+        if (!String(observation.val() || '').trim()) {
+            observation.val(`Saldo final de distribución: ${formatLabelingNumber(lastQuantity)} unidades.`);
+        }
+    }
 
     updateLabelingAvailableSummary();
+    const successMessage = mode === 'fixed'
+        ? `Distribución generada correctamente: ${distributionCount - 1} cajas de ${formatLabelingNumber(perBox)} y 1 caja con saldo final de ${formatLabelingNumber(lastQuantity)}.`
+        : `Distribución generada correctamente: ${distributionCount} cajas calculadas por capacidad.`;
+
+    Swal.fire({
+        icon: 'success',
+        title: 'Distribución generada correctamente.',
+        text: successMessage,
+        timer: 2200,
+        showConfirmButton: false
+    });
 }
 
 function saveLabeling() {
@@ -471,18 +654,19 @@ function validateLabelingDistribution() {
     for (const [itemId, selectedQuantity] of Object.entries(selectedTotals)) {
         const distributed = roundLabeling(distributedTotals[itemId] || 0);
         const orderItem = findLabelingOrderItem(itemId);
+        const difference = roundLabeling(distributed - selectedQuantity);
 
-        if (distributed > selectedQuantity) {
+        if (difference > 0) {
             return {
                 valid: false,
-                message: `La cantidad distribuida del artículo ${orderItem?.article_name || itemId} supera la cantidad a rotular.`
+                message: `La distribución por cajas del artículo ${orderItem?.article_name || itemId} excede la cantidad a rotular por ${formatLabelingNumber(difference)} unidades.`
             };
         }
 
-        if (distributed !== selectedQuantity) {
+        if (difference < 0) {
             return {
                 valid: false,
-                message: `Hay artículos seleccionados que aún no fueron distribuidos completamente. Revise ${orderItem?.article_name || itemId}.`
+                message: `La distribución por cajas del artículo ${orderItem?.article_name || itemId} no cuadra. Faltan ${formatLabelingNumber(Math.abs(difference))} unidades por distribuir.`
             };
         }
     }

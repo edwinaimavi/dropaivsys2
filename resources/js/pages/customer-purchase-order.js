@@ -1,5 +1,5 @@
 let tableCustomerPurchaseOrder;
-let showSuppliedCustomerPurchaseOrders = false;
+let showAllCustomerPurchaseOrders = false;
 let purchaseOrderItemIndex = 0;
 let currentCustomerOrderItemRow = null;
 let quickBrandReturnTarget = 'row';
@@ -39,17 +39,59 @@ document.addEventListener('DOMContentLoaded', function () {
     initCustomerPurchaseOrderTable();
 
     $(document).on('click', '#btnToggleSuppliedOrders', function () {
-        showSuppliedCustomerPurchaseOrders = !showSuppliedCustomerPurchaseOrders;
+        showAllCustomerPurchaseOrders = !showAllCustomerPurchaseOrders;
 
         $(this)
-            .toggleClass('btn-outline-secondary', !showSuppliedCustomerPurchaseOrders)
-            .toggleClass('btn-primary', showSuppliedCustomerPurchaseOrders)
-            .attr('aria-pressed', showSuppliedCustomerPurchaseOrders ? 'true' : 'false')
-            .html(showSuppliedCustomerPurchaseOrders
-                ? '<i class="fas fa-eye-slash mr-1"></i> Ocultar'
+            .toggleClass('btn-outline-secondary', !showAllCustomerPurchaseOrders)
+            .toggleClass('btn-primary', showAllCustomerPurchaseOrders)
+            .attr('aria-pressed', showAllCustomerPurchaseOrders ? 'true' : 'false')
+            .html(showAllCustomerPurchaseOrders
+                ? '<i class="fas fa-eye-slash mr-1"></i> Ocultar cerradas'
                 : '<i class="fas fa-eye mr-1"></i> Mostrar Todos');
 
         tableCustomerPurchaseOrder.ajax.reload(null, false);
+    });
+
+    $(document).on('click', '.closeCustomerPurchaseOrderAttention', function () {
+        openCustomerPurchaseOrderAttentionModal($(this).data('id'), $(this).data('code'));
+    });
+
+    $(document).on('change', '#attention_result', function () {
+        const isNotAttended = $(this).val() === 'not_attended';
+        $('#attention_observation').prop('required', isNotAttended);
+        $('#attentionObservationRequired').toggleClass('d-none', !isNotAttended);
+    });
+
+    $(document).on('submit', '#closeCustomerPurchaseOrderAttentionForm', function (event) {
+        event.preventDefault();
+        saveCustomerPurchaseOrderAttention(this);
+    });
+
+    $(document).on('change', '#attention_file', updateAttentionFileName);
+
+    $(document).on('dragenter dragover', '#attentionFileDropzone', function (event) {
+        event.preventDefault();
+        $(this).addClass('is-dragging');
+    });
+
+    $(document).on('dragleave drop', '#attentionFileDropzone', function (event) {
+        event.preventDefault();
+        $(this).removeClass('is-dragging');
+    });
+
+    $(document).on('drop', '#attentionFileDropzone', function (event) {
+        const files = event.originalEvent.dataTransfer?.files;
+        if (files?.length) {
+            $('#attention_file')[0].files = files;
+            updateAttentionFileName();
+        }
+    });
+
+    $(document).on('keydown', '#attentionFileDropzone', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            $('#attention_file').trigger('click');
+        }
     });
 
     $(document).on('click', '#btnCreateCustomerPurchaseOrder', function () {
@@ -312,7 +354,7 @@ function initCustomerPurchaseOrderTable() {
         ajax: {
             url: window.routes.customerPurchaseOrderList,
             data: function (data) {
-                data.show_supplied = showSuppliedCustomerPurchaseOrders ? 1 : 0;
+                data.show_all = showAllCustomerPurchaseOrders ? 1 : 0;
             }
         },
         columns: [
@@ -1708,6 +1750,8 @@ function fillCustomerPurchaseOrderDetail(order) {
         in_purchase: ['EN COMPRA', 'badge-warning text-dark'],
         partial_entered: ['INGRESO PARCIAL', 'badge-info'],
         entered: ['ABASTECIDA', 'badge-success'],
+        attended: ['ATENDIDA', 'badge-primary'],
+        not_attended: ['NO ATENDIDA', 'badge-dark'],
         cancelled: ['CANCELADA', 'badge-danger'],
         delivered: ['ENTREGADA', 'badge-primary'],
         invoiced: ['FACTURADA', 'badge-info']
@@ -1794,6 +1838,126 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_documents_body').html(
         documentRows || '<tr><td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>'
     );
+
+    const hasAttentionClosure = ['attended', 'not_attended'].includes(order.status);
+    $('#vpo_attention_closure').toggleClass('d-none', !hasAttentionClosure);
+
+    if (hasAttentionClosure) {
+        const closedBy = order.attention_closed_by;
+        const closedByName = closedBy?.name
+            || closedBy?.full_name
+            || closedBy?.username
+            || closedBy?.email
+            || '—';
+
+        $('#vpo_attention_result').text(
+            order.attention_result === 'attended' ? 'ATENDIDO' : 'NO ATENDIDO'
+        );
+        $('#vpo_attention_closed_at').text(formatPurchaseOrderDisplayDate(order.attention_closed_at));
+        $('#vpo_attention_closed_by').text(closedByName);
+        $('#vpo_attention_observation').text(order.attention_observation || 'Sin observación');
+
+        const hasDocument = Boolean(order.attention_document_url);
+        $('#vpo_attention_document_wrapper').toggleClass('d-none', !hasDocument);
+        $('#vpo_attention_document')
+            .attr('href', hasDocument ? order.attention_document_url : '#')
+            .attr('title', order.attention_document_name || 'Abrir sustento');
+    }
+}
+
+function openCustomerPurchaseOrderAttentionModal(orderId, orderCode) {
+    const form = $('#closeCustomerPurchaseOrderAttentionForm');
+    form[0].reset();
+    form.find('.is-invalid').removeClass('is-invalid');
+    form.find('.invalid-feedback').text('');
+    $('#closeAttentionErrors').addClass('d-none').empty();
+    $('#close_attention_order_id').val(orderId);
+    $('#closeAttentionOrderCode').text(orderCode || '—');
+    $('#closeAttentionPurchaseNumber, #closeAttentionCustomer, #closeAttentionBranch, #closeAttentionTotal').text('Cargando...');
+    $('#attentionFileName').text('Ningún archivo seleccionado');
+    $('#attention_closed_at').val(localPurchaseOrderDate());
+    $('#attention_observation').prop('required', false);
+    $('#attentionObservationRequired').addClass('d-none');
+    $('#btnSaveAttentionClosure')
+        .prop('disabled', false)
+        .html('<i class="fas fa-save mr-1"></i> Guardar cierre');
+    $('#closeCustomerPurchaseOrderAttentionModal').modal('show');
+
+    $.get(`${window.routes.customerPurchaseOrderShow}/${orderId}`)
+        .done(function (response) {
+            const order = response.data || {};
+            const currency = order.currency?.symbol || order.currency?.code || '';
+            $('#closeAttentionOrderCode').text(order.code || orderCode || '—');
+            $('#closeAttentionPurchaseNumber').text(order.purchase_order_number || '—');
+            $('#closeAttentionCustomer').text(customerPurchaseOrderName(order.customer));
+            $('#closeAttentionBranch').text(order.customer_branch?.branch_name || 'Sin sucursal');
+            $('#closeAttentionTotal').text(`${currency} ${formatDecimalView(order.grand_total)}`.trim());
+        })
+        .fail(function () {
+            $('#closeAttentionPurchaseNumber, #closeAttentionCustomer, #closeAttentionBranch, #closeAttentionTotal').text('No disponible');
+        });
+}
+
+function updateAttentionFileName() {
+    const file = $('#attention_file')[0]?.files?.[0];
+    $('#attentionFileName').text(file?.name || 'Ningún archivo seleccionado');
+}
+
+function saveCustomerPurchaseOrderAttention(formElement) {
+    const orderId = $('#close_attention_order_id').val();
+    const button = $('#btnSaveAttentionClosure');
+    const formData = new FormData(formElement);
+    const url = `${window.routes.customerPurchaseOrderCloseAttention}/${orderId}/close-attention`;
+
+    $(formElement).find('.is-invalid').removeClass('is-invalid');
+    $(formElement).find('.invalid-feedback').text('');
+    $('#closeAttentionErrors').addClass('d-none').empty();
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+
+    $.ajax({
+        url: url,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false
+    })
+        .done(function (response) {
+            $('#closeCustomerPurchaseOrderAttentionModal').modal('hide');
+            tableCustomerPurchaseOrder.ajax.reload(null, false);
+            Swal.fire({
+                icon: 'success',
+                title: 'Atención cerrada',
+                text: response.message || 'La atención de la orden fue cerrada correctamente.'
+            });
+        })
+        .fail(function (xhr) {
+            const errors = xhr.responseJSON?.errors || {};
+            const messages = [];
+
+            Object.entries(errors).forEach(function ([field, fieldMessages]) {
+                const input = $(formElement).find(`[name="${field}"]`);
+                const message = fieldMessages[0];
+                input.addClass('is-invalid');
+                input.closest('.form-group').find('.invalid-feedback').text(message);
+                messages.push(message);
+            });
+
+            const message = messages[0]
+                || xhr.responseJSON?.message
+                || 'No se pudo cerrar la atención de la orden.';
+            $('#closeAttentionErrors').removeClass('d-none').text(message);
+        })
+        .always(function () {
+            button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Guardar cierre');
+        });
+}
+
+function localPurchaseOrderDate() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function purchaseOrderDocumentTypeOptions(selectedId = '') {

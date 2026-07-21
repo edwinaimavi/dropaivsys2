@@ -421,6 +421,11 @@ Route::post(
     [CustomerPurchaseOrderController::class, 'quickStoreCustomer']
 )->name('customer-purchase-orders.customers.quick-store');
 
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/close-attention',
+    [CustomerPurchaseOrderController::class, 'closeAttention']
+)->name('customer-purchase-orders.close-attention');
+
 Route::resource(
     'customer-purchase-orders',
     CustomerPurchaseOrderController::class

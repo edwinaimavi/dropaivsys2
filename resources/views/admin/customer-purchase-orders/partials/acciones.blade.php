@@ -7,6 +7,15 @@
     @endcan
 
     @can('admin.customer-purchase-orders.update')
+    @if ($order->status === \App\Models\CustomerPurchaseOrder::STATUS_ENTERED)
+    <button type="button" class="btn btn-outline-success btn-sm closeCustomerPurchaseOrderAttention"
+        data-id="{{ $order->id }}" data-code="{{ $order->code }}"
+        data-toggle="tooltip" title="Cerrar atención">
+        <i class="fas fa-clipboard-check"></i>
+        <span class="ml-1">Cerrar atención</span>
+    </button>
+    @endif
+
     <button type="button" class="btn btn-outline-primary btn-sm editCustomerPurchaseOrder"
         data-id="{{ $order->id }}" data-toggle="tooltip" title="Editar orden">
         <i class="fas fa-pen"></i>

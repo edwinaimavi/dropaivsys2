@@ -85,6 +85,7 @@
 
     @include('admin.customer-purchase-orders.partials.modal')
     @include('admin.customer-purchase-orders.partials.viewModal')
+    @include('admin.customer-purchase-orders.partials.closeAttentionModal')
 @stop
 
 @push('css')
@@ -247,6 +248,7 @@
             customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}",
             customerPurchaseOrderCustomersSearch: "{{ route('admin.customer-purchase-orders.customers.search') }}",
             customerPurchaseOrderCustomersQuickStore: "{{ route('admin.customer-purchase-orders.customers.quick-store') }}",
+            customerPurchaseOrderCloseAttention: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderCustomerDocumentConsult: "{{ route('admin.customers.consultar', ['numero' => 'DOC_PLACEHOLDER']) }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
