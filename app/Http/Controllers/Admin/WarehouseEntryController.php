@@ -315,12 +315,17 @@ class WarehouseEntryController extends Controller
 
         $items = $order->items
             ->reject(fn (SupplierPurchaseOrderItem $item) => strtolower((string) $item->status) === 'deleted')
-            ->map(function (SupplierPurchaseOrderItem $item) use ($receivedByItem) {
+            ->map(function (SupplierPurchaseOrderItem $item) use ($receivedByItem, $order) {
                 $orderedQuantity = round((float) $item->quantity, 2);
                 $receivedQuantity = round((float) ($receivedByItem[$item->id] ?? 0), 2);
                 $pendingQuantity = max(round($orderedQuantity - $receivedQuantity, 2), 0);
 
-                return $this->sourceItemPayload($item, $orderedQuantity, $pendingQuantity);
+                return $this->sourceItemPayload(
+                    $item,
+                    $orderedQuantity,
+                    $pendingQuantity,
+                    (bool) $order->affect_igv
+                );
             })
             ->filter(fn (array $item) => (float) $item['quantity'] > 0)
             ->values();
@@ -571,8 +576,9 @@ class WarehouseEntryController extends Controller
         return collect($items)->map(function (array $item) use ($affectIgv) {
             $quantity = round((float) $item['quantity'], 2);
             $unitPrice = round((float) $item['unit_price'], 2);
-            $subtotal = round($quantity * $unitPrice, 2);
-            $taxAmount = $affectIgv ? round($subtotal * 0.18, 2) : 0;
+            $lineTotal = round($quantity * $unitPrice, 2);
+            $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
+            $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
 
             return [
                 'supplier_purchase_order_item_id' => $item['supplier_purchase_order_item_id'] ?? null,
@@ -592,7 +598,7 @@ class WarehouseEntryController extends Controller
                 'unit_price' => $unitPrice,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'line_total' => round($subtotal + $taxAmount, 2),
+                'line_total' => $lineTotal,
                 'status' => 'active',
             ];
         })->all();
@@ -652,23 +658,26 @@ class WarehouseEntryController extends Controller
     {
         $subtotal = round((float) collect($items)->sum('subtotal'), 2);
         $igv = round((float) collect($items)->sum('tax_amount'), 2);
+        $grandTotal = round((float) collect($items)->sum('line_total'), 2);
 
         return [
             'subtotal' => $subtotal,
             'igv' => $igv,
-            'grand_total' => round($subtotal + $igv, 2),
+            'grand_total' => $grandTotal,
         ];
     }
 
     private function sourceItemPayload(
         SupplierPurchaseOrderItem $item,
         float $orderedQuantity,
-        float $pendingQuantity
+        float $pendingQuantity,
+        bool $affectIgv
     ): array {
         $article = $item->article;
         $unitPrice = round((float) $item->unit_price, 2);
-        $subtotal = round($pendingQuantity * $unitPrice, 2);
-        $taxAmount = round($subtotal * 0.18, 2);
+        $lineTotal = round($pendingQuantity * $unitPrice, 2);
+        $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
+        $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
 
         return [
             'supplier_purchase_order_item_id' => $item->id,
@@ -688,7 +697,7 @@ class WarehouseEntryController extends Controller
             'unit_price' => $unitPrice,
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
-            'line_total' => round($subtotal + $taxAmount, 2),
+            'line_total' => $lineTotal,
         ];
     }
 

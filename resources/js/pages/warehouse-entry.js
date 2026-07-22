@@ -536,21 +536,25 @@ function calculateWarehouseEntryTotals() {
     const affectIgv = $('#warehouse_entry_affect_igv').val() === '1';
     let subtotal = 0;
     let igv = 0;
+    let total = 0;
 
     $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function () {
         const row = $(this);
         const quantity = parseWarehouseEntryNumber(row.find('.item-quantity').val());
         const unitPrice = parseWarehouseEntryNumber(row.find('.item-unit-price').val());
-        const lineSubtotal = quantity * unitPrice;
-        const lineIgv = affectIgv ? lineSubtotal * 0.18 : 0;
-        const lineTotal = lineSubtotal + lineIgv;
+        const lineTotal = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
+        const lineSubtotal = affectIgv
+            ? Math.round((lineTotal / 1.18 + Number.EPSILON) * 100) / 100
+            : 0;
+        const lineIgv = affectIgv
+            ? Math.round((lineTotal - lineSubtotal + Number.EPSILON) * 100) / 100
+            : 0;
 
         subtotal += lineSubtotal;
         igv += lineIgv;
+        total += lineTotal;
         row.find('.item-line-total').text(formatWarehouseEntryMoney(lineTotal));
     });
-
-    const total = subtotal + igv;
 
     $('#warehouse_entry_subtotal').val(formatWarehouseEntryMoney(subtotal));
     $('#warehouse_entry_igv').val(formatWarehouseEntryMoney(igv));
