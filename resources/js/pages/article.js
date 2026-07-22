@@ -126,13 +126,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         d.brand_id || null,
 
                     issue_date:
-                        d.issue_date,
+                        d.issue_date || null,
 
                     expiration_date:
-                        d.expiration_date,
+                        d.expiration_date || null,
 
                     observation:
-                        d.observation
+                        d.observation || null
 
                 })))
             );
@@ -796,13 +796,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     file,
 
                 issue_date:
-                    issueDate,
+                    issueDate || null,
 
                 expiration_date:
-                    expirationDate,
+                    expirationDate || null,
 
                 observation:
-                    observation
+                    observation || null
 
             });
 

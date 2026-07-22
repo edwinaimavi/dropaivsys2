@@ -1053,10 +1053,32 @@ class ArticleController extends Controller
             return [];
         }
 
+        $documents = array_map(function ($document) {
+            if (!is_array($document)) {
+                return $document;
+            }
+
+            $document['brand_id'] = blank($document['brand_id'] ?? null)
+                ? null
+                : $document['brand_id'];
+            $document['issue_date'] = blank($document['issue_date'] ?? null)
+                ? null
+                : $document['issue_date'];
+            $document['expiration_date'] = blank($document['expiration_date'] ?? null)
+                ? null
+                : $document['expiration_date'];
+            $document['observation'] = blank($document['observation'] ?? null)
+                ? null
+                : $document['observation'];
+
+            return $document;
+        }, $documents);
+
         Validator::make(
             ['documents' => $documents],
             [
                 'documents' => ['array'],
+                'documents.*' => ['array'],
                 'documents.*.document_type_id' => ['required', 'exists:document_types,id'],
                 'documents.*.brand_id' => ['nullable', 'exists:brands,id'],
                 'documents.*.issue_date' => ['nullable', 'date'],
