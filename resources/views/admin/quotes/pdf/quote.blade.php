@@ -9,9 +9,17 @@
     $upper = fn ($value) => \Illuminate\Support\Str::upper(trim((string) ($value ?: '-')));
 
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2));
+    $formatUnitPrice = function ($value) use ($currencySymbol) {
+        $formatted = number_format((float) $value, 4, '.', ',');
+        [$integerPart, $decimalPart] = explode('.', $formatted);
+        $decimalPart = str_pad(rtrim($decimalPart, '0'), 2, '0');
+
+        return trim($currencySymbol . ' ' . $integerPart . '.' . $decimalPart);
+    };
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
     $formatExpirationMonth = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('m/Y') : '-';
     $amountSizeClass = fn ($value) => mb_strlen($formatMoney($value), 'UTF-8') > 12 ? 'amount-small' : '';
+    $unitPriceSizeClass = fn ($value) => mb_strlen($formatUnitPrice($value), 'UTF-8') > 12 ? 'amount-small' : '';
     $quantitySizeClass = fn ($value) => strlen(number_format((float) $value, 2)) > 10 ? 'amount-small' : '';
     $observationItems = collect(preg_split('/\R/u', (string) $quote->observations))
         ->map(fn ($line) => trim(preg_replace('/^[\-\*\x{2022}\s]+/u', '', $line)))
@@ -551,7 +559,7 @@
                     <td class="item-compact-text">{{ $item->presentation?->description ?? '-' }}</td>
                     <td class="text-center item-nowrap item-number">{{ $formatExpirationMonth($item->expiration_date) }}</td>
                     <td>{{ $item->origin ?? '-' }}</td>
-                    <td class="text-right item-nowrap item-number {{ $amountSizeClass($item->unit_price) }}">{{ $formatMoney($item->unit_price) }}</td>
+                    <td class="text-right item-nowrap item-number {{ $unitPriceSizeClass($item->unit_price) }}">{{ $formatUnitPrice($item->unit_price) }}</td>
                     <td class="text-right item-nowrap item-number {{ $amountSizeClass($item->line_total) }}">{{ $formatMoney($item->line_total) }}</td>
                 </tr>
             @endforeach
