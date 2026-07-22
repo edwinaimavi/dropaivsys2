@@ -66,11 +66,6 @@ document.addEventListener('DOMContentLoaded', function () {
             );
 
             formData.append(
-                'brand_id',
-                $('#brand_id').val()
-            );
-
-            formData.append(
                 'legal_name',
                 $('#legal_name').val()
             );
@@ -126,6 +121,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     document_type_id:
                         d.document_type_id,
+
+                    brand_id:
+                        d.brand_id || null,
 
                     issue_date:
                         d.issue_date,
@@ -245,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     $('#documentsTableBody').html(`
             <tr>
-                <td colspan="5" class="text-center text-muted">
+                <td colspan="6" class="text-center text-muted">
                     No hay documentos agregados
                 </td>
             </tr>
@@ -373,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function () {
         */
         $('#documentsTableBody').html(`
         <tr>
-            <td colspan="5" class="text-center text-muted">
+            <td colspan="6" class="text-center text-muted">
                 No hay documentos agregados
             </td>
         </tr>
@@ -663,7 +661,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         $('#documentsTableBody').html(`
     <tr>
-        <td colspan="5" class="text-center text-muted">
+        <td colspan="6" class="text-center text-muted">
             No hay documentos agregados
         </td>
     </tr>
@@ -693,6 +691,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
             $('#documentForm')[0].reset();
 
+            if ($.fn.select2) {
+                const brandSelect = $('#document_brand_id');
+
+                if (!brandSelect.hasClass('select2-hidden-accessible')) {
+                    brandSelect.select2({
+                        dropdownParent: $('#documentModal'),
+                        theme: 'bootstrap4',
+                        width: '100%',
+                        placeholder: 'Seleccione marca',
+                        allowClear: true
+                    });
+                }
+
+                brandSelect.val('').trigger('change');
+            }
+
             $('#documentModal').modal('show');
 
         }
@@ -713,6 +727,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
             let documentTypeText =
                 $('#document_type_id option:selected').text();
+
+            let documentBrandId =
+                $('#document_brand_id').val();
+
+            let documentBrandText = documentBrandId
+                ? $('#document_brand_id option:selected').text()
+                : 'Sin marca';
 
             let issueDate =
                 $('#issue_date').val();
@@ -765,6 +786,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 document_type:
                     documentTypeText,
 
+                brand_id:
+                    documentBrandId || null,
+
+                brand:
+                    documentBrandText,
+
                 file:
                     file,
 
@@ -789,6 +816,8 @@ document.addEventListener('DOMContentLoaded', function () {
     <tr data-index="${index}">
 
         <td>${documentTypeText}</td>
+
+        <td>${documentBrandText}</td>
 
         <td>${file.name}</td>
 
@@ -846,7 +875,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <tr>
 
                     <td
-                        colspan="5"
+                        colspan="6"
                         class="text-center text-muted">
 
                         No hay documentos agregados
@@ -1118,6 +1147,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     </td>
 
+    <td>
+        ${doc.brand?.description ?? 'Sin marca'}
+    </td>
+
     <td title="${doc.original_name}">
 
         <i class="fas fa-file-pdf text-danger mr-1"></i>
@@ -1177,7 +1210,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     html = `
                     <tr>
 
-                        <td colspan="6"
+                        <td colspan="7"
                             class="text-center text-muted">
 
                             No existen documentos registrados
@@ -1400,11 +1433,6 @@ document.addEventListener('DOMContentLoaded', function () {
                             article.unit_id
                         );
 
-                    $('#brand_id')
-                        .val(
-                            article.brand_id || ''
-                        );
-
                     $('#legal_name')
                         .val(
                             article.legal_name
@@ -1536,6 +1564,10 @@ document.addEventListener('DOMContentLoaded', function () {
         </td>
 
         <td>
+            ${doc.brand?.description ?? 'Sin marca'}
+        </td>
+
+        <td>
             ${doc.original_name}
         </td>
 
@@ -1572,7 +1604,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         $('#documentsTableBody').html(`
         <tr>
-            <td colspan="5"
+            <td colspan="6"
                 class="text-center text-muted">
 
                 No hay documentos agregados

@@ -452,7 +452,7 @@
             font-size: 12px;
         }
 
-        #viewArticleModal #va_documents_body td:nth-child(3) {
+        #viewArticleModal #va_documents_body td:nth-child(4) {
 
             max-width: 220px;
             overflow: hidden;
@@ -497,7 +497,7 @@
             border-top: 1px solid #eef2f7;
         }
 
-        #viewArticleModal #va_documents_body td:nth-child(3) {
+        #viewArticleModal #va_documents_body td:nth-child(4) {
 
             max-width: 280px;
 

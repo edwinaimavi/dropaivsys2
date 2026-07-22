@@ -978,7 +978,7 @@ GARANTÍA : 12 MESES</textarea>
 
                                 <input type="number" name="items[__INDEX__][unit_price]"
                                     class="form-control form-control-sm text-right item-unit-price" value="0.00"
-                                    min="0" step="0.01">
+                                    min="0" step="0.0001">
 
                             </td>
 

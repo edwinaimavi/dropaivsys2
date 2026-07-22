@@ -11,6 +11,7 @@ use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -268,11 +269,6 @@ class ArticleController extends Controller
                 'required'
             ],
 
-            'brand_id' => [
-                'nullable',
-                'exists:brands,id'
-            ],
-
             'legal_name' => [
                 'required',
                 'max:255'
@@ -293,8 +289,10 @@ class ArticleController extends Controller
                 'in:ACTIVE,INACTIVE'
             ],
             'documents_data' => [
-                'nullable'
+                'nullable',
+                'json'
             ],
+            'documents_files.*' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
             'images.*' => [
                 'nullable',
                 'image',
@@ -304,6 +302,7 @@ class ArticleController extends Controller
 
         ]);
 
+        $documentsData = $this->validatedDocumentData($request);
         $this->validateDuplicateArticleName($validated);
 
         try {
@@ -328,7 +327,7 @@ class ArticleController extends Controller
 
             $validated['created_by'] = Auth::id();
             $validated['updated_by'] = Auth::id();
-            $validated['brand_id'] = $validated['brand_id'] ?? null;
+            $validated['brand_id'] = null;
 
             $validated['minimum_stock'] =
                 $request->minimum_stock ?? 0;
@@ -400,11 +399,6 @@ class ArticleController extends Controller
                 }
             }
 
-            $documentsData = json_decode(
-                $request->documents_data,
-                true
-            );
-
             if ($documentsData) {
 
                 foreach (
@@ -438,6 +432,9 @@ class ArticleController extends Controller
 
                             'document_type_id' =>
                             $doc['document_type_id'],
+
+                            'brand_id' =>
+                            $doc['brand_id'] ?? null,
 
                             'original_name' =>
                             $file->getClientOriginalName(),
@@ -686,7 +683,8 @@ class ArticleController extends Controller
 
             'images',
 
-            'documents.documentType'
+            'documents.documentType',
+            'documents.brand'
 
         ])->find($id);
 
@@ -758,11 +756,6 @@ class ArticleController extends Controller
                 'required'
             ],
 
-            'brand_id' => [
-                'nullable',
-                'exists:brands,id'
-            ],
-
             'legal_name' => [
                 'required',
                 'max:255'
@@ -788,12 +781,15 @@ class ArticleController extends Controller
                 'image',
                 'mimes:jpg,jpeg,png,webp',
                 'max:4096'
-            ]
+            ],
+            'documents_data' => ['nullable', 'json'],
+            'documents_files.*' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
         ]);
 
+        $documentsData = $this->validatedDocumentData($request);
         $this->validateDuplicateArticleName($validated, $article->id);
 
-        $validated['brand_id'] = $validated['brand_id'] ?? null;
+        $validated['brand_id'] = null;
 
         try {
 
@@ -944,11 +940,6 @@ class ArticleController extends Controller
         | NUEVOS DOCUMENTOS
         |--------------------------------------------------------------------------
         */
-            $documentsData = json_decode(
-                $request->documents_data,
-                true
-            );
-
             if ($documentsData) {
 
                 foreach (
@@ -982,6 +973,9 @@ class ArticleController extends Controller
 
                             'document_type_id' =>
                             $doc['document_type_id'],
+
+                            'brand_id' =>
+                            $doc['brand_id'] ?? null,
 
                             'original_name' =>
                             $file->getClientOriginalName(),
@@ -1049,6 +1043,44 @@ class ArticleController extends Controller
 
             ], 500);
         }
+    }
+
+    private function validatedDocumentData(Request $request): array
+    {
+        $documents = json_decode((string) $request->input('documents_data', '[]'), true);
+
+        if (!is_array($documents) || $documents === []) {
+            return [];
+        }
+
+        Validator::make(
+            ['documents' => $documents],
+            [
+                'documents' => ['array'],
+                'documents.*.document_type_id' => ['required', 'exists:document_types,id'],
+                'documents.*.brand_id' => ['nullable', 'exists:brands,id'],
+                'documents.*.issue_date' => ['nullable', 'date'],
+                'documents.*.expiration_date' => ['nullable', 'date'],
+                'documents.*.observation' => ['nullable', 'string'],
+            ],
+            [
+                'documents.*.document_type_id.required' => 'Seleccione el tipo de documento.',
+                'documents.*.document_type_id.exists' => 'El tipo de documento seleccionado no es válido.',
+                'documents.*.brand_id.exists' => 'La marca seleccionada para el documento no es válida.',
+                'documents.*.issue_date.date' => 'La fecha de emisión del documento no es válida.',
+                'documents.*.expiration_date.date' => 'La fecha de vencimiento del documento no es válida.',
+            ]
+        )->validate();
+
+        foreach (array_keys($documents) as $index) {
+            if (!$request->hasFile("documents_files.$index")) {
+                throw ValidationException::withMessages([
+                    "documents_files.$index" => 'Seleccione el archivo PDF del documento.',
+                ]);
+            }
+        }
+
+        return $documents;
     }
 
     private function normalizeArticleNames(Request $request): void
@@ -1257,6 +1289,7 @@ class ArticleController extends Controller
             'editor',
 
             'documents.documentType',
+            'documents.brand',
 
             'images'
 

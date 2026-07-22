@@ -10,6 +10,9 @@
 
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
+    $formatExpirationMonth = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('m/Y') : '-';
+    $amountSizeClass = fn ($value) => mb_strlen($formatMoney($value), 'UTF-8') > 12 ? 'amount-small' : '';
+    $quantitySizeClass = fn ($value) => strlen(number_format((float) $value, 2)) > 10 ? 'amount-small' : '';
     $observationItems = collect(preg_split('/\R/u', (string) $quote->observations))
         ->map(fn ($line) => trim(preg_replace('/^[\-\*\x{2022}\s]+/u', '', $line)))
         ->filter()
@@ -252,6 +255,18 @@
 
         .item-nowrap {
             white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .item-number {
+            padding-left: 1px !important;
+            padding-right: 1px !important;
+            font-size: 7px;
+        }
+
+        .amount-small {
+            font-size: 6.2px !important;
+            letter-spacing: -0.1px;
         }
 
         .item-compact-text {
@@ -508,15 +523,15 @@
             <tr>
                 <th width="3%">#</th>
                 <th width="8%">Codigo</th>
-                <th width="25%">Descripcion</th>
-                <th class="item-nowrap" width="6%">Cant.</th>
+                <th width="24%">Descripcion</th>
+                <th class="item-nowrap" width="7%">Cant.</th>
                 <th class="item-nowrap" width="5%">Und.</th>
-                <th width="11%">Marca</th>
+                <th width="12%">Marca</th>
                 <th width="11%">Present.</th>
-                <th class="item-nowrap" width="8%">F. Venc.</th>
+                <th class="item-nowrap" width="7%">F. Venc.</th>
                 <th width="7%">Proced.</th>
-                <th class="item-nowrap" width="8%">P. Unit.</th>
-                <th class="item-nowrap" width="8%">Subtotal</th>
+                <th class="item-nowrap" width="7%">P. Unit.</th>
+                <th class="item-nowrap" width="9%">Subtotal</th>
             </tr>
         </thead>
         <tbody>
@@ -530,14 +545,14 @@
                             <div class="muted">{{ $item->note }}</div>
                         @endif
                     </td>
-                    <td class="text-right item-nowrap">{{ number_format((float) $item->quantity, 2) }}</td>
+                    <td class="text-right item-nowrap item-number {{ $quantitySizeClass($item->quantity) }}">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td class="item-nowrap">{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
                     <td class="item-compact-text">{{ $item->brand?->description ?? '-' }}</td>
                     <td class="item-compact-text">{{ $item->presentation?->description ?? '-' }}</td>
-                    <td class="text-center item-nowrap">{{ $formatDate($item->expiration_date) }}</td>
+                    <td class="text-center item-nowrap item-number">{{ $formatExpirationMonth($item->expiration_date) }}</td>
                     <td>{{ $item->origin ?? '-' }}</td>
-                    <td class="text-right item-nowrap">{{ $formatMoney($item->unit_price) }}</td>
-                    <td class="text-right item-nowrap">{{ $formatMoney($item->line_total) }}</td>
+                    <td class="text-right item-nowrap item-number {{ $amountSizeClass($item->unit_price) }}">{{ $formatMoney($item->unit_price) }}</td>
+                    <td class="text-right item-nowrap item-number {{ $amountSizeClass($item->line_total) }}">{{ $formatMoney($item->line_total) }}</td>
                 </tr>
             @endforeach
         </tbody>

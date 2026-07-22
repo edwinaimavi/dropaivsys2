@@ -87,6 +87,19 @@
 
                     <div class="form-group mb-2">
 
+                        <label class="mb-1">Marca</label>
+
+                        <select id="document_brand_id" class="form-control form-control-sm">
+                            <option value="">Sin marca</option>
+                            @foreach ($brands as $brand)
+                                <option value="{{ $brand->id }}">{{ $brand->description }}</option>
+                            @endforeach
+                        </select>
+
+                    </div>
+
+                    <div class="form-group mb-2">
+
                         <label class="mb-1">
 
                             Archivo PDF

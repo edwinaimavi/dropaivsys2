@@ -1388,7 +1388,7 @@ function addQuoteItemRow(data = {}) {
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
     row.find('.item-cost-price').val(formatMoney(data.cost_price || 0));
     row.find('.item-quantity').val(data.quantity || 1);
-    row.find('.item-unit-price').val(formatMoney(data.unit_price || 0));
+    row.find('.item-unit-price').val(formatQuoteUnitPrice(data.unit_price || 0));
     row.find('.item-discount-percentage').val(formatMoney(data.discount_percentage || 0));
     row.find('.item-discount-amount').val(formatMoney(data.discount_amount || 0));
     row.find('.item-line-total').val(formatMoney(data.line_total || 0));
@@ -2234,6 +2234,12 @@ function resetQuickQuoteArticleForm() {
                 text: 'No se pudo generar el código del artículo.'
             });
         });
+}
+
+function formatQuoteUnitPrice(value) {
+    const formatted = (parseFloat(value) || 0).toFixed(4);
+
+    return formatted.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
 function resetQuickCustomerForm() {

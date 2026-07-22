@@ -15,6 +15,7 @@ class Document extends Model
         'documentable_id',
 
         'document_type_id',
+        'brand_id',
 
         'original_name',
         'stored_name',
@@ -65,6 +66,11 @@ class Document extends Model
     public function documentType()
     {
         return $this->belongsTo(DocumentType::class);
+    }
+
+    public function brand()
+    {
+        return $this->belongsTo(Brand::class);
     }
 
     /*

@@ -440,6 +440,10 @@
                                                     Tipo
                                                 </th>
 
+                                                <th width="140">
+                                                    Marca
+                                                </th>
+
                                                 <th>
                                                     Documento
                                                 </th>
@@ -466,7 +470,7 @@
 
                                             <tr>
 
-                                                <td colspan="6" class="text-center py-4 text-muted">
+                                                <td colspan="7" class="text-center py-4 text-muted">
 
                                                     <i class="fas fa-folder-open fa-2x mb-2 d-block text-secondary">
                                                     </i>
