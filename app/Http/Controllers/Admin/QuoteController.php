@@ -881,6 +881,8 @@ class QuoteController extends Controller
             'delivery_time' => ['nullable', 'string', 'max:255'],
             'observations' => ['nullable', 'string'],
             'additional_observations' => ['nullable', 'string', 'max:5000'],
+            'issuer_department' => ['nullable', 'string', 'max:50', Rule::in(['COMPRAS', 'VENTAS'])],
+            'contact_number' => ['nullable', 'string', 'max:80'],
             'status' => [
                 'nullable',
                 Rule::in([
@@ -954,6 +956,8 @@ class QuoteController extends Controller
                 'delivery_time' => $this->upperOrNull($validated['delivery_time'] ?? null),
                 'observations' => $this->upperOrNull($validated['observations'] ?? null),
                 'additional_observations' => $this->upperOrNull($validated['additional_observations'] ?? null),
+                'issuer_department' => $this->upperOrNull($validated['issuer_department'] ?? null),
+                'contact_number' => $this->upperOrNull($validated['contact_number'] ?? null),
                 'subtotal_exonerated' => $totals['subtotal_exonerated'],
                 'subtotal_taxed' => $totals['subtotal_taxed'],
                 'igv' => $totals['igv'],
@@ -1296,6 +1300,10 @@ class QuoteController extends Controller
         $pdf = Pdf::loadView('admin.quotes.pdf.quote', [
             'quote' => $quote,
             'orientation' => $orientation,
+            'amountInWords' => $this->numeroALetras(
+                (float) $quote->grand_total,
+                $this->quoteCurrencyName($quote)
+            ),
             ...$branding,
         ])
             ->setPaper('a4', $orientation)
@@ -1363,15 +1371,121 @@ class QuoteController extends Controller
         $relativeLogoPath = $isPraga
             ? 'vendor/adminlte/dist/img/logopraga.png'
             : 'vendor/adminlte/dist/img/logo_img.png';
+        $relativeSignaturePath = $isPraga
+            ? 'vendor/adminlte/dist/img/firmapraga.jpeg'
+            : 'vendor/adminlte/dist/img/firmadropaiv.jpeg';
         $logoPath = public_path($relativeLogoPath);
+        $signaturePath = public_path($relativeSignaturePath);
 
         return [
             'brandColor' => $isPraga ? '#1d4ed8' : '#15803d',
             'brandLightColor' => $isPraga ? '#dbeafe' : '#dcfce7',
             'brandBorderColor' => $isPraga ? '#93c5fd' : '#86efac',
             'logoPath' => file_exists($logoPath) ? $logoPath : null,
-            'authorizedName' => $isPraga ? 'ROSA L. VINCES VALDERRAMA' : 'IVAN CUBAS BINCES',
-            'authorizedPosition' => 'GERENTE GENERAL',
+            'signaturePath' => file_exists($signaturePath) ? $signaturePath : null,
+            'registeredBy' => $isPraga
+                ? 'ANABEL CUDEÑAS'
+                : (trim(($quote->creator?->name ?? '') . ' ' . ($quote->creator?->lastname ?? '')) ?: '-'),
         ];
+    }
+
+    private function quoteCurrencyName(Quote $quote): string
+    {
+        $code = mb_strtoupper(trim((string) $quote->currency?->code), 'UTF-8');
+
+        return match ($code) {
+            'PEN' => 'SOLES',
+            'USD' => 'DÓLARES',
+            'CHF' => 'FRANCOS SUIZOS',
+            default => mb_strtoupper(
+                trim((string) ($quote->currency?->description ?: $code ?: 'MONEDA')),
+                'UTF-8'
+            ),
+        };
+    }
+
+    private function numeroALetras(float $numero, string $moneda = 'SOLES'): string
+    {
+        $formatted = number_format(max($numero, 0), 2, '.', '');
+        [$integerPart, $decimalPart] = explode('.', $formatted);
+        $integer = (int) $integerPart;
+
+        return sprintf(
+            'SON %s CON %s/100 %s',
+            $this->integerToSpanishWords($integer),
+            $decimalPart,
+            mb_strtoupper(trim($moneda), 'UTF-8')
+        );
+    }
+
+    private function integerToSpanishWords(int $number): string
+    {
+        $units = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+        $special = [
+            10 => 'DIEZ', 11 => 'ONCE', 12 => 'DOCE', 13 => 'TRECE', 14 => 'CATORCE',
+            15 => 'QUINCE', 16 => 'DIECISÉIS', 17 => 'DIECISIETE', 18 => 'DIECIOCHO',
+            19 => 'DIECINUEVE', 20 => 'VEINTE', 21 => 'VEINTIÚN', 22 => 'VEINTIDÓS',
+            23 => 'VEINTITRÉS', 24 => 'VEINTICUATRO', 25 => 'VEINTICINCO',
+            26 => 'VEINTISÉIS', 27 => 'VEINTISIETE', 28 => 'VEINTIOCHO', 29 => 'VEINTINUEVE',
+        ];
+        $tens = [3 => 'TREINTA', 4 => 'CUARENTA', 5 => 'CINCUENTA', 6 => 'SESENTA', 7 => 'SETENTA', 8 => 'OCHENTA', 9 => 'NOVENTA'];
+        $hundreds = [2 => 'DOSCIENTOS', 3 => 'TRESCIENTOS', 4 => 'CUATROCIENTOS', 5 => 'QUINIENTOS', 6 => 'SEISCIENTOS', 7 => 'SETECIENTOS', 8 => 'OCHOCIENTOS', 9 => 'NOVECIENTOS'];
+
+        if ($number === 0) {
+            return 'CERO';
+        }
+
+        if ($number < 10) {
+            return $units[$number];
+        }
+
+        if ($number < 30) {
+            return $special[$number];
+        }
+
+        if ($number < 100) {
+            $ten = intdiv($number, 10);
+            $remainder = $number % 10;
+
+            return $tens[$ten] . ($remainder ? ' Y ' . $units[$remainder] : '');
+        }
+
+        if ($number === 100) {
+            return 'CIEN';
+        }
+
+        if ($number < 1000) {
+            $hundred = intdiv($number, 100);
+            $remainder = $number % 100;
+            $prefix = $hundred === 1 ? 'CIENTO' : $hundreds[$hundred];
+
+            return $prefix . ($remainder ? ' ' . $this->integerToSpanishWords($remainder) : '');
+        }
+
+        if ($number < 1000000) {
+            $thousands = intdiv($number, 1000);
+            $remainder = $number % 1000;
+            $prefix = $thousands === 1
+                ? 'MIL'
+                : $this->integerToSpanishWords($thousands) . ' MIL';
+
+            return $prefix . ($remainder ? ' ' . $this->integerToSpanishWords($remainder) : '');
+        }
+
+        if ($number < 1000000000) {
+            $millions = intdiv($number, 1000000);
+            $remainder = $number % 1000000;
+            $prefix = $millions === 1
+                ? 'UN MILLÓN'
+                : $this->integerToSpanishWords($millions) . ' MILLONES';
+
+            return $prefix . ($remainder ? ' ' . $this->integerToSpanishWords($remainder) : '');
+        }
+
+        $billions = intdiv($number, 1000000000);
+        $remainder = $number % 1000000000;
+        $prefix = $this->integerToSpanishWords($billions) . ' MIL MILLONES';
+
+        return $prefix . ($remainder ? ' ' . $this->integerToSpanishWords($remainder) : '');
     }
 }

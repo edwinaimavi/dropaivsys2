@@ -46,6 +46,8 @@ class Quote extends Model
 
         'observations',
         'additional_observations',
+        'issuer_department',
+        'contact_number',
 
         'subtotal_exonerated',
         'subtotal_taxed',

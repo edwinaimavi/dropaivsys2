@@ -1,13 +1,12 @@
 @php
     $currencySymbol = $quote->currency?->symbol ?? '';
-    $currencyCode = $quote->currency?->code ?? '';
     $customerName = $quote->customer?->business_name
         ?? $quote->customer?->full_name
         ?? trim(($quote->customer?->first_name ?? '') . ' ' . ($quote->customer?->last_name ?? ''));
     $customerRuc = $quote->customer?->ruc ?? $quote->customer?->document_number ?? null;
     $companyName = $quote->company?->trade_name ?? $quote->company?->business_name ?? '-';
     $branchName = $quote->customerBranch?->branch_name ?? '-';
-    $registeredBy = trim(($quote->creator?->name ?? '') . ' ' . ($quote->creator?->lastname ?? '')) ?: '-';
+    $upper = fn ($value) => \Illuminate\Support\Str::upper(trim((string) ($value ?: '-')));
 
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
@@ -122,26 +121,50 @@
             text-transform: uppercase;
         }
 
-        .info-layout {
+        .info-container {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             margin: 0 0 6px;
             table-layout: fixed;
-            border: 1px solid {{ $brandBorderColor }};
         }
 
-        .info-layout th,
-        .info-layout td {
+        .info-container-cell {
+            vertical-align: top;
+        }
+
+        .info-container-spacer {
+            width: 10px;
+        }
+
+        .info-box {
             border: 1px solid {{ $brandBorderColor }};
+            border-radius: 7px;
+            padding: 0;
+        }
+
+        .info-box-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .info-box-table td {
+            border-top: 1px solid {{ $brandBorderColor }};
+            border-right: 1px solid {{ $brandBorderColor }};
             vertical-align: top;
             word-wrap: break-word;
+        }
+
+        .info-box-table td:last-child {
+            border-right: 0;
         }
 
         .info-title {
             color: {{ $brandColor }};
             font-size: 9px;
             font-weight: 800;
-            padding: 3px 5px;
+            padding: 2px 4px;
             background: {{ $brandLightColor }};
             text-align: center;
             text-transform: uppercase;
@@ -149,18 +172,14 @@
         }
 
         .info-cell {
-            padding: 3px 5px;
-            font-size: 8px;
-            line-height: 1.05;
-        }
-
-        .contact-start {
-            border-left: 2px solid {{ $brandColor }} !important;
+            padding: 2px 4px;
+            font-size: 7.7px;
+            line-height: 1.02;
         }
 
         .info-cell .label {
             color: #64748b;
-            font-size: 6.8px;
+            font-size: 6.4px;
             text-transform: uppercase;
             display: block;
             margin: 0 0 1px;
@@ -172,8 +191,8 @@
             color: #111827;
             font-weight: 700;
             word-wrap: break-word;
-            font-size: 8px;
-            line-height: 1.08;
+            font-size: 7.7px;
+            line-height: 1.04;
         }
 
         .items {
@@ -187,18 +206,19 @@
             background: {{ $brandColor }};
             color: #ffffff;
             border: 1px solid {{ $brandColor }};
-            padding: 4px 3px;
+            padding: 3px 2px;
             text-transform: uppercase;
-            font-size: 8px;
+            font-size: 7.4px;
             font-weight: 700;
         }
 
         .items td {
             border: 1px solid {{ $brandBorderColor }};
-            padding: 4px 3px;
+            padding: 3px 2px;
             vertical-align: top;
             word-wrap: break-word;
-            font-size: 8.5px;
+            font-size: 7.9px;
+            line-height: 1.08;
         }
 
         .items tbody tr:nth-child(even) td {
@@ -218,6 +238,15 @@
             word-wrap: break-word;
         }
 
+        .item-nowrap {
+            white-space: nowrap;
+        }
+
+        .item-compact-text {
+            font-size: 7.5px;
+            line-height: 1.04;
+        }
+
         .muted {
             color: #64748b;
         }
@@ -225,8 +254,8 @@
         .bottom-layout {
             width: 100%;
             border-collapse: separate;
-            border-spacing: 6px 0;
-            margin: 6px -6px 0;
+            border-spacing: 10px 0;
+            margin: 6px -10px 0;
             table-layout: fixed;
             page-break-inside: avoid;
         }
@@ -243,6 +272,12 @@
             font-size: 8px;
             line-height: 1.15;
             word-wrap: break-word;
+        }
+
+        .totals-box {
+            border: 1px solid {{ $brandBorderColor }};
+            border-radius: 7px;
+            padding: 0;
         }
 
         .notes-title {
@@ -269,8 +304,13 @@
         }
 
         .totals td {
-            border: 1px solid {{ $brandBorderColor }};
+            border: 0;
+            border-bottom: 1px solid {{ $brandBorderColor }};
             padding: 5px 6px;
+        }
+
+        .totals tr:last-child td {
+            border-bottom: 0;
         }
 
         .totals .grand td {
@@ -278,17 +318,6 @@
             color: {{ $brandColor }};
             font-size: 12px;
             font-weight: 800;
-        }
-
-        .footer {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            border-top: 1px solid #e5e7eb;
-            color: #64748b;
-            font-size: 9px;
-            padding-top: 6px;
         }
 
         .signature {
@@ -300,10 +329,38 @@
             page-break-inside: avoid;
         }
 
-        .signature-line {
-            border-top: 1px solid #475569;
-            padding-top: 5px;
+        .signature-label {
+            color: #64748b;
             font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+
+        .signature-image {
+            display: block;
+            width: 175px;
+            max-width: 100%;
+            max-height: 70px;
+            margin: 0 auto;
+        }
+
+        .amount-words {
+            margin-top: 5px;
+            border: 1px solid {{ $brandBorderColor }};
+            border-radius: 6px;
+            background: {{ $brandLightColor }};
+            padding: 5px 6px;
+            color: #111827;
+            font-size: 7.5px;
+            line-height: 1.2;
+            word-wrap: break-word;
+        }
+
+        .amount-words-label {
+            display: block;
+            color: {{ $brandColor }};
+            font-weight: 800;
+            margin-bottom: 2px;
         }
     </style>
 </head>
@@ -338,87 +395,91 @@
         </div>
     </div>
 
-    <table class="info-layout">
-        <colgroup>
-            <col width="25%">
-            <col width="25%">
-            <col width="25%">
-            <col width="25%">
-        </colgroup>
-        <thead>
-            <tr>
-                <th class="info-title" colspan="2">Datos del cliente</th>
-                <th class="info-title contact-start" colspan="2">Datos de contacto</th>
-            </tr>
-        </thead>
-        <tbody>
+    <table class="info-container">
         <tr>
-            <td class="info-cell">
-                <span class="label">Razón social</span>
-                <span class="value">{{ $customerName ?: '-' }}</span>
+            <td class="info-container-cell" width="49%">
+                <div class="info-box">
+                    <div class="info-title">Datos del cliente</div>
+                    <table class="info-box-table">
+                        <tr>
+                            <td class="info-cell" width="50%">
+                                <span class="label">Razón social</span>
+                                <span class="value">{{ $upper($customerName) }}</span>
+                            </td>
+                            <td class="info-cell" width="50%">
+                                <span class="label">Sucursal / tienda</span>
+                                <span class="value">{{ $upper($branchName) }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-cell">
+                                <span class="label">RUC / DNI</span>
+                                <span class="value">{{ $upper($customerRuc) }}</span>
+                            </td>
+                            <td class="info-cell">
+                                <span class="label">Dirección</span>
+                                <span class="value">{{ $upper($quote->delivery_address) }}</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
             </td>
-            <td class="info-cell">
-                <span class="label">Sucursal / tienda</span>
-                <span class="value">{{ $branchName }}</span>
-            </td>
-            <td class="info-cell contact-start">
-                <span class="label">Registrado por</span>
-                <span class="value">{{ $registeredBy }}</span>
-            </td>
-            <td class="info-cell">
-                <span class="label">Fecha de emisión</span>
-                <span class="value">{{ $formatDate($quote->created_at) }}</span>
+            <td class="info-container-spacer"></td>
+            <td class="info-container-cell" width="49%">
+                <div class="info-box">
+                    <div class="info-title">Datos de contacto</div>
+                    <table class="info-box-table">
+                        <tr>
+                            <td class="info-cell" width="50%">
+                                <span class="label">Registrado por</span>
+                                <span class="value">{{ $upper($registeredBy) }}</span>
+                            </td>
+                            <td class="info-cell" width="50%">
+                                <span class="label">Fecha de emisión</span>
+                                <span class="value">{{ $formatDate($quote->created_at) }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-cell">
+                                <span class="label">Cargo / departamento</span>
+                                <span class="value">{{ $upper($quote->issuer_department) }}</span>
+                            </td>
+                            <td class="info-cell">
+                                <span class="label">Condición de pago</span>
+                                <span class="value">{{ $upper($quote->payment_condition) }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-cell">
+                                <span class="label">Número de contacto</span>
+                                <span class="value">{{ $upper($quote->contact_number) }}</span>
+                            </td>
+                            <td class="info-cell">
+                                <span class="label">Correo empresa</span>
+                                <span class="value">{{ $upper($quote->company?->email) }}</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
             </td>
         </tr>
-        <tr>
-            <td class="info-cell">
-                <span class="label">RUC / DNI</span>
-                <span class="value">{{ $customerRuc ?: '-' }}</span>
-            </td>
-            <td class="info-cell">
-                <span class="label">Dirección de entrega</span>
-                <span class="value">{{ $quote->delivery_address ?? '-' }}</span>
-            </td>
-            <td class="info-cell contact-start">
-                <span class="label">Fecha de validez</span>
-                <span class="value">{{ $formatDate($quote->validity_date) }}</span>
-            </td>
-            <td class="info-cell">
-                <span class="label">Condición de pago</span>
-                <span class="value">{{ $quote->payment_condition ?? '-' }}</span>
-            </td>
-        </tr>
-        <tr>
-            <td class="info-cell">&nbsp;</td>
-            <td class="info-cell">&nbsp;</td>
-            <td class="info-cell contact-start">
-                <span class="label">Moneda</span>
-                <span class="value">{{ trim($currencyCode . ' ' . $currencySymbol) ?: '-' }}</span>
-            </td>
-            <td class="info-cell">
-                <span class="label">Correo empresa</span>
-                <span class="value">{{ $quote->company?->email ?? '-' }}</span>
-            </td>
-        </tr>
-        </tbody>
     </table>
 
     <div class="section-title">Detalle de productos o servicios</div>
     <table class="items">
         <thead>
             <tr>
-                <th width="4%">#</th>
+                <th width="3%">#</th>
                 <th width="8%">Codigo</th>
-                <th width="24%">Descripcion</th>
-                <th width="6%">Cant.</th>
-                <th width="7%">Unidad</th>
-                <th width="8%">Marca</th>
-                <th width="8%">Present.</th>
-                <th width="8%">F. Venc.</th>
-                <th width="8%">Proced.</th>
-                <th width="8%">P. Unit.</th>
-                <th width="6%">Desc.</th>
-                <th width="9%">Subtotal</th>
+                <th width="25%">Descripcion</th>
+                <th class="item-nowrap" width="6%">Cant.</th>
+                <th class="item-nowrap" width="5%">Und.</th>
+                <th width="11%">Marca</th>
+                <th width="11%">Present.</th>
+                <th class="item-nowrap" width="8%">F. Venc.</th>
+                <th width="7%">Proced.</th>
+                <th class="item-nowrap" width="8%">P. Unit.</th>
+                <th class="item-nowrap" width="8%">Subtotal</th>
             </tr>
         </thead>
         <tbody>
@@ -432,21 +493,14 @@
                             <div class="muted">{{ $item->note }}</div>
                         @endif
                     </td>
-                    <td class="text-right">{{ number_format((float) $item->quantity, 2) }}</td>
-                    <td>{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
-                    <td>{{ $item->brand?->description ?? '-' }}</td>
-                    <td>{{ $item->presentation?->description ?? '-' }}</td>
-                    <td class="text-center">{{ $formatDate($item->expiration_date) }}</td>
+                    <td class="text-right item-nowrap">{{ number_format((float) $item->quantity, 2) }}</td>
+                    <td class="item-nowrap">{{ $item->unit?->abbreviation ?? $item->unit?->description ?? '-' }}</td>
+                    <td class="item-compact-text">{{ $item->brand?->description ?? '-' }}</td>
+                    <td class="item-compact-text">{{ $item->presentation?->description ?? '-' }}</td>
+                    <td class="text-center item-nowrap">{{ $formatDate($item->expiration_date) }}</td>
                     <td>{{ $item->origin ?? '-' }}</td>
-                    <td class="text-right">{{ $formatMoney($item->unit_price) }}</td>
-                    <td class="text-right">
-                        @if ((float) $item->discount_percentage > 0)
-                            {{ number_format((float) $item->discount_percentage, 2) }}%
-                        @else
-                            -
-                        @endif
-                    </td>
-                    <td class="text-right">{{ $formatMoney($item->line_total) }}</td>
+                    <td class="text-right item-nowrap">{{ $formatMoney($item->unit_price) }}</td>
+                    <td class="text-right item-nowrap">{{ $formatMoney($item->line_total) }}</td>
                 </tr>
             @endforeach
         </tbody>
@@ -475,13 +529,15 @@
           </div>
 
             <div class="signature">
-                <div class="muted">Autorizado por</div>
-                <div class="signature-line">{{ $authorizedName }}</div>
-                <div>{{ $authorizedPosition }}</div>
+                <div class="signature-label">Autorizado por</div>
+                @if (!empty($signaturePath))
+                    <img class="signature-image" src="{{ $signaturePath }}" alt="Firma autorizada">
+                @endif
             </div>
         </td>
 
         <td class="bottom-right" width="40%">
+          <div class="totals-box">
           <table class="totals">
             <tr>
                 <td>Venta exonerada</td>
@@ -500,14 +556,15 @@
                 <td class="text-right">{{ $formatMoney($quote->grand_total) }}</td>
             </tr>
           </table>
+          </div>
+          <div class="amount-words">
+              <span class="amount-words-label">MONTO EN LETRAS</span>
+              {{ $amountInWords }}
+          </div>
         </td>
         </tr>
     </table>
 
-    <div class="footer">
-        Documento generado automaticamente por DroPaivSys. Archivo:
-        cotizacion_{{ $quote->quote_number }}.pdf
-    </div>
 </body>
 
 </html>

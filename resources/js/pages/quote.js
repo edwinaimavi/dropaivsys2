@@ -350,6 +350,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             error: function (xhr) {
 
+                console.error('Error al guardar la cotización.', xhr.responseJSON || xhr.responseText);
+
                 btn.prop('disabled', false)
                     .html('<i class="fas fa-save mr-1"></i> ' + saveButtonText);
 
@@ -969,6 +971,7 @@ function resetQuoteForm() {
         $('#billing_type').val('local').trigger('change');
         $('#affect_igv').val('0').trigger('change');
         $('#payment_condition').val('CONTADO').trigger('change');
+        $('#issuer_department').val('').trigger('change');
 
         setDefaultCurrency('PEN');
 
@@ -979,6 +982,7 @@ function resetQuoteForm() {
         $('#billing_type').val('local');
         $('#affect_igv').val('0');
         $('#payment_condition').val('CONTADO');
+        $('#issuer_department').val('');
 
         setDefaultCurrency('PEN');
 
@@ -1266,6 +1270,12 @@ function fillQuoteForm(quote) {
     $('#payment_condition')
         .val(quote.payment_condition || '')
         .trigger('change.select2');
+
+    $('#issuer_department')
+        .val(quote.issuer_department || '')
+        .trigger('change.select2');
+
+    $('#contact_number').val(quote.contact_number || '');
 
     $('#delivery_address').val(quote.delivery_address || '');
     $('#show_code_type').val(quote.show_code_type || 'internal');

@@ -378,7 +378,33 @@
 
                                 <input type="hidden" id="show_code_type" name="show_code_type" value="internal">
 
-                                <!-- FILA 3 -->
+                                <!-- FILA 3: DATOS DE CONTACTO -->
+                                <div class="form-row">
+                                    <div class="form-group col-md-6">
+                                        <label class="small font-weight-bold text-secondary">
+                                            CARGO / DEPARTAMENTO
+                                        </label>
+                                        <select id="issuer_department" name="issuer_department"
+                                            class="form-control form-control-sm">
+                                            <option value="">SELECCIONE DEPARTAMENTO</option>
+                                            <option value="COMPRAS">COMPRAS</option>
+                                            <option value="VENTAS">VENTAS</option>
+                                        </select>
+                                        <span class="invalid-feedback" id="issuer_department-error"></span>
+                                    </div>
+
+                                    <div class="form-group col-md-6">
+                                        <label class="small font-weight-bold text-secondary">
+                                            NÚMERO DE CONTACTO
+                                        </label>
+                                        <input type="text" id="contact_number" name="contact_number"
+                                            class="form-control form-control-sm text-uppercase" maxlength="80"
+                                            placeholder="Ejemplo: 975321222 / 954241544">
+                                        <span class="invalid-feedback" id="contact_number-error"></span>
+                                    </div>
+                                </div>
+
+                                <!-- FILA 4 -->
                                 <div class="form-row">
 
                                     <div class="form-group col-md-4">
