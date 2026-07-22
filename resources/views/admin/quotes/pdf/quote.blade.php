@@ -14,7 +14,12 @@
         ->map(fn ($line) => trim(preg_replace('/^[\-\*\x{2022}\s]+/u', '', $line)))
         ->filter()
         ->values();
-    $additionalObservations = trim((string) $quote->additional_observations);
+    $additionalObservationItems = collect(preg_split('/\R/u', (string) $quote->additional_observations))
+        ->map(fn ($line) => trim(preg_replace('/^[\-\*\x{2022}\s]+/u', '', $line)))
+        ->filter()
+        ->map(fn ($line) => \Illuminate\Support\Str::upper($line))
+        ->values();
+    $companyEmail = \Illuminate\Support\Str::lower(trim((string) $quote->company?->email)) ?: '-';
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -195,6 +200,13 @@
             line-height: 1.04;
         }
 
+        .info-cell .email-value {
+            color: {{ $brandColor }};
+            font-size: 9px;
+            font-weight: 800;
+            text-decoration: none;
+        }
+
         .items {
             width: 100%;
             border-collapse: collapse;
@@ -295,6 +307,31 @@
         .notes-list li {
             margin: 0 0 2px;
             padding-left: 1px;
+            line-height: 1.15;
+        }
+
+        .observations-box {
+            margin-top: 6px;
+            padding: 5px 5px 2px;
+            border-top: 1px solid {{ $brandBorderColor }};
+            background: {{ $brandLightColor }};
+        }
+
+        .observations-title {
+            display: block;
+            color: {{ $brandColor }};
+            font-size: 8px;
+            font-weight: 800;
+            margin-bottom: 3px;
+        }
+
+        .observations-list {
+            margin: 0;
+            padding-left: 13px;
+        }
+
+        .observations-list li {
+            margin: 0 0 2px;
             line-height: 1.15;
         }
 
@@ -456,7 +493,7 @@
                             </td>
                             <td class="info-cell">
                                 <span class="label">Correo empresa</span>
-                                <span class="value">{{ $upper($quote->company?->email) }}</span>
+                                <span class="value email-value">{{ $companyEmail }}</span>
                             </td>
                         </tr>
                     </table>
@@ -522,9 +559,15 @@
                 <span class="muted">Sin términos y condiciones.</span>
             @endif
 
-            @if ($additionalObservations !== '')
-                <div class="section-title">Observaciones</div>
-                <div>{{ $additionalObservations }}</div>
+            @if ($additionalObservationItems->isNotEmpty())
+                <div class="observations-box">
+                    <span class="observations-title">OBSERVACIONES</span>
+                    <ul class="observations-list">
+                        @foreach ($additionalObservationItems as $observation)
+                            <li>{{ $observation }}</li>
+                        @endforeach
+                    </ul>
+                </div>
             @endif
           </div>
 

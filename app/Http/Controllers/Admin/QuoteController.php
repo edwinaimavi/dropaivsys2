@@ -1384,7 +1384,7 @@ class QuoteController extends Controller
             'logoPath' => file_exists($logoPath) ? $logoPath : null,
             'signaturePath' => file_exists($signaturePath) ? $signaturePath : null,
             'registeredBy' => $isPraga
-                ? 'ANABEL CUDEÑAS'
+                ? 'ANABEL CUDEÑA'
                 : (trim(($quote->creator?->name ?? '') . ' ' . ($quote->creator?->lastname ?? '')) ?: '-'),
         ];
     }

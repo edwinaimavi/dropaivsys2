@@ -74,7 +74,7 @@ it('muestra a Anabel Cudeñas como registrada por para Praga', function () {
     expect(quoteBrandingForTest($quote))->toMatchArray([
         'brandColor' => '#1d4ed8',
         'signaturePath' => public_path('vendor/adminlte/dist/img/firmapraga.jpeg'),
-        'registeredBy' => 'ANABEL CUDEÑAS',
+        'registeredBy' => 'ANABEL CUDEÑA',
     ]);
 });
 
@@ -156,7 +156,7 @@ it('renderiza el PDF con su firma empresarial y sin columna de descuento', funct
     'PRAGA' => [
         'PRAGA MEDICAL IMPORT S.A.C.',
         'PRAGA',
-        'ANABEL CUDEÑAS',
+        'ANABEL CUDEÑA',
         'firmapraga.jpeg',
     ],
     'DROPAIV' => [
