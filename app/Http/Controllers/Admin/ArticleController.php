@@ -230,21 +230,22 @@ class ArticleController extends Controller
 
             'minimum_stock' => [
                 'nullable',
-                'numeric'
+                'numeric',
+                'min:0'
             ],
 
             'is_taxable' => [
-                'nullable',
+                'required',
                 'boolean'
             ],
 
             'has_batch' => [
-                'nullable',
+                'required',
                 'boolean'
             ],
 
             'has_expiration' => [
-                'nullable',
+                'required',
                 'boolean'
             ],
 
@@ -330,16 +331,16 @@ class ArticleController extends Controller
             $validated['brand_id'] = null;
 
             $validated['minimum_stock'] =
-                $request->minimum_stock ?? 0;
+                $validated['minimum_stock'] ?? 0;
 
             $validated['is_taxable'] =
-                $request->is_taxable ?? 0;
+                (int) $request->boolean('is_taxable');
 
             $validated['has_batch'] =
-                $request->has_batch ?? 0;
+                (int) $request->boolean('has_batch');
 
             $validated['has_expiration'] =
-                $request->has_expiration ?? 0;
+                (int) $request->boolean('has_expiration');
 
 
             $article = Article::create($validated);
@@ -740,6 +741,32 @@ class ArticleController extends Controller
                 'max:100'
             ],
 
+            'minimum_stock' => [
+                'nullable',
+                'numeric',
+                'min:0'
+            ],
+
+            'is_taxable' => [
+                'required',
+                'boolean'
+            ],
+
+            'has_batch' => [
+                'required',
+                'boolean'
+            ],
+
+            'has_expiration' => [
+                'required',
+                'boolean'
+            ],
+
+            'observation' => [
+                'nullable',
+                'string'
+            ],
+
             'category_id' => [
                 'required'
             ],
@@ -807,6 +834,18 @@ class ArticleController extends Controller
 
             $validated['updated_by'] =
                 Auth::id();
+
+            $validated['minimum_stock'] =
+                $validated['minimum_stock'] ?? 0;
+
+            $validated['is_taxable'] =
+                (int) $request->boolean('is_taxable');
+
+            $validated['has_batch'] =
+                (int) $request->boolean('has_batch');
+
+            $validated['has_expiration'] =
+                (int) $request->boolean('has_expiration');
 
             $article->update($validated);
 
