@@ -1,8 +1,350 @@
 .spo-tracking-modal .modal-content{overflow:hidden;border-radius:22px;box-shadow:0 28px 80px rgba(15,35,60,.25)}
 .spo-tracking-modal .spo-tracking-header{align-items:flex-start;padding:24px 28px;border:0;background:linear-gradient(125deg,#092b43,#0f766e);color:#fff}.spo-tracking-modal .spo-tracking-kicker{font-size:10px;font-weight:800;letter-spacing:.12em;color:#8ff0d2}.spo-tracking-modal .modal-title{margin:5px 0 3px;font-weight:800}.spo-tracking-modal .spo-tracking-header p{font-size:12px;color:#b9d4d8}
 .spo-tracking-modal .spo-tracking-summary{display:grid;grid-template-columns:.8fr 1.5fr .9fr 1fr;gap:1px;background:#e4ebef;border-bottom:1px solid #e4ebef}.spo-tracking-modal .spo-tracking-summary>div{min-width:0;padding:15px 20px;background:#fff}.spo-tracking-modal .spo-tracking-summary small{display:block;margin-bottom:4px;color:#8493a3;font-size:9px;font-weight:800;letter-spacing:.09em}.spo-tracking-modal .spo-tracking-summary strong{display:block;overflow:hidden;color:#1c3349;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.spo-tracking-modal .spo-current-badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e8f7f2;color:#0f766e;font-size:10px;font-weight:800}
-.spo-tracking-modal .spo-tracking-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,.75fr);min-height:530px}.spo-tracking-modal .spo-tracking-history,.spo-tracking-modal .spo-tracking-form-panel{padding:24px 28px}.spo-tracking-modal .spo-tracking-form-panel{border-left:1px solid #e6edf1;background:#f8fafb}.spo-tracking-modal .spo-section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}.spo-tracking-modal .spo-section-title small{color:#0f8a76;font-size:9px;font-weight:900;letter-spacing:.12em}.spo-tracking-modal .spo-section-title h5{margin:3px 0 0;color:#173149;font-weight:800}.spo-tracking-modal .spo-section-title>i{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#e4f7f1;color:#0f8a76}
+.spo-tracking-modal .spo-tracking-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(360px,.7fr);min-height:530px}.spo-tracking-modal .spo-tracking-history{padding:24px 28px}.spo-tracking-modal .spo-tracking-form-panel{padding:21px 24px;border-left:1px solid #e6edf1;background:#f8fafb}.spo-tracking-modal .spo-section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}.spo-tracking-modal .spo-section-title small{color:#0f8a76;font-size:9px;font-weight:900;letter-spacing:.12em}.spo-tracking-modal .spo-section-title h5{margin:3px 0 0;color:#173149;font-weight:800}.spo-tracking-modal .spo-section-title>i{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#e4f7f1;color:#0f8a76}
 .spo-tracking-modal .spo-tracking-loading{padding:70px 0;color:#8394a5;text-align:center}.spo-tracking-modal .spo-tracking-timeline{position:relative;padding-left:34px}.spo-tracking-modal .spo-tracking-timeline:before{content:"";position:absolute;top:13px;bottom:13px;left:12px;width:2px;background:#dfe8eb}.spo-tracking-modal .spo-tracking-item{position:relative;margin-bottom:17px;padding:15px 16px;border:1px solid #e3eaee;border-radius:14px;background:#fff}.spo-tracking-modal .spo-tracking-dot{position:absolute;left:-29px;top:16px;display:grid;place-items:center;width:17px;height:17px;border:3px solid #eef3f4;border-radius:50%;background:#aab7c2;color:#fff;font-size:6px}.spo-tracking-modal .spo-tracking-item.completed .spo-tracking-dot,.spo-tracking-modal .spo-tracking-item.current .spo-tracking-dot{background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.1)}.spo-tracking-modal .spo-tracking-item.current{border-color:#9cdeca;background:#f4fcf9;box-shadow:0 9px 24px rgba(15,118,110,.08)}.spo-tracking-modal .spo-tracking-item.observed{border-color:#f2ce7c;background:#fffbef}.spo-tracking-modal .spo-tracking-item.observed .spo-tracking-dot{background:#f59e0b}.spo-tracking-modal .spo-tracking-item.cancelled{border-color:#f1a9b1;background:#fff6f7}.spo-tracking-modal .spo-tracking-item.cancelled .spo-tracking-dot{background:#e74c5b}.spo-tracking-modal .spo-tracking-item.pending{padding:10px 14px;background:#fafbfc;color:#94a1ad}.spo-tracking-modal .spo-tracking-item-head{display:flex;justify-content:space-between;gap:12px}.spo-tracking-modal .spo-tracking-item strong{color:#263e54;font-size:12px}.spo-tracking-modal .spo-tracking-item time{color:#8595a4;font-size:9px;font-weight:700}.spo-tracking-modal .spo-tracking-item p{margin:7px 0 0;color:#66798b;font-size:11px;line-height:1.45}.spo-tracking-modal .spo-tracking-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.spo-tracking-modal .spo-tracking-meta span,.spo-tracking-modal .spo-tracking-meta a{padding:4px 7px;border-radius:6px;background:#edf4f5;color:#52707a;font-size:9px;font-weight:700}.spo-tracking-modal .spo-delete-event{border:0;background:transparent;color:#d45b65;font-size:10px}
-.spo-tracking-modal .spo-tracking-form-panel label{margin-bottom:4px;color:#53687b;font-size:10px;font-weight:800}.spo-tracking-modal .spo-tracking-form-panel .form-control{height:39px;border-color:#dce5e9;border-radius:9px;font-size:12px}.spo-tracking-modal .spo-tracking-form-panel textarea.form-control{height:auto}.spo-tracking-modal .spo-file-control{display:flex;align-items:center;gap:9px;padding:9px;border:1px dashed #b8cbd0;border-radius:9px;background:#fff;color:#0f8a76}.spo-tracking-modal .spo-file-control input{min-width:0;font-size:10px}.spo-tracking-modal .spo-save-tracking{min-height:43px;border:0;border-radius:10px;background:#0f8a76;font-weight:800}
+.spo-tracking-modal .spo-tracking-form-panel .form-group{margin-bottom:12px}.spo-tracking-modal .spo-tracking-form-panel label{margin-bottom:5px;color:#53687b;font-size:9px;font-weight:900;letter-spacing:.035em;text-transform:uppercase}.spo-tracking-modal .spo-tracking-form-panel .form-control{height:39px;border-color:#dce5e9;border-radius:9px;background:#fff;font-size:12px;transition:border-color .2s,box-shadow .2s}.spo-tracking-modal .spo-tracking-form-panel .form-control:focus{border-color:#72c7b6;box-shadow:0 0 0 3px rgba(15,138,118,.09)}.spo-tracking-modal .spo-tracking-form-panel textarea.form-control{height:auto}.spo-tracking-modal .spo-tracking-field-block{padding:10px 11px;border:1px solid #e5ecef;border-radius:12px;background:#fff}.spo-tracking-modal .spo-tracking-input-icon{position:relative}.spo-tracking-modal .spo-tracking-input-icon>i{position:absolute;z-index:2;top:50%;left:13px;transform:translateY(-50%);color:#8ca0ae;font-size:11px}.spo-tracking-modal .spo-tracking-input-icon .form-control{padding-left:34px}.spo-tracking-modal .spo-file-control{display:flex;align-items:center;gap:9px;padding:9px;border:1px dashed #b8cbd0;border-radius:9px;background:#fff;color:#0f8a76}.spo-tracking-modal .spo-file-control input{min-width:0;font-size:10px}.spo-tracking-modal .spo-save-tracking{min-height:41px;border:0;border-radius:10px;background:#0f8a76;font-weight:800;box-shadow:0 7px 16px rgba(15,118,110,.16)}
+.spo-tracking-modal .spo-tracking-agency-control{flex-wrap:nowrap}.spo-tracking-modal .spo-tracking-agency-control .select2-container{min-width:0;flex:1 1 auto}.spo-tracking-modal .spo-tracking-agency-control .select2-selection{height:39px;border-color:#dce5e9;border-radius:9px 0 0 9px;background:#fff}.spo-tracking-modal .spo-tracking-agency-control .select2-selection__rendered{padding-left:12px;line-height:37px;color:#344b5e;font-size:12px}.spo-tracking-modal .spo-tracking-agency-control .select2-selection__arrow{height:37px}.spo-tracking-modal .spo-tracking-agency-control .input-group-append .btn{width:42px;border:0;border-radius:0 9px 9px 0;background:#0f8a76;box-shadow:none}.spo-tracking-modal .spo-tracking-agency-control .input-group-append .btn:hover{background:#0b6f61}
+.spo-quick-agency-modal .modal-content{overflow:hidden;border-radius:18px;box-shadow:0 24px 70px rgba(15,35,60,.25)}.spo-quick-agency-modal .spo-quick-agency-header{align-items:center;padding:20px 24px;border:0;background:linear-gradient(125deg,#0b3d46,#0f8a76);color:#fff}.spo-quick-agency-modal .spo-quick-agency-heading{display:flex;align-items:center;gap:13px}.spo-quick-agency-modal .spo-quick-agency-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);color:#9af1db;font-size:17px}.spo-quick-agency-modal .modal-title{font-weight:800}.spo-quick-agency-modal .spo-quick-agency-heading p{margin:3px 0 0;color:#c6e5e1;font-size:11px}.spo-quick-agency-modal .modal-body{padding:22px 24px 18px;background:#fbfcfd}.spo-quick-agency-modal .spo-quick-agency-hint{display:flex;align-items:center;gap:9px;margin-bottom:17px;padding:10px 12px;border:1px solid #cce9e2;border-radius:10px;background:#effaf7;color:#397368;font-size:11px}.spo-quick-agency-modal .form-group{margin-bottom:14px}.spo-quick-agency-modal label{margin-bottom:5px;color:#52697b;font-size:10px;font-weight:800;text-transform:uppercase}.spo-quick-agency-modal .form-control{height:41px;border-color:#dce5e9;border-radius:9px;font-size:12px}.spo-quick-agency-modal .form-control:focus{border-color:#72c7b6;box-shadow:0 0 0 3px rgba(15,138,118,.09)}.spo-quick-agency-modal .input-group .form-control{border-radius:9px 0 0 9px}.spo-quick-agency-modal .input-group-append .btn{width:42px;border-radius:0 9px 9px 0}.spo-quick-agency-modal #newAgencyRucStatus{min-height:17px;font-size:10px;font-weight:700}.spo-quick-agency-modal .modal-footer{padding:14px 24px;border-top:1px solid #e8eef1;background:#fff}.spo-quick-agency-modal .modal-footer .btn{min-width:120px;border-radius:9px;font-size:12px;font-weight:800}.spo-quick-agency-modal .spo-quick-agency-cancel{border:1px solid #e0e7eb;color:#637687}.spo-quick-agency-modal .spo-quick-agency-save{border:0;background:#0f8a76;box-shadow:0 7px 16px rgba(15,118,110,.16)}
 .spo-tracking-modal .spo-warehouse-suggestion{display:flex;align-items:center;gap:12px;margin-top:18px;padding:14px;border:1px solid #a7e2cc;border-radius:13px;background:#effcf7;color:#17624f}.spo-tracking-modal .spo-warehouse-suggestion>i{font-size:20px}.spo-tracking-modal .spo-warehouse-suggestion div{flex:1}.spo-tracking-modal .spo-warehouse-suggestion strong,.spo-tracking-modal .spo-warehouse-suggestion span{display:block;font-size:11px}.spo-tracking-modal .spo-warehouse-suggestion span{margin-top:2px;color:#608379;font-size:9px}
 @media(max-width:991px){.spo-tracking-modal .spo-tracking-summary{grid-template-columns:1fr 1fr}.spo-tracking-modal .spo-tracking-layout{grid-template-columns:1fr}.spo-tracking-modal .spo-tracking-form-panel{border-top:1px solid #e6edf1;border-left:0}}@media(max-width:575px){.spo-tracking-modal .spo-tracking-summary{grid-template-columns:1fr}.spo-tracking-modal .spo-tracking-history,.spo-tracking-modal .spo-tracking-form-panel{padding:20px 17px}}
+
+/* Logistics workspace refresh */
+.spo-tracking-modal .modal-dialog {
+    max-width: 1180px;
+}
+
+.spo-tracking-modal .spo-tracking-header {
+    align-items: center;
+    gap: 20px;
+    padding: 19px 25px;
+    border-bottom: 1px solid #dcece7;
+    background: linear-gradient(115deg, #ffffff 0%, #f5fbf9 58%, #eaf8f3 100%);
+    color: #0f172a;
+}
+
+.spo-tracking-modal .spo-tracking-header-main {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 14px;
+}
+
+.spo-tracking-modal .spo-tracking-header-icon {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    place-items: center;
+    border: 1px solid #bce7d7;
+    border-radius: 15px;
+    background: #ecfdf5;
+    color: #047857;
+    box-shadow: 0 7px 18px rgba(4, 120, 87, .1);
+    font-size: 19px;
+}
+
+.spo-tracking-modal .spo-tracking-kicker {
+    color: #059669;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.spo-tracking-modal .modal-title {
+    margin: 2px 0;
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: 850;
+}
+
+.spo-tracking-modal .spo-tracking-header p {
+    color: #64748b;
+    font-size: 11px;
+}
+
+.spo-tracking-modal .spo-tracking-header-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.spo-tracking-modal .spo-tracking-header-status small {
+    color: #94a3b8;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .1em;
+}
+
+.spo-tracking-modal .spo-current-badge {
+    padding: 6px 11px;
+    border: 1px solid #a7e5ce;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #047857;
+    font-size: 10px;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.spo-tracking-modal .spo-tracking-close {
+    margin: 0 0 0 3px;
+    padding: 4px 8px;
+    color: #64748b;
+    text-shadow: none;
+}
+
+.spo-tracking-modal .spo-tracking-summary {
+    grid-template-columns: .85fr 1.55fr .85fr;
+    gap: 10px;
+    padding: 12px 18px;
+    border-bottom: 1px solid #e7eef0;
+    background: #f8fafc;
+}
+
+.spo-tracking-modal .spo-summary-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 13px;
+    background: #fff;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, .035);
+}
+
+.spo-tracking-modal .spo-summary-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    place-items: center;
+    border-radius: 9px;
+    background: #ecfdf5;
+    color: #059669;
+    font-size: 11px;
+}
+
+.spo-tracking-modal .spo-summary-card > div {
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+}
+
+.spo-tracking-modal .spo-summary-card small {
+    margin-bottom: 2px;
+}
+
+.spo-tracking-modal .spo-summary-card strong {
+    color: #17243a;
+    font-size: 11px;
+}
+
+.spo-tracking-modal .spo-tracking-layout {
+    grid-template-columns: minmax(0, 1.25fr) minmax(385px, .75fr);
+    gap: 14px;
+    min-height: 515px;
+    padding: 14px;
+    background: #f1f5f9;
+}
+
+.spo-tracking-modal .spo-tracking-history,
+.spo-tracking-modal .spo-tracking-form-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 17px;
+    background: #fff;
+}
+
+.spo-tracking-modal .spo-tracking-history {
+    padding: 21px 24px;
+}
+
+.spo-tracking-modal .spo-tracking-form-panel {
+    padding: 20px;
+    border-left: 1px solid #e2e8f0;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .055);
+}
+
+.spo-tracking-modal .spo-tracking-item {
+    margin-bottom: 13px;
+    padding: 13px 15px;
+    border-color: #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, .025);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.spo-tracking-modal .spo-tracking-item:hover {
+    transform: translateY(-1px);
+    border-color: #cbd5e1;
+    box-shadow: 0 7px 16px rgba(15, 23, 42, .06);
+}
+
+.spo-tracking-modal .spo-tracking-item.completed {
+    border-color: #bbebda;
+    background: #f4fcf8;
+}
+
+.spo-tracking-modal .spo-tracking-item.current {
+    border-color: #62cfaa;
+    background: #ecfdf5;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, .1);
+}
+
+.spo-tracking-modal .spo-tracking-item.pending {
+    border-color: #e5eaf0;
+    background: #fff;
+}
+
+.spo-tracking-modal .spo-tracking-dot {
+    border-color: #f1f5f9;
+    background: #cbd5e1;
+}
+
+.spo-tracking-modal .spo-form-section {
+    margin-bottom: 11px;
+    padding: 10px 11px;
+    border: 1px solid #e5ebef;
+    border-radius: 13px;
+    background: #fbfdfd;
+}
+
+.spo-tracking-modal .spo-form-section-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 9px;
+    color: #047857;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+}
+
+.spo-tracking-modal .spo-form-section-label i {
+    width: 19px;
+    height: 19px;
+    border-radius: 6px;
+    background: #dff7ee;
+    line-height: 19px;
+    text-align: center;
+}
+
+.spo-tracking-modal .spo-form-section .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.spo-tracking-modal .spo-tracking-field-block {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.spo-tracking-modal .spo-tracking-agency-control {
+    overflow: hidden;
+    border: 1px solid #dce5e9;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.spo-tracking-modal .spo-tracking-agency-control .select2-selection {
+    border: 0;
+    border-radius: 0;
+}
+
+.spo-tracking-modal .spo-tracking-agency-control .select2-selection__rendered {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.spo-tracking-modal .spo-tracking-agency-control .input-group-append .btn {
+    width: 44px;
+    border-left: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 0;
+}
+
+.spo-tracking-modal .spo-save-tracking {
+    min-height: 43px;
+    background: linear-gradient(135deg, #10b981, #047857);
+    box-shadow: 0 9px 18px rgba(4, 120, 87, .2);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.spo-tracking-modal .spo-save-tracking:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 23px rgba(4, 120, 87, .26);
+}
+
+.spo-quick-agency-modal .modal-dialog {
+    max-width: 760px;
+}
+
+.spo-quick-agency-modal .spo-quick-agency-header {
+    padding: 19px 23px;
+    background: linear-gradient(115deg, #064e3b, #0f766e);
+}
+
+.spo-quick-agency-modal .modal-body {
+    padding: 20px 23px 16px;
+}
+
+.spo-quick-agency-modal .form-text {
+    margin-top: 4px;
+    color: #94a3b8 !important;
+    font-size: 9px;
+}
+
+.spo-quick-agency-modal .spo-quick-agency-hint {
+    margin-bottom: 15px;
+}
+
+@media (max-width: 991px) {
+    .spo-tracking-modal .spo-tracking-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .spo-tracking-modal .spo-tracking-form-panel {
+        border-top: 1px solid #e2e8f0;
+        border-left: 1px solid #e2e8f0;
+    }
+}
+
+@media (max-width: 767px) {
+    .spo-tracking-modal .spo-tracking-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .spo-tracking-modal .spo-tracking-header-status {
+        order: 3;
+        width: 100%;
+        align-items: flex-start;
+    }
+
+    .spo-tracking-modal .spo-tracking-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .spo-tracking-modal .spo-tracking-layout {
+        padding: 9px;
+    }
+}
+
+@media (max-width: 575px) {
+    .spo-tracking-modal .spo-tracking-header,
+    .spo-tracking-modal .spo-tracking-history,
+    .spo-tracking-modal .spo-tracking-form-panel {
+        padding: 17px 15px;
+    }
+
+    .spo-tracking-modal .spo-tracking-header-icon {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+    }
+}

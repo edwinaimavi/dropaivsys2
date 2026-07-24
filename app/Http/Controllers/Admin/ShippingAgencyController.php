@@ -239,6 +239,27 @@ class ShippingAgencyController extends Controller
             ], 422);
         }
 
+        $existingAgency = ShippingAgency::query()
+            ->with('mainBranch:id,shipping_agency_id,address')
+            ->where('ruc', $numero)
+            ->first();
+
+        if ($existingAgency) {
+            return response()->json([
+                'status' => true,
+                'existing_agency' => [
+                    'id' => $existingAgency->id,
+                    'ruc' => $existingAgency->ruc,
+                    'business_name' => $existingAgency->business_name,
+                    'trade_name' => $existingAgency->trade_name,
+                    'address' => $existingAgency->mainBranch?->address,
+                    'status' => $existingAgency->status,
+                ],
+                'razon_social' => $existingAgency->business_name,
+                'direccion' => $existingAgency->mainBranch?->address,
+            ]);
+        }
+
         $token = env('APIS_PERU_TOKEN', 'apis-token-7645.70qIyk7rGHUBVYCLNlcITcM1fo-mBqvp');
 
         $curl = curl_init();

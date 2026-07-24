@@ -25,7 +25,7 @@ class SupplierPurchaseOrderTracking extends Model
 
     protected $fillable = [
         'supplier_purchase_order_id', 'status', 'title', 'description', 'event_date',
-        'estimated_date', 'carrier_name', 'tracking_number', 'location',
+        'estimated_date', 'shipping_agency_id', 'carrier_name', 'tracking_number', 'location',
         'document_path', 'document_name', 'created_by', 'updated_by',
     ];
 
@@ -37,6 +37,11 @@ class SupplierPurchaseOrderTracking extends Model
     public function supplierPurchaseOrder()
     {
         return $this->belongsTo(SupplierPurchaseOrder::class);
+    }
+
+    public function shippingAgency()
+    {
+        return $this->belongsTo(ShippingAgency::class);
     }
 
     public function createdBy()

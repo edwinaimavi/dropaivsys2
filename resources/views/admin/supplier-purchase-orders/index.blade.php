@@ -232,6 +232,8 @@
             supplierOrderShippingAgencyBranches: "{{ url('admin/shipping-agencies/:id/branches') }}",
             supplierOrderShippingAgencyContacts: "{{ url('admin/shipping-agencies/:id/contacts') }}",
             supplierOrderShippingBranchContacts: "{{ url('admin/shipping-agency-branches/:id/contacts') }}",
+            shippingAgencyStore: "{{ route('admin.shipping-agencies.store') }}",
+            shippingAgencySearchRuc: "{{ url('admin/shipping-agencies/consultar-ruc') }}",
             supplierQuickStore: "{{ route('admin.suppliers.quick-store-with-account') }}",
             supplierQuickAccountStore: "{{ url('admin/suppliers/:id/quick-account') }}",
             supplierQuickByRuc: "{{ url('admin/suppliers/by-ruc') }}",
