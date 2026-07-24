@@ -278,6 +278,7 @@
 
                                             <input type="text" id="institutional_code" name="institutional_code"
                                                 class="form-control form-control-sm" maxlength="100">
+                                            <span class="invalid-feedback" id="institutional_code-error"></span>
 
                                         </div>
 

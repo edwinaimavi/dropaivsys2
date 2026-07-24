@@ -210,6 +210,7 @@ class ArticleController extends Controller
     public function store(Request $request)
     {
         $this->normalizeArticleNames($request);
+        $this->normalizeInstitutionalCode($request);
 
         $validated = $request->validate([
 
@@ -225,7 +226,9 @@ class ArticleController extends Controller
 
             'institutional_code' => [
                 'nullable',
-                'max:100'
+                'string',
+                'max:100',
+                Rule::unique('articles', 'institutional_code')
             ],
 
             'minimum_stock' => [
@@ -272,16 +275,19 @@ class ArticleController extends Controller
 
             'legal_name' => [
                 'required',
+                'string',
                 'max:255'
             ],
 
             'commercial_name' => [
-                'required',
+                'nullable',
+                'string',
                 'max:255'
             ],
 
             'billing_name' => [
-                'required',
+                'nullable',
+                'string',
                 'max:255'
             ],
 
@@ -301,10 +307,9 @@ class ArticleController extends Controller
                 'max:4096'
             ],
 
-        ]);
+        ], $this->articleValidationMessages());
 
         $documentsData = $this->validatedDocumentData($request);
-        $this->validateDuplicateArticleName($validated);
 
         try {
 
@@ -543,14 +548,20 @@ class ArticleController extends Controller
         $request->merge(['code' => $code]);
 
         $this->normalizeArticleNames($request);
+        $this->normalizeInstitutionalCode($request);
 
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:20', 'unique:articles,code'],
             'code_type' => ['nullable', 'in:SIGA/SISMED,SAP/IETSI'],
-            'institutional_code' => ['nullable', 'string', 'max:100'],
-            'legal_name' => ['required', 'max:255'],
-            'commercial_name' => ['nullable', 'max:255'],
-            'billing_name' => ['required', 'max:255'],
+            'institutional_code' => [
+                'nullable',
+                'string',
+                'max:100',
+                Rule::unique('articles', 'institutional_code'),
+            ],
+            'legal_name' => ['required', 'string', 'max:255'],
+            'commercial_name' => ['nullable', 'string', 'max:255'],
+            'billing_name' => ['nullable', 'string', 'max:255'],
             'presentation_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:presentations,id'],
             'unit_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:units,id'],
             'brand_id' => ['nullable', 'exists:brands,id'],
@@ -561,15 +572,16 @@ class ArticleController extends Controller
             'code.unique' => 'El código del artículo ya existe.',
             'code_type.in' => 'El tipo de código seleccionado no es válido.',
             'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
-            'billing_name.required' => 'El nombre de facturación es obligatorio.',
+            'institutional_code.unique' => 'El código institucional ya está registrado en otro artículo.',
             'legal_name.required' => 'El nombre legal es obligatorio.',
+            'legal_name.max' => 'El nombre legal no debe superar 255 caracteres.',
+            'commercial_name.max' => 'El nombre comercial no debe superar 255 caracteres.',
+            'billing_name.max' => 'El nombre de facturación no debe superar 255 caracteres.',
             'presentation_id.required' => 'La presentación es obligatoria.',
             'presentation_id.exists' => 'La presentación seleccionada no es válida.',
             'unit_id.required' => 'La unidad es obligatoria.',
             'unit_id.exists' => 'La unidad seleccionada no es válida.',
         ]);
-
-        $this->validateDuplicateArticleName($validated);
 
         $defaultCategory = Category::where('status', 'ACTIVE')
             ->orderBy('id')
@@ -723,6 +735,7 @@ class ArticleController extends Controller
         }
 
         $this->normalizeArticleNames($request);
+        $this->normalizeInstitutionalCode($request);
 
         $validated = $request->validate([
 
@@ -738,7 +751,9 @@ class ArticleController extends Controller
 
             'institutional_code' => [
                 'nullable',
-                'max:100'
+                'string',
+                'max:100',
+                Rule::unique('articles', 'institutional_code')->ignore($article->id)
             ],
 
             'minimum_stock' => [
@@ -785,16 +800,19 @@ class ArticleController extends Controller
 
             'legal_name' => [
                 'required',
+                'string',
                 'max:255'
             ],
 
             'commercial_name' => [
-                'required',
+                'nullable',
+                'string',
                 'max:255'
             ],
 
             'billing_name' => [
-                'required',
+                'nullable',
+                'string',
                 'max:255'
             ],
 
@@ -811,10 +829,9 @@ class ArticleController extends Controller
             ],
             'documents_data' => ['nullable', 'json'],
             'documents_files.*' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
-        ]);
+        ], $this->articleValidationMessages());
 
         $documentsData = $this->validatedDocumentData($request);
-        $this->validateDuplicateArticleName($validated, $article->id);
 
         $validated['brand_id'] = null;
 
@@ -1159,85 +1176,32 @@ class ArticleController extends Controller
         ]);
     }
 
+    private function normalizeInstitutionalCode(Request $request): void
+    {
+        $value = trim((string) $request->input('institutional_code'));
+
+        $request->merge([
+            'institutional_code' => $value === ''
+                ? null
+                : mb_strtoupper($value, 'UTF-8'),
+        ]);
+    }
+
     private function normalizeArticleText($value): string
     {
         return mb_strtoupper(trim((string) $value), 'UTF-8');
     }
 
-    private function validateDuplicateArticleName(
-        array $validated,
-        ?int $ignoreId = null
-    ): void {
-        $nameFields = [
-            'legal_name',
-            'commercial_name',
-            'billing_name',
+    private function articleValidationMessages(): array
+    {
+        return [
+            'institutional_code.unique' => 'El código institucional ya está registrado en otro artículo.',
+            'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
+            'legal_name.required' => 'El nombre legal es obligatorio.',
+            'legal_name.max' => 'El nombre legal no debe superar 255 caracteres.',
+            'commercial_name.max' => 'El nombre comercial no debe superar 255 caracteres.',
+            'billing_name.max' => 'El nombre de facturación no debe superar 255 caracteres.',
         ];
-
-        $names = collect($nameFields)
-            ->mapWithKeys(fn ($field) => [
-                $field => $this->normalizeArticleText(
-                    $validated[$field] ?? ''
-                ),
-            ])
-            ->filter()
-            ->all();
-
-        if (empty($names)) {
-            return;
-        }
-
-        $query = Article::query()
-            ->where('brand_id', $validated['brand_id'] ?? null)
-            ->where('status', 'ACTIVE');
-
-        if ($ignoreId) {
-            $query->where('id', '!=', $ignoreId);
-        }
-
-        $query->where(function ($query) use ($names) {
-            foreach ($names as $name) {
-                $query->orWhereRaw(
-                    'UPPER(TRIM(legal_name)) = ?',
-                    [$name]
-                )
-                    ->orWhereRaw(
-                        'UPPER(TRIM(commercial_name)) = ?',
-                        [$name]
-                    )
-                    ->orWhereRaw(
-                        'UPPER(TRIM(billing_name)) = ?',
-                        [$name]
-                    );
-            }
-        });
-
-        $duplicate = $query->first([
-            'legal_name',
-            'commercial_name',
-            'billing_name',
-        ]);
-
-        if (!$duplicate) {
-            return;
-        }
-
-        $existingNames = collect($nameFields)
-            ->map(fn ($field) => $this->normalizeArticleText(
-                $duplicate->{$field}
-            ))
-            ->filter()
-            ->unique()
-            ->values();
-
-        $field = collect($names)
-            ->search(fn ($name) => $existingNames->contains($name));
-
-        throw ValidationException::withMessages([
-            $field ?: 'legal_name' => [
-                'Ya existe un art\u{00ED}culo registrado con ese nombre para la misma marca.',
-            ],
-        ]);
     }
 
     /**
