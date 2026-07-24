@@ -165,9 +165,9 @@ class SupplierPurchaseOrderController extends Controller
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
                 'documents' => function ($query) {
-                    $query->where('observation', 'PDF_GENERATED_SUPPLIER_PURCHASE_ORDER')
+                    $query->with('documentType:id,code')
                         ->where('status', 'ACTIVE')
-                        ->where('mime_type', 'application/pdf');
+                        ->orderBy('id');
                 },
             ])
             ->orderByDesc('id');
@@ -175,9 +175,48 @@ class SupplierPurchaseOrderController extends Controller
         return DataTables::of($orders)
             ->addIndexColumn()
             ->addColumn('supplier', function (SupplierPurchaseOrder $order) {
-                return $order->supplier?->short_name
-                    ?? $order->supplier?->business_name
+                $supplierName = $order->supplier?->business_name
+                    ?? $order->supplier?->short_name
                     ?? '-';
+                $supplierDocument = $order->documents->first(
+                    fn (Document $document) => in_array(
+                        $document->documentType?->code,
+                        ['SPO_QUOTE', 'SPO_OTHER'],
+                        true
+                    )
+                );
+
+                if (! $supplierDocument) {
+                    return sprintf(
+                        '<span class="supplier-name-text">%s</span>',
+                        e($supplierName)
+                    );
+                }
+
+                $documentUrl = route(
+                    'admin.supplier-purchase-orders.documents.view',
+                    [$order, $supplierDocument]
+                );
+
+                return sprintf(
+                    '<div class="supplier-document-wrapper">
+                        <a href="%s" target="_blank" rel="noopener"
+                            class="supplier-name-document-link"
+                            title="Abrir documento adjunto del proveedor">
+                            <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                            <span>%s</span>
+                        </a>
+                        <a href="%s" target="_blank" rel="noopener"
+                            class="supplier-document-download-link"
+                            title="Descargar documento"
+                            aria-label="Descargar documento del proveedor">
+                            <i class="fas fa-download" aria-hidden="true"></i>
+                        </a>
+                    </div>',
+                    e($documentUrl),
+                    e($supplierName),
+                    e($documentUrl)
+                );
             })
             ->addColumn('company', function (SupplierPurchaseOrder $order) {
                 return $order->company?->trade_name
@@ -220,7 +259,9 @@ class SupplierPurchaseOrderController extends Controller
             })
             ->addColumn('acciones', function (SupplierPurchaseOrder $order) {
                 $pdfDocument = $order->documents
-                    ->first(fn (Document $document) => $document->file_path
+                    ->first(fn (Document $document) => $document->observation === 'PDF_GENERATED_SUPPLIER_PURCHASE_ORDER'
+                        && $document->mime_type === 'application/pdf'
+                        && $document->file_path
                         && Storage::disk('public')->exists($document->file_path));
                 $pdfUrl = $pdfDocument
                     ? Storage::disk('public')->url($pdfDocument->file_path)
@@ -232,7 +273,7 @@ class SupplierPurchaseOrderController extends Controller
                     compact('order', 'pdfUrl')
                 )->render();
             })
-            ->rawColumns(['status', 'acciones'])
+            ->rawColumns(['supplier', 'status', 'acciones'])
             ->make(true);
     }
 
@@ -393,7 +434,16 @@ class SupplierPurchaseOrderController extends Controller
         $this->ensureSupplierOrderDocument($supplierPurchaseOrder, $document);
         abort_unless(Storage::disk('public')->exists($document->file_path), 404);
 
-        return Storage::disk('public')->response($document->file_path, $document->original_name, [
+        $extension = strtolower((string) ($document->extension
+            ?: pathinfo((string) $document->original_name, PATHINFO_EXTENSION)));
+        $extension = preg_replace('/[^a-z0-9]/', '', $extension);
+        $supplierName = $supplierPurchaseOrder->supplier?->business_name
+            ?? $supplierPurchaseOrder->supplier?->short_name
+            ?? 'DOCUMENTO_PROVEEDOR';
+        $responseName = $this->sanitizeSupplierDocumentFileName($supplierName)
+            . ($extension !== '' ? '.' . $extension : '');
+
+        return Storage::disk('public')->response($document->file_path, $responseName, [
             'Content-Type' => $document->mime_type ?: 'application/octet-stream',
         ]);
     }
@@ -1483,6 +1533,15 @@ class SupplierPurchaseOrderController extends Controller
     private function sanitizeFileName(string $value): string
     {
         return preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
+    }
+
+    private function sanitizeSupplierDocumentFileName(string $value): string
+    {
+        $normalized = mb_strtoupper(Str::ascii(trim($value)));
+        $normalized = preg_replace('/[^A-Z0-9\s_-]/', '', $normalized);
+        $normalized = preg_replace('/\s+/', '_', trim((string) $normalized));
+
+        return $normalized !== '' ? $normalized : 'DOCUMENTO_PROVEEDOR';
     }
 
     private function supplierOrderLogoUrl(SupplierPurchaseOrder $order): ?string

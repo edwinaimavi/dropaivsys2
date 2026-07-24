@@ -104,6 +104,72 @@
             background: #fafafa;
         }
 
+        .supplier-document-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+            flex-wrap: nowrap;
+        }
+
+        .supplier-name-document-link {
+            display: inline-flex;
+            min-width: 0;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border: 1px solid #bde9ff;
+            border-radius: 999px;
+            background: #e8f7ff;
+            color: #087ea4;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-decoration: none;
+            text-align: left;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .supplier-name-document-link i.fa-file-pdf {
+            flex: 0 0 auto;
+            color: #ef4444;
+            font-size: 12px;
+        }
+
+        .supplier-name-document-link:hover {
+            background: #dff3ff;
+            color: #075985;
+            text-decoration: none;
+        }
+
+        .supplier-document-download-link {
+            display: inline-flex;
+            flex: 0 0 26px;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border: 1px solid #cbd5e1;
+            border-radius: 50%;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 11px;
+            text-decoration: none;
+        }
+
+        .supplier-document-download-link:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+            text-decoration: none;
+        }
+
+        .supplier-name-text {
+            color: #1f2937;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
         .supplier-order-side-card {
             background: #f8faf9;
         }
