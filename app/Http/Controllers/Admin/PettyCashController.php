@@ -41,10 +41,20 @@ class PettyCashController extends Controller
     public function index()
     {
         $companies = Company::active()->orderBy('business_name')->get();
-        $currencies = Currency::where('status', 'ACTIVE')->orderBy('description')->get();
+        $currencies = Currency::query()
+            ->where('status', 'ACTIVE')
+            ->whereIn('code', ['PEN', 'USD'])
+            ->orderByRaw("CASE code WHEN 'PEN' THEN 1 WHEN 'USD' THEN 2 ELSE 3 END")
+            ->get();
+        $defaultCurrencyId = $currencies->firstWhere('code', 'PEN')?->id;
         $banks = Bank::where('status', 'ACTIVE')->orderBy('description')->get();
 
-        return view('admin.petty-cash.index', compact('companies', 'currencies', 'banks'));
+        return view('admin.petty-cash.index', compact(
+            'companies',
+            'currencies',
+            'defaultCurrencyId',
+            'banks'
+        ));
     }
 
     public function list()
@@ -337,7 +347,8 @@ class PettyCashController extends Controller
         $validated = $request->validate([
             'expense_date' => ['required', 'date', 'after_or_equal:' . $box->start_date->toDateString(), 'before_or_equal:' . $box->end_date->toDateString()],
             'document_type' => ['nullable', Rule::in(['FACTURA', 'BOLETA', 'RECIBO', 'TICKET', 'OTRO'])],
-            'document_number' => ['nullable', 'string', 'max:100'],
+            'document_series' => ['nullable', 'string', 'max:20'],
+            'document_correlative' => ['nullable', 'string', 'max:50'],
             'supplier_id' => ['nullable', 'exists:suppliers,id'],
             'supplier_ruc' => ['nullable', 'digits:11'],
             'supplier_name' => ['required', 'string', 'max:255'],
@@ -359,11 +370,17 @@ class PettyCashController extends Controller
 
             $data = [
                 ...collect($validated)->except('document')->all(),
+                'document_series' => $this->normalizeDocumentPart($validated['document_series'] ?? null),
+                'document_correlative' => $this->normalizeDocumentPart($validated['document_correlative'] ?? null),
                 'supplier_name' => mb_strtoupper($validated['supplier_name']),
                 'concept' => mb_strtoupper($validated['concept']),
                 'status' => 'ACTIVE',
                 'updated_by' => Auth::id(),
             ];
+            $data['document_number'] = $this->buildDocumentNumber(
+                $data['document_series'],
+                $data['document_correlative']
+            );
 
             if ($expense) {
                 abort_unless((int) $expense->petty_cash_box_id === (int) $locked->id, 404);
@@ -382,17 +399,39 @@ class PettyCashController extends Controller
         return response()->json(['message' => $expense ? 'Gasto actualizado correctamente.' : 'Gasto registrado correctamente.'], $expense ? 200 : 201);
     }
 
+    private function normalizeDocumentPart(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : mb_strtoupper($value);
+    }
+
+    private function buildDocumentNumber(?string $series, ?string $correlative): ?string
+    {
+        $parts = array_filter([$series, $correlative], fn (?string $value) => filled($value));
+
+        return $parts ? implode('-', $parts) : null;
+    }
+
     private function validateBox(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'company_id' => ['required', 'exists:companies,id'],
-            'currency_id' => ['required', 'exists:currencies,id'],
+            'currency_id' => [
+                'required',
+                Rule::exists('currencies', 'id')->where(
+                    fn ($query) => $query
+                        ->where('status', 'ACTIVE')
+                        ->whereNull('deleted_at')
+                        ->whereIn('code', ['PEN', 'USD'])
+                ),
+            ],
             'period_month' => ['required', 'integer', 'between:1,12'],
             'period_year' => ['required', 'integer', 'between:2020,2100'],
             'periodicity' => ['required', Rule::in(['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'OTHER'])],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
-            'approved_fund' => ['required', 'numeric', 'gt:0'],
+            'approved_fund' => ['required', 'numeric', 'min:0'],
             'previous_balance' => ['nullable', 'numeric', 'min:0'],
             'previous_petty_cash_id' => ['nullable', 'integer', 'exists:petty_cash_boxes,id'],
             'responsible_name' => ['required', 'string', 'max:255'],
@@ -401,6 +440,19 @@ class PettyCashController extends Controller
             'supervisor_dni' => ['required', 'digits:8'],
             'observations' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $openingAmount = round(
+            (float) ($validated['previous_balance'] ?? 0) + (float) $validated['approved_fund'],
+            2
+        );
+
+        if ($openingAmount <= 0) {
+            throw ValidationException::withMessages([
+                'approved_fund' => 'No se puede aperturar una caja con fondo disponible inicial en cero.',
+            ]);
+        }
+
+        return $validated;
     }
 
     private function recalculateTotals(PettyCashBox $box): void

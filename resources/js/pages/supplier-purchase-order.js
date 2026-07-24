@@ -1158,7 +1158,7 @@ function renderSupplierOrderPendingItems(items) {
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm text-right pending-item-unit-price"
-                        value="${formatSupplierOrderUnitPrice(unitPrice)}" min="0" step="0.000001" inputmode="decimal"
+                        value="${formatSupplierOrderUnitPrice(unitPrice)}" min="0" step="any" inputmode="decimal"
                         data-customer-item-id="${item.customer_purchase_order_item_id || ''}"
                         data-customer-unit-price="${customerUnitPrice}">
                     ${customerUnitPrice > 0
@@ -1304,7 +1304,7 @@ function addSupplierOrderItemRow(data = {}) {
     row.find('.item-origin').val(data.origin || '');
     row.find('.item-expiration-date').val(formatSupplierOrderDate(data.expiration_date));
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
-    row.find('.item-reference-purchase-price').val(formatSupplierOrderMoney(data.reference_purchase_price || 0));
+    row.find('.item-reference-purchase-price').val(formatSupplierOrderUnitPrice(data.reference_purchase_price || 0));
     const customerUnitPrice = parseFloat(
         data.customer_unit_price ?? data.customer_purchase_order_item?.unit_price ?? 0
     ) || 0;

@@ -130,6 +130,7 @@ $(function () {
         $('#petty_cash_id').val('');
         $('#pc_previous_petty_cash_id').val('');
         $('#pc_previous_balance').val('0');
+        $('#pc_currency_id').val($('#pc_currency_id').data('default-currency-id'));
         $('#pc_previous_balance_message').text('Seleccione una empresa para buscar saldo anterior.');
         $('#pc_period_year').val(new Date().getFullYear());
         $('#pc_period_month').val(new Date().getMonth() + 1);
@@ -179,6 +180,12 @@ $(function () {
 
     $('#pettyCashForm').on('submit', function (event) {
         event.preventDefault();
+        const previousBalance = Number($('#pc_previous_balance').val()) || 0;
+        const approvedFund = Number($('#pc_approved_fund').val()) || 0;
+        if ((previousBalance + approvedFund) <= 0) {
+            notify('error', 'No se puede aperturar una caja con fondo disponible inicial en cero.');
+            return;
+        }
         const id = $('#petty_cash_id').val();
         const data = new FormData(this);
         if (id) data.append('_method', 'PUT');
@@ -219,22 +226,31 @@ $(function () {
         const symbol = box.currency?.symbol || '';
         $('#pcv_code').text(`${box.code} · ${box.status_label}`);
         $('#pcv_company').text(box.company?.trade_name || box.company?.business_name || '-');
+        $('#pcv_meta').text(`Periodo ${String(box.period_month).padStart(2, '0')}/${box.period_year} · ${date(box.start_date)} al ${date(box.end_date)}`);
         $('#pcv_summary').html([
-            ['Saldo anterior', money(box.previous_balance, symbol)], ['Fondo aprobado', money(box.approved_fund, symbol)],
-            ['Fondo disponible inicial', money(box.opening_amount, symbol)], ['Total gastado', money(box.total_expenses, symbol)],
-            ['Total repuesto', money(box.replenished_total, symbol)], ['Saldo actual', money(box.cash_balance, symbol)],
-            ['Pendiente reposición', money(box.reimbursement_amount, symbol)]
-        ].map(item => `<div class="petty-summary-item"><small>${item[0]}</small><strong>${item[1]}</strong></div>`).join(''));
+            ['Saldo anterior', money(box.previous_balance, symbol), 'fa-history', ''],
+            ['Fondo aprobado', money(box.approved_fund, symbol), 'fa-check-circle', ''],
+            ['Fondo disponible inicial', money(box.opening_amount, symbol), 'fa-coins', 'is-primary'],
+            ['Total gastado', money(box.total_expenses, symbol), 'fa-receipt', 'is-warning'],
+            ['Total repuesto', money(box.replenished_total, symbol), 'fa-sync-alt', ''],
+            ['Saldo actual', money(box.cash_balance, symbol), 'fa-wallet', 'is-primary'],
+            ['Pendiente reposición', money(box.reimbursement_amount, symbol), 'fa-hourglass-half', 'is-muted']
+        ].map(item => `<div class="petty-financial-card ${item[3]}"><i class="fas ${item[2]}"></i><small>${item[0]}</small><strong>${item[1]}</strong></div>`).join(''));
         if (box.previous_petty_cash) {
-            $('#pcv_summary').append(`<div class="petty-summary-item"><small>Saldo arrastrado desde</small><strong>${escapeHtml(box.previous_petty_cash.code)}</strong></div>`);
+            $('#pcv_summary').append(`<div class="petty-financial-card is-muted"><i class="fas fa-link"></i><small>Saldo arrastrado desde</small><strong>${escapeHtml(box.previous_petty_cash.code)}</strong></div>`);
         }
-        $('#pcv_responsibles').html(`<div class="col-md-6"><b>Responsable</b><p>${escapeHtml(box.responsible_name)} · DNI ${escapeHtml(box.responsible_dni)}</p></div><div class="col-md-6"><b>Supervisor</b><p>${escapeHtml(box.supervisor_name)} · DNI ${escapeHtml(box.supervisor_dni)}</p></div>`);
+        $('#pcv_responsibles').html(`
+            <div class="col-md-6 mb-2 mb-md-0"><div class="petty-person-card"><span><i class="fas fa-user"></i></span><div><small>Responsable</small><strong>${escapeHtml(box.responsible_name)}</strong><em>DNI ${escapeHtml(box.responsible_dni)}</em></div></div></div>
+            <div class="col-md-6"><div class="petty-person-card"><span><i class="fas fa-user-check"></i></span><div><small>Supervisor</small><strong>${escapeHtml(box.supervisor_name)}</strong><em>DNI ${escapeHtml(box.supervisor_dni)}</em></div></div></div>
+        `);
         $('#pcv_expenses').html(box.expenses.length ? box.expenses.map(expense => {
             const docs = (expense.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="btn btn-xs btn-outline-info"><i class="fas fa-paperclip"></i></a>`).join('') || '-';
             const actions = box.can_manage_expenses ? `${app.data('can-expense-update') ? `<button class="btn btn-xs btn-warning editPettyCashExpense" data-id="${expense.id}"><i class="fas fa-edit"></i></button>` : ''}${app.data('can-expense-delete') ? `<button class="btn btn-xs btn-danger deletePettyCashExpense" data-id="${expense.id}"><i class="fas fa-trash"></i></button>` : ''}` : '';
-            return `<tr><td>${expense.item_number}</td><td>${date(expense.expense_date)}</td><td>${escapeHtml(`${expense.document_type || ''} ${expense.document_number || ''}`)}</td><td>${escapeHtml(expense.supplier_ruc || '-')}</td><td>${escapeHtml(expense.supplier_name)}</td><td>${escapeHtml(expense.concept)}</td><td class="text-right">${money(expense.amount, symbol)}</td><td>${docs}</td><td>${actions}</td></tr>`;
-        }).join('') : '<tr><td colspan="9" class="text-center text-muted py-3">Sin gastos registrados.</td></tr>');
-        $('#pcv_replenishments').html(box.replenishments.length ? box.replenishments.map(item => `<tr><td>${date(item.replenishment_date)}</td><td class="text-right">${money(item.amount, symbol)}</td><td>${escapeHtml(item.payment_method || '-')}</td><td>${escapeHtml(item.reference_number || '-')}</td><td>${escapeHtml(item.observation || '-')}</td><td>${(item.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="btn btn-xs btn-outline-info"><i class="fas fa-paperclip"></i></a>`).join('') || '-'}</td><td><span class="badge badge-success">${escapeHtml(item.status || 'ACTIVE')}</span></td><td>-</td></tr>`).join('') : '<tr><td colspan="8" class="text-center text-muted">Sin reposiciones.</td></tr>');
+            const number = expense.document_full_number || expense.document_number || '';
+            const voucher = number ? [expense.document_type, number].filter(Boolean).join(' ') : '-';
+            return `<tr><td>${expense.item_number}</td><td>${date(expense.expense_date)}</td><td>${escapeHtml(voucher)}</td><td>${escapeHtml(expense.supplier_ruc || '-')}</td><td>${escapeHtml(expense.supplier_name)}</td><td>${escapeHtml(expense.concept)}</td><td class="text-right font-weight-bold">${money(expense.amount, symbol)}</td><td>${docs}</td><td>${actions}</td></tr>`;
+        }).join('') : '<tr><td colspan="9" class="petty-empty-state"><i class="fas fa-receipt"></i><strong>No hay gastos registrados para esta caja.</strong><small>Los nuevos gastos aparecerán en esta sección.</small></td></tr>');
+        $('#pcv_replenishments').html(box.replenishments.length ? box.replenishments.map(item => `<tr><td>${date(item.replenishment_date)}</td><td class="text-right font-weight-bold">${money(item.amount, symbol)}</td><td>${escapeHtml(item.payment_method || '-')}</td><td>${escapeHtml(item.reference_number || '-')}</td><td>${escapeHtml(item.observation || '-')}</td><td>${(item.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="btn btn-xs btn-outline-info"><i class="fas fa-paperclip"></i></a>`).join('') || '-'}</td><td><span class="badge badge-success">${escapeHtml(item.status || 'ACTIVE')}</span></td><td>-</td></tr>`).join('') : '<tr><td colspan="8" class="petty-empty-state"><i class="fas fa-sync-alt"></i><strong>No hay reposiciones registradas.</strong><small>Las reposiciones realizadas aparecerán aquí.</small></td></tr>');
     };
 
     $(document).on('click', '.viewPettyCash', function () {
@@ -250,7 +266,11 @@ $(function () {
         const expense = currentBox?.expenses?.find(item => Number(item.id) === Number($(this).data('id')));
         if (!expense) return;
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(expense.id); $('#pc_expense_box_id').val(currentBox.id);
-        ['expense_date','document_type','document_number','supplier_ruc','supplier_name','concept','amount','observation'].forEach(field => $(`#pce_${field}`).val(String(expense[field] ?? '').slice(0, field === 'expense_date' ? 10 : undefined)));
+        ['expense_date','document_type','document_series','document_correlative','supplier_ruc','supplier_name','concept','amount','observation'].forEach(field => {
+            let value = expense[field] ?? '';
+            if (field === 'document_correlative' && !value && !expense.document_series) value = expense.document_number || '';
+            $(`#pce_${field}`).val(String(value).slice(0, field === 'expense_date' ? 10 : undefined));
+        });
         $('#pcExpenseTitle').text('Editar gasto'); $('#pettyCashExpenseModal').modal('show');
     });
 

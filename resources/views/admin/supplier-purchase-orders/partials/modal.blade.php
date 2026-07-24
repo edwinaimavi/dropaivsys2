@@ -699,7 +699,7 @@
                                 </select>
                             </td>
                             <td>
-                                <input type="number" step="0.01" min="0"
+                                <input type="number" step="any" min="0" inputmode="decimal"
                                     name="items[__INDEX__][reference_purchase_price]"
                                     class="form-control form-control-sm text-right item-reference-purchase-price"
                                     value="0.00">
@@ -710,7 +710,7 @@
                                     class="form-control form-control-sm text-right item-quantity" value="1.00">
                             </td>
                             <td>
-                                <input type="number" step="0.000001" min="0" inputmode="decimal"
+                                <input type="number" step="any" min="0" inputmode="decimal"
                                     name="items[__INDEX__][unit_price]"
                                     class="form-control form-control-sm text-right item-unit-price" value="0">
                                 <small class="text-muted item-max-price-reference d-none"></small>

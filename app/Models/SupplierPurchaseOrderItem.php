@@ -36,7 +36,7 @@ class SupplierPurchaseOrderItem extends Model
 
     protected $casts = [
         'expiration_date' => 'date',
-        'reference_purchase_price' => 'decimal:2',
+        'reference_purchase_price' => 'decimal:6',
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:6',
         'subtotal' => 'decimal:6',

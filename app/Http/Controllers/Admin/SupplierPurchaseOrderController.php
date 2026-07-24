@@ -875,7 +875,7 @@ class SupplierPurchaseOrderController extends Controller
                     'cost_type' => $this->upperOrNull($item['cost_type'] ?? null),
                     'reference_purchase_price' => round(
                         (float) ($item['reference_purchase_price'] ?? 0),
-                        2
+                        6
                     ),
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,

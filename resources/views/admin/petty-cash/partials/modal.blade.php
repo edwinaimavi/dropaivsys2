@@ -1,4 +1,4 @@
-<div class="modal fade" id="pettyCashModal" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+<div class="modal fade petty-cash-modal" id="pettyCashModal" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
         <div class="modal-content border-0 petty-modal-content petty-cash-premium">
             <form id="pettyCashForm">
@@ -50,7 +50,7 @@
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-6"><label>Empresa *</label><select name="company_id" id="pc_company_id" class="form-control" required><option value="">Seleccione empresa</option>@foreach($companies as $company)<option value="{{ $company->id }}">{{ $company->trade_name ?? $company->business_name }}</option>@endforeach</select></div>
-                                    <div class="form-group col-md-3"><label>Moneda *</label><select name="currency_id" id="pc_currency_id" class="form-control" required><option value="">Seleccione</option>@foreach($currencies as $currency)<option value="{{ $currency->id }}">{{ $currency->code }} - {{ $currency->description }}</option>@endforeach</select></div>
+                                    <div class="form-group col-md-3"><label>Moneda *</label><select name="currency_id" id="pc_currency_id" class="form-control" data-default-currency-id="{{ $defaultCurrencyId }}" required>@foreach($currencies as $currency)<option value="{{ $currency->id }}" @selected($currency->id === $defaultCurrencyId)>{{ $currency->code }} | {{ $currency->description }}</option>@endforeach</select></div>
                                     <div class="form-group col-md-3"><label>Periodicidad *</label><select name="periodicity" id="pc_periodicity" class="form-control" required><option value="WEEKLY">Semanal</option><option value="BIWEEKLY">Quincenal</option><option value="MONTHLY" selected>Mensual</option><option value="OTHER">Otra</option></select></div>
                                 </div>
                                 <div class="form-row">
@@ -68,7 +68,7 @@
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-4"><label>Saldo anterior</label><div class="petty-money-input"><span>S/</span><input type="number" name="previous_balance" id="pc_previous_balance" class="form-control" min="0" step="0.01" value="0"></div></div>
-                                    <div class="form-group col-md-4"><label>Fondo aprobado *</label><div class="petty-money-input"><span>S/</span><input type="number" name="approved_fund" id="pc_approved_fund" class="form-control" min="0.01" step="0.01" required></div></div>
+                                    <div class="form-group col-md-4"><label>Fondo aprobado *</label><div class="petty-money-input"><span>S/</span><input type="number" name="approved_fund" id="pc_approved_fund" class="form-control" min="0" step="0.01" required></div></div>
                                     <div class="form-group col-md-4"><label>Fondo disponible inicial</label><div class="petty-money-input petty-money-total"><span>S/</span><input type="text" id="pc_opening_amount" class="form-control" value="0.00" readonly></div></div>
                                 </div>
                                 <div class="petty-balance-help"><i class="fas fa-info-circle"></i><span id="pc_previous_balance_message">Seleccione una empresa para buscar saldo anterior.</span></div>

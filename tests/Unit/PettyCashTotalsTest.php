@@ -41,3 +41,11 @@ it('incluye el saldo anterior en el fondo disponible inicial', function () {
         'pending_replenishment' => 200.0,
     ]);
 });
+
+it('permite calcular la apertura solo con saldo anterior', function () {
+    expect(PettyCashBox::calculateBalances(0, 0, 0, 1500))->toBe([
+        'opening_amount' => 1500.0,
+        'current_balance' => 1500.0,
+        'pending_replenishment' => 0.0,
+    ]);
+});

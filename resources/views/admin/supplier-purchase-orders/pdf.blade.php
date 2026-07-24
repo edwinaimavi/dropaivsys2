@@ -20,11 +20,7 @@
     $totalColor = $isPraga ? '#dbe8ff' : '#dcfce7';
     $borderColor = $isPraga ? '#b7c9f5' : '#cfd8d3';
     $formatMoney = fn ($value) => trim($currencySymbol . ' ' . number_format((float) $value, 2, '.', ','));
-    $formatDecimal = function ($value, int $maxDecimals = 6): string {
-        $formatted = rtrim(rtrim(number_format((float) $value, $maxDecimals, '.', ''), '0'), '.');
-
-        return $formatted === '' ? '0' : $formatted;
-    };
+    $formatDecimal = fn ($value) => \App\Support\FlexibleDecimalFormatter::format($value);
     $pdfLineTotal = fn ($item) => $item->total_with_igv !== null
         ? (float) $item->total_with_igv
         : ($item->line_total !== null
