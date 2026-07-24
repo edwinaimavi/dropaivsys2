@@ -35,6 +35,18 @@ use Yajra\DataTables\Facades\DataTables;
 
 class SupplierPurchaseOrderController extends Controller
 {
+    private const SUPPLIER_DOCUMENT_TYPES = [
+        'supplier_quote',
+        'payment_support',
+        'other',
+    ];
+
+    private const SUPPLIER_DOCUMENT_TYPE_CODES = [
+        'SPO_QUOTE',
+        'SPO_PAYMENT_SUPPORT',
+        'SPO_OTHER',
+    ];
+
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_SENT = 'sent';
     private const STATUS_APPROVED = 'approved';
@@ -181,7 +193,7 @@ class SupplierPurchaseOrderController extends Controller
                 $supplierDocument = $order->documents->first(
                     fn (Document $document) => in_array(
                         $document->documentType?->code,
-                        ['SPO_QUOTE', 'SPO_OTHER'],
+                        self::SUPPLIER_DOCUMENT_TYPE_CODES,
                         true
                     )
                 );
@@ -400,7 +412,7 @@ class SupplierPurchaseOrderController extends Controller
             $supplierPurchaseOrder->documents
                 ->filter(fn (Document $document) => in_array(
                     $document->documentType?->code,
-                    ['SPO_QUOTE', 'SPO_OTHER'],
+                    self::SUPPLIER_DOCUMENT_TYPE_CODES,
                     true
                 ))
                 ->map(function (Document $document) use ($supplierPurchaseOrder) {
@@ -574,7 +586,11 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.status' => ['nullable', 'string', 'max:30'],
             'supplier_documents' => ['nullable', 'array'],
-            'supplier_documents.*.type' => ['nullable', 'required_with:supplier_documents.*.file', Rule::in(['supplier_quote', 'other'])],
+            'supplier_documents.*.type' => [
+                'nullable',
+                'required_with:supplier_documents.*.file',
+                Rule::in(self::SUPPLIER_DOCUMENT_TYPES),
+            ],
             'supplier_documents.*.observation' => ['nullable', 'string', 'max:500'],
             'supplier_documents.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ], [
@@ -1482,6 +1498,7 @@ class SupplierPurchaseOrderController extends Controller
     {
         $types = [
             'supplier_quote' => ['code' => 'SPO_QUOTE', 'description' => 'COTIZACION DEL PROVEEDOR'],
+            'payment_support' => ['code' => 'SPO_PAYMENT_SUPPORT', 'description' => 'SUSTENTO DE PAGO'],
             'other' => ['code' => 'SPO_OTHER', 'description' => 'OTRO DOCUMENTO DEL PROVEEDOR'],
         ];
         $definition = $types[$type] ?? $types['other'];
@@ -1505,7 +1522,11 @@ class SupplierPurchaseOrderController extends Controller
         abort_unless(
             $document->documentable_type === SupplierPurchaseOrder::class
                 && (int) $document->documentable_id === (int) $supplierPurchaseOrder->id
-                && in_array($document->documentType?->code, ['SPO_QUOTE', 'SPO_OTHER'], true),
+                && in_array(
+                    $document->documentType?->code,
+                    self::SUPPLIER_DOCUMENT_TYPE_CODES,
+                    true
+                ),
             404
         );
     }

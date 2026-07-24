@@ -43,6 +43,17 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '.btnRemoveSupplierOrderDocument', function () {
         $(this).closest('.supplier-order-document-row').remove();
     });
+    $(document).on('change', '.supplier-document-file', function () {
+        const fileName = this.files?.length
+            ? this.files[0].name
+            : 'Ningún archivo seleccionado';
+
+        $(this)
+            .closest('.supplier-order-document-row')
+            .find('.supplier-doc-file-name')
+            .text(fileName)
+            .toggleClass('has-file', Boolean(this.files?.length));
+    });
     $(document).on('click', '.btnDeleteExistingSupplierOrderDocument', deleteExistingSupplierOrderDocument);
 
     $(document).on('click', '#btnQuickSupplierForOrder', openQuickSupplierForOrderModal);
@@ -687,30 +698,42 @@ function addSupplierOrderDocumentRow() {
     const index = supplierOrderDocumentIndex++;
 
     $('#supplierOrderDocumentsContainer').append(`
-        <div class="supplier-order-document-row border rounded bg-light p-2 mb-2">
-            <div class="form-row align-items-end">
-                <div class="form-group col-md-3 mb-1">
-                    <label>TIPO DE DOCUMENTO</label>
-                    <select name="supplier_documents[${index}][type]" class="form-control form-control-sm">
+        <div class="supplier-order-document-row supplier-doc-row">
+            <div class="supplier-doc-row-header">
+                <div>
+                    <span class="supplier-doc-row-icon"><i class="fas fa-file-upload"></i></span>
+                    <strong>Documento #${index + 1}</strong>
+                </div>
+                <button type="button" class="supplier-doc-remove btnRemoveSupplierOrderDocument"
+                    title="Quitar documento" aria-label="Quitar documento">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="supplier-doc-row-grid">
+                <div class="form-group mb-0">
+                    <label>Tipo de documento</label>
+                    <select name="supplier_documents[${index}][type]" class="form-control form-control-sm supplier-doc-control">
                         <option value="supplier_quote">Cotización del proveedor</option>
+                        <option value="payment_support">Sustento de pago</option>
                         <option value="other">Otro documento</option>
                     </select>
                 </div>
-                <div class="form-group col-md-4 mb-1">
-                    <label>ARCHIVO</label>
+                <div class="form-group mb-0">
+                    <label>Archivo</label>
                     <input type="file" name="supplier_documents[${index}][file]"
-                        class="form-control-file form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+                        id="supplier_document_file_${index}"
+                        class="d-none supplier-document-file" accept=".pdf,.jpg,.jpeg,.png">
+                    <label for="supplier_document_file_${index}" class="supplier-doc-file-label">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>Seleccionar archivo</span>
+                    </label>
+                    <small class="supplier-doc-file-name">Ningún archivo seleccionado</small>
                 </div>
-                <div class="form-group col-md-4 mb-1">
-                    <label>OBSERVACIÓN</label>
+                <div class="form-group mb-0">
+                    <label>Observación</label>
                     <input type="text" name="supplier_documents[${index}][observation]"
-                        class="form-control form-control-sm" maxlength="500"
-                        placeholder="Ej. Enviada por WhatsApp">
-                </div>
-                <div class="form-group col-md-1 mb-1 text-right">
-                    <button type="button" class="btn btn-outline-danger btn-sm btnRemoveSupplierOrderDocument" title="Quitar">
-                        <i class="fas fa-times"></i>
-                    </button>
+                        class="form-control form-control-sm supplier-doc-control" maxlength="500"
+                        placeholder="Ej. Enviada por WhatsApp, depósito parcial, proforma, etc.">
                 </div>
             </div>
         </div>
@@ -725,24 +748,33 @@ function renderExistingSupplierOrderDocuments(documents) {
         return;
     }
 
-    container.html(documents.map(document => `
-        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-2 mb-2 bg-white">
-            <div class="mr-2 text-truncate">
-                <i class="fas fa-file-alt text-danger mr-1"></i>
+    container.html(documents.map(document => {
+        const extension = String(document.extension || document.original_name?.split('.').pop() || '').toLowerCase();
+        const isImage = ['jpg', 'jpeg', 'png'].includes(extension);
+        const iconClass = isImage ? 'fas fa-file-image' : 'fas fa-file-pdf';
+        const iconTone = isImage ? 'is-image' : 'is-pdf';
+
+        return `
+        <div class="supplier-doc-existing">
+            <span class="supplier-doc-existing-icon ${iconTone}">
+                <i class="${iconClass}"></i>
+            </span>
+            <div class="supplier-doc-existing-info">
                 <strong>${escapeSupplierOrderHtml(document.original_name || 'Documento')}</strong>
-                <small class="text-muted d-block">${escapeSupplierOrderHtml(document.document_type?.description || 'Documento del proveedor')}${document.observation ? ` · ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
+                <small>${escapeSupplierOrderHtml(document.document_type?.description || 'Documento del proveedor')}${document.observation ? ` · ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
             </div>
-            <div class="text-nowrap">
-                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+            <div class="supplier-doc-existing-actions">
+                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener"
+                    class="supplier-doc-action is-open" title="Abrir documento">
                     <i class="fas fa-external-link-alt"></i>
                 </a>
-                <button type="button" class="btn btn-outline-danger btn-sm btnDeleteExistingSupplierOrderDocument"
-                    data-url="${escapeSupplierOrderHtml(document.delete_url)}">
+                <button type="button" class="supplier-doc-action is-delete btnDeleteExistingSupplierOrderDocument"
+                    data-url="${escapeSupplierOrderHtml(document.delete_url)}" title="Eliminar documento">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
         </div>
-    `).join(''));
+    `}).join(''));
 }
 
 function deleteExistingSupplierOrderDocument() {
@@ -764,7 +796,9 @@ function deleteExistingSupplierOrderDocument() {
             type: 'POST',
             data: { _method: 'DELETE' },
             success: response => {
-                button.closest('.d-flex').remove();
+                const container = button.closest('#supplierOrderExistingDocuments');
+                button.closest('.supplier-doc-existing').remove();
+                if (!container.children('.supplier-doc-existing').length) container.empty();
                 Swal.fire('Correcto', response.message || 'Documento eliminado.', 'success');
             },
             error: xhr => Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el documento.', 'error')

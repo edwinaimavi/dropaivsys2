@@ -474,23 +474,26 @@
                     </div>
 
                     <div class="col-12">
-                        <div class="card border-0 shadow-sm supplier-order-documents-card">
-                            <div class="card-header bg-white border-0 py-2 px-3 d-flex justify-content-between align-items-center flex-wrap">
+                        <div class="card supplier-order-documents-card supplier-doc-section">
+                            <div class="card-header supplier-doc-section-header d-flex justify-content-between align-items-center flex-wrap">
                                 <div>
                                     <h6 class="mb-0 font-weight-bold text-dark">
-                                        <i class="fas fa-paperclip text-danger mr-1"></i>
+                                        <span class="supplier-doc-section-icon">
+                                            <i class="fas fa-folder-open"></i>
+                                        </span>
                                         Documentaci&oacute;n del proveedor
                                     </h6>
-                                    <small class="text-muted">Adjunte cotizaciones o documentos enviados por el proveedor (opcional).</small>
+                                    <small class="text-muted">Adjunte cotizaciones, sustento de pago u otros documentos enviados por el proveedor.</small>
                                 </div>
-                                <button type="button" class="btn btn-outline-success btn-sm" id="btnAddSupplierOrderDocument">
+                                <button type="button" class="btn btn-sm supplier-doc-add" id="btnAddSupplierOrderDocument">
                                     <i class="fas fa-plus mr-1"></i> Agregar documento
                                 </button>
                             </div>
-                            <div class="card-body pt-2">
-                                <div id="supplierOrderExistingDocuments" class="mb-2"></div>
-                                <div id="supplierOrderDocumentsContainer"></div>
-                                <small class="text-muted d-block">
+                            <div class="card-body supplier-doc-section-body">
+                                <div id="supplierOrderExistingDocuments" class="supplier-doc-list"></div>
+                                <div id="supplierOrderDocumentsContainer" class="supplier-doc-list"></div>
+                                <small class="supplier-doc-section-help d-block">
+                                    <i class="fas fa-info-circle mr-1"></i>
                                     Formatos permitidos: PDF, JPG, JPEG y PNG. Tama&ntilde;o m&aacute;ximo: 10 MB por archivo.
                                 </small>
                             </div>
