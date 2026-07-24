@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\KardexController;
 use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
+use App\Http\Controllers\Admin\PettyCashController;
 use App\Http\Controllers\Admin\QuoteController;
 use App\Http\Controllers\Admin\ShippingAgencyController;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +43,19 @@ Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
 Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateTheme'])
     ->name('user-preferences.theme.update');
+
+Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty-cash.list');
+Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
+Route::put('petty-cash/expenses/{expense}', [PettyCashController::class, 'updateExpense'])->name('petty-cash.expenses.update');
+Route::delete('petty-cash/expenses/{expense}', [PettyCashController::class, 'destroyExpense'])->name('petty-cash.expenses.destroy');
+Route::post('petty-cash/{pettyCash}/close', [PettyCashController::class, 'close'])->name('petty-cash.close');
+Route::post('petty-cash/{pettyCash}/replenishments', [PettyCashController::class, 'storeReplenishment'])->name('petty-cash.replenishments.store');
+Route::get('petty-cash/documents/{document}/view', [PettyCashController::class, 'viewDocument'])->name('petty-cash.documents.view');
+Route::get('petty-cash/{pettyCash}/pdf', [PettyCashController::class, 'pdf'])->name('petty-cash.pdf');
+Route::get('petty-cash/{pettyCash}/excel', [PettyCashController::class, 'excel'])->name('petty-cash.excel');
+Route::resource('petty-cash', PettyCashController::class)
+    ->parameters(['petty-cash' => 'pettyCash'])
+    ->except(['create', 'edit']);
 
 
 //Rutas para la gestión de usuarios en el panel de administración|

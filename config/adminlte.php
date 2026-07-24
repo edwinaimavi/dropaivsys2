@@ -452,6 +452,19 @@ return [
             ],
         ],
         [
+            'text' => 'Finanzas',
+            'icon' => 'fas fa-coins',
+            'submenu' => [
+                [
+                    'text' => 'Caja Chica',
+                    'icon' => 'fas fa-wallet',
+                    'icon_color' => 'success',
+                    'url' => 'admin/petty-cash',
+                    'can' => 'admin.petty-cash.index',
+                ],
+            ],
+        ],
+        [
             'text' => 'Almacén',
             'icon' => 'fas fa-warehouse',
 

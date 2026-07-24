@@ -233,6 +233,19 @@ class RoleSeeder extends Seeder
             'admin.kardex.stock' => 'Ver stock de Kardex',
             'admin.kardex.export' => 'Exportar Kardex',
 
+            'admin.petty-cash.index' => 'Ver cajas chicas',
+            'admin.petty-cash.store' => 'Aperturar cajas chicas',
+            'admin.petty-cash.show' => 'Ver detalle de cajas chicas',
+            'admin.petty-cash.update' => 'Actualizar cajas chicas',
+            'admin.petty-cash.destroy' => 'Anular cajas chicas',
+            'admin.petty-cash.expenses.store' => 'Registrar gastos de caja chica',
+            'admin.petty-cash.expenses.update' => 'Actualizar gastos de caja chica',
+            'admin.petty-cash.expenses.destroy' => 'Eliminar gastos de caja chica',
+            'admin.petty-cash.close' => 'Cerrar cajas chicas',
+            'admin.petty-cash.replenishments.store' => 'Registrar reposiciones de caja chica',
+            'admin.petty-cash.pdf' => 'Generar PDF de caja chica',
+            'admin.petty-cash.excel' => 'Exportar caja chica a Excel',
+
             'admin.profile.index' => 'Ver perfil',
             'admin.profile.update' => 'Actualizar perfil',
         ];
