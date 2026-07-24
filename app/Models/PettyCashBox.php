@@ -25,7 +25,8 @@ class PettyCashBox extends Model
 
     protected $fillable = [
         'code', 'company_id', 'currency_id', 'period_month', 'period_year',
-        'periodicity', 'start_date', 'end_date', 'approved_fund', 'opening_amount',
+        'periodicity', 'start_date', 'end_date', 'approved_fund', 'previous_balance',
+        'previous_petty_cash_id', 'opening_amount',
         'total_expenses', 'cash_balance', 'reimbursement_amount',
         'responsible_name', 'responsible_dni', 'supervisor_name', 'supervisor_dni',
         'observations', 'status', 'opened_by', 'closed_by', 'reimbursed_by',
@@ -36,6 +37,7 @@ class PettyCashBox extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'approved_fund' => 'decimal:2',
+        'previous_balance' => 'decimal:2',
         'opening_amount' => 'decimal:2',
         'total_expenses' => 'decimal:2',
         'cash_balance' => 'decimal:2',
@@ -50,20 +52,25 @@ class PettyCashBox extends Model
     public function replenishments() { return $this->hasMany(PettyCashReplenishment::class); }
     public function documents() { return $this->morphMany(Document::class, 'documentable'); }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
+    public function previousPettyCash() { return $this->belongsTo(self::class, 'previous_petty_cash_id'); }
+    public function carriedForwardTo() { return $this->hasOne(self::class, 'previous_petty_cash_id'); }
 
     public function canManageExpenses(): bool
     {
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_IN_REVIEW], true);
     }
 
-    public static function calculateBalances(float $fund, float $spent, float $replenished): array
+    public static function calculateBalances(float $fund, float $spent, float $replenished, float $previousBalance = 0): array
     {
         $fund = round($fund, 2);
+        $previousBalance = round($previousBalance, 2);
         $spent = round($spent, 2);
         $replenished = round($replenished, 2);
+        $openingAmount = round($fund + $previousBalance, 2);
 
         return [
-            'current_balance' => (float) min($fund, max(0, round($fund - $spent + $replenished, 2))),
+            'opening_amount' => (float) $openingAmount,
+            'current_balance' => (float) min($openingAmount, max(0, round($openingAmount - $spent + $replenished, 2))),
             'pending_replenishment' => (float) max(0, round($spent - $replenished, 2)),
         ];
     }

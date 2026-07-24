@@ -45,6 +45,7 @@ Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateT
     ->name('user-preferences.theme.update');
 
 Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty-cash.list');
+Route::get('petty-cash/previous-balance', [PettyCashController::class, 'previousBalance'])->name('petty-cash.previous-balance');
 Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
 Route::put('petty-cash/expenses/{expense}', [PettyCashController::class, 'updateExpense'])->name('petty-cash.expenses.update');
 Route::delete('petty-cash/expenses/{expense}', [PettyCashController::class, 'destroyExpense'])->name('petty-cash.expenses.destroy');

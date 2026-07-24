@@ -6,6 +6,7 @@ $(function () {
     const csrf = $('meta[name="csrf-token"]').attr('content');
     let currentBox = null;
     let table;
+    let applyingPreviousBalance = false;
     const dniRequests = new Map();
     const dniTimers = {};
 
@@ -18,6 +19,16 @@ $(function () {
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
+    const updateOpeningAmount = () => {
+        const previous = Math.max(0, Number($('#pc_previous_balance').val()) || 0);
+        const approved = Math.max(0, Number($('#pc_approved_fund').val()) || 0);
+        const opening = previous + approved;
+        $('#pc_opening_amount').val(opening.toFixed(2));
+        $('#pc_side_previous').text(money(previous));
+        $('#pc_side_fund').text(money(approved));
+        $('#pc_side_opening').text(money(opening));
+        if (!$('#petty_cash_id').val()) $('#pc_side_balance').text(money(opening));
+    };
 
     const personName = data => [data.nombres, data.apellidoPaterno, data.apellidoMaterno]
         .filter(Boolean).join(' ').trim().toLocaleUpperCase('es-PE');
@@ -117,18 +128,53 @@ $(function () {
         form.reset();
         $('#responsible_dni,#supervisor_dni').removeData('last-dni');
         $('#petty_cash_id').val('');
+        $('#pc_previous_petty_cash_id').val('');
+        $('#pc_previous_balance').val('0');
+        $('#pc_previous_balance_message').text('Seleccione una empresa para buscar saldo anterior.');
         $('#pc_period_year').val(new Date().getFullYear());
         $('#pc_period_month').val(new Date().getMonth() + 1);
         $('#pc_side_code').text('Se generará al guardar');
         $('#pc_side_status').text('ABIERTA');
-        $('#pc_side_fund,#pc_side_expenses,#pc_side_balance').text('0.00');
+        $('#pc_side_previous,#pc_side_fund,#pc_side_opening,#pc_side_expenses,#pc_side_balance').text('0.00');
         $('#pettyCashModalLabel').text('Aperturar caja chica');
         $('#btnSavePettyCash span').text('Guardar Caja');
         $('#pettyCashModal').modal('show');
     });
 
-    $('#pc_approved_fund').on('input', function () {
-        $('#pc_side_fund,#pc_side_balance').text(money(this.value));
+    $(document).off('input', '#pc_approved_fund').on('input', '#pc_approved_fund', updateOpeningAmount);
+    $(document).off('input', '#pc_previous_balance').on('input', '#pc_previous_balance', function () {
+        if (!applyingPreviousBalance) {
+            $('#pc_previous_petty_cash_id').val('');
+            $('#pc_previous_balance_message').text('Saldo ingresado manualmente.');
+        }
+        updateOpeningAmount();
+    });
+    $(document).off('change', '#pc_company_id').on('change', '#pc_company_id', function () {
+        const companyId = this.value;
+        if (!companyId) {
+            applyingPreviousBalance = true;
+            $('#pc_previous_petty_cash_id').val('');
+            $('#pc_previous_balance').val('0');
+            applyingPreviousBalance = false;
+            $('#pc_previous_balance_message').text('Seleccione una empresa para buscar saldo anterior.');
+            updateOpeningAmount();
+            return;
+        }
+        $('#pc_previous_balance_message').html('<i class="fas fa-spinner fa-spin mr-1"></i> Buscando saldo anterior...');
+        api({ url: app.data('previous-balance-url'), method: 'GET', data: { company_id: companyId, exclude_id: $('#petty_cash_id').val() || null } })
+            .done(response => {
+                const data = response.data || {};
+                applyingPreviousBalance = true;
+                $('#pc_previous_petty_cash_id').val(data.previous_petty_cash_id || '');
+                $('#pc_previous_balance').val(Number(data.previous_balance || 0).toFixed(2));
+                applyingPreviousBalance = false;
+                $('#pc_previous_balance_message').text(data.message || 'No se detectó saldo anterior.');
+                updateOpeningAmount();
+            })
+            .fail(xhr => {
+                $('#pc_previous_balance_message').text(errorMessage(xhr));
+                $('#pc_previous_petty_cash_id').val('');
+            });
     });
 
     $('#pettyCashForm').on('submit', function (event) {
@@ -150,12 +196,20 @@ $(function () {
             $('#petty_cash_id').val(box.id);
             ['company_id','currency_id','period_month','period_year','periodicity','start_date','end_date','approved_fund','observations']
                 .forEach(field => $(`#pc_${field}`).val(String(box[field] ?? '').slice(0, field.includes('date') ? 10 : undefined)));
+            applyingPreviousBalance = true;
+            $('#pc_previous_balance').val(Number(box.previous_balance || 0).toFixed(2));
+            $('#pc_previous_petty_cash_id').val(box.previous_petty_cash_id || '');
+            applyingPreviousBalance = false;
+            $('#pc_previous_balance_message').text(box.previous_petty_cash
+                ? `Saldo arrastrado desde: ${box.previous_petty_cash.code}.`
+                : 'Saldo anterior registrado manualmente o sin caja de origen.');
             $('#responsible_dni').val(box.responsible_dni).data('last-dni', box.responsible_dni);
             $('#responsible_name').val(box.responsible_name);
             $('#supervisor_dni').val(box.supervisor_dni).data('last-dni', box.supervisor_dni);
             $('#supervisor_name').val(box.supervisor_name);
             $('#pc_side_code').text(box.code); $('#pc_side_status').text(box.status_label);
-            $('#pc_side_fund').text(money(box.approved_fund)); $('#pc_side_expenses').text(money(box.total_expenses)); $('#pc_side_balance').text(money(box.cash_balance));
+            updateOpeningAmount();
+            $('#pc_side_expenses').text(money(box.total_expenses)); $('#pc_side_balance').text(money(box.cash_balance));
             $('#pettyCashModalLabel').text('Editar caja chica'); $('#btnSavePettyCash span').text('Actualizar Caja'); $('#pettyCashModal').modal('show');
         }).fail(xhr => notify('error', errorMessage(xhr)));
     });
@@ -166,10 +220,14 @@ $(function () {
         $('#pcv_code').text(`${box.code} · ${box.status_label}`);
         $('#pcv_company').text(box.company?.trade_name || box.company?.business_name || '-');
         $('#pcv_summary').html([
-            ['Fondo aprobado', money(box.approved_fund, symbol)], ['Total gastado', money(box.total_expenses, symbol)],
+            ['Saldo anterior', money(box.previous_balance, symbol)], ['Fondo aprobado', money(box.approved_fund, symbol)],
+            ['Fondo disponible inicial', money(box.opening_amount, symbol)], ['Total gastado', money(box.total_expenses, symbol)],
             ['Total repuesto', money(box.replenished_total, symbol)], ['Saldo actual', money(box.cash_balance, symbol)],
             ['Pendiente reposición', money(box.reimbursement_amount, symbol)]
         ].map(item => `<div class="petty-summary-item"><small>${item[0]}</small><strong>${item[1]}</strong></div>`).join(''));
+        if (box.previous_petty_cash) {
+            $('#pcv_summary').append(`<div class="petty-summary-item"><small>Saldo arrastrado desde</small><strong>${escapeHtml(box.previous_petty_cash.code)}</strong></div>`);
+        }
         $('#pcv_responsibles').html(`<div class="col-md-6"><b>Responsable</b><p>${escapeHtml(box.responsible_name)} · DNI ${escapeHtml(box.responsible_dni)}</p></div><div class="col-md-6"><b>Supervisor</b><p>${escapeHtml(box.supervisor_name)} · DNI ${escapeHtml(box.supervisor_dni)}</p></div>`);
         $('#pcv_expenses').html(box.expenses.length ? box.expenses.map(expense => {
             const docs = (expense.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="btn btn-xs btn-outline-info"><i class="fas fa-paperclip"></i></a>`).join('') || '-';

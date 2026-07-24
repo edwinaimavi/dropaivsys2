@@ -24,7 +24,7 @@ class PettyCashController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('can:admin.petty-cash.index')->only(['index', 'list']);
+        $this->middleware('can:admin.petty-cash.index')->only(['index', 'list', 'previousBalance']);
         $this->middleware('can:admin.petty-cash.store')->only('store');
         $this->middleware('can:admin.petty-cash.show')->only(['show', 'viewDocument']);
         $this->middleware('can:admin.petty-cash.update')->only('update');
@@ -52,7 +52,7 @@ class PettyCashController extends Controller
         $activeStatuses = [PettyCashBox::STATUS_OPEN, PettyCashBox::STATUS_IN_REVIEW];
         $summary = [
             'active_boxes' => PettyCashBox::whereIn('status', $activeStatuses)->count(),
-            'visible_fund' => (float) PettyCashBox::whereIn('status', $activeStatuses)->sum('approved_fund'),
+            'visible_fund' => (float) PettyCashBox::whereIn('status', $activeStatuses)->sum('cash_balance'),
             'total_spent' => (float) PettyCashBox::whereIn('status', $activeStatuses)->sum('total_expenses'),
             'pending_replenishment' => (float) PettyCashBox::where('status', PettyCashBox::STATUS_OPEN)
                 ->sum('reimbursement_amount'),
@@ -87,17 +87,20 @@ class PettyCashController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateBox($request);
+        $this->validatePreviousBalance($validated);
 
         $box = DB::transaction(function () use ($validated) {
             $lastId = PettyCashBox::withTrashed()->lockForUpdate()->max('id') ?? 0;
             $fund = round((float) $validated['approved_fund'], 2);
+            $previousBalance = round((float) ($validated['previous_balance'] ?? 0), 2);
+            $openingAmount = round($fund + $previousBalance, 2);
 
             return PettyCashBox::create([
                 ...$validated,
                 'code' => sprintf('CC-%06d-%d', $lastId + 1, $validated['period_year']),
-                'opening_amount' => $fund,
+                'opening_amount' => $openingAmount,
                 'total_expenses' => 0,
-                'cash_balance' => $fund,
+                'cash_balance' => $openingAmount,
                 'reimbursement_amount' => 0,
                 'status' => PettyCashBox::STATUS_OPEN,
                 'opened_by' => Auth::id(),
@@ -112,7 +115,7 @@ class PettyCashController extends Controller
     public function show(PettyCashBox $pettyCash)
     {
         $pettyCash->load([
-            'company', 'currency', 'creator',
+            'company', 'currency', 'creator', 'previousPettyCash:id,code',
             'expenses' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('item_number'),
             'expenses.documents',
             'replenishments' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('replenishment_date'),
@@ -131,17 +134,50 @@ class PettyCashController extends Controller
         return response()->json(['data' => $pettyCash]);
     }
 
+    public function previousBalance(Request $request)
+    {
+        $validated = $request->validate([
+            'company_id' => ['required', 'exists:companies,id'],
+            'exclude_id' => ['nullable', 'integer', 'exists:petty_cash_boxes,id'],
+        ]);
+        $previous = PettyCashBox::query()
+            ->where('company_id', $validated['company_id'])
+            ->when($validated['exclude_id'] ?? null, fn ($query, $id) => $query->where('id', '!=', $id))
+            ->where('cash_balance', '>', 0)
+            ->whereIn('status', [PettyCashBox::STATUS_CLOSED, PettyCashBox::STATUS_REIMBURSED])
+            ->whereDoesntHave('carriedForwardTo')
+            ->latest('id')
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'previous_petty_cash_id' => $previous?->id,
+                'previous_code' => $previous?->code,
+                'previous_balance' => $previous ? (float) $previous->cash_balance : 0,
+                'message' => $previous
+                    ? "Se detectó saldo anterior de la caja {$previous->code}."
+                    : 'No se detectó saldo anterior. Puede ingresar uno manualmente si corresponde.',
+            ],
+        ]);
+    }
+
     public function update(Request $request, PettyCashBox $pettyCash)
     {
         abort_unless($pettyCash->canManageExpenses(), 422, 'La caja chica ya no puede editarse.');
         $validated = $this->validateBox($request);
+        $this->validatePreviousBalance($validated, $pettyCash);
 
         DB::transaction(function () use ($pettyCash, $validated) {
             $locked = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
             if ($locked->expenses()->where('status', 'ACTIVE')->exists()
-                && round((float) $locked->approved_fund, 2) !== round((float) $validated['approved_fund'], 2)) {
+                && (
+                    round((float) $locked->approved_fund, 2) !== round((float) $validated['approved_fund'], 2)
+                    || round((float) $locked->previous_balance, 2) !== round((float) $validated['previous_balance'], 2)
+                    || (int) $locked->previous_petty_cash_id !== (int) ($validated['previous_petty_cash_id'] ?? 0)
+                )) {
                 throw ValidationException::withMessages([
-                    'approved_fund' => 'No puede modificar el fondo cuando existen gastos registrados.',
+                    'approved_fund' => 'No puede modificar el fondo de apertura cuando existen gastos registrados.',
                 ]);
             }
             $locked->update([...$validated, 'updated_by' => Auth::id()]);
@@ -318,7 +354,7 @@ class PettyCashController extends Controller
                 ->when($expense, fn ($query) => $query->where('id', '!=', $expense->id))
                 ->sum('amount');
             $replenished = (float) $locked->replenishments()->where('status', 'ACTIVE')->sum('amount');
-            $available = (float) $locked->approved_fund - $otherTotal + $replenished;
+            $available = (float) $locked->approved_fund + (float) $locked->previous_balance - $otherTotal + $replenished;
             abort_if((float) $validated['amount'] > $available + 0.009, 422, 'El gasto supera el saldo disponible.');
 
             $data = [
@@ -357,6 +393,8 @@ class PettyCashController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'approved_fund' => ['required', 'numeric', 'gt:0'],
+            'previous_balance' => ['nullable', 'numeric', 'min:0'],
+            'previous_petty_cash_id' => ['nullable', 'integer', 'exists:petty_cash_boxes,id'],
             'responsible_name' => ['required', 'string', 'max:255'],
             'responsible_dni' => ['required', 'digits:8'],
             'supervisor_name' => ['required', 'string', 'max:255'],
@@ -370,13 +408,43 @@ class PettyCashController extends Controller
         $total = round((float) $box->expenses()->where('status', 'ACTIVE')->sum('amount'), 2);
         $replenished = round((float) $box->replenishments()->where('status', 'ACTIVE')->sum('amount'), 2);
         $fund = round((float) $box->approved_fund, 2);
-        $totals = PettyCashBox::calculateBalances($fund, $total, $replenished);
+        $totals = PettyCashBox::calculateBalances($fund, $total, $replenished, (float) $box->previous_balance);
         $box->update([
+            'opening_amount' => $totals['opening_amount'],
             'total_expenses' => $total,
             'cash_balance' => $totals['current_balance'],
             'reimbursement_amount' => $totals['pending_replenishment'],
             'updated_by' => Auth::id(),
         ]);
+    }
+
+    private function validatePreviousBalance(array &$validated, ?PettyCashBox $current = null): void
+    {
+        $validated['previous_balance'] = round((float) ($validated['previous_balance'] ?? 0), 2);
+        $sourceId = $validated['previous_petty_cash_id'] ?? null;
+
+        if (! $sourceId) {
+            $validated['previous_petty_cash_id'] = null;
+            return;
+        }
+
+        $source = PettyCashBox::findOrFail($sourceId);
+        $errors = [];
+        if ($current && (int) $source->id === (int) $current->id) {
+            $errors['previous_petty_cash_id'] = 'Una caja no puede usar su propio saldo anterior.';
+        } elseif ((int) $source->company_id !== (int) $validated['company_id']) {
+            $errors['previous_petty_cash_id'] = 'El saldo anterior debe pertenecer a la misma empresa.';
+        } elseif (! in_array($source->status, [PettyCashBox::STATUS_CLOSED, PettyCashBox::STATUS_REIMBURSED], true)) {
+            $errors['previous_petty_cash_id'] = 'El saldo anterior debe provenir de una caja finalizada.';
+        } elseif ($source->carriedForwardTo()->when($current, fn ($query) => $query->where('id', '!=', $current->id))->exists()) {
+            $errors['previous_petty_cash_id'] = 'El saldo de esta caja anterior ya fue utilizado.';
+        } elseif (round((float) $source->cash_balance, 2) !== $validated['previous_balance']) {
+            $errors['previous_balance'] = 'El saldo anterior no coincide con el saldo disponible de la caja seleccionada.';
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     private function storeDocument($documentable, $file, string $typeCode): void
