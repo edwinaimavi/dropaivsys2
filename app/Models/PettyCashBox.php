@@ -58,6 +58,7 @@ class PettyCashBox extends Model
     public function sourceCompany() { return $this->belongsTo(Company::class, 'fund_source_company_id'); }
     public function sourceBankAccount() { return $this->belongsTo(CompanyBankAccount::class, 'fund_source_bank_account_id'); }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
+    public function updater() { return $this->belongsTo(User::class, 'updated_by'); }
     public function closer() { return $this->belongsTo(User::class, 'closed_by'); }
     public function previousPettyCash() { return $this->belongsTo(self::class, 'previous_petty_cash_id'); }
     public function carriedForwardTo() { return $this->hasOne(self::class, 'previous_petty_cash_id'); }

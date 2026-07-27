@@ -54,7 +54,7 @@ $(function () {
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
-    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal';
+    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const renderReceiptExchangeFiles = () => {
         receiptExchangePreviewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -355,7 +355,14 @@ $(function () {
     bindDniSearch('#supervisor_dni', '#supervisor_name', '#supervisor_dni_loading');
 
     table = $('#tablePettyCash').DataTable({
-        processing: true, serverSide: true, responsive: false,
+        processing: true,
+        serverSide: true,
+        responsive: {
+            details: {
+                type: 'column',
+                target: 0
+            }
+        },
         dom: "<'row mb-3'<'col-md-6'l><'col-md-6'f>>rt<'row mt-3'<'col-md-5'i><'col-md-7'p>><'row mt-2'<'col-12'B>>",
         buttons: [
             { extend: 'excelHtml5', text: '<i class="fas fa-file-excel mr-1"></i> Excel', className: 'btn btn-success btn-sm' },
@@ -363,8 +370,9 @@ $(function () {
             { extend: 'print', text: '<i class="fas fa-print mr-1"></i> Imprimir', className: 'btn btn-secondary btn-sm' }
         ],
         ajax: app.data('list-url'),
-        order: [[1, 'desc']],
+        order: [[2, 'desc']],
         columns: [
+            { data: null, defaultContent: '', className: 'dtr-control petty-responsive-control', orderable: false, searchable: false },
             { data: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'id' }, { data: 'code' }, { data: 'company', name: 'company.business_name' },
             { data: 'period', orderable: false }, { data: 'start_date' }, { data: 'end_date' },
@@ -383,6 +391,14 @@ $(function () {
             $('#tablePettyCash [data-toggle="tooltip"]').tooltip();
         }
     });
+
+    $('#tablePettyCash')
+        .on('show.bs.dropdown', '.dropdown', function () {
+            $(this).closest('.table-responsive').addClass('petty-dropdown-is-open');
+        })
+        .on('hidden.bs.dropdown', '.dropdown', function () {
+            $(this).closest('.table-responsive').removeClass('petty-dropdown-is-open');
+        });
 
     $(document).on('click', '#btnCreatePettyCash', function () {
         const form = $('#pettyCashForm')[0];
@@ -565,7 +581,9 @@ $(function () {
             .always(() => loading($(this), false));
     });
 
-    $(document).on('click', '.editPettyCash', function () {
+    $(document).on('click', '.editPettyCash, .btn-edit-petty-cash', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         loadBox($(this).data('id')).done(box => {
             currentBox = box;
             $('#pettyCashForm')[0].reset();
@@ -661,10 +679,18 @@ $(function () {
         `);
         $('#pcv_expenses_count').text(`${box.expenses.length} ${box.expenses.length === 1 ? 'movimiento' : 'movimientos'}`);
         $('#pcv_replenishments_count').text(`${box.replenishments.length} ${box.replenishments.length === 1 ? 'movimiento' : 'movimientos'}`);
+        $('#pcv_expenses_tab_count').text(box.expenses.length);
+        $('#pcv_replenishments_tab_count').text(box.replenishments.length);
         const pendingExchangeCount = Number(box.pending_exchange_receipts_count || 0);
         $('#btnExchangePettyCashReceipts')
             .toggleClass('d-none', !box.can_create_receipt_exchanges || pendingExchangeCount === 0)
             .data('id', box.id);
+        $('#btnExchangeReceiptsFromHistory')
+            .toggleClass('d-none', !box.can_create_receipt_exchanges || pendingExchangeCount === 0)
+            .data('id', box.id);
+        $('#btnAddExpenseFromDetail').toggleClass('d-none', !box.can_manage_expenses || !app.data('can-expense-store')).data('id', box.id);
+        $('#btnApproveExpensesFromDetail').toggleClass('d-none', !box.can_approve_expenses || pendingCount === 0);
+        $('#btnReplenishFromDetail').toggleClass('d-none', !box.can_replenish).data('id', box.id);
         $('#pcv_expenses').html(box.expenses.length ? box.expenses.map(expense => {
             const docs = (expense.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="petty-document-btn" data-toggle="tooltip" title="Ver documento" aria-label="Ver documento"><i class="fas fa-paperclip"></i></a>`).join('') || '<span class="petty-no-document">Sin archivo</span>';
             const isPending = expense.approval_status === 'pendiente_aprobacion';
@@ -690,16 +716,24 @@ $(function () {
             const source = item.source_company
                 ? `<small class="d-block text-muted">${escapeHtml(item.source_company.trade_name || item.source_company.business_name)}${sourceLabel ? ` · ${escapeHtml(sourceLabel)}` : ''}</small>`
                 : '';
-            return `<tr><td class="petty-date-cell">${date(item.replenishment_date)}</td><td class="text-right petty-amount-cell">${money(item.amount, symbol)}</td><td>${escapeHtml(item.payment_method || '-')}${source}</td><td>${escapeHtml(item.reference_number || '-')}</td><td class="petty-concept-cell">${escapeHtml(item.observation || '-')}</td><td class="text-center">${(item.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="petty-document-btn" data-toggle="tooltip" title="Ver sustento" aria-label="Ver sustento"><i class="fas fa-paperclip"></i></a>`).join('') || '<span class="petty-no-document">Sin archivo</span>'}</td><td><span class="petty-table-status">${escapeHtml(item.status || 'ACTIVE')}</span></td><td>-</td></tr>`;
-        }).join('') : '<tr><td colspan="8" class="petty-empty-state"><i class="fas fa-sync-alt"></i><strong>No hay reposiciones registradas.</strong><small>Las reposiciones realizadas aparecerán aquí.</small></td></tr>');
+            return `<tr><td class="petty-date-cell">${date(item.replenishment_date)}</td><td class="text-right petty-amount-cell">${money(item.amount, symbol)}</td><td>${escapeHtml(item.source_company?.trade_name || item.source_company?.business_name || '-')}</td><td>${escapeHtml(sourceLabel || '-')}</td><td class="petty-concept-cell">${escapeHtml(item.observation || '-')}</td><td class="text-center">${(item.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="petty-document-btn" data-toggle="tooltip" title="Ver sustento" aria-label="Ver sustento"><i class="fas fa-paperclip"></i></a>`).join('') || '<span class="petty-no-document">Sin archivo</span>'}</td><td><span class="petty-table-status">${escapeHtml(item.status || 'ACTIVE')}</span></td></tr>`;
+        }).join('') : '<tr><td colspan="7" class="petty-empty-state"><i class="fas fa-sync-alt"></i><strong>No hay reposiciones registradas.</strong><small>Las reposiciones realizadas aparecerán aquí.</small></td></tr>');
         const exchanges = box.expense_exchanges || [];
-        $('#pcv_exchange_history_section').toggleClass('d-none', exchanges.length === 0);
+        $('#pcv_exchanges_tab_count').text(exchanges.length);
         $('#pcv_exchange_history_count').text(`${exchanges.length} ${exchanges.length === 1 ? 'canje' : 'canjes'}`);
+        $('#pcv_exchange_history').toggleClass('d-none', exchanges.length === 0);
+        $('#pcv_exchange_empty').toggleClass('d-none', exchanges.length > 0);
         $('#pcv_exchange_history').html(exchanges.map(exchange => {
             const exchangeDocs = (exchange.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="petty-document-btn"><i class="fas fa-paperclip"></i></a>`).join('') || '<span class="petty-no-document">Sin archivo</span>';
             const receipts = (exchange.items || []).map(item => `<li>${escapeHtml(item.receipt_type || 'RECIBO')} ${escapeHtml([item.receipt_series, item.receipt_correlative].filter(Boolean).join('-'))} · ${escapeHtml(item.expense?.supplier_name || '')} · ${money(item.amount, symbol)}</li>`).join('');
             return `<article class="petty-exchange-history-item"><div><small>${date(exchange.exchange_date)}</small><strong>${escapeHtml(exchange.document_type)} ${escapeHtml(exchange.document_full_number)}</strong><span>${money(exchange.total_amount, symbol)}</span></div><ul>${receipts}</ul><div>${exchangeDocs}<small>${escapeHtml(userName(exchange.creator))}</small></div></article>`;
         }).join(''));
+        $('#pcv_audit_info').html([
+            ['Creado por', userName(box.creator), dateTime(box.created_at)],
+            ['Actualizado por', userName(box.updater), dateTime(box.updated_at)],
+            ['Cerrado por', box.closed_at ? userName(box.closer) : 'Pendiente', box.closed_at ? dateTime(box.closed_at) : '-'],
+            ['Periodo', `${String(box.period_month || '').padStart(2, '0')}/${box.period_year || '-'}`, `Apertura: ${date(box.start_date)}`]
+        ].map(item => `<div><small>${item[0]}</small><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[2])}</span></div>`).join(''));
         initializeDetailTooltips();
     };
 
@@ -708,7 +742,11 @@ $(function () {
     });
 
     $(document).on('click', '.viewPettyCash', function () {
-        loadBox($(this).data('id')).done(box => { renderDetail(box); $('#viewPettyCashModal').modal('show'); }).fail(xhr => notify('error', errorMessage(xhr)));
+        loadBox($(this).data('id')).done(box => {
+            renderDetail(box);
+            $('#viewPettyCashModal .nav-link[href="#pcv_tab_summary"]').tab('show');
+            $('#viewPettyCashModal').modal('show');
+        }).fail(xhr => notify('error', errorMessage(xhr)));
     });
 
     const openApprovalModal = (expense, action) => {
@@ -751,6 +789,9 @@ $(function () {
     $('#btnPendingPettyCashExpenses').on('click', function () {
         loadPendingExpenses().done(() => $('#pendingPettyCashExpensesModal').modal('show')).fail(xhr => notify('error', errorMessage(xhr)));
     });
+    $('#btnApproveExpensesFromDetail').on('click', function () {
+        $('#btnPendingPettyCashExpenses').trigger('click');
+    });
     $(document).on('click', '.approvePettyCashExpense, .rejectPettyCashExpense', function () {
         const expense = currentBox?.expenses?.find(item => Number(item.id) === Number($(this).data('id')));
         if (expense) openApprovalModal(expense, $(this).hasClass('rejectPettyCashExpense') ? 'reject' : 'approve');
@@ -776,7 +817,9 @@ $(function () {
             }).fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
     });
 
-    $(document).on('click', '.addPettyCashExpense', function () {
+    $(document).on('click', '.addPettyCashExpense, .btn-create-petty-cash-expense', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(''); $('#pc_expense_box_id').val($(this).data('id'));
         resetExpenseDocuments();
         $('#pcExpenseTitle').text('Registrar gasto'); $('#pettyCashExpenseModal').modal('show');
@@ -886,7 +929,9 @@ $(function () {
         Swal.fire({ icon: 'warning', title: '¿Eliminar este gasto?', showCancelButton: true, confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar', confirmButtonColor: '#dc3545' }).then(result => result.isConfirmed && run());
     });
 
-    $(document).on('click', '.closePettyCash', function () {
+    $(document).on('click', '.closePettyCash, .btn-close-petty-cash', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         loadBox($(this).data('id')).done(box => {
             const symbol = box.currency?.symbol || '';
             const summary = box.financial_summary || {};
@@ -922,13 +967,17 @@ $(function () {
             .fail(xhr => notify('error', errorMessage(xhr))).always(() => button.prop('disabled', false));
     });
 
-    $(document).on('click', '.deletePettyCash', function () {
+    $(document).on('click', '.deletePettyCash, .btn-cancel-petty-cash', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         const id = $(this).data('id');
         Swal.fire({ icon: 'warning', title: '¿Anular la caja chica?', text: 'Esta acción retirará la caja de la operación activa.', showCancelButton: true, confirmButtonText: 'Sí, anular', cancelButtonText: 'Cancelar', confirmButtonColor: '#dc3545' })
             .then(result => result.isConfirmed && api({ url: `${base}/${id}`, method: 'DELETE' }).done(response => { table.ajax.reload(null, false); notify('success', response.message); }).fail(xhr => notify('error', errorMessage(xhr))));
     });
 
-    $(document).off('click', '.btn-replenish-petty-cash').on('click', '.btn-replenish-petty-cash', function () {
+    $(document).off('click', '.btn-replenish-petty-cash').on('click', '.btn-replenish-petty-cash', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         loadBox($(this).data('id')).done(box => {
             $('#pettyCashReplenishmentForm')[0].reset(); $('#pcr_box_id').val(box.id);
             resetSourceReceipts('replenishment');
@@ -986,13 +1035,18 @@ $(function () {
             .fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
     });
 
-    $('#btnExchangePettyCashReceipts').on('click', function () {
-        const boxId = $(this).data('id');
+    const openReceiptExchange = box => {
+        currentBox = box;
+        const boxId = box.id;
         api({ url: `${base}/${boxId}/receipt-exchanges/pending`, method: 'GET' }).done(response => {
             pendingExchangeReceipts = response.data || [];
+            if (!pendingExchangeReceipts.length) {
+                notify('info', 'No hay recibos aprobados pendientes de canje para esta caja.');
+                return;
+            }
             receiptExchangeFiles = [];
-            renderReceiptExchangeFiles();
             $('#pettyCashReceiptExchangeForm')[0].reset();
+            renderReceiptExchangeFiles();
             $('#pcre_box_id').val(boxId);
             $('#pcre_date').val(new Date().toISOString().slice(0, 10));
             $('#pcre_receipts').html(pendingExchangeReceipts.length ? pendingExchangeReceipts.map(receipt => {
@@ -1002,6 +1056,13 @@ $(function () {
             updateReceiptExchangeSelection();
             $('#pettyCashReceiptExchangeModal').modal('show');
         }).fail(xhr => notify('error', errorMessage(xhr)));
+    };
+    $(document).on('click', '.exchangePettyCashReceipts, .btn-exchange-petty-cash-receipts', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const boxId = $(this).data('id');
+        if (currentBox && Number(currentBox.id) === Number(boxId)) openReceiptExchange(currentBox);
+        else loadBox(boxId).done(openReceiptExchange).fail(xhr => notify('error', errorMessage(xhr)));
     });
 
     $(document).on('change', '.pcre-receipt', updateReceiptExchangeSelection);
@@ -1030,8 +1091,12 @@ $(function () {
         loading(form, true);
         api({ url: `${base}/${$('#pcre_box_id').val()}/receipt-exchanges`, method: 'POST', data, processData: false, contentType: false })
             .done(response => {
-                $('#pettyCashReceiptExchangeModal,#viewPettyCashModal').modal('hide');
+                $('#pettyCashReceiptExchangeModal').modal('hide');
                 table.ajax.reload(null, false);
+                if (currentBox) loadBox(currentBox.id).done(box => {
+                    renderDetail(box);
+                    $('#viewPettyCashModal .nav-link[href="#pcv_tab_exchanges"]').tab('show');
+                });
                 notify('success', response.message);
             })
             .fail(xhr => notify('error', errorMessage(xhr)))

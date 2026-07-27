@@ -92,6 +92,11 @@ class PettyCashController extends Controller
                 'expenses as pending_expenses_count' => fn ($query) => $query
                     ->where('status', 'ACTIVE')
                     ->pendingApproval(),
+                'expenses as pending_exchange_receipts_count' => fn ($query) => $query
+                    ->where('status', 'ACTIVE')
+                    ->where('document_type', 'RECIBO')
+                    ->approved()
+                    ->pendingExchange(),
             ])
             ->orderByDesc('id');
 
@@ -167,7 +172,8 @@ class PettyCashController extends Controller
     public function show(PettyCashBox $pettyCash)
     {
         $pettyCash->load([
-            'company', 'currency', 'approvedAmount.currency:id,code,symbol', 'creator', 'closer:id,name,lastname', 'previousPettyCash:id,code',
+            'company', 'currency', 'approvedAmount.currency:id,code,symbol', 'creator:id,name,lastname',
+            'updater:id,name,lastname', 'closer:id,name,lastname', 'previousPettyCash:id,code',
             'sourceCompany', 'sourceBankAccount.bank', 'sourceBankAccount.currency', 'documents',
             'expenses' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('item_number'),
             'expenses.documents', 'expenses.creator:id,name,lastname',
