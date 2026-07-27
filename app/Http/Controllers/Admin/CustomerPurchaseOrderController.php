@@ -18,6 +18,7 @@ use App\Models\Quote;
 use App\Models\QuoteItem;
 use App\Models\Subcategory;
 use App\Models\Unit;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -28,6 +29,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class CustomerPurchaseOrderController extends Controller
 {
@@ -43,12 +45,12 @@ class CustomerPurchaseOrderController extends Controller
 
     public function __construct()
     {
-        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'checkPurchaseOrderNumber', 'customerBranches', 'searchCustomers']);
+        $this->middleware('can:admin.customer-purchase-orders.index')->only(['index', 'list', 'generateCode', 'checkPurchaseOrderNumber', 'customerBranches', 'searchCustomers', 'sellerUserByDni']);
         $this->middleware('can:admin.customer-purchase-orders.load-items')->only(['quoteItems']);
         $this->middleware('can:admin.customer-purchase-orders.store')->only(['store', 'quickStoreCustomer']);
         $this->middleware('can:admin.customer-purchase-orders.update')->only(['update', 'closeAttention']);
         $this->middleware('can:admin.customer-purchase-orders.destroy')->only(['destroy']);
-        $this->middleware('can:admin.customer-purchase-orders.show')->only(['show']);
+        $this->middleware('can:admin.customer-purchase-orders.show')->only(['show', 'pdf']);
     }
 
     public function index()
@@ -237,6 +239,7 @@ class CustomerPurchaseOrderController extends Controller
                     ?? $order->currency?->description
                     ?? '-';
             })
+            ->addColumn('seller', fn (CustomerPurchaseOrder $order) => e($order->seller_full_name ?: '-'))
             ->editColumn('purchase_order_number', function (CustomerPurchaseOrder $order) {
                 $purchaseOrderNumber = trim((string) $order->purchase_order_number);
 
@@ -691,6 +694,28 @@ class CustomerPurchaseOrderController extends Controller
         return $this->saveOrder($request);
     }
 
+    public function sellerUserByDni(string $dni)
+    {
+        $user = User::query()
+            ->select('id', 'dni', 'name', 'lastname', 'phone', 'email')
+            ->where('dni', $dni)
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'found' => (bool) $user,
+            'data' => $user ? [
+                'id' => $user->id,
+                'dni' => $user->dni,
+                'names' => $user->name,
+                'lastnames' => $user->lastname,
+                'full_name' => trim($user->name . ' ' . $user->lastname),
+                'phone' => $user->phone,
+                'email' => $user->email,
+            ] : null,
+        ]);
+    }
+
     public function show(CustomerPurchaseOrder $customerPurchaseOrder)
     {
         $customerPurchaseOrder->load([
@@ -701,6 +726,7 @@ class CustomerPurchaseOrderController extends Controller
             'currency',
             'creator',
             'updater',
+            'sellerUser',
             'attentionClosedBy',
             'documents.documentType',
             'items.quoteItem',
@@ -730,6 +756,18 @@ class CustomerPurchaseOrderController extends Controller
     public function edit(CustomerPurchaseOrder $customerPurchaseOrder)
     {
         return $this->show($customerPurchaseOrder);
+    }
+
+    public function pdf(CustomerPurchaseOrder $customerPurchaseOrder)
+    {
+        $customerPurchaseOrder->load([
+            'company', 'customer', 'customerBranch', 'currency', 'creator',
+            'sellerUser', 'items.article', 'items.unit',
+        ]);
+
+        return Pdf::loadView('admin.customer-purchase-orders.pdf', [
+            'order' => $customerPurchaseOrder,
+        ])->setPaper('a4')->stream('orden_cliente_' . $customerPurchaseOrder->code . '.pdf');
     }
 
     public function update(
@@ -933,6 +971,19 @@ class CustomerPurchaseOrderController extends Controller
             'billing_type' => ['required', Rule::in(['local', 'export'])],
             'affect_igv' => ['required', 'boolean'],
             'observations' => ['nullable', 'string'],
+            'seller_type' => ['nullable', Rule::in(['USER', 'EXTERNAL'])],
+            'seller_user_id' => [
+                'nullable',
+                Rule::requiredIf($request->input('seller_type') === 'USER'),
+                'exists:users,id',
+            ],
+            'seller_dni' => ['nullable', 'digits:8'],
+            'seller_names' => ['nullable', 'string', 'max:150'],
+            'seller_lastnames' => ['nullable', 'string', 'max:150'],
+            'seller_full_name' => ['nullable', 'string', 'max:255'],
+            'seller_phone' => ['nullable', 'string', 'max:30'],
+            'seller_email' => ['nullable', 'email', 'max:150'],
+            'seller_observation' => ['nullable', 'string'],
             'status' => [
                 'nullable',
                 Rule::in($this->customerPurchaseOrderStatuses()),
@@ -1046,6 +1097,19 @@ class CustomerPurchaseOrderController extends Controller
                     'observations' => $this->upperOrNull(
                         $validated['observations'] ?? null
                     ),
+                    'seller_type' => $validated['seller_type'] ?? null,
+                    'seller_user_id' => ($validated['seller_type'] ?? null) === 'USER'
+                        ? ($validated['seller_user_id'] ?? null)
+                        : null,
+                    'seller_dni' => $validated['seller_dni'] ?? null,
+                    'seller_names' => $this->upperOrNull($validated['seller_names'] ?? null),
+                    'seller_lastnames' => $this->upperOrNull($validated['seller_lastnames'] ?? null),
+                    'seller_full_name' => $this->upperOrNull($validated['seller_full_name'] ?? null),
+                    'seller_phone' => $validated['seller_phone'] ?? null,
+                    'seller_email' => isset($validated['seller_email'])
+                        ? mb_strtolower($validated['seller_email'])
+                        : null,
+                    'seller_observation' => $this->upperOrNull($validated['seller_observation'] ?? null),
                     'subtotal_exonerated' => $totals['subtotal_exonerated'],
                     'subtotal_taxed' => $totals['subtotal_taxed'],
                     'igv' => $totals['igv'],

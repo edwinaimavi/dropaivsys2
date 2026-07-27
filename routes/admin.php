@@ -461,6 +461,11 @@ Route::get(
     [CustomerPurchaseOrderController::class, 'searchCustomers']
 )->name('customer-purchase-orders.customers.search');
 
+Route::get(
+    'customer-purchase-orders/seller-user/{dni}',
+    [CustomerPurchaseOrderController::class, 'sellerUserByDni']
+)->where('dni', '[0-9]{8}')->name('customer-purchase-orders.seller-user');
+
 Route::post(
     'customer-purchase-orders/customers/quick-store',
     [CustomerPurchaseOrderController::class, 'quickStoreCustomer']
@@ -470,6 +475,11 @@ Route::post(
     'customer-purchase-orders/{customerPurchaseOrder}/close-attention',
     [CustomerPurchaseOrderController::class, 'closeAttention']
 )->name('customer-purchase-orders.close-attention');
+
+Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/pdf',
+    [CustomerPurchaseOrderController::class, 'pdf']
+)->name('customer-purchase-orders.pdf');
 
 Route::resource(
     'customer-purchase-orders',

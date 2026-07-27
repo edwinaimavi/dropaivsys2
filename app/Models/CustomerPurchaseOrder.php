@@ -33,6 +33,15 @@ class CustomerPurchaseOrder extends Model
         'billing_type',
         'affect_igv',
         'observations',
+        'seller_type',
+        'seller_user_id',
+        'seller_dni',
+        'seller_names',
+        'seller_lastnames',
+        'seller_full_name',
+        'seller_phone',
+        'seller_email',
+        'seller_observation',
         'subtotal_exonerated',
         'subtotal_taxed',
         'igv',
@@ -108,6 +117,11 @@ class CustomerPurchaseOrder extends Model
     public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function sellerUser()
+    {
+        return $this->belongsTo(User::class, 'seller_user_id');
     }
 
     public function attentionClosedBy()

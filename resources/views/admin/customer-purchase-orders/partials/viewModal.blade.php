@@ -74,6 +74,23 @@
                     </div>
                 </div>
 
+                <div id="vpo_seller_card" class="card border-0 shadow-sm mt-3 d-none">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0 font-weight-bold"><i class="fas fa-user-tie text-primary mr-1"></i> Vendedor / gestor</h6>
+                    </div>
+                    <div class="card-body pt-0">
+                        <div class="row purchase-order-view-grid">
+                            <div class="col-md-3"><small>Tipo</small><strong id="vpo_seller_type">—</strong></div>
+                            <div class="col-md-3"><small>DNI</small><strong id="vpo_seller_dni">—</strong></div>
+                            <div class="col-md-6"><small>Nombre completo</small><strong id="vpo_seller_full_name">—</strong></div>
+                            <div class="col-md-3"><small>Teléfono</small><strong id="vpo_seller_phone">—</strong></div>
+                            <div class="col-md-5"><small>Correo</small><strong id="vpo_seller_email">—</strong></div>
+                            <div class="col-md-4"><small>Registrado por</small><strong id="vpo_created_by">—</strong></div>
+                            <div class="col-12"><small>Observación</small><strong id="vpo_seller_observation">—</strong></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-white border-0">
                         <h6 class="mb-0 font-weight-bold">

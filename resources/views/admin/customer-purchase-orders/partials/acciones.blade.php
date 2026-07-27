@@ -4,6 +4,10 @@
         data-id="{{ $order->id }}" data-toggle="tooltip" title="Ver orden">
         <i class="fas fa-eye"></i>
     </button>
+    <a href="{{ route('admin.customer-purchase-orders.pdf', $order) }}" target="_blank" rel="noopener"
+        class="btn btn-outline-secondary btn-sm" data-toggle="tooltip" title="Ver PDF">
+        <i class="fas fa-file-pdf"></i>
+    </a>
     @endcan
 
     @can('admin.customer-purchase-orders.update')

@@ -322,6 +322,67 @@
                     </div>
 
                     <div class="col-12">
+                        <div class="card border-0 shadow-sm purchase-order-seller-card">
+                            <div class="card-header bg-white border-0 py-2 px-3">
+                                <h6 class="mb-0 font-weight-bold text-dark">
+                                    <i class="fas fa-user-tie text-primary mr-1"></i>
+                                    Datos del vendedor / gestor
+                                </h6>
+                                <small class="text-muted">Persona que gestionó la orden, independiente del usuario que la registra.</small>
+                            </div>
+                            <div class="card-body pt-1 pb-2">
+                                <input type="hidden" id="purchase_order_seller_user_id" name="seller_user_id">
+                                <div class="form-row">
+                                    <div class="form-group col-md-3">
+                                        <label>TIPO DE GESTOR</label>
+                                        <select id="purchase_order_seller_type" name="seller_type" class="form-control form-control-sm">
+                                            <option value="">Sin especificar</option>
+                                            <option value="USER">Usuario del sistema</option>
+                                            <option value="EXTERNAL">Externo</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label>DNI DEL GESTOR</label>
+                                        <div class="input-group input-group-sm">
+                                            <input id="purchase_order_seller_dni" name="seller_dni" class="form-control" maxlength="8" inputmode="numeric" placeholder="8 dígitos">
+                                            <div class="input-group-append">
+                                                <button type="button" id="btnSearchPurchaseOrderSellerDni" class="btn btn-outline-primary">
+                                                    <i class="fas fa-search mr-1"></i> Buscar DNI
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <small id="purchaseOrderSellerLookupStatus" class="form-text text-muted"></small>
+                                    </div>
+                                    <div class="form-group col-md-5">
+                                        <label>NOMBRE COMPLETO</label>
+                                        <input id="purchase_order_seller_full_name" name="seller_full_name" class="form-control form-control-sm text-uppercase" maxlength="255">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label>NOMBRES</label>
+                                        <input id="purchase_order_seller_names" name="seller_names" class="form-control form-control-sm text-uppercase" maxlength="150">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label>APELLIDOS</label>
+                                        <input id="purchase_order_seller_lastnames" name="seller_lastnames" class="form-control form-control-sm text-uppercase" maxlength="150">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label>TELÉFONO</label>
+                                        <input id="purchase_order_seller_phone" name="seller_phone" class="form-control form-control-sm" maxlength="30">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label>CORREO</label>
+                                        <input type="email" id="purchase_order_seller_email" name="seller_email" class="form-control form-control-sm" maxlength="150">
+                                    </div>
+                                    <div class="form-group col-12 mb-0">
+                                        <label>OBSERVACIÓN</label>
+                                        <textarea id="purchase_order_seller_observation" name="seller_observation" class="form-control form-control-sm" rows="2"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
                         <div class="card border-0 shadow-sm purchase-order-documents-card">
                             <div class="card-header bg-white border-0 py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">

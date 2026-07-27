@@ -112,6 +112,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('input', '#purchase_order_number', resetPurchaseOrderNumberValidation);
     $(document).on('blur change', '#purchase_order_number', checkPurchaseOrderNumber);
+    $(document).on('input', '#purchase_order_seller_dni', function () {
+        this.value = this.value.replace(/\D/g, '').slice(0, 8);
+        $('#purchase_order_seller_user_id').val('');
+        $('#purchaseOrderSellerLookupStatus').text('');
+    });
+    $(document).on('click', '#btnSearchPurchaseOrderSellerDni', searchPurchaseOrderSellerDni);
+    $(document).on('input', '#purchase_order_seller_names, #purchase_order_seller_lastnames', syncPurchaseOrderSellerFullName);
 
     $(document).on('click', '#btnAddPurchaseOrderDocument', function () {
         addPurchaseOrderDocumentRow();
@@ -370,6 +377,7 @@ function initCustomerPurchaseOrderTable() {
                     return type === 'export' ? (row.customer_text || '-') : data;
                 }
             },
+            { data: 'seller', name: 'seller_full_name', defaultContent: '-' },
             { data: 'company', name: 'company.business_name', orderable: false },
             { data: 'currency', name: 'currency.code', orderable: false },
             { data: 'grand_total', name: 'grand_total' },
@@ -401,19 +409,19 @@ function initCustomerPurchaseOrderTable() {
                 extend: 'excel',
                 className: 'btn btn-success btn-sm',
                 text: '<i class="fas fa-file-excel"></i> Excel',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
             },
             {
                 extend: 'pdf',
                 className: 'btn btn-danger btn-sm',
                 text: '<i class="fas fa-file-pdf"></i> PDF',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
             },
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
                 text: '<i class="fas fa-print"></i> Imprimir',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
             }
         ],
         drawCallback: function () {
@@ -527,6 +535,8 @@ function resetCustomerPurchaseOrderForm() {
     $('#purchase_order_customer_id').val('').trigger('change.select2');
     $('#purchase_order_quote_id').val('').trigger('change.select2');
     $('#purchase_order_company_id').val('').trigger('change.select2');
+    $('#purchase_order_seller_user_id').val('');
+    $('#purchaseOrderSellerLookupStatus').text('');
 
     setDefaultPurchaseOrderCurrency();
     configurePurchaseOrderQuoteOptions();
@@ -535,6 +545,77 @@ function resetCustomerPurchaseOrderForm() {
     $('#purchaseOrderSideCustomer').text('Seleccione cliente');
     $('#purchaseOrderSideBranch').text('Seleccione sucursal');
     calculatePurchaseOrderTotals();
+}
+
+function syncPurchaseOrderSellerFullName() {
+    const fullName = [
+        $('#purchase_order_seller_names').val(),
+        $('#purchase_order_seller_lastnames').val()
+    ].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+    $('#purchase_order_seller_full_name').val(fullName);
+}
+
+function fillPurchaseOrderSeller(data, type) {
+    const names = data.names || data.nombres || '';
+    const lastnames = data.lastnames
+        || [data.apellidoPaterno, data.apellidoMaterno].filter(Boolean).join(' ')
+        || data.apellidos
+        || '';
+    const fullName = data.full_name || data.nombreCompleto || [names, lastnames].filter(Boolean).join(' ');
+
+    $('#purchase_order_seller_type').val(type);
+    $('#purchase_order_seller_user_id').val(type === 'USER' ? (data.id || '') : '');
+    $('#purchase_order_seller_names').val(names);
+    $('#purchase_order_seller_lastnames').val(lastnames);
+    $('#purchase_order_seller_full_name').val(fullName);
+    if (data.phone) $('#purchase_order_seller_phone').val(data.phone);
+    if (data.email) $('#purchase_order_seller_email').val(data.email);
+}
+
+function searchPurchaseOrderSellerDni() {
+    const dni = String($('#purchase_order_seller_dni').val() || '').trim();
+    const button = $('#btnSearchPurchaseOrderSellerDni');
+    const status = $('#purchaseOrderSellerLookupStatus');
+
+    if (!/^\d{8}$/.test(dni)) {
+        Swal.fire({ icon: 'warning', title: 'DNI inválido', text: 'Ingrese un DNI de 8 dígitos.' });
+        return;
+    }
+
+    button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Buscando');
+    status.removeClass('text-success text-warning').addClass('text-muted').text('Consultando información...');
+
+    $.get(`${window.routes.customerPurchaseOrderSellerUser}/${dni}`)
+        .done(function (response) {
+            if (response.found && response.data) {
+                fillPurchaseOrderSeller(response.data, 'USER');
+                status.removeClass('text-muted text-warning').addClass('text-success')
+                    .text('DNI vinculado a un usuario del sistema.');
+                return;
+            }
+
+            const externalUrl = window.routes.customerPurchaseOrderCustomerDocumentConsult
+                .replace('DOC_PLACEHOLDER', dni);
+            $.get(externalUrl)
+                .done(function (documentResponse) {
+                    fillPurchaseOrderSeller(documentResponse.data || {}, 'EXTERNAL');
+                    status.removeClass('text-muted text-warning').addClass('text-success')
+                        .text('Datos encontrados. Gestor externo.');
+                })
+                .fail(function () {
+                    $('#purchase_order_seller_type').val('EXTERNAL');
+                    $('#purchase_order_seller_user_id').val('');
+                    status.removeClass('text-muted text-success').addClass('text-warning')
+                        .text('No se encontraron datos para este DNI. Puede completar la información manualmente.');
+                });
+        })
+        .fail(function (xhr) {
+            status.removeClass('text-muted text-success').addClass('text-warning')
+                .text(xhr.responseJSON?.message || 'No se pudo consultar el DNI.');
+        })
+        .always(function () {
+            button.prop('disabled', false).html('<i class="fas fa-search mr-1"></i> Buscar DNI');
+        });
 }
 
 function generateCustomerPurchaseOrderCode() {
@@ -1705,6 +1786,18 @@ function fillCustomerPurchaseOrderForm(order) {
     $('#purchase_order_billing_type').val(order.billing_type || 'local').trigger('change.select2');
     $('#purchase_order_affect_igv').val(order.affect_igv ? '1' : '0').trigger('change.select2');
     $('#purchase_order_observations').val(order.observations || '');
+    $('#purchase_order_seller_type').val(order.seller_type || '');
+    $('#purchase_order_seller_user_id').val(order.seller_user_id || '');
+    $('#purchase_order_seller_dni').val(order.seller_dni || '');
+    $('#purchase_order_seller_names').val(order.seller_names || '');
+    $('#purchase_order_seller_lastnames').val(order.seller_lastnames || '');
+    $('#purchase_order_seller_full_name').val(order.seller_full_name || '');
+    $('#purchase_order_seller_phone').val(order.seller_phone || '');
+    $('#purchase_order_seller_email').val(order.seller_email || '');
+    $('#purchase_order_seller_observation').val(order.seller_observation || '');
+    $('#purchaseOrderSellerLookupStatus').text(
+        order.seller_user_id ? 'Vinculado a un usuario del sistema.' : ''
+    );
 
     $('#purchaseOrderDocumentsTbody').empty();
     (order.documents || []).forEach(addExistingPurchaseOrderDocumentRow);
@@ -1784,6 +1877,18 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_subtotal_taxed').text(`${currencyCode} ${formatDecimalView(order.subtotal_taxed)}`);
     $('#vpo_igv').text(`${currencyCode} ${formatDecimalView(order.igv)}`);
     $('#vpo_total').text(`${currencyCode} ${formatDecimalView(order.grand_total)}`);
+    const hasSeller = Boolean(order.seller_dni || order.seller_full_name);
+    const creatorName = order.creator
+        ? [order.creator.name, order.creator.lastname].filter(Boolean).join(' ')
+        : '—';
+    $('#vpo_seller_card').toggleClass('d-none', !hasSeller);
+    $('#vpo_seller_type').text(order.seller_type === 'USER' ? 'Usuario del sistema' : 'Externo');
+    $('#vpo_seller_dni').text(order.seller_dni || '—');
+    $('#vpo_seller_full_name').text(order.seller_full_name || '—');
+    $('#vpo_seller_phone').text(order.seller_phone || '—');
+    $('#vpo_seller_email').text(order.seller_email || '—');
+    $('#vpo_seller_observation').text(order.seller_observation || 'Sin observación');
+    $('#vpo_created_by').text(creatorName);
 
     const items = order.items || [];
     const supplyStatuses = {

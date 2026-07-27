@@ -68,6 +68,7 @@
                             <th>CÓDIGO</th>
                             <th>NRO ORDEN COMPRA</th>
                             <th>CLIENTE</th>
+                            <th>GESTOR</th>
                             <th>EMPRESA</th>
                             <th>MONEDA</th>
                             <th>TOTAL</th>
@@ -248,6 +249,7 @@
             customerPurchaseOrderCustomerBranches: "{{ url('admin/customer-purchase-orders/customer/:id/branches') }}",
             customerPurchaseOrderCustomersSearch: "{{ route('admin.customer-purchase-orders.customers.search') }}",
             customerPurchaseOrderCustomersQuickStore: "{{ route('admin.customer-purchase-orders.customers.quick-store') }}",
+            customerPurchaseOrderSellerUser: "{{ url('admin/customer-purchase-orders/seller-user') }}",
             customerPurchaseOrderCloseAttention: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderCustomerDocumentConsult: "{{ route('admin.customers.consultar', ['numero' => 'DOC_PLACEHOLDER']) }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",

@@ -161,6 +161,14 @@ test('customer purchase order backend flow works', function () {
         'billing_type' => 'local',
         'affect_igv' => 1,
         'status' => 'draft',
+        'seller_type' => 'EXTERNAL',
+        'seller_dni' => '70587639',
+        'seller_names' => 'JUAN',
+        'seller_lastnames' => 'PÉREZ RAMOS',
+        'seller_full_name' => 'JUAN PÉREZ RAMOS',
+        'seller_phone' => '999888777',
+        'seller_email' => 'juan@example.com',
+        'seller_observation' => 'GESTOR EXTERNO',
         'items' => [[
             'quote_item_id' => $this->quoteItemId,
             'article_id' => $this->articleId,
@@ -222,6 +230,9 @@ test('customer purchase order backend flow works', function () {
         'igv' => '6576.1016949153',
         'grand_total' => '43110.0000000000',
         'status' => 'registered',
+        'seller_type' => 'EXTERNAL',
+        'seller_dni' => '70587639',
+        'seller_full_name' => 'JUAN PÉREZ RAMOS',
     ]);
 
     $this->assertDatabaseHas('quotes', [
@@ -239,6 +250,12 @@ test('customer purchase order backend flow works', function () {
     $payload['status'] = 'registered';
     $payload['items'][0]['quantity'] = 2;
     $payload['items'][0]['line_total'] = 40;
+    $payload['seller_type'] = 'USER';
+    $payload['seller_user_id'] = $this->user->id;
+    $payload['seller_dni'] = $this->user->dni;
+    $payload['seller_names'] = $this->user->name;
+    $payload['seller_lastnames'] = $this->user->lastname;
+    $payload['seller_full_name'] = trim($this->user->name . ' ' . $this->user->lastname);
 
     $this->putJson(
         route('admin.customer-purchase-orders.update', $orderId),
@@ -247,6 +264,13 @@ test('customer purchase order backend flow works', function () {
         ->assertOk()
         ->assertJsonPath('data.subtotal_exonerated', '47.9000000000')
         ->assertJsonPath('data.grand_total', '47.9000000000');
+
+    $this->assertDatabaseHas('customer_purchase_orders', [
+        'id' => $orderId,
+        'seller_type' => 'USER',
+        'seller_user_id' => $this->user->id,
+        'seller_dni' => $this->user->dni,
+    ]);
 
     $this->deleteJson(route('admin.customer-purchase-orders.destroy', $orderId))
         ->assertOk();
