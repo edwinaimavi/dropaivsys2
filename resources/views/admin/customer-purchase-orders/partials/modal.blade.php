@@ -1,4 +1,4 @@
-<div class="modal fade" id="customerPurchaseOrderModal" tabindex="-1" role="dialog"
+<div class="modal fade customer-po-modal" id="customerPurchaseOrderModal" tabindex="-1" role="dialog"
     aria-labelledby="customerPurchaseOrderModalLabel" aria-hidden="true" data-backdrop="static"
     data-keyboard="false">
 
@@ -20,9 +20,14 @@
                     </div>
                 </div>
 
-                <button type="button" class="close ml-3" data-dismiss="modal" aria-label="Cerrar">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <div class="customer-po-header-actions">
+                    <button type="button" id="btnSaveCustomerPurchaseOrderTop" class="btn btn-primary btn-sm">
+                        <i class="fas fa-save mr-1"></i><span>Guardar</span>
+                    </button>
+                    <button type="button" class="close customer-po-close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
             </div>
 
             <div class="modal-body p-2">
@@ -37,7 +42,7 @@
                     </div>
 
                     <div class="col-lg-3 mb-2">
-                        <div class="card border-0 shadow-sm h-100 purchase-order-side-card">
+                        <div class="card border-0 shadow-sm h-100 purchase-order-side-card customer-po-summary-card">
                             <div class="card-body text-center py-3 px-3">
                                 <div class="purchase-order-side-icon mx-auto mb-3">
                                     <i class="fas fa-clipboard-check"></i>
@@ -87,7 +92,25 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-9 mb-2">
+                    <div class="col-lg-9 mb-2 purchase-order-tabs-column">
+                        <nav class="purchase-order-tabs customer-po-tabs" aria-label="Secciones de la orden">
+                            <div class="nav nav-pills flex-nowrap" role="tablist">
+                                <a class="nav-link active" data-toggle="pill" href="#purchase_order_tab_data" role="tab" data-section="data">
+                                    <i class="fas fa-clipboard-list"></i><span>Datos de la orden</span><b class="purchase-order-tab-error d-none">!</b>
+                                </a>
+                                <a class="nav-link" data-toggle="pill" href="#purchase_order_tab_seller" role="tab" data-section="seller">
+                                    <i class="fas fa-user-tie"></i><span>Vendedor / gestor</span><b class="purchase-order-tab-error d-none">!</b>
+                                </a>
+                                <a class="nav-link" data-toggle="pill" href="#purchase_order_tab_documents" role="tab" data-section="documents">
+                                    <i class="fas fa-paperclip"></i><span>Documentos</span><b class="purchase-order-tab-error d-none">!</b>
+                                </a>
+                                <a class="nav-link" data-toggle="pill" href="#purchase_order_tab_items" role="tab" data-section="items">
+                                    <i class="fas fa-boxes"></i><span>Artículos adjudicados</span><b class="purchase-order-tab-error d-none">!</b>
+                                </a>
+                            </div>
+                        </nav>
+                        <div class="tab-content purchase-order-tab-content">
+                    <div class="tab-pane fade show active" id="purchase_order_tab_data" role="tabpanel">
                         <div class="card border-0 shadow-sm">
                             <div class="card-header bg-white border-0 py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
@@ -101,18 +124,6 @@
                                         </small>
                                     </div>
 
-                                    <div class="mt-2 mt-md-0">
-                                        <button type="button" class="btn btn-light border btn-sm mr-2"
-                                            data-dismiss="modal">
-                                            <i class="fas fa-times mr-1"></i>
-                                            Cerrar
-                                        </button>
-                                        <button type="submit" id="btnSaveCustomerPurchaseOrder"
-                                            class="btn btn-primary btn-sm">
-                                            <i class="fas fa-save mr-1"></i>
-                                            Guardar
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
 
@@ -321,9 +332,10 @@
                         </div>
                     </div>
 
-                    <div class="col-12">
+                    <div class="tab-pane fade" id="purchase_order_tab_seller" role="tabpanel">
                         <div class="card border-0 shadow-sm purchase-order-seller-card">
                             <div class="card-header bg-white border-0 py-2 px-3">
+                                <span class="customer-po-eyebrow"><i class="fas fa-chart-line"></i> Gestión comercial</span>
                                 <h6 class="mb-0 font-weight-bold text-dark">
                                     <i class="fas fa-user-tie text-primary mr-1"></i>
                                     Datos del vendedor / gestor
@@ -382,8 +394,8 @@
                         </div>
                     </div>
 
-                    <div class="col-12">
-                        <div class="card border-0 shadow-sm purchase-order-documents-card">
+                    <div class="tab-pane fade" id="purchase_order_tab_documents" role="tabpanel">
+                        <div class="card border-0 shadow-sm purchase-order-documents-card customer-po-section-card">
                             <div class="card-header bg-white border-0 py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
@@ -410,7 +422,9 @@
                                     </thead>
                                     <tbody id="purchaseOrderDocumentsTbody">
                                         <tr class="purchase-order-documents-empty">
-                                            <td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td>
+                                            <td colspan="3" class="text-center text-muted py-4 customer-po-empty-state">
+                                                <i class="far fa-folder-open"></i><strong>Sin documentos adjuntos</strong><small>Use “Agregar documento” para incorporar archivos.</small>
+                                            </td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -418,8 +432,8 @@
                         </div>
                     </div>
 
-                    <div class="col-12">
-                        <div class="card border-0 shadow-sm purchase-order-items-full">
+                    <div class="tab-pane fade" id="purchase_order_tab_items" role="tabpanel">
+                        <div class="card border-0 shadow-sm purchase-order-items-full customer-po-section-card">
                             <div class="card-header bg-white border-0 py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
@@ -530,6 +544,8 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
                         </div>
                     </div>
 
@@ -665,6 +681,19 @@
                             </td>
                         </tr>
                     </template>
+                    <div class="col-12 purchase-order-sticky-footer">
+                        <div>
+                            <small class="text-muted">Complete las secciones necesarias y guarde la orden.</small>
+                        </div>
+                        <div class="d-flex">
+                            <button type="button" class="btn btn-light border btn-sm mr-2" data-dismiss="modal">
+                                <i class="fas fa-times mr-1"></i> Cerrar
+                            </button>
+                            <button type="submit" id="btnSaveCustomerPurchaseOrder" class="btn btn-primary btn-sm">
+                                <i class="fas fa-save mr-1"></i> Guardar
+                            </button>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
@@ -1125,10 +1154,19 @@
         border-radius: 14px;
     }
 
+    #customerPurchaseOrderModal .modal-content{display:flex;max-height:calc(100vh - 22px);border:1px solid rgba(205,219,233,.8);background:#f5f8fc;box-shadow:0 24px 70px rgba(27,47,71,.22)!important;overflow:hidden}
+
     #customerPurchaseOrderModal .purchase-order-modal-header {
-        background: linear-gradient(90deg, #f4f9ff, #eaf3ff);
-        border-bottom: 1px solid #b8d7ff;
+        flex:0 0 auto;padding:13px 18px;background:linear-gradient(115deg,#fff 15%,#f1f7fd);
+        border-bottom:1px solid #dce8f3;box-shadow:0 4px 15px rgba(35,67,99,.045)
     }
+
+    #customerPurchaseOrderModal .purchase-order-modal-header h5{color:#263b50;font-size:1rem;letter-spacing:-.015em}
+    #customerPurchaseOrderModal .purchase-order-modal-header small{font-size:.68rem}
+    #customerPurchaseOrderModal .customer-po-header-actions{display:flex;gap:8px;align-items:center}
+    #customerPurchaseOrderModal .customer-po-header-actions .btn{padding:7px 13px;border-radius:9px;font-size:.7rem;font-weight:800;box-shadow:0 6px 14px rgba(13,110,253,.16)}
+    #customerPurchaseOrderModal .customer-po-close{display:flex;width:34px;height:34px;margin:0;align-items:center;justify-content:center;border:1px solid #dfe7ef;border-radius:9px;background:#fff;color:#6c7d8e;font-size:1.15rem;opacity:1}
+    #customerPurchaseOrderModal .customer-po-close:hover{color:#c23b48;background:#fff4f5}
 
     #customerPurchaseOrderModal .purchase-order-header-icon {
         width: 42px;
@@ -1137,23 +1175,28 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #dff0ff;
+        border:1px solid #cfe5fb;background:linear-gradient(145deg,#edf7ff,#dceeff);box-shadow:0 6px 14px rgba(42,112,178,.1)
     }
 
     #customerPurchaseOrderModal .modal-body {
-        max-height: calc(100vh - 85px);
-        overflow-y: auto;
+        min-height:0;max-height:none;flex:1 1 auto;overflow-y:auto;
         overflow-x: hidden;
         background: #f8fbff;
     }
 
     #customerPurchaseOrderModal .purchase-order-side-card {
-        background: #fff;
+        border:1px solid #e1eaf2!important;background:linear-gradient(165deg,#fff,#f8fbfe);box-shadow:0 9px 24px rgba(39,67,95,.07)!important
     }
 
+    #customerPurchaseOrderModal .purchase-order-side-card .card-body{padding:13px!important}
+    #customerPurchaseOrderModal .purchase-order-side-card h5{font-size:.9rem}
+    #customerPurchaseOrderModal .purchase-order-side-card .text-muted{font-size:.62rem}
+    #customerPurchaseOrderModal .purchase-order-side-card .text-left>small{margin-top:6px;color:#8292a3!important;font-size:.52rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+    #customerPurchaseOrderModal .purchase-order-side-card .font-weight-600{color:#34495e;font-size:.68rem}
+
     #customerPurchaseOrderModal .purchase-order-side-icon {
-        width: 85px;
-        height: 85px;
+        width: 58px;
+        height: 58px;
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -1161,14 +1204,29 @@
         color: #fff;
         background: linear-gradient(135deg, #0d6efd, #0b5ed7);
         box-shadow: 0 6px 18px rgba(13, 110, 253, .22);
-        font-size: 32px;
+        font-size: 23px;
     }
+
+    #customerPurchaseOrderModal .purchase-order-tabs-column{display:flex;min-width:0;flex-direction:column}
+    #customerPurchaseOrderModal .purchase-order-tabs{padding:7px;border:1px solid #dce8f5;border-radius:14px;background:linear-gradient(145deg,#fff,#f7fafd);box-shadow:0 7px 20px rgba(41,77,112,.07)}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav{gap:7px;overflow-x:auto;scrollbar-width:thin}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav-link{display:flex;min-width:max-content;gap:7px;padding:8px 11px;align-items:center;border:1px solid #e6edf3;border-radius:9px;color:#647487;background:#f4f7f9;font-size:11px;font-weight:800;white-space:nowrap;transition:all .18s ease}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav-link i{color:#8da0b4}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav-link:hover{border-color:#cfe1f2;color:#2e648f;background:#edf5fc;transform:translateY(-1px)}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav-link.active{border-color:#b9d9f6;color:#0d5db8;background:linear-gradient(135deg,#eaf5ff,#dceeff);box-shadow:0 5px 13px rgba(27,105,177,.12)}
+    #customerPurchaseOrderModal .purchase-order-tabs .nav-link.active i{color:#0d6efd}
+    #customerPurchaseOrderModal .purchase-order-tab-error{display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border-radius:50%;color:#fff;background:#dc3545;font-size:9px}
+    #customerPurchaseOrderModal .purchase-order-tab-content{min-height:390px;padding-top:8px}
+    #customerPurchaseOrderModal .purchase-order-tab-content>.tab-pane>.card{margin-bottom:0}
+    #customerPurchaseOrderModal .purchase-order-seller-card{border-top:3px solid #4a89dc!important;background:linear-gradient(145deg,#fff,#f8fbff)}
+    #customerPurchaseOrderModal .purchase-order-sticky-footer{position:sticky;z-index:15;bottom:-8px;display:flex;margin:2px 0 -8px;padding:11px 14px;align-items:center;justify-content:space-between;border-top:1px solid #dce6f0;background:rgba(255,255,255,.97);box-shadow:0 -7px 18px rgba(32,56,85,.08);backdrop-filter:blur(8px)}
+    #customerPurchaseOrderModal .purchase-order-sticky-footer .btn{min-width:105px;padding:7px 14px;border-radius:9px;font-weight:700}
 
     #customerPurchaseOrderModal .purchase-order-side-total {
         padding: 10px 12px;
         border-radius: 12px;
         color: #fff;
-        background: linear-gradient(135deg, #0d6efd, #0b5ed7);
+        border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#1878d5,#0756ab);
         box-shadow: 0 6px 16px rgba(13, 110, 253, .22);
         text-align: center;
         font-size: 20px;
@@ -1186,11 +1244,13 @@
         background: #eaf3ff;
     }
 
+    #customerPurchaseOrderModal .purchase-order-info-alert{padding:8px 9px;border:1px solid #d3e7fb!important;border-radius:9px;font-size:.62rem;line-height:1.35}
+
     #customerPurchaseOrderModal label {
         margin-bottom: 2px;
         color: #495057;
         font-size: 11px;
-        font-weight: 700;
+        font-weight:800;letter-spacing:.025em
     }
 
     .purchase-order-child-modal .modal-content { border-radius: 12px; }
@@ -1202,8 +1262,9 @@
 
     #customerPurchaseOrderModal .form-control,
     #customerPurchaseOrderModal .custom-select {
-        height: 31px;
+        height:33px;
         font-size: 12px;
+        border-color:#d7e1ea;border-radius:8px;background-color:#fff;transition:border-color .18s ease,box-shadow .18s ease
     }
 
     #customerPurchaseOrderModal textarea.form-control {
@@ -1215,8 +1276,23 @@
     #customerPurchaseOrderModal .form-control:focus,
     #customerPurchaseOrderModal .custom-select:focus {
         border-color: #86b7fe;
-        box-shadow: 0 0 0 .12rem rgba(13, 110, 253, .15);
+        border-color:#66a9e9;box-shadow:0 0 0 3px rgba(40,126,207,.11)
     }
+
+    #customerPurchaseOrderModal .input-group .btn{border-radius:0 8px 8px 0;font-size:.68rem;font-weight:800}
+    #customerPurchaseOrderModal .card-header{border-bottom:1px solid #edf1f5!important}
+    #customerPurchaseOrderModal .card-header h6{font-size:.78rem}
+    #customerPurchaseOrderModal .card-header small{font-size:.6rem}
+    #customerPurchaseOrderModal .customer-po-eyebrow{display:inline-flex;gap:5px;margin-bottom:5px;padding:3px 7px;align-items:center;border-radius:999px;color:#1769aa;background:#e6f2fc;font-size:.5rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+    #customerPurchaseOrderModal #purchaseOrderSellerLookupStatus:not(:empty){display:inline-flex;margin-top:5px;padding:4px 8px;align-items:center;border-radius:999px;background:#edf7f2;font-size:.58rem;font-weight:800}
+    #customerPurchaseOrderModal #purchaseOrderDocumentsTable thead th{border-top:0;color:#6c7c8c;background:#f5f8fb;font-size:.58rem;letter-spacing:.05em}
+    #customerPurchaseOrderModal .customer-po-empty-state i,#customerPurchaseOrderModal .customer-po-empty-state strong,#customerPurchaseOrderModal .customer-po-empty-state small{display:block}
+    #customerPurchaseOrderModal .customer-po-empty-state i{margin-bottom:7px;color:#91abc2;font-size:24px}
+    #customerPurchaseOrderModal .customer-po-empty-state strong{color:#506477;font-size:.72rem}
+    #customerPurchaseOrderModal .customer-po-empty-state small{margin-top:3px;font-size:.58rem}
+    #customerPurchaseOrderModal .purchase-order-items-full .card-header .btn,#customerPurchaseOrderModal .purchase-order-documents-card .card-header .btn{padding:6px 10px;border-radius:8px;font-size:.65rem;font-weight:800}
+    #customerPurchaseOrderModal .purchase-order-totals-area{background:linear-gradient(180deg,#fff,#f6faff)}
+    #customerPurchaseOrderModal .purchase-order-total-grand{padding:8px;border:1px solid #c9e1f7;border-radius:10px;background:#edf7ff}
 
     #customerPurchaseOrderModal .font-weight-600 {
         font-weight: 600;
@@ -1475,6 +1551,12 @@
         #customerPurchaseOrderModal .purchase-order-total-line>span {
             text-align: left;
         }
+
+        #customerPurchaseOrderModal .purchase-order-side-card{height:auto!important}
+        #customerPurchaseOrderModal .purchase-order-side-card .card-body{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center;text-align:left!important}
+        #customerPurchaseOrderModal .purchase-order-side-icon{grid-row:1/4;margin:0!important}
+        #customerPurchaseOrderModal .purchase-order-side-card hr,#customerPurchaseOrderModal .purchase-order-info-alert{display:none}
+        #customerPurchaseOrderModal .purchase-order-side-card .text-left{grid-column:1/-1}
     }
 
     @media (max-width: 576px) {
@@ -1504,5 +1586,12 @@
         #customerPurchaseOrderModal #purchaseOrderItemsTable {
             min-width: 1160px;
         }
+
+        #customerPurchaseOrderModal .purchase-order-tabs{border-radius:10px}
+        #customerPurchaseOrderModal .purchase-order-tabs .nav-link{padding:7px 9px}
+        #customerPurchaseOrderModal .purchase-order-sticky-footer{gap:8px}
+        #customerPurchaseOrderModal .purchase-order-sticky-footer>div:first-child{display:none}
+        #customerPurchaseOrderModal .purchase-order-sticky-footer>div:last-child{width:100%}
+        #customerPurchaseOrderModal .purchase-order-sticky-footer .btn{flex:1}
     }
 </style>

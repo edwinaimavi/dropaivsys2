@@ -104,10 +104,19 @@ document.addEventListener('DOMContentLoaded', function () {
     $('#customerPurchaseOrderModal').on('hidden.bs.modal', function () {
         resetCustomerPurchaseOrderForm();
     });
+    $('#customerPurchaseOrderModal').on('shown.bs.tab', '.purchase-order-tabs [data-toggle="pill"]', function () {
+        initPurchaseOrderSelect2($($(this).attr('href')));
+        if ($.fn.dataTable) {
+            $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+        }
+    });
 
     $(document).on('submit', '#customerPurchaseOrderForm', function (event) {
         event.preventDefault();
         saveCustomerPurchaseOrder(this);
+    });
+    $(document).on('click', '#btnSaveCustomerPurchaseOrderTop', function () {
+        $('#customerPurchaseOrderForm').trigger('submit');
     });
 
     $(document).on('input', '#purchase_order_number', resetPurchaseOrderNumberValidation);
@@ -507,6 +516,7 @@ function resetCustomerPurchaseOrderForm() {
 
     form[0].reset();
     clearCustomerPurchaseOrderErrors();
+    activatePurchaseOrderTab('data');
 
     $('#customer_purchase_order_id').val('');
     $('#purchase_order_code').val('');
@@ -515,6 +525,9 @@ function resetCustomerPurchaseOrderForm() {
     $('#btnSaveCustomerPurchaseOrder')
         .prop('disabled', false)
         .html('<i class="fas fa-save mr-1"></i> Guardar');
+    $('#btnSaveCustomerPurchaseOrderTop')
+        .prop('disabled', false)
+        .html('<i class="fas fa-save mr-1"></i><span>Guardar</span>');
     resetPurchaseOrderNumberValidation();
 
     $('#purchaseOrderItemsTbody tr.purchase-order-item-row').each(function () {
@@ -657,6 +670,7 @@ function saveCustomerPurchaseOrder(formElement) {
             .find('.invalid-feedback')
             .text(message);
         purchaseOrderNumberInput.trigger('focus');
+        activatePurchaseOrderTab('data', true);
 
         Swal.fire({
             icon: 'warning',
@@ -667,6 +681,7 @@ function saveCustomerPurchaseOrder(formElement) {
     }
 
     if ($('#purchaseOrderItemsTbody tr.purchase-order-item-row').length === 0) {
+        activatePurchaseOrderTab('items', true);
         Swal.fire({
             icon: 'warning',
             title: 'Agregue al menos un ítem',
@@ -693,6 +708,9 @@ function saveCustomerPurchaseOrder(formElement) {
     button
         .prop('disabled', true)
         .html('<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...');
+    $('#btnSaveCustomerPurchaseOrderTop')
+        .prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin mr-1"></i><span>Guardando</span>');
 
     $.ajax({
         url: url,
@@ -717,6 +735,9 @@ function saveCustomerPurchaseOrder(formElement) {
             button
                 .prop('disabled', false)
                 .html(`<i class="fas fa-save mr-1"></i> ${id ? 'Actualizar' : 'Guardar'}`);
+            $('#btnSaveCustomerPurchaseOrderTop')
+                .prop('disabled', false)
+                .html(`<i class="fas fa-save mr-1"></i><span>${id ? 'Actualizar' : 'Guardar'}</span>`);
 
             if (xhr.status === 422) {
                 const errors = xhr.responseJSON.errors || {};
@@ -750,6 +771,7 @@ function resetPurchaseOrderNumberValidation() {
     input.removeClass('is-invalid');
     input.closest('.form-group').find('.invalid-feedback').text('');
     $('#btnSaveCustomerPurchaseOrder').prop('disabled', false);
+    $('#btnSaveCustomerPurchaseOrderTop').prop('disabled', false);
 }
 
 function showDuplicatePurchaseOrderNumber(message = 'Ya se registró una Orden de Compra del Cliente con este Nro de Orden de Compra.') {
@@ -762,6 +784,7 @@ function showDuplicatePurchaseOrderNumber(message = 'Ya se registró una Orden d
         .find('.invalid-feedback')
         .text('Este número de orden ya fue registrado.');
     $('#btnSaveCustomerPurchaseOrder').prop('disabled', true);
+    $('#btnSaveCustomerPurchaseOrderTop').prop('disabled', true);
 
     Swal.fire({
         icon: 'warning',
@@ -795,6 +818,7 @@ function checkPurchaseOrderNumber() {
     }
 
     $('#btnSaveCustomerPurchaseOrder').prop('disabled', true);
+    $('#btnSaveCustomerPurchaseOrderTop').prop('disabled', true);
 
     const request = $.get(window.routes.customerPurchaseOrderCheckNumber, {
         purchase_order_number: purchaseOrderNumber,
@@ -815,6 +839,7 @@ function checkPurchaseOrderNumber() {
             input.removeClass('is-invalid');
             input.closest('.form-group').find('.invalid-feedback').text('');
             $('#btnSaveCustomerPurchaseOrder').prop('disabled', false);
+            $('#btnSaveCustomerPurchaseOrderTop').prop('disabled', false);
         })
         .fail(function (xhr, status) {
             if (status !== 'abort') {
@@ -825,6 +850,7 @@ function checkPurchaseOrderNumber() {
             if (purchaseOrderNumberCheckRequest === request) {
                 purchaseOrderNumberCheckRequest = null;
                 $('#btnSaveCustomerPurchaseOrder').prop('disabled', purchaseOrderNumberIsDuplicate);
+                $('#btnSaveCustomerPurchaseOrderTop').prop('disabled', purchaseOrderNumberIsDuplicate);
             }
         });
 }
@@ -1752,6 +1778,8 @@ function loadCustomerPurchaseOrderForEdit(id) {
             $('#customerPurchaseOrderModalLabel').text('Editar Orden de Compra del Cliente');
             $('#btnSaveCustomerPurchaseOrder')
                 .html('<i class="fas fa-save mr-1"></i> Actualizar');
+            $('#btnSaveCustomerPurchaseOrderTop')
+                .html('<i class="fas fa-save mr-1"></i><span>Actualizar</span>');
             $('#customerPurchaseOrderModal').modal('show');
         })
         .fail(function (xhr) {
@@ -2129,7 +2157,7 @@ function addExistingPurchaseOrderDocumentRow(document) {
 function showEmptyPurchaseOrderDocumentsRow() {
     const tbody = $('#purchaseOrderDocumentsTbody');
     if (!tbody.find('.purchase-order-document-row').length) {
-        tbody.html('<tr class="purchase-order-documents-empty"><td colspan="3" class="text-center text-muted py-3">Sin documentos adjuntos</td></tr>');
+        tbody.html('<tr class="purchase-order-documents-empty"><td colspan="3" class="text-center text-muted py-4 customer-po-empty-state"><i class="far fa-folder-open"></i><strong>Sin documentos adjuntos</strong><small>Use “Agregar documento” para incorporar archivos.</small></td></tr>');
     }
 }
 
@@ -2221,14 +2249,41 @@ function clearCustomerPurchaseOrderErrors() {
     $('#customerPurchaseOrderForm .select2-selection').removeClass('border-danger');
     $('#customerPurchaseOrderForm .invalid-feedback').text('');
     $('#customerPurchaseOrderErrors').addClass('d-none').empty();
+    $('.purchase-order-tab-error').addClass('d-none');
+}
+
+function activatePurchaseOrderTab(section, hasError = false) {
+    const tab = $(`.purchase-order-tabs .nav-link[data-section="${section}"]`);
+    if (hasError) tab.find('.purchase-order-tab-error').removeClass('d-none');
+    if (tab.length) tab.tab('show');
+}
+
+function purchaseOrderErrorSection(field, input) {
+    if (String(field).startsWith('seller_')) return 'seller';
+    if (String(field).startsWith('documents')) return 'documents';
+    if (String(field).startsWith('items')) return 'items';
+    const pane = input.closest('.tab-pane').attr('id') || '';
+    if (pane.includes('seller')) return 'seller';
+    if (pane.includes('documents')) return 'documents';
+    if (pane.includes('items')) return 'items';
+    return 'data';
 }
 
 function showCustomerPurchaseOrderErrors(errors) {
     const errorMessages = [];
+    const sections = [];
 
     Object.entries(errors).forEach(function ([field, fieldMessages]) {
-        const input = $(`[name="${field}"]`);
+        let input = $(`[name="${field}"]`);
+        if (!input.length && field.includes('.')) {
+            const bracketName = field.replace(/\.(\d+)\./g, '[$1][');
+            const normalizedName = bracketName.includes('[') ? `${bracketName}]` : bracketName;
+            input = $(`[name="${normalizedName}"]`);
+        }
         const message = fieldMessages[0];
+        const section = purchaseOrderErrorSection(field, input);
+        if (!sections.includes(section)) sections.push(section);
+        $(`.purchase-order-tabs .nav-link[data-section="${section}"] .purchase-order-tab-error`).removeClass('d-none');
 
         if (input.length) {
             input.addClass('is-invalid');
@@ -2248,6 +2303,8 @@ function showCustomerPurchaseOrderErrors(errors) {
         .html(`<ul class="mb-0 pl-3">${errorMessages.map(
             message => `<li>${escapePurchaseOrderHtml(message)}</li>`
         ).join('')}</ul>`);
+
+    if (sections.length) activatePurchaseOrderTab(sections[0], true);
 }
 
 function updatePurchaseOrderCurrency() {
