@@ -392,13 +392,55 @@ $(function () {
         }
     });
 
+    const preparePettyCashActionsMenu = dropdown => {
+        const container = $(dropdown);
+        const button = container.find('.petty-actions-trigger').get(0);
+        const menu = container.find('.petty-cash-actions-menu');
+        if (!button || !menu.length) return;
+
+        const buttonRect = button.getBoundingClientRect();
+        const viewportPadding = 12;
+        const originalStyle = menu.attr('style');
+        menu.css({
+            display: 'block',
+            position: 'absolute',
+            visibility: 'hidden',
+            maxHeight: 'none'
+        });
+        const menuHeight = menu.outerHeight();
+        if (originalStyle === undefined) menu.removeAttr('style');
+        else menu.attr('style', originalStyle);
+
+        const spaceBelow = Math.max(0, window.innerHeight - buttonRect.bottom - viewportPadding);
+        const spaceAbove = Math.max(0, buttonRect.top - viewportPadding);
+        const openUp = menuHeight > spaceBelow && spaceAbove > spaceBelow;
+        const availableHeight = Math.max(120, openUp ? spaceAbove : spaceBelow);
+        container.toggleClass('dropup', openUp);
+        menu.css('max-height', `${availableHeight}px`);
+    };
+
     $('#tablePettyCash')
         .on('show.bs.dropdown', '.dropdown', function () {
             $(this).closest('.table-responsive').addClass('petty-dropdown-is-open');
+            preparePettyCashActionsMenu(this);
         })
         .on('hidden.bs.dropdown', '.dropdown', function () {
+            $(this).removeClass('dropup')
+                .find('.petty-cash-actions-menu')
+                .css('max-height', '');
             $(this).closest('.table-responsive').removeClass('petty-dropdown-is-open');
+        })
+        .on('click', '.petty-cash-actions-menu .dropdown-item', function () {
+            $(this).closest('.dropdown').find('.petty-actions-trigger').dropdown('hide');
         });
+
+    $(window).on('resize.pettyCashActions scroll.pettyCashActions', function () {
+        $('#tablePettyCash .petty-actions-trigger[aria-expanded="true"]').dropdown('hide');
+    });
+
+    $('#tablePettyCash').on('preDraw.dt', function () {
+        $(this).find('.petty-actions-trigger[aria-expanded="true"]').dropdown('hide');
+    });
 
     $(document).on('click', '#btnCreatePettyCash', function () {
         const form = $('#pettyCashForm')[0];

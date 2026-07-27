@@ -6,10 +6,10 @@
     @endcan
     <div class="dropdown">
         <button class="btn btn-sm btn-light border dropdown-toggle petty-actions-trigger" type="button"
-            data-toggle="dropdown" data-boundary="viewport" aria-haspopup="true" aria-expanded="false">
+            data-toggle="dropdown" data-boundary="window" aria-haspopup="true" aria-expanded="false">
             <i class="fas fa-ellipsis-v mr-1"></i> Acciones
         </button>
-        <div class="dropdown-menu dropdown-menu-right petty-actions-menu">
+        <div class="dropdown-menu dropdown-menu-right petty-actions-menu petty-cash-actions-menu">
             @if(in_array($box->status, ['OPEN', 'IN_REVIEW'], true))
                 <h6 class="dropdown-header">Acciones operativas</h6>
                 @can('admin.petty-cash.update')
