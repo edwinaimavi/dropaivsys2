@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\CompanyBankAccountController;
 use App\Http\Controllers\Admin\CustomerBranchContactController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerOrderLabelingController;
@@ -35,6 +36,8 @@ use App\Http\Controllers\Admin\MarketStudyComparisonController;
 use App\Http\Controllers\Admin\MarketStudyController;
 use App\Http\Controllers\Admin\MarketStudyQuoteController;
 use App\Http\Controllers\Admin\PettyCashController;
+use App\Http\Controllers\Admin\PettyCashApprovedAmountController;
+use App\Http\Controllers\Admin\PettyCashExpenseExchangeController;
 use App\Http\Controllers\Admin\QuoteController;
 use App\Http\Controllers\Admin\ShippingAgencyController;
 use Illuminate\Support\Facades\Route;
@@ -46,11 +49,30 @@ Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateT
 
 Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty-cash.list');
 Route::get('petty-cash/previous-balance', [PettyCashController::class, 'previousBalance'])->name('petty-cash.previous-balance');
+Route::get('petty-cash/source-companies/{company}/bank-accounts', [PettyCashController::class, 'sourceBankAccounts'])
+    ->name('petty-cash.source-bank-accounts');
+Route::get('petty-cash/approved-amount/active', [PettyCashApprovedAmountController::class, 'active'])
+    ->name('petty-cash.approved-amount.active');
+Route::get('petty-cash/approved-amount/configuration', [PettyCashApprovedAmountController::class, 'show'])
+    ->name('petty-cash.approved-amount.show');
+Route::put('petty-cash/approved-amount', [PettyCashApprovedAmountController::class, 'update'])
+    ->name('petty-cash.approved-amount.update');
 Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
 Route::put('petty-cash/expenses/{expense}', [PettyCashController::class, 'updateExpense'])->name('petty-cash.expenses.update');
 Route::delete('petty-cash/expenses/{expense}', [PettyCashController::class, 'destroyExpense'])->name('petty-cash.expenses.destroy');
+Route::get('petty-cash/pending-expenses', [PettyCashController::class, 'pendingExpenses'])->name('petty-cash.expenses.pending');
+Route::post('petty-cash/expenses/{expense}/approve', [PettyCashController::class, 'approveExpense'])->name('petty-cash.expenses.approve');
+Route::post('petty-cash/expenses/{expense}/reject', [PettyCashController::class, 'rejectExpense'])->name('petty-cash.expenses.reject');
+Route::delete('petty-cash/expenses/{expense}/documents/{document}', [PettyCashController::class, 'destroyExpenseDocument'])
+    ->name('petty-cash.expenses.documents.destroy');
 Route::post('petty-cash/{pettyCash}/close', [PettyCashController::class, 'close'])->name('petty-cash.close');
 Route::post('petty-cash/{pettyCash}/replenishments', [PettyCashController::class, 'storeReplenishment'])->name('petty-cash.replenishments.store');
+Route::get('petty-cash/{pettyCash}/receipt-exchanges/pending', [PettyCashExpenseExchangeController::class, 'pending'])
+    ->name('petty-cash.receipt-exchanges.index');
+Route::post('petty-cash/{pettyCash}/receipt-exchanges', [PettyCashExpenseExchangeController::class, 'store'])
+    ->name('petty-cash.receipt-exchanges.store');
+Route::get('petty-cash/receipt-exchanges/{exchange}', [PettyCashExpenseExchangeController::class, 'show'])
+    ->name('petty-cash.receipt-exchanges.show');
 Route::get('petty-cash/documents/{document}/view', [PettyCashController::class, 'viewDocument'])->name('petty-cash.documents.view');
 Route::get('petty-cash/{pettyCash}/pdf', [PettyCashController::class, 'pdf'])->name('petty-cash.pdf');
 Route::get('petty-cash/{pettyCash}/excel', [PettyCashController::class, 'excel'])->name('petty-cash.excel');
@@ -185,6 +207,14 @@ Route::resource('presentations', PresentationController::class)->except(['create
 //RUTAS PARA PROVEEDORES 
 Route::get('companies/list', [CompanyController::class, 'list'])->name('companies.list');
 Route::get('companies/consultar-ruc/{numero}', [CompanyController::class, 'consultarRuc'])->name('companies.consultar-ruc');
+Route::get('companies/{company}/bank-accounts/list', [CompanyBankAccountController::class, 'list'])
+    ->name('companies.bank-accounts.list');
+Route::post('companies/{company}/bank-accounts', [CompanyBankAccountController::class, 'store'])
+    ->name('companies.bank-accounts.store');
+Route::put('companies/{company}/bank-accounts/{bankAccount}', [CompanyBankAccountController::class, 'update'])
+    ->name('companies.bank-accounts.update');
+Route::delete('companies/{company}/bank-accounts/{bankAccount}', [CompanyBankAccountController::class, 'destroy'])
+    ->name('companies.bank-accounts.destroy');
 Route::resource('companies', CompanyController::class)->except(['create']);
 
 Route::get('shipping-agencies/list', [ShippingAgencyController::class, 'list'])->name('shipping-agencies.list');

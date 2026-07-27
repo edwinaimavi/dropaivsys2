@@ -4,21 +4,39 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Builder;
 
 class PettyCashExpense extends Model
 {
     use SoftDeletes;
 
+    public const APPROVAL_PENDING = 'pendiente_aprobacion';
+    public const APPROVAL_APPROVED = 'aprobado';
+    public const APPROVAL_REJECTED = 'rechazado';
+    public const APPROVAL_CANCELLED = 'anulado';
+    public const EXCHANGE_NOT_APPLICABLE = 'NO_APLICA';
+    public const EXCHANGE_PENDING = 'PENDIENTE_CANJE';
+    public const EXCHANGE_COMPLETED = 'CANJEADO';
+
     protected $fillable = [
         'petty_cash_box_id', 'item_number', 'expense_date', 'document_type',
         'document_series', 'document_correlative', 'document_number',
         'supplier_id', 'supplier_ruc', 'supplier_name',
-        'concept', 'amount', 'observation', 'status', 'created_by', 'updated_by',
+        'concept', 'amount', 'observation', 'status', 'approval_status',
+        'exchange_status', 'exchanged_at', 'exchange_id',
+        'approved_at', 'approved_by_user_id', 'rejected_at', 'rejected_by_user_id',
+        'approval_observation', 'created_by', 'updated_by',
     ];
 
     protected $appends = ['document_full_number'];
 
-    protected $casts = ['expense_date' => 'date', 'amount' => 'decimal:2'];
+    protected $casts = [
+        'expense_date' => 'date',
+        'amount' => 'decimal:2',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
+        'exchanged_at' => 'datetime',
+    ];
 
     public function getDocumentFullNumberAttribute(): ?string
     {
@@ -33,4 +51,24 @@ class PettyCashExpense extends Model
     public function pettyCashBox() { return $this->belongsTo(PettyCashBox::class); }
     public function supplier() { return $this->belongsTo(Supplier::class); }
     public function documents() { return $this->morphMany(Document::class, 'documentable'); }
+    public function creator() { return $this->belongsTo(User::class, 'created_by'); }
+    public function approvedBy() { return $this->belongsTo(User::class, 'approved_by_user_id'); }
+    public function rejectedBy() { return $this->belongsTo(User::class, 'rejected_by_user_id'); }
+    public function exchange() { return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id'); }
+    public function exchangeItems() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id'); }
+
+    public function scopeApproved(Builder $query): Builder
+    {
+        return $query->where('approval_status', self::APPROVAL_APPROVED);
+    }
+
+    public function scopePendingApproval(Builder $query): Builder
+    {
+        return $query->where('approval_status', self::APPROVAL_PENDING);
+    }
+
+    public function scopePendingExchange(Builder $query): Builder
+    {
+        return $query->where('exchange_status', self::EXCHANGE_PENDING);
+    }
 }

@@ -53,4 +53,14 @@ class Company extends Model
     {
         return $this->hasMany(CustomerOrderLabeling::class);
     }
+
+    public function bankAccounts()
+    {
+        return $this->hasMany(CompanyBankAccount::class);
+    }
+
+    public function pettyCashApprovedAmounts()
+    {
+        return $this->hasMany(PettyCashApprovedAmount::class);
+    }
 }

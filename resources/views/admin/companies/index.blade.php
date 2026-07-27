@@ -71,6 +71,7 @@
 
     @include('admin.companies.partials.modal')
     @include('admin.companies.partials.viewModal')
+    @include('admin.companies.partials.bankAccountsModal')
 @stop
 
 @push('css')
@@ -376,15 +377,62 @@
         }
 
         .company-view-header {
-            background: linear-gradient(90deg, #ffffff, #f3f8fa);
+            flex: 0 0 auto;
+            background: linear-gradient(120deg, #ffffff, #f2f8f6);
             border-bottom: 1px solid #e6edf0 !important;
-            padding: 12px 16px;
+            padding: 18px 22px;
         }
 
         .company-view-header .modal-title {
             color: #263238;
-            font-size: 16px;
+            font-size: 20px;
             line-height: 1.2;
+        }
+
+        .company-view-dialog {
+            width: calc(100% - 32px);
+            max-width: 1180px;
+        }
+
+        .company-view-modal {
+            max-height: calc(100vh - 32px);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .company-view-body {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 18px;
+            background: #f4f7f6;
+        }
+
+        .company-view-eyebrow {
+            color: #16845b;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .1em;
+        }
+
+        .company-view-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            color: #65727c;
+            font-size: 12px;
+        }
+
+        .company-view-close {
+            width: 38px;
+            height: 38px;
+            margin: 0 !important;
+            padding: 0 !important;
+            border-radius: 50%;
+            background: #eef3f1 !important;
         }
 
         .company-view-logo-box,
@@ -408,20 +456,54 @@
         }
 
         .company-view-logo-caption {
-            display: block;
-            color: #7b8794;
-            font-size: 10.5px;
+            display: none;
+        }
+
+        .company-view-section {
+            padding: 18px;
+            margin-bottom: 16px;
+            border: 1px solid #e5ece9;
+            border-radius: 14px;
+            background: #fff;
+            box-shadow: 0 7px 20px rgba(32, 53, 45, .045);
+        }
+
+        .company-view-section-title {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .company-view-section-title h5 {
+            margin: 0;
+            color: #293630;
+            font-size: 15px;
             font-weight: 700;
-            margin-top: 4px;
+        }
+
+        .company-view-section-title small {
+            color: #7a8781;
+        }
+
+        .company-view-section-icon {
+            width: 38px;
+            height: 38px;
+            margin-right: 10px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #198754;
+            background: rgba(25, 135, 84, .1);
         }
 
         .company-info-block {
-            border: 1px solid #edf1f3;
+            height: 100%;
+            border: 1px solid #e8eeeb;
             border-radius: 10px;
-            padding: 10px 12px;
-            background: #fff;
+            padding: 12px;
+            background: #fbfcfc;
             min-height: 62px;
-            box-shadow: 0 6px 14px rgba(33, 37, 41, .03);
         }
 
         .company-info-block small {
@@ -437,11 +519,108 @@
             word-break: break-word;
         }
 
+        .company-address-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 10px;
+            color: #37443e;
+            background: #f7faf9;
+            border: 1px solid #e8eeeb;
+        }
+
+        .company-address-card i {
+            color: #198754;
+            font-size: 18px;
+        }
+
+        .company-view-bank-table {
+            border: 1px solid #e5ebe8;
+            border-radius: 10px;
+        }
+
+        .company-view-bank-table th {
+            border-top: 0;
+            background: #f5f8f7;
+            color: #6b7771;
+            font-size: 10px;
+            letter-spacing: .035em;
+            white-space: nowrap;
+        }
+
+        .company-view-bank-table td {
+            color: #35413c;
+            font-size: 12px;
+            vertical-align: middle;
+        }
+
+        .company-bank-empty {
+            padding: 28px 16px;
+            border: 1px dashed #cddbd5;
+            border-radius: 12px;
+            text-align: center;
+            color: #68766f;
+            background: #fafcfb;
+        }
+
+        .company-bank-empty span {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #198754;
+            background: rgba(25, 135, 84, .1);
+            font-size: 19px;
+        }
+
+        .company-bank-empty strong,
+        .company-bank-empty small {
+            display: block;
+        }
+
+        .min-width-0 {
+            min-width: 0;
+        }
+
         @media (max-width: 991.98px) {
             .company-modal-dialog {
                 width: auto;
                 max-width: calc(100vw - 16px);
                 margin: .5rem auto;
+            }
+
+            .company-view-dialog {
+                width: auto;
+                max-width: calc(100vw - 16px);
+                margin: 8px auto;
+            }
+
+            .company-view-modal {
+                max-height: calc(100vh - 16px);
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .company-view-header {
+                padding: 14px;
+            }
+
+            .company-view-logo-box {
+                width: 64px;
+                height: 64px;
+            }
+
+            .company-view-header .modal-title {
+                font-size: 16px;
+            }
+
+            .company-view-body,
+            .company-view-section {
+                padding: 12px;
             }
         }
 
@@ -459,7 +638,8 @@
             companiesShow: "{{ url('admin/companies') }}",
             companiesUpdate: "{{ url('admin/companies') }}",
             companiesDelete: "{{ url('admin/companies') }}",
-            companiesConsultarRuc: "{{ url('admin/companies/consultar-ruc') }}"
+            companiesConsultarRuc: "{{ url('admin/companies/consultar-ruc') }}",
+            companyBankAccountsBase: "{{ url('admin/companies') }}"
         });
     </script>
     @vite(['resources/js/pages/company.js'])

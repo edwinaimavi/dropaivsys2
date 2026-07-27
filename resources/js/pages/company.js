@@ -1,4 +1,5 @@
 let tableCompanies;
+let tableCompanyBankAccounts;
 let lastCompanyRucLookup = '';
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -34,6 +35,12 @@ document.addEventListener('DOMContentLoaded', function () {
         deleteCompany($(this).data('id'), $(this).data('name'));
     });
 
+    $(document).on('click', '.btn-company-bank-accounts', openCompanyBankAccounts);
+    $(document).on('click', '#btnManageCompanyBankAccounts', manageCompanyBankAccountsFromDetail);
+    $(document).on('submit', '#companyBankAccountForm', saveCompanyBankAccount);
+    $(document).on('click', '.btn-edit-company-bank-account', editCompanyBankAccount);
+    $(document).on('click', '.btn-delete-company-bank-account', deleteCompanyBankAccount);
+
     $(document).on('click', '#btnSearchCompanyRuc', searchCompanyRuc);
 
     $(document).on('change', '#company_logo', function () {
@@ -56,7 +63,201 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $('#companyModal').on('hidden.bs.modal', resetCompanyForm);
+    $('#companyBankAccountsModal').on('hidden.bs.modal', function () {
+        resetCompanyBankAccountForm();
+        if ($.fn.DataTable.isDataTable('#tableCompanyBankAccounts')) {
+            tableCompanyBankAccounts.destroy();
+            $('#tableCompanyBankAccounts tbody').empty();
+        }
+    });
 });
+
+function openCompanyBankAccounts() {
+    const button = $(this);
+    showCompanyBankAccountsModal({
+        id: button.data('id'),
+        name: button.data('name'),
+        ruc: button.data('ruc'),
+        status: button.data('status')
+    });
+}
+
+function showCompanyBankAccountsModal(company) {
+    const companyId = company.id;
+
+    resetCompanyBankAccountForm();
+    $('#company_bank_company_id').val(companyId);
+    $('#company_bank_company_name').text(company.name || '—');
+    $('#company_bank_company_ruc').text(company.ruc || '—');
+    $('#company_bank_company_status')
+        .toggleClass('badge-success', company.status === 'ACTIVO')
+        .toggleClass('badge-danger', company.status !== 'ACTIVO')
+        .text(company.status || '—');
+    $('#companyBankAccountsModal').modal('show');
+    initCompanyBankAccountsTable(companyId);
+}
+
+function manageCompanyBankAccountsFromDetail() {
+    const company = $(this).data('company');
+
+    $('#viewCompanyModal')
+        .one('hidden.bs.modal', function () {
+            showCompanyBankAccountsModal(company);
+        })
+        .modal('hide');
+}
+
+function initCompanyBankAccountsTable(companyId) {
+    const listUrl = `${window.routes.companyBankAccountsBase}/${companyId}/bank-accounts/list`;
+
+    if ($.fn.DataTable.isDataTable('#tableCompanyBankAccounts')) {
+        tableCompanyBankAccounts.ajax.url(listUrl).load();
+        return;
+    }
+
+    tableCompanyBankAccounts = $('#tableCompanyBankAccounts').DataTable({
+        processing: true,
+        serverSide: true,
+        ajax: listUrl,
+        autoWidth: false,
+        responsive: true,
+        language: {
+            url: '/vendor/datatables/js/i18n/es-ES.json',
+            emptyTable: 'No hay cuentas bancarias registradas.'
+        },
+        columns: [
+            { data: 'DT_RowIndex', orderable: false, searchable: false },
+            { data: 'bank', name: 'bank.description' },
+            { data: 'currency', name: 'currency.description' },
+            { data: 'account_holder', name: 'account_holder' },
+            { data: 'account_number', name: 'account_number' },
+            { data: 'cci', name: 'cci', defaultContent: '—' },
+            { data: 'is_detraction', name: 'is_detraction' },
+            { data: 'status', name: 'status' },
+            { data: 'acciones', orderable: false, searchable: false }
+        ]
+    });
+}
+
+function saveCompanyBankAccount(event) {
+    event.preventDefault();
+    clearCompanyBankAccountErrors();
+
+    const companyId = $('#company_bank_company_id').val();
+    const accountId = $('#company_bank_account_id').val();
+    const formData = new FormData(this);
+    let url = `${window.routes.companyBankAccountsBase}/${companyId}/bank-accounts`;
+
+    if (accountId) {
+        url += `/${accountId}`;
+        formData.append('_method', 'PUT');
+    }
+
+    const button = $('#btnSaveCompanyBankAccount');
+    button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando...');
+
+    $.ajax({
+        url,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+            resetCompanyBankAccountForm();
+            $('#company_bank_company_id').val(companyId);
+            tableCompanyBankAccounts.ajax.reload(null, false);
+            toastCompany('success', response.message);
+        },
+        error: handleCompanyBankAccountError,
+        complete: function () {
+            setCompanyBankAccountButton(false);
+        }
+    });
+}
+
+function editCompanyBankAccount() {
+    const account = $(this).data('account');
+
+    $('#company_bank_account_id').val(account.id);
+    $('#company_bank_id').val(account.bank_id);
+    $('#company_bank_currency_id').val(account.currency_id);
+    $('#company_bank_account_holder').val(account.account_holder);
+    $('#company_bank_account_number').val(account.account_number);
+    $('#company_bank_cci').val(account.cci);
+    $('#company_bank_is_detraction').val(account.is_detraction);
+    $('#company_bank_status').val(account.status);
+    $('#company_bank_observation').val(account.observation);
+    setCompanyBankAccountButton(true);
+    $('#companyBankAccountForm')[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function deleteCompanyBankAccount() {
+    const accountId = $(this).data('id');
+    const companyId = $('#company_bank_company_id').val();
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Eliminar cuenta bancaria',
+        text: '¿Está seguro de eliminar esta cuenta bancaria?',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+
+        $.ajax({
+            url: `${window.routes.companyBankAccountsBase}/${companyId}/bank-accounts/${accountId}`,
+            type: 'DELETE',
+            success: function (response) {
+                tableCompanyBankAccounts.ajax.reload(null, false);
+                toastCompany('success', response.message);
+            },
+            error: function (xhr) {
+                Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar la cuenta bancaria.', 'error');
+            }
+        });
+    });
+}
+
+function resetCompanyBankAccountForm() {
+    const form = $('#companyBankAccountForm')[0];
+    if (form) form.reset();
+    $('#company_bank_account_id').val('');
+    $('#company_bank_is_detraction').val('NO');
+    $('#company_bank_status').val('ACTIVE');
+    clearCompanyBankAccountErrors();
+    setCompanyBankAccountButton(false);
+}
+
+function clearCompanyBankAccountErrors() {
+    $('#companyBankAccountForm .is-invalid').removeClass('is-invalid');
+    $('#companyBankAccountErrors').addClass('d-none').empty();
+}
+
+function handleCompanyBankAccountError(xhr) {
+    const errors = xhr.responseJSON?.errors || {};
+    const messages = Object.values(errors).flat();
+
+    Object.keys(errors).forEach(function (field) {
+        $(`#companyBankAccountForm [name="${field}"]`).addClass('is-invalid');
+    });
+
+    $('#companyBankAccountErrors')
+        .toggleClass('d-none', messages.length === 0)
+        .html(messages.map(message => `<div>${escapeCompanyHtml(message)}</div>`).join(''));
+
+    if (!messages.length) {
+        Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo guardar la cuenta bancaria.', 'error');
+    }
+}
+
+function setCompanyBankAccountButton(isEditing) {
+    $('#btnSaveCompanyBankAccount')
+        .prop('disabled', false)
+        .toggleClass('btn-warning', isEditing)
+        .toggleClass('btn-success', !isEditing)
+        .html(`<i class="fas fa-save mr-1"></i> ${isEditing ? 'Actualizar Cuenta' : 'Guardar Cuenta'}`);
+}
 
 function initCompaniesTable() {
     tableCompanies = $('#tableCompanies').DataTable({
@@ -194,20 +395,80 @@ function viewCompany(id) {
             $('#view_company_business_name').text(company.business_name || '-');
             $('#view_company_trade_name').text(company.trade_name || 'Sin nombre comercial');
             $('#view_company_ruc').text(company.ruc || '-');
+            $('#view_company_header_ruc').text(company.ruc || '-');
             $('#view_company_status').html(company.status
-                ? '<span class="badge badge-info rounded-pill px-3 py-2">ACTIVO</span>'
+                ? '<span class="badge badge-success rounded-pill px-3 py-2">ACTIVO</span>'
                 : '<span class="badge badge-danger rounded-pill px-3 py-2">INACTIVO</span>');
+            $('#view_company_header_status').html(company.status
+                ? '<span class="badge badge-success rounded-pill px-3 py-1">ACTIVO</span>'
+                : '<span class="badge badge-danger rounded-pill px-3 py-1">INACTIVO</span>');
             $('#view_company_phone').text(company.phone || '-');
             $('#view_company_email').text(company.email || '-');
             $('#view_company_address').text(company.address || '-');
             $('#view_company_created_at').text(company.created_at || '-');
             $('#view_company_updated_at').text(company.updated_at || '-');
             $('#view_company_usage').text((company.usage || []).length ? company.usage.join(', ') : 'Sin relaciones detectadas');
+            $('#view_company_bank_accounts').html(renderCompanyBankAccounts(company.bank_accounts || []));
+            $('#btnManageCompanyBankAccounts').data('company', {
+                id: company.id,
+                name: company.business_name,
+                ruc: company.ruc,
+                status: company.status_label
+            });
             $('#viewCompanyModal').modal('show');
         })
         .fail(function (xhr) {
             toastCompany('error', xhr.responseJSON?.message || 'No se pudo cargar el detalle.');
         });
+}
+
+function renderCompanyBankAccounts(accounts) {
+    if (!accounts.length) {
+        return `
+            <div class="company-bank-empty">
+                <span><i class="fas fa-university"></i></span>
+                <strong>No hay cuentas bancarias registradas para esta empresa.</strong>
+                <small>Puede agregarlas desde la opción Gestionar cuentas.</small>
+            </div>
+        `;
+    }
+
+    const rows = accounts.map(function (account) {
+        const bank = account.bank_short_name || account.bank || '-';
+        const currency = [account.currency_code, account.currency].filter(Boolean).join(' | ') || '-';
+        const detraction = account.is_detraction === 'YES'
+            ? '<span class="badge badge-warning">SÍ</span>'
+            : '<span class="badge badge-light border">NO</span>';
+        const status = account.status === 'ACTIVE'
+            ? '<span class="badge badge-success">ACTIVO</span>'
+            : '<span class="badge badge-secondary">INACTIVO</span>';
+
+        return `
+            <tr>
+                <td><strong>${escapeCompanyHtml(bank)}</strong></td>
+                <td>${escapeCompanyHtml(currency)}</td>
+                <td>${escapeCompanyHtml(account.account_holder || '-')}</td>
+                <td class="text-nowrap">${escapeCompanyHtml(account.account_number || '-')}</td>
+                <td class="text-nowrap">${escapeCompanyHtml(account.cci || '-')}</td>
+                <td class="text-center">${detraction}</td>
+                <td class="text-center">${status}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="table-responsive company-view-bank-table">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>BANCO</th><th>MONEDA</th><th>TITULAR</th>
+                        <th>NRO CUENTA</th><th>CCI</th><th>DETRACCIÓN</th><th>ESTADO</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
 }
 
 function deleteCompany(id, name) {

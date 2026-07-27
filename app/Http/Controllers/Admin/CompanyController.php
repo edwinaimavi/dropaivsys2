@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bank;
 use App\Models\Company;
+use App\Models\Currency;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +27,10 @@ class CompanyController extends Controller
 
     public function index()
     {
-        return view('admin.companies.index');
+        $banks = Bank::where('status', 'ACTIVE')->orderBy('description')->get();
+        $currencies = Currency::where('status', 'ACTIVE')->orderBy('description')->get();
+
+        return view('admin.companies.index', compact('banks', 'currencies'));
     }
 
     public function list()
@@ -83,6 +88,12 @@ class CompanyController extends Controller
 
     public function show(Company $company)
     {
+        $company->load([
+            'bankAccounts' => fn ($query) => $query
+                ->with(['bank', 'currency'])
+                ->latest('id'),
+        ]);
+
         return response()->json([
             'status' => 'success',
             'success' => true,
@@ -324,6 +335,18 @@ class CompanyController extends Controller
             'created_at' => $company->created_at?->format('d/m/Y H:i'),
             'updated_at' => $company->updated_at?->format('d/m/Y H:i'),
             'usage' => $this->usageSummary($company),
+            'bank_accounts' => $company->bankAccounts->map(fn ($account) => [
+                'id' => $account->id,
+                'bank' => $account->bank?->description,
+                'bank_short_name' => $account->bank?->short_name,
+                'currency_code' => $account->currency?->code,
+                'currency' => $account->currency?->description,
+                'account_holder' => $account->account_holder,
+                'account_number' => $account->account_number,
+                'cci' => $account->cci,
+                'is_detraction' => $account->is_detraction,
+                'status' => $account->status,
+            ])->values()->all(),
         ];
     }
 

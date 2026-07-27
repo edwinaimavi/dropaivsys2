@@ -27,6 +27,7 @@
         'warehouse' => 'Almac&eacute;n',
         'almacen' => 'Almac&eacute;n',
         'kardex' => 'Kardex',
+        'petty' => 'Caja Chica',
     ];
 
     $permissionGroups = $permissions->groupBy(function ($permission) use ($moduleLabels) {

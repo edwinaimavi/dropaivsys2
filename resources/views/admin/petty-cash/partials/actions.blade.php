@@ -14,7 +14,14 @@
     @endcan
     @can('admin.petty-cash.close')
         @if(in_array($box->status, ['OPEN', 'IN_REVIEW'], true))
-            <button class="btn btn-secondary closePettyCash" data-id="{{ $box->id }}" title="Cerrar caja"><i class="fas fa-lock"></i></button>
+            <button class="btn btn-secondary closePettyCash"
+                data-id="{{ $box->id }}"
+                @disabled($box->pending_expenses_count > 0)
+                data-toggle="tooltip"
+                title="{{ $box->pending_expenses_count > 0 ? 'Tiene gastos pendientes de aprobación.' : 'Cerrar caja' }}"
+                aria-label="{{ $box->pending_expenses_count > 0 ? 'No se puede cerrar: tiene gastos pendientes de aprobación' : 'Cerrar caja' }}">
+                <i class="fas fa-lock"></i>
+            </button>
         @endif
     @endcan
     @can('admin.petty-cash.replenishments.store')
