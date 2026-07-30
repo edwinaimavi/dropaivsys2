@@ -31,8 +31,8 @@
                 <div class="dropdown-divider"></div>
                 <h6 class="dropdown-header">Cierre</h6>
                 @can('admin.petty-cash.close')
-                    <button type="button" class="dropdown-item closePettyCash btn-close-petty-cash" data-id="{{ $box->id }}" data-code="{{ $box->code }}" @disabled($box->pending_expenses_count > 0)
-                        title="{{ $box->pending_expenses_count > 0 ? 'Tiene gastos pendientes de aprobación.' : 'Cerrar caja' }}">
+                    <button type="button" class="dropdown-item closePettyCash btn-close-petty-cash" data-id="{{ $box->id }}" data-code="{{ $box->code }}" @disabled(($box->pending_expenses_count + $box->observed_expenses_count) > 0)
+                        title="{{ ($box->pending_expenses_count + $box->observed_expenses_count) > 0 ? 'Tiene gastos pendientes u observados por resolver.' : 'Cerrar caja' }}">
                         <i class="fas fa-lock text-secondary"></i> Cerrar caja
                     </button>
                 @endcan

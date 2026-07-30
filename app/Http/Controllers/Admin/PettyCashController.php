@@ -13,6 +13,7 @@ use App\Models\PettyCashBox;
 use App\Models\PettyCashApprovedAmount;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
+use App\Models\PettyCashExpenseObservation;
 use App\Models\PettyCashReplenishment;
 use App\Services\DocumentLookupException;
 use App\Services\DocumentLookupService;
@@ -40,15 +41,14 @@ class PettyCashController extends Controller
         $this->middleware('can:admin.petty-cash.destroy')->only('destroy');
         $this->middleware('can:admin.petty-cash.expenses.store')->only('storeExpense');
         $this->middleware('can:admin.petty-cash.expenses.update')->only([
-            'updateExpense',
             'destroyExpenseDocument',
         ]);
         $this->middleware('can:admin.petty-cash.expenses.destroy')->only('destroyExpense');
         $this->middleware('can:admin.petty-cash.expenses.approve')->only([
-            'pendingExpenses',
             'approveExpense',
             'rejectExpense',
         ]);
+        $this->middleware('can:admin.petty-cash.expenses.observe')->only('observeExpense');
         $this->middleware('can:admin.petty-cash.close')->only('close');
         $this->middleware('can:admin.petty-cash.replenishments.store')->only('storeReplenishment');
         $this->middleware('can:admin.petty-cash.pdf')->only('pdf');
@@ -122,6 +122,11 @@ class PettyCashController extends Controller
                 ->where('status', 'ACTIVE')
                 ->pendingApproval()
                 ->count(),
+            'observed_expenses_count' => PettyCashExpense::query()
+                ->where('status', 'ACTIVE')
+                ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED)
+                ->where('created_by', Auth::id())
+                ->count(),
         ];
         $query = PettyCashBox::query()
             ->with(['company:id,business_name,trade_name', 'currency:id,code,symbol'])
@@ -129,6 +134,9 @@ class PettyCashController extends Controller
                 'expenses as pending_expenses_count' => fn ($query) => $query
                     ->where('status', 'ACTIVE')
                     ->pendingApproval(),
+                'expenses as observed_expenses_count' => fn ($query) => $query
+                    ->where('status', 'ACTIVE')
+                    ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED),
                 'expenses as pending_exchange_receipts_count' => fn ($query) => $query
                     ->where('status', 'ACTIVE')
                     ->where('document_type', 'RECIBO')
@@ -215,6 +223,9 @@ class PettyCashController extends Controller
             'expenses' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('item_number'),
             'expenses.documents', 'expenses.creator:id,name,lastname',
             'expenses.approvedBy:id,name,lastname', 'expenses.rejectedBy:id,name,lastname',
+            'expenses.currentObservation.observer:id,name,lastname',
+            'expenses.observations.observer:id,name,lastname',
+            'expenses.observations.resolver:id,name,lastname',
             'expenses.exchange:id,document_type,document_series,document_correlative,total_amount',
             'replenishments' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('replenishment_date'),
             'replenishments.bank',
@@ -235,8 +246,11 @@ class PettyCashController extends Controller
         $pettyCash->setAttribute('status_label', PettyCashBox::STATUSES[$pettyCash->status] ?? $pettyCash->status);
         $pettyCash->setAttribute('can_manage_expenses', $pettyCash->canManageExpenses());
         $pettyCash->setAttribute('can_approve_expenses', Auth::user()?->can('admin.petty-cash.expenses.approve') ?? false);
+        $pettyCash->setAttribute('can_observe_expenses', Auth::user()?->can('admin.petty-cash.expenses.observe') ?? false);
         $pettyCash->setAttribute('pending_expenses_count', $pettyCash->expenses
             ->where('approval_status', PettyCashExpense::APPROVAL_PENDING)->count());
+        $pettyCash->setAttribute('observed_expenses_count', $pettyCash->expenses
+            ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED)->count());
         $pettyCash->setAttribute('pending_exchange_receipts_count', $pettyCash->expenses
             ->where('document_type', 'RECIBO')
             ->where('approval_status', PettyCashExpense::APPROVAL_APPROVED)
@@ -387,6 +401,15 @@ class PettyCashController extends Controller
 
     public function updateExpense(Request $request, PettyCashExpense $expense)
     {
+        abort_unless(
+            Auth::user()?->can('admin.petty-cash.expenses.update')
+                || (
+                    $expense->approval_status === PettyCashExpense::APPROVAL_OBSERVED
+                    && (int) $expense->created_by === (int) Auth::id()
+                ),
+            403
+        );
+
         return $this->saveExpense($request, $expense->pettyCashBox, $expense);
     }
 
@@ -405,6 +428,12 @@ class PettyCashController extends Controller
 
     public function pendingExpenses()
     {
+        abort_unless(
+            Auth::user()?->can('admin.petty-cash.expenses.approve')
+                || Auth::user()?->can('admin.petty-cash.expenses.observe'),
+            403
+        );
+
         $expenses = PettyCashExpense::query()
             ->where('status', 'ACTIVE')
             ->pendingApproval()
@@ -413,8 +442,33 @@ class PettyCashController extends Controller
                 'pettyCashBox.currency:id,code,symbol',
                 'creator:id,name,lastname',
                 'documents',
+                'currentObservation.observer:id,name,lastname',
             ])
             ->latest('created_at')
+            ->get();
+
+        $expenses->each(fn (PettyCashExpense $expense) => $this->appendDocumentUrls($expense));
+
+        return response()->json([
+            'data' => $expenses,
+            'count' => $expenses->count(),
+        ]);
+    }
+
+    public function observedExpenses()
+    {
+        $expenses = PettyCashExpense::query()
+            ->where('status', 'ACTIVE')
+            ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED)
+            ->where('created_by', Auth::id())
+            ->with([
+                'pettyCashBox.company:id,business_name,trade_name',
+                'pettyCashBox.currency:id,code,symbol',
+                'creator:id,name,lastname',
+                'documents',
+                'currentObservation.observer:id,name,lastname',
+            ])
+            ->latest('updated_at')
             ->get();
 
         $expenses->each(fn (PettyCashExpense $expense) => $this->appendDocumentUrls($expense));
@@ -493,6 +547,60 @@ class PettyCashController extends Controller
         return response()->json(['message' => 'Gasto rechazado correctamente. No afecta el saldo de la caja.']);
     }
 
+    public function observeExpense(Request $request, PettyCashExpense $expense)
+    {
+        $validated = $request->validate([
+            'observation' => ['required', 'string', 'min:10', 'max:2000'],
+        ], [
+            'observation.required' => 'La observación del administrador es obligatoria.',
+            'observation.min' => 'La observación debe explicar con mayor detalle qué debe corregirse.',
+        ]);
+
+        DB::transaction(function () use ($expense, $validated) {
+            $lockedExpense = PettyCashExpense::lockForUpdate()->findOrFail($expense->id);
+            abort_unless(
+                $lockedExpense->status === 'ACTIVE'
+                    && $lockedExpense->approval_status === PettyCashExpense::APPROVAL_PENDING,
+                422,
+                'Solo se pueden observar gastos pendientes de aprobación.'
+            );
+
+            $box = PettyCashBox::lockForUpdate()->findOrFail($lockedExpense->petty_cash_box_id);
+            abort_if($box->status === PettyCashBox::STATUS_CANCELLED, 422, 'La caja chica anulada no admite cambios.');
+
+            $lockedExpense->observations()
+                ->where('status', PettyCashExpenseObservation::STATUS_OPEN)
+                ->update([
+                    'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
+                    'resolved_by' => Auth::id(),
+                    'resolved_at' => now(),
+                ]);
+
+            $lockedExpense->observations()->create([
+                'observation' => $validated['observation'],
+                'status' => PettyCashExpenseObservation::STATUS_OPEN,
+                'observed_by' => Auth::id(),
+                'observed_at' => now(),
+            ]);
+
+            $lockedExpense->update([
+                'approval_status' => PettyCashExpense::APPROVAL_OBSERVED,
+                'approved_at' => null,
+                'approved_by_user_id' => null,
+                'rejected_at' => null,
+                'rejected_by_user_id' => null,
+                'approval_observation' => null,
+                'updated_by' => Auth::id(),
+            ]);
+
+            $this->recalculateTotals($box);
+        });
+
+        return response()->json([
+            'message' => 'Gasto observado correctamente. No afecta el saldo hasta ser corregido y aprobado.',
+        ]);
+    }
+
     public function destroyExpenseDocument(PettyCashExpense $expense, Document $document)
     {
         abort_unless($expense->pettyCashBox->canManageExpenses(), 422, 'La caja chica no admite cambios.');
@@ -532,7 +640,7 @@ class PettyCashController extends Controller
             $box = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
             abort_unless($box->canManageExpenses(), 422, 'La caja chica no puede cerrarse.');
             abort_if(
-                $box->expenses()->where('status', 'ACTIVE')->pendingApproval()->exists(),
+                $box->expenses()->where('status', 'ACTIVE')->awaitingResolution()->exists(),
                 422,
                 'No se puede cerrar la caja chica porque existen gastos pendientes de aprobación. Apruebe o rechace los gastos antes de cerrar.'
             );
@@ -693,10 +801,21 @@ class PettyCashController extends Controller
                         ]);
                     }
                     abort_unless(
-                        $expense->approval_status === PettyCashExpense::APPROVAL_PENDING,
+                        in_array($expense->approval_status, [
+                            PettyCashExpense::APPROVAL_PENDING,
+                            PettyCashExpense::APPROVAL_OBSERVED,
+                        ], true),
                         422,
                         'Solo se pueden editar gastos pendientes de aprobación.'
                     );
+                    if ($expense->approval_status === PettyCashExpense::APPROVAL_OBSERVED) {
+                        abort_unless(
+                            (int) $expense->created_by === (int) Auth::id()
+                                || Auth::user()?->can('admin.petty-cash.expenses.approve'),
+                            403,
+                            'Solo el usuario que registró el gasto puede corregirlo.'
+                        );
+                    }
                 }
 
                 $data = [
@@ -721,7 +840,26 @@ class PettyCashController extends Controller
                     if ($expense->exchange_status !== PettyCashExpense::EXCHANGE_COMPLETED) {
                         $data['exchange_status'] = $newExchangeStatus;
                     }
+                    $wasObserved = $expense->approval_status === PettyCashExpense::APPROVAL_OBSERVED;
+                    if ($wasObserved) {
+                        $data['approval_status'] = PettyCashExpense::APPROVAL_PENDING;
+                        $data['approved_at'] = null;
+                        $data['approved_by_user_id'] = null;
+                        $data['rejected_at'] = null;
+                        $data['rejected_by_user_id'] = null;
+                        $data['approval_observation'] = null;
+                    }
                     $expense->update($data);
+                    if ($wasObserved) {
+                        $expense->observations()
+                            ->where('status', PettyCashExpenseObservation::STATUS_OPEN)
+                            ->update([
+                                'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
+                                'resolved_by' => Auth::id(),
+                                'resolved_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                    }
                     $saved = $expense;
                 } else {
                     $data['approval_status'] = PettyCashExpense::APPROVAL_PENDING;
@@ -956,7 +1094,7 @@ class PettyCashController extends Controller
         ]);
         $box->setAttribute('pending_approval_expenses', $box->expenses()
             ->where('status', 'ACTIVE')
-            ->pendingApproval()
+            ->awaitingResolution()
             ->orderBy('item_number')
             ->get());
         $box->setAttribute('financial_summary', $this->calculator->calculate($box));

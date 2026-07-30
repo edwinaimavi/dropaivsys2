@@ -74,8 +74,10 @@ Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'sto
 Route::put('petty-cash/expenses/{expense}', [PettyCashController::class, 'updateExpense'])->name('petty-cash.expenses.update');
 Route::delete('petty-cash/expenses/{expense}', [PettyCashController::class, 'destroyExpense'])->name('petty-cash.expenses.destroy');
 Route::get('petty-cash/pending-expenses', [PettyCashController::class, 'pendingExpenses'])->name('petty-cash.expenses.pending');
+Route::get('petty-cash/observed-expenses', [PettyCashController::class, 'observedExpenses'])->name('petty-cash.expenses.observed');
 Route::post('petty-cash/expenses/{expense}/approve', [PettyCashController::class, 'approveExpense'])->name('petty-cash.expenses.approve');
 Route::post('petty-cash/expenses/{expense}/reject', [PettyCashController::class, 'rejectExpense'])->name('petty-cash.expenses.reject');
+Route::post('petty-cash/expenses/{expense}/observe', [PettyCashController::class, 'observeExpense'])->name('petty-cash.expenses.observe');
 Route::delete('petty-cash/expenses/{expense}/documents/{document}', [PettyCashController::class, 'destroyExpenseDocument'])
     ->name('petty-cash.expenses.documents.destroy');
 Route::post('petty-cash/{pettyCash}/close', [PettyCashController::class, 'close'])->name('petty-cash.close');

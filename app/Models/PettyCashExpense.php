@@ -11,6 +11,7 @@ class PettyCashExpense extends Model
     use SoftDeletes;
 
     public const APPROVAL_PENDING = 'pendiente_aprobacion';
+    public const APPROVAL_OBSERVED = 'observado';
     public const APPROVAL_APPROVED = 'aprobado';
     public const APPROVAL_REJECTED = 'rechazado';
     public const APPROVAL_CANCELLED = 'anulado';
@@ -56,6 +57,13 @@ class PettyCashExpense extends Model
     public function rejectedBy() { return $this->belongsTo(User::class, 'rejected_by_user_id'); }
     public function exchange() { return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id'); }
     public function exchangeItems() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id'); }
+    public function observations() { return $this->hasMany(PettyCashExpenseObservation::class)->latest('observed_at'); }
+    public function currentObservation()
+    {
+        return $this->hasOne(PettyCashExpenseObservation::class)
+            ->where('status', PettyCashExpenseObservation::STATUS_OPEN)
+            ->latestOfMany('observed_at');
+    }
 
     public function scopeApproved(Builder $query): Builder
     {
@@ -65,6 +73,14 @@ class PettyCashExpense extends Model
     public function scopePendingApproval(Builder $query): Builder
     {
         return $query->where('approval_status', self::APPROVAL_PENDING);
+    }
+
+    public function scopeAwaitingResolution(Builder $query): Builder
+    {
+        return $query->whereIn('approval_status', [
+            self::APPROVAL_PENDING,
+            self::APPROVAL_OBSERVED,
+        ]);
     }
 
     public function scopePendingExchange(Builder $query): Builder

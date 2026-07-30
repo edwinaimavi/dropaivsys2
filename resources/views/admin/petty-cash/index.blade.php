@@ -13,12 +13,16 @@
             <small class="text-muted">Control de fondos, rendiciones y reposiciones.</small>
         </div>
         <div class="d-flex flex-wrap align-items-center">
-            @can('admin.petty-cash.expenses.approve')
+            @canany(['admin.petty-cash.expenses.approve', 'admin.petty-cash.expenses.observe'])
             <button id="btnPendingPettyCashExpenses" class="btn petty-pending-bell shadow-sm mr-2" type="button">
-                <i class="fas fa-bell mr-1"></i> Gastos por aprobar
+                <i class="fas fa-bell alert-icon mr-1"></i> Gastos por aprobar
                 <span id="pcPendingExpensesBadge" class="badge badge-light ml-1">0</span>
             </button>
-            @endcan
+            @endcanany
+            <button id="btnObservedPettyCashExpenses" class="btn petty-observed-bell shadow-sm mr-2" type="button">
+                <i class="fas fa-exclamation-circle alert-icon mr-1"></i> Gastos observados
+                <span id="pcObservedExpensesBadge" class="badge badge-light ml-1">0</span>
+            </button>
             @can('admin.petty-cash.approved-amount.update')
             <button id="btnConfigureApprovedAmount" class="btn btn-outline-success shadow-sm mr-2" type="button">
                 <i class="fas fa-sliders-h mr-1"></i> Configurar monto aprobado
@@ -59,9 +63,12 @@
     data-can-expense-store="{{ auth()->user()->can('admin.petty-cash.expenses.store') ? 1 : 0 }}"
     data-can-expense-delete="{{ auth()->user()->can('admin.petty-cash.expenses.destroy') ? 1 : 0 }}"
     data-can-expense-approve="{{ auth()->user()->can('admin.petty-cash.expenses.approve') ? 1 : 0 }}"
+    data-can-expense-observe="{{ auth()->user()->can('admin.petty-cash.expenses.observe') ? 1 : 0 }}"
+    data-current-user-id="{{ auth()->id() }}"
     data-can-receipt-exchange-store="{{ auth()->user()->can('admin.petty-cash.receipt-exchanges.store') ? 1 : 0 }}"
     data-can-receipt-exchange-show="{{ auth()->user()->can('admin.petty-cash.receipt-exchanges.show') ? 1 : 0 }}"
-    data-pending-expenses-url="{{ route('admin.petty-cash.expenses.pending') }}">
+    data-pending-expenses-url="{{ route('admin.petty-cash.expenses.pending') }}"
+    data-observed-expenses-url="{{ route('admin.petty-cash.expenses.observed') }}">
     <div class="row mb-3">
         <div class="col-lg-3 col-sm-6"><div class="info-box shadow-sm border-0"><span class="info-box-icon bg-success"><i class="fas fa-wallet"></i></span><div class="info-box-content"><span class="info-box-text">Cajas activas</span><span id="pcKpiOpen" class="info-box-number">0</span></div></div></div>
         <div class="col-lg-3 col-sm-6"><div class="info-box shadow-sm border-0"><span class="info-box-icon bg-info"><i class="fas fa-coins"></i></span><div class="info-box-content"><span class="info-box-text">Fondo visible</span><span id="pcKpiFund" class="info-box-number">0.00</span></div></div></div>
@@ -100,9 +107,10 @@
 @if(auth()->user()->can('admin.petty-cash.receipt-exchanges.index') || auth()->user()->can('admin.petty-cash.receipt-exchanges.store'))
 @include('admin.petty-cash.partials.receiptExchangeModal')
 @endif
-@can('admin.petty-cash.expenses.approve')
+@canany(['admin.petty-cash.expenses.approve', 'admin.petty-cash.expenses.observe'])
 @include('admin.petty-cash.partials.expenseApprovalModals')
-@endcan
+@endcanany
+@include('admin.petty-cash.partials.expenseObservationModals')
 @can('admin.petty-cash.approved-amount.update')
 @include('admin.petty-cash.partials.approvedAmountModal')
 @endcan
@@ -111,6 +119,15 @@
 @push('css')
 <style>
     .petty-pending-bell{border:1px solid #dccb9d;background:#fffaf0;color:#755719;font-weight:700}.petty-pending-bell:hover{background:#f8efd9;color:#654810}.petty-pending-bell .badge{background:#9b7424;color:#fff}
+    .petty-observed-bell{border:1px solid #e7a36c;background:#fff3e9;color:#994514;font-weight:700}.petty-observed-bell:hover{background:#ffe7d3;color:#80340d}.petty-observed-bell .badge{background:#d85e21;color:#fff}
+    .petty-pending-bell .alert-icon,.petty-observed-bell .alert-icon{display:inline-flex;align-items:center;justify-content:center;line-height:1;transform-origin:top center}
+    @keyframes pettyCashIconBell{0%,100%{transform:rotate(0deg) scale(1)}10%{transform:rotate(12deg) scale(1.18)}20%{transform:rotate(-12deg) scale(1.22)}30%{transform:rotate(9deg) scale(1.18)}40%{transform:rotate(-9deg) scale(1.14)}50%{transform:rotate(5deg) scale(1.12)}60%{transform:rotate(-5deg) scale(1.08)}75%{transform:rotate(0deg) scale(1.2)}}
+    @keyframes pettyCashIconGlow{0%,100%{filter:drop-shadow(0 0 0 rgba(245,158,11,0))}50%{filter:drop-shadow(0 0 6px rgba(245,158,11,.65))}}
+    .petty-cash-alert-attention .alert-icon{font-size:1.25rem;animation:pettyCashIconBell 1.25s ease-in-out infinite,pettyCashIconGlow 1.25s ease-in-out infinite}
+    .petty-observed-bell.petty-cash-alert-attention .alert-icon{color:#d8561b}
+    .petty-cash-alert-attention:hover .alert-icon{animation-duration:.9s}
+    @media(prefers-reduced-motion:reduce){.petty-cash-alert-attention .alert-icon{animation:none!important}}
+    @media(max-width:575px){.petty-pending-bell,.petty-observed-bell{margin-bottom:7px;padding:.375rem .65rem;font-size:.76rem}}
     .petty-pending-alert{display:flex;align-items:center;margin-bottom:9px;padding:11px 13px;border:1px solid #e4d6af;border-radius:12px;background:#fffaf0;color:#755719;font-size:.76rem}.petty-pending-alert i{margin-right:9px}
     .petty-approval-expense-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.petty-approval-expense-grid>div,.petty-approval-documents{padding:10px;border:1px solid #e3e9e6;border-radius:10px;background:#fff}.petty-approval-expense-grid small,.petty-approval-documents>small{display:block;color:#84908c;font-size:.62rem;font-weight:800;letter-spacing:.05em}.petty-approval-expense-grid strong{display:block;margin-top:3px;color:#293b36;font-size:.8rem}.petty-approval-documents a{display:inline-flex;align-items:center;margin:7px 6px 0 0;padding:6px 9px;border-radius:8px;background:#edf6f2;color:#237c5c;font-size:.72rem}.petty-approval-badge{display:inline-block;padding:4px 7px;border-radius:20px;font-size:.58rem;font-weight:800}.petty-approval-badge.is-pending{background:#f7edd3;color:#795a18}.petty-approval-badge.is-approved{background:#dff2e8;color:#216c4f}.petty-approval-badge.is-rejected{background:#f8e4e4;color:#9a3d3d}.petty-approval-badge.is-cancelled{background:#ecefee;color:#66716d}.petty-approval-trace{display:block;margin-top:4px;color:#8a9692;font-size:.57rem;line-height:1.3}
     .petty-modal-content{border-radius:.5rem;overflow:hidden}.petty-modal-header{background:linear-gradient(90deg,#fff,#f3f6f8);border-bottom:1px solid #e6eaee;color:#343a40;padding:1rem 1.25rem}.petty-modal-header p{margin:0;color:#6c757d}.petty-modal-header small{color:#28a745;font-weight:700;letter-spacing:.08em}.petty-form-card,.petty-detail-section{background:#fff;border:1px solid #e6eaee;border-radius:.5rem;padding:14px;margin-bottom:12px;box-shadow:0 .125rem .25rem rgba(0,0,0,.04)}.petty-opening-fund{background:#f2faf6;border-color:#cfe8da}.petty-form-card label{font-size:.75rem;text-transform:uppercase;color:#59636b}.petty-form-card h6,.petty-detail-section h6{color:#343a40;font-weight:700;margin-bottom:14px}.petty-side-panel{background:#fff;border-radius:.5rem;padding:18px;box-shadow:0 .125rem .5rem rgba(0,0,0,.08);height:100%}.petty-side-icon{width:80px;height:80px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;border-radius:50%;background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;font-size:30px}.petty-side-panel>small,.petty-side-panel>strong{display:block;text-align:center}.petty-side-panel>strong{margin:4px 0 16px}.petty-side-row{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid #edf0ee}.petty-side-row.total{color:#1e7e34}.petty-detail-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.petty-summary-item{padding:12px;border:1px solid #e6eaee;border-radius:.5rem;background:#f8fbf9}.petty-summary-item small{display:block;color:#6c757d}.btn-group .btn{margin-right:2px}.modal-body{background:#fafafa}#pettyCashModal .modal-body>.row>.col-lg-8{order:2}#pettyCashModal .modal-body>.row>.col-lg-4{order:1}@media(max-width:767px){.petty-detail-summary{grid-template-columns:repeat(2,1fr)}}
@@ -532,6 +549,17 @@
     @media(max-width:575px){.petty-premium-header{padding:16px}.petty-header-icon{width:42px;height:42px}.petty-premium-header h4{font-size:1.08rem}.petty-premium-header p{display:none}.petty-premium-footer{justify-content:stretch}.petty-premium-footer .btn{flex:1}.petty-approved-reference{min-width:0}.petty-approved-reference>span,.petty-approved-reference em{display:none}.petty-approved-reference strong{font-size:.75rem}}
     @media(max-width:575px){.petty-detail-header,.petty-expense-header{padding:14px}.petty-detail-header-icon,.petty-expense-header-icon{width:40px;height:40px}.petty-detail-header h4,.petty-expense-header h4{font-size:1.05rem}.petty-detail-header p,.petty-expense-header p{font-size:.68rem}.petty-detail-body,.petty-expense-body{padding:12px!important}.petty-financial-grid,.petty-source-previews,.petty-source-detail{grid-template-columns:1fr}.petty-section-count{display:none}.petty-expense-footer{justify-content:stretch}.petty-expense-footer .btn{flex:1}}
     @media(max-width:767px){.petty-replenishment-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.petty-replenishment-modal .petty-source-previews{grid-template-columns:1fr}.petty-replenishment-title p{display:none}.petty-replenishment-footer{justify-content:stretch}.petty-replenishment-footer .btn{flex:1}.petty-exchange-history-item{grid-template-columns:1fr}.petty-detail-tabs{overflow-x:auto}.petty-detail-tabs .nav{width:max-content}.petty-audit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.petty-tab-toolbar{align-items:flex-start;gap:8px;flex-direction:column}.petty-tab-toolbar>div:last-child{flex-wrap:wrap}}
+    .petty-approval-badge.is-observed{background:#fff0cf;color:#9a5b00}
+    .petty-observation-card{margin-top:6px;padding:7px 9px;border-left:3px solid #e7a42b;border-radius:7px;background:#fff8e9;color:#735119;font-size:.65rem;line-height:1.35}
+    .petty-observation-card strong{display:block;color:#8a5600}
+    .petty-observe-btn{color:#a86400!important}
+    .petty-pending-summary{display:flex;gap:8px;margin-bottom:12px}
+    .petty-pending-summary span{padding:6px 10px;border-radius:20px;background:#f5f7f6;color:#53635d;font-size:.68rem;font-weight:800}
+    .petty-observation-detail-card{padding:14px;border:1px solid #f0d39d;border-radius:12px;background:#fff9ed;color:#60471f}
+    .petty-observation-detail-card>small{display:block;margin-bottom:7px;color:#a46608;font-size:.62rem;font-weight:900;letter-spacing:.08em}
+    .petty-observation-detail-card p{margin-bottom:10px;white-space:pre-wrap;font-size:.82rem;line-height:1.55}
+    .petty-observation-detail-card>div,.petty-observation-excerpt{color:#7b756c;font-size:.68rem}
+    .viewPettyCashObservation{white-space:nowrap;font-size:.64rem}
 </style>
 @endpush
 

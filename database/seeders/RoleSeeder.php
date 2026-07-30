@@ -246,6 +246,7 @@ class RoleSeeder extends Seeder
             'admin.petty-cash.expenses.update' => 'Actualizar gastos de caja chica',
             'admin.petty-cash.expenses.destroy' => 'Eliminar gastos de caja chica',
             'admin.petty-cash.expenses.approve' => 'Aprobar o rechazar gastos de caja chica',
+            'admin.petty-cash.expenses.observe' => 'Observar gastos de caja chica',
             'admin.petty-cash.close' => 'Cerrar cajas chicas',
             'admin.petty-cash.replenishments.store' => 'Registrar reposiciones de caja chica',
             'admin.petty-cash.pdf' => 'Generar PDF de caja chica',
