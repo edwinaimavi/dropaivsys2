@@ -81,6 +81,16 @@
                                 </div>
                                 <div class="form-group mb-0"><label>Observación</label><textarea name="observation" id="pce_observation" class="form-control" rows="2" placeholder="Información adicional si corresponde"></textarea></div>
                             </section>
+                            <section id="pce_correction_section" class="petty-expense-card petty-correction-card mt-3 d-none">
+                                <div class="petty-expense-section-title">
+                                    <span><i class="fas fa-reply"></i></span>
+                                    <div><h6>Respuesta / levantamiento de observación</h6><small>Indica al administrador qué información o sustento corregiste</small></div>
+                                </div>
+                                <div class="form-group mb-0">
+                                    <textarea name="correction_comment" id="pce_correction_comment" class="form-control" rows="3" minlength="10" maxlength="2000" placeholder="Explique brevemente qué corrigió o qué información agregó para levantar la observación."></textarea>
+                                    <small class="form-text text-muted">Este comentario quedará registrado en el historial del gasto.</small>
+                                </div>
+                            </section>
                         </div>
                     </div>
                 </div>

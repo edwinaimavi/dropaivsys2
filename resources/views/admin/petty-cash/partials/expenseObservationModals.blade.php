@@ -31,18 +31,14 @@
             <div class="modal-header petty-detail-header">
                 <div class="d-flex align-items-center">
                     <span class="petty-detail-header-icon"><i class="fas fa-comment-alt"></i></span>
-                    <div><small>GASTO OBSERVADO</small><h4>Observación del administrador</h4></div>
+                    <div><small>TRAZABILIDAD DEL GASTO</small><h4>Historial de observación del gasto</h4></div>
                 </div>
                 <button type="button" class="close petty-close" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body petty-detail-body">
-                <span class="petty-approval-badge is-observed mb-3">Observado</span>
+                <div id="pc_observation_current_status" class="mb-3"></div>
                 <div id="pc_observation_expense_summary" class="petty-approval-expense-grid"></div>
-                <div class="petty-observation-detail-card mt-3">
-                    <small>OBSERVACIÓN DEL ADMINISTRADOR</small>
-                    <p id="pc_observation_detail_text"></p>
-                    <div><i class="fas fa-user-shield mr-1"></i><span id="pc_observation_detail_meta"></span></div>
-                </div>
+                <div id="pc_observation_timeline" class="petty-observation-timeline mt-3"></div>
             </div>
             <div class="modal-footer bg-white">
                 <button type="button" class="btn btn-light" data-dismiss="modal">Cerrar</button>

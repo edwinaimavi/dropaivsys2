@@ -17,6 +17,7 @@ class PettyCashExpenseObservation extends Model
         'observed_at',
         'resolved_by',
         'resolved_at',
+        'correction_comment',
     ];
 
     protected $casts = [

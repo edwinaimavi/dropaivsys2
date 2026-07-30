@@ -443,6 +443,8 @@ class PettyCashController extends Controller
                 'creator:id,name,lastname',
                 'documents',
                 'currentObservation.observer:id,name,lastname',
+                'observations.observer:id,name,lastname',
+                'observations.resolver:id,name,lastname',
             ])
             ->latest('created_at')
             ->get();
@@ -467,6 +469,8 @@ class PettyCashController extends Controller
                 'creator:id,name,lastname',
                 'documents',
                 'currentObservation.observer:id,name,lastname',
+                'observations.observer:id,name,lastname',
+                'observations.resolver:id,name,lastname',
             ])
             ->latest('updated_at')
             ->get();
@@ -762,6 +766,7 @@ class PettyCashController extends Controller
     private function saveExpense(Request $request, PettyCashBox $box, ?PettyCashExpense $expense = null)
     {
         abort_unless($box->canManageExpenses(), 422, 'La caja chica no admite gastos.');
+        $isResolvingObservation = $expense?->approval_status === PettyCashExpense::APPROVAL_OBSERVED;
         $validated = $request->validate([
             'expense_date' => [
                 'required',
@@ -778,9 +783,19 @@ class PettyCashController extends Controller
             'concept' => ['required', 'string', 'max:500'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'observation' => ['nullable', 'string', 'max:1000'],
+            'correction_comment' => [
+                Rule::requiredIf($isResolvingObservation),
+                'nullable',
+                'string',
+                'min:10',
+                'max:2000',
+            ],
             'documents' => ['nullable', 'array'],
             'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ], [
+            'correction_comment.required' => 'La respuesta para levantar la observación es obligatoria.',
+            'correction_comment.min' => 'Explica brevemente qué información o sustento corregiste.',
         ]);
 
         $files = array_values(array_filter([
@@ -819,7 +834,7 @@ class PettyCashController extends Controller
                 }
 
                 $data = [
-                    ...collect($validated)->except(['document', 'documents'])->all(),
+                    ...collect($validated)->except(['document', 'documents', 'correction_comment'])->all(),
                     'document_series' => $this->normalizeDocumentPart($validated['document_series'] ?? null),
                     'document_correlative' => $this->normalizeDocumentPart($validated['document_correlative'] ?? null),
                     'supplier_name' => mb_strtoupper($validated['supplier_name']),
@@ -857,6 +872,7 @@ class PettyCashController extends Controller
                                 'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
                                 'resolved_by' => Auth::id(),
                                 'resolved_at' => now(),
+                                'correction_comment' => $validated['correction_comment'],
                                 'updated_at' => now(),
                             ]);
                     }

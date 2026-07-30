@@ -12,6 +12,7 @@ $(function () {
     let existingExpenseDocuments = [];
     let expensePreviewUrls = [];
     let approvalExpense = null;
+    let pendingExpenses = [];
     let observedExpenses = [];
     let receiptExchangeFiles = [];
     let receiptExchangePreviewUrls = [];
@@ -39,6 +40,15 @@ $(function () {
     const errorMessage = xhr => xhr.responseJSON?.message || Object.values(xhr.responseJSON?.errors || {}).flat()[0] || 'No fue posible completar la operación.';
     const loading = (form, active) => form.find('[type="submit"]').prop('disabled', active).find('i').toggleClass('fa-spin', active);
     const userName = user => user ? [user.name, user.lastname].filter(Boolean).join(' ') : '-';
+    const resolvedObservations = expense => (expense?.observations || [])
+        .filter(observation => observation.status === 'RESOLVED' && observation.resolved_at);
+    const hasLiftedObservation = expense => resolvedObservations(expense).length > 0;
+    const liftedObservationBadge = expense => hasLiftedObservation(expense)
+        ? `<span class="petty-approval-badge is-lifted">Observación levantada</span>
+           <button type="button" class="btn btn-link btn-sm p-0 ml-1 viewPettyCashObservationHistory" data-id="${expense.id}">
+               <i class="fas fa-history mr-1"></i>Ver historial
+           </button>`
+        : '';
     const updateAttentionCounter = (buttonSelector, badgeSelector, value, label) => {
         const count = Math.max(0, Number(value || 0));
         $(badgeSelector).text(count);
@@ -59,10 +69,10 @@ $(function () {
         if (expense.approval_status === 'aprobado') trace = `${escapeHtml(userName(expense.approved_by))} · ${dateTime(expense.approved_at)}`;
         if (expense.approval_status === 'rechazado') trace = `${escapeHtml(userName(expense.rejected_by))} · ${escapeHtml(expense.approval_observation || 'Sin motivo')}`;
         if (expense.approval_status === 'observado' && expense.current_observation) {
-            const observation = expense.current_observation;
             trace = `<button type="button" class="btn btn-link btn-sm p-0 viewPettyCashObservation" data-id="${expense.id}"><i class="fas fa-comment-alt mr-1"></i>Ver observación</button>`;
         }
-        return `<span class="petty-approval-badge ${state[1]}">${state[0]}</span><small class="petty-approval-trace">${trace}</small>`;
+        const lifted = expense.approval_status === 'pendiente_aprobacion' ? liftedObservationBadge(expense) : '';
+        return `<span class="petty-approval-badge ${state[1]}">${state[0]}</span>${lifted}<small class="petty-approval-trace">${trace}</small>`;
     };
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
@@ -852,12 +862,14 @@ $(function () {
 
     const loadPendingExpenses = () => api({ url: app.data('pending-expenses-url'), method: 'GET' }).done(response => {
         const expenses = response.data || [];
+        pendingExpenses = expenses;
         updateAttentionCounter('#btnPendingPettyCashExpenses', '#pcPendingExpensesBadge', response.count, 'Gastos por aprobar');
         $('#pc_pending_expenses_body').html(expenses.length ? expenses.map(expense => {
             const box = expense.petty_cash_box;
             const docs = (expense.documents || []).map(document => `<a target="_blank" href="${document.view_url}" class="petty-document-btn"><i class="fas fa-paperclip"></i></a>`).join('') || '-';
+            const history = liftedObservationBadge(expense);
             const actions = `${app.data('can-expense-approve') ? `<button class="btn btn-sm btn-outline-success approvePendingPettyCashExpense" data-id="${expense.id}" title="Aprobar"><i class="fas fa-check"></i></button> <button class="btn btn-sm btn-outline-danger rejectPendingPettyCashExpense" data-id="${expense.id}" title="Rechazar"><i class="fas fa-times"></i></button>` : ''} ${app.data('can-expense-observe') ? `<button class="btn btn-sm btn-outline-warning observePendingPettyCashExpense" data-id="${expense.id}" title="Observar gasto"><i class="fas fa-comment-alt"></i></button>` : ''}`;
-            return `<tr><td>${date(expense.expense_date)}</td><td><strong>${escapeHtml(box?.code || '-')}</strong><small class="d-block text-muted">${escapeHtml(box?.company?.trade_name || box?.company?.business_name || '-')}</small></td><td>${escapeHtml(expense.supplier_name)}</td><td>${escapeHtml(expense.concept)}</td><td>${escapeHtml(userName(expense.creator))}</td><td class="text-center">${docs}</td><td class="text-right petty-amount-cell">${money(expense.amount, box?.currency?.symbol)}</td><td>${actions}</td></tr>`;
+            return `<tr><td>${date(expense.expense_date)}</td><td><strong>${escapeHtml(box?.code || '-')}</strong><small class="d-block text-muted">${escapeHtml(box?.company?.trade_name || box?.company?.business_name || '-')}</small></td><td>${escapeHtml(expense.supplier_name)}</td><td>${escapeHtml(expense.concept)}${history ? `<div class="mt-1">${history}</div>` : ''}</td><td>${escapeHtml(userName(expense.creator))}</td><td class="text-center">${docs}</td><td class="text-right petty-amount-cell">${money(expense.amount, box?.currency?.symbol)}</td><td>${actions}</td></tr>`;
         }).join('') : '<tr><td colspan="8" class="petty-empty-state"><i class="fas fa-check-circle"></i><strong>No hay gastos pendientes de aprobación.</strong></td></tr>');
         $('#pendingPettyCashExpensesModal').data('expenses', expenses);
     });
@@ -865,12 +877,13 @@ $(function () {
     const findObservedExpense = id => {
         const numericId = Number(id);
         return currentBox?.expenses?.find(item => Number(item.id) === numericId)
+            || pendingExpenses.find(item => Number(item.id) === numericId)
             || observedExpenses.find(item => Number(item.id) === numericId);
     };
 
     const openObservationDetail = expense => {
-        const observation = expense?.current_observation;
-        if (!expense || !observation) return notify('warning', 'No se encontró una observación activa para este gasto.');
+        const observations = expense?.observations || (expense?.current_observation ? [expense.current_observation] : []);
+        if (!expense || !observations.length) return notify('warning', 'No se encontró historial de observaciones para este gasto.');
         const box = expense.petty_cash_box || currentBox;
         const symbol = box?.currency?.symbol || currentBox?.currency?.symbol || '';
         const number = expense.document_full_number || expense.document_number || '-';
@@ -879,10 +892,28 @@ $(function () {
             ['Proveedor', expense.supplier_name],
             ['Concepto', expense.concept],
             ['Importe', money(expense.amount, symbol)],
-            ['Comprobante', [expense.document_type, number].filter(Boolean).join(' ')]
+            ['Comprobante', [expense.document_type, number].filter(Boolean).join(' ')],
+            ['Registrado por', userName(expense.creator)]
         ].map(item => `<div><small>${item[0]}</small><strong>${escapeHtml(item[1] || '-')}</strong></div>`).join(''));
-        $('#pc_observation_detail_text').text(observation.observation || '-');
-        $('#pc_observation_detail_meta').text(`${userName(observation.observer)} · ${dateTime(observation.observed_at)}`);
+        $('#pc_observation_current_status').html(expense.approval_status === 'observado'
+            ? '<span class="petty-approval-badge is-observed">Observado</span>'
+            : '<span class="petty-approval-badge is-pending">Pendiente</span> <span class="petty-approval-badge is-lifted">Observación levantada</span>');
+        $('#pc_observation_timeline').html([...observations].reverse().map((observation, index) => `
+            <article class="petty-observation-timeline-item ${observation.status === 'OPEN' ? 'is-open' : 'is-resolved'}">
+                <span class="petty-observation-timeline-marker"><i class="fas ${observation.status === 'OPEN' ? 'fa-exclamation' : 'fa-check'}"></i></span>
+                <div class="petty-observation-timeline-card">
+                    <small>OBSERVACIÓN ${index + 1}</small>
+                    <h6>Gasto observado</h6>
+                    <p>${escapeHtml(observation.observation || '-')}</p>
+                    <div><i class="fas fa-user-shield mr-1"></i>${escapeHtml(userName(observation.observer))} · ${dateTime(observation.observed_at)}</div>
+                    ${observation.status === 'RESOLVED' ? `
+                        <section>
+                            <small>OBSERVACIÓN LEVANTADA</small>
+                            <p>${escapeHtml(observation.correction_comment || 'Corrección registrada sin comentario histórico.')}</p>
+                            <div><i class="fas fa-user-edit mr-1"></i>${escapeHtml(userName(observation.resolver))} · ${dateTime(observation.resolved_at)}</div>
+                        </section>` : '<span class="petty-observation-open-label">Pendiente de corrección</span>'}
+                </div>
+            </article>`).join(''));
         $('#btnCorrectObservedExpense')
             .data('id', expense.id)
             .toggle(Boolean(app.data('can-expense-update')) || Number(expense.created_by) === Number(app.data('current-user-id')));
@@ -902,6 +933,10 @@ $(function () {
     });
 
     $(document).on('click', '.viewPettyCashObservation', function () {
+        const expense = findObservedExpense($(this).data('id'));
+        if (expense) openObservationDetail(expense);
+    });
+    $(document).on('click', '.viewPettyCashObservationHistory', function () {
         const expense = findObservedExpense($(this).data('id'));
         if (expense) openObservationDetail(expense);
     });
@@ -974,6 +1009,8 @@ $(function () {
         event.preventDefault();
         event.stopPropagation();
         $('#pce_observed_notice').remove();
+        $('#pce_correction_section').addClass('d-none');
+        $('#pce_correction_comment').prop('required', false).val('');
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(''); $('#pc_expense_box_id').val($(this).data('id'));
         resetExpenseDocuments();
         $('#pcExpenseTitle').text('Registrar gasto'); $('#pettyCashExpenseModal').modal('show');
@@ -983,6 +1020,8 @@ $(function () {
         const expense = currentBox?.expenses?.find(item => Number(item.id) === Number($(this).data('id')));
         if (!expense) return;
         $('#pce_observed_notice').remove();
+        $('#pce_correction_section').toggleClass('d-none', expense.approval_status !== 'observado');
+        $('#pce_correction_comment').prop('required', expense.approval_status === 'observado').val('');
         if (expense.approval_status === 'observado') {
             const observation = expense.current_observation;
             $('#pettyCashExpenseForm .modal-body').prepend(

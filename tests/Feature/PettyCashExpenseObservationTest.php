@@ -120,7 +120,21 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
             'document_correlative' => '123',
             'supplier_name' => 'PROVEEDOR',
             'concept' => 'TRANSPORTE DE MERCADERÍA DE LIMA A CALLAO PARA OC-100',
+            'amount' => 300,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('correction_comment');
+
+    $this->actingAs($this->creator)
+        ->putJson(route('admin.petty-cash.expenses.update', $this->expense), [
+            'expense_date' => '2026-07-02',
+            'document_type' => 'FACTURA',
+            'document_series' => 'F001',
+            'document_correlative' => '123',
+            'supplier_name' => 'PROVEEDOR',
+            'concept' => 'TRANSPORTE DE MERCADERÍA DE LIMA A CALLAO PARA OC-100',
             'observation' => 'SOLICITADO POR LOGÍSTICA',
+            'correction_comment' => 'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.',
             'amount' => 300,
         ])
         ->assertOk();
@@ -133,6 +147,7 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         'petty_cash_expense_id' => $this->expense->id,
         'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
         'resolved_by' => $this->creator->id,
+        'correction_comment' => 'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.',
     ]);
     $this->assertDatabaseHas('petty_cash_boxes', [
         'id' => $this->boxId,
@@ -146,6 +161,46 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         ->assertOk()
         ->assertJsonPath('summary.pending_expenses_count', 1)
         ->assertJsonPath('summary.observed_expenses_count', 0);
+    $this->getJson(route('admin.petty-cash.expenses.pending'))
+        ->assertOk()
+        ->assertJsonPath('data.0.observations.0.status', PettyCashExpenseObservation::STATUS_RESOLVED)
+        ->assertJsonPath(
+            'data.0.observations.0.correction_comment',
+            'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.'
+        )
+        ->assertJsonPath('data.0.observations.0.resolver.id', $this->creator->id);
+
+    $this->actingAs($this->observer)
+        ->postJson(route('admin.petty-cash.expenses.observe', $this->expense), [
+            'observation' => 'Adjuntar también el comprobante emitido por la agencia de transporte.',
+        ])
+        ->assertOk();
+
+    expect(PettyCashExpenseObservation::where('petty_cash_expense_id', $this->expense->id)->count())->toBe(2);
+    $this->assertDatabaseHas('petty_cash_expense_observations', [
+        'petty_cash_expense_id' => $this->expense->id,
+        'observation' => 'Adjuntar también el comprobante emitido por la agencia de transporte.',
+        'status' => PettyCashExpenseObservation::STATUS_OPEN,
+    ]);
+    $this->assertDatabaseHas('petty_cash_expense_observations', [
+        'petty_cash_expense_id' => $this->expense->id,
+        'correction_comment' => 'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.',
+        'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
+    ]);
+
+    $this->actingAs($this->creator)
+        ->putJson(route('admin.petty-cash.expenses.update', $this->expense), [
+            'expense_date' => '2026-07-02',
+            'document_type' => 'FACTURA',
+            'document_series' => 'F001',
+            'document_correlative' => '123',
+            'supplier_name' => 'PROVEEDOR',
+            'concept' => 'TRANSPORTE DE MERCADERÍA DE LIMA A CALLAO PARA OC-100',
+            'observation' => 'SOLICITADO POR LOGÍSTICA',
+            'correction_comment' => 'Se adjuntó el comprobante solicitado de la agencia de transporte.',
+            'amount' => 300,
+        ])
+        ->assertOk();
 
     $this->postJson(route('admin.petty-cash.expenses.approve', $this->expense))
         ->assertOk();
