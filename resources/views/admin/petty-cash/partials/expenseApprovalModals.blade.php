@@ -12,6 +12,18 @@
         <div class="modal-body petty-detail-body">
             <div id="pca_expense_data" class="petty-approval-expense-grid"></div>
             <div class="petty-approval-documents mt-3"><small>COMPROBANTES</small><div id="pca_documents"></div></div>
+            <div class="expense-admin-summary-note mt-3" aria-label="Observación original del gasto">
+                <span>OBSERVACIÓN DEL GASTO</span>
+                <p id="pca_expense_observation">Sin observación registrada.</p>
+            </div>
+            <div id="pca_lifted_observation" class="petty-lifted-observation d-none mt-3">
+                <div class="petty-lifted-observation-heading">
+                    <span>LEVANTAMIENTO DE OBSERVACIÓN</span>
+                    <button type="button" id="btnViewApprovalObservationHistory" class="btn btn-link btn-sm">Ver historial completo</button>
+                </div>
+                <p id="pca_lifted_observation_message"></p>
+                <small><i class="fas fa-user-edit mr-1"></i><span id="pca_lifted_observation_user"></span> · <span id="pca_lifted_observation_date"></span></small>
+            </div>
             <div class="form-group mt-3 mb-0"><label id="pca_observation_label" for="pca_observation">Observación de aprobación (opcional)</label><textarea id="pca_observation" class="form-control" rows="3" maxlength="1000"></textarea><small id="pca_observation_help" class="form-text text-muted">Puedes registrar una nota administrativa.</small></div>
         </div>
         <div class="modal-footer bg-white"><button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button><button id="btnConfirmExpenseApproval" type="submit" class="btn btn-success"><i class="fas fa-check mr-1"></i> <span>Confirmar aprobación</span></button></div>

@@ -22,7 +22,7 @@ beforeEach(function () {
     ]);
     $this->user = User::factory()->create();
     foreach ([
-        'admin.petty-cash.approved-amount.update', 'admin.petty-cash.store',
+        'admin.petty-cash.approved-amount.update', 'admin.petty-cash.show', 'admin.petty-cash.store',
         'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.approve',
         'admin.petty-cash.receipt-exchanges.index', 'admin.petty-cash.receipt-exchanges.store',
         'admin.petty-cash.receipt-exchanges.show',
@@ -97,6 +97,14 @@ it('canjea varios recibos aprobados sin modificar ningún saldo de caja', functi
 
     $this->getJson(route('admin.petty-cash.receipt-exchanges.index', $this->boxId))
         ->assertOk()->assertJsonCount(0, 'data');
+
+    $this->getJson(route('admin.petty-cash.expenses.detail', $first))
+        ->assertOk()
+        ->assertJsonPath('data.exchange_status', PettyCashExpense::EXCHANGE_COMPLETED)
+        ->assertJsonPath('data.exchange.document_type', 'FACTURA')
+        ->assertJsonPath('data.exchange.document_full_number', 'F001-000123')
+        ->assertJsonPath('data.exchange.creator.id', $this->user->id)
+        ->assertJsonCount(2, 'data.exchange.items');
 });
 
 it('no lista ni permite canjear recibos pendientes de aprobación', function () {

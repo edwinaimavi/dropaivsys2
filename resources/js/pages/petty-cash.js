@@ -42,6 +42,11 @@ $(function () {
     const userName = user => user ? [user.name, user.lastname].filter(Boolean).join(' ') : '-';
     const resolvedObservations = expense => (expense?.observations || [])
         .filter(observation => observation.status === 'RESOLVED' && observation.resolved_at);
+    const latestLiftedObservation = expense => resolvedObservations(expense)
+        .sort((first, second) =>
+            (new Date(second.resolved_at) - new Date(first.resolved_at))
+            || (Number(second.id) - Number(first.id))
+        )[0] || null;
     const hasLiftedObservation = expense => resolvedObservations(expense).length > 0;
     const liftedObservationBadge = expense => hasLiftedObservation(expense)
         ? `<span class="petty-approval-badge is-lifted">Observación levantada</span>
@@ -82,7 +87,7 @@ $(function () {
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
-    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal';
+    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const renderReceiptExchangeFiles = () => {
         receiptExchangePreviewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -117,6 +122,191 @@ $(function () {
             boundary: 'window',
             trigger: 'hover focus',
             template: detailTooltipTemplate
+        });
+    };
+
+    const expenseDetailStatus = expense => {
+        const states = {
+            pendiente_aprobacion: ['Pendiente de aprobación', 'is-pending'],
+            observado: ['Observado', 'is-observed'],
+            aprobado: ['Aprobado', 'is-approved'],
+            rechazado: ['Rechazado', 'is-rejected'],
+            anulado: ['Anulado', 'is-cancelled']
+        };
+        return states[expense.approval_status] || [expense.approval_status || 'Pendiente', 'is-pending'];
+    };
+
+    const expenseTimelineItem = event => `
+        <article class="petty-expense-timeline-item ${event.className}">
+            <span class="petty-expense-timeline-icon"><i class="fas ${event.icon}"></i></span>
+            <div>
+                <header><strong>${escapeHtml(event.title)}</strong><time>${dateTime(event.at)}</time></header>
+                <small>Por: ${escapeHtml(userName(event.user))}</small>
+                ${event.label ? `<p><b>${escapeHtml(event.label)}:</b> ${escapeHtml(event.message || '-')}</p>` : ''}
+            </div>
+        </article>`;
+
+    const renderExpenseDetail = expense => {
+        const symbol = expense.petty_cash_box?.currency?.symbol || currentBox?.currency?.symbol || '';
+        const number = expense.document_full_number || expense.document_number || '-';
+        const status = expenseDetailStatus(expense);
+        $('#pced_status').html(`<span class="petty-approval-badge ${status[1]}">${escapeHtml(status[0])}</span>`);
+        $('#pced_data').html([
+            ['Fecha', date(expense.expense_date)],
+            ['Tipo de comprobante', expense.document_type || '-'],
+            ['Serie', expense.document_series || '-'],
+            ['Correlativo', expense.document_correlative || '-'],
+            ['Comprobante completo', [expense.document_type, number].filter(Boolean).join(' ')],
+            ['RUC proveedor', expense.supplier_ruc || '-'],
+            ['Proveedor', expense.supplier_name || '-'],
+            ['Concepto', expense.concept || '-'],
+            ['Importe', money(expense.amount, symbol)],
+            ['Estado actual', status[0]],
+            ['Registrado por', userName(expense.creator)],
+            ['Fecha de registro', dateTime(expense.created_at)]
+        ].map(item => `<div><small>${escapeHtml(item[0])}</small><strong>${escapeHtml(item[1])}</strong></div>`).join(''));
+        $('#pced_observation').text(String(expense.observation || '').trim() || 'Sin observación registrada.');
+
+        const documents = expense.documents || [];
+        $('#pced_documents_count').text(documents.length);
+        $('#pced_documents').html(documents.length ? documents.map(document => {
+            const isImage = String(document.mime_type || '').startsWith('image/');
+            const visual = isImage
+                ? `<a class="petty-expense-document-preview" href="${document.view_url}" target="_blank" title="Ver imagen"><img src="${document.view_url}" alt="${escapeHtml(document.original_name || 'Comprobante')}"></a>`
+                : '<span class="petty-expense-document-pdf"><i class="fas fa-file-pdf"></i></span>';
+            return `<article>${visual}<div><strong>${escapeHtml(document.original_name || 'Comprobante')}</strong><small>${escapeHtml(String(document.extension || document.mime_type || 'Archivo').toUpperCase())} · ${fileSize(document.file_size)}</small></div><div class="petty-expense-document-actions"><a href="${document.view_url}" target="_blank" title="Abrir documento"><i class="fas fa-external-link-alt"></i><span>Abrir</span></a><a href="${document.view_url}" download="${escapeHtml(document.original_name || '')}" title="Descargar documento"><i class="fas fa-download"></i><span>Descargar</span></a></div></article>`;
+        }).join('') : '<div class="petty-expense-detail-empty"><i class="far fa-folder-open"></i> Sin comprobantes adjuntos.</div>');
+
+        const events = [{
+            title: 'Registrado',
+            at: expense.created_at,
+            user: expense.creator,
+            icon: 'fa-plus',
+            className: 'is-registered'
+        }];
+        (expense.observations || []).forEach(observation => {
+            events.push({
+                title: 'Observado',
+                at: observation.observed_at,
+                user: observation.observer,
+                label: 'Observación del administrador',
+                message: observation.observation,
+                icon: 'fa-comment-alt',
+                className: 'is-observed'
+            });
+            if (observation.status === 'RESOLVED' && observation.resolved_at) {
+                events.push({
+                    title: 'Corregido',
+                    at: observation.resolved_at,
+                    user: observation.resolver,
+                    label: 'Levantamiento o corrección',
+                    message: observation.correction_comment || 'Corrección registrada sin comentario.',
+                    icon: 'fa-edit',
+                    className: 'is-corrected'
+                });
+            }
+        });
+        if (expense.approved_at) events.push({
+            title: 'Aprobado',
+            at: expense.approved_at,
+            user: expense.approved_by,
+            label: 'Observación de aprobación',
+            message: expense.approval_observation || 'Sin observación de aprobación.',
+            icon: 'fa-check',
+            className: 'is-approved'
+        });
+        if (expense.rejected_at) events.push({
+            title: 'Rechazado',
+            at: expense.rejected_at,
+            user: expense.rejected_by,
+            label: 'Motivo de rechazo',
+            message: expense.approval_observation,
+            icon: 'fa-times',
+            className: 'is-rejected'
+        });
+        events.sort((first, second) => new Date(first.at || 0) - new Date(second.at || 0));
+        $('#pced_history_count').text(events.length);
+        $('#pced_admin_empty').toggleClass('d-none', events.length > 1);
+        $('#pced_timeline').html(events.map(expenseTimelineItem).join(''));
+
+        const lastObservation = [...(expense.observations || [])]
+            .sort((first, second) => Number(second.id) - Number(first.id))[0] || null;
+        const lastLifted = latestLiftedObservation(expense);
+        const approvalDetails = expense.approval_status === 'aprobado'
+            ? [
+                ['Estado de aprobación', 'Aprobado'],
+                ['Aprobado por', userName(expense.approved_by)],
+                ['Fecha de aprobación', dateTime(expense.approved_at)],
+                ['Observación de aprobación', expense.approval_observation || 'Sin observación de aprobación.']
+            ]
+            : expense.approval_status === 'rechazado'
+                ? [
+                    ['Estado de aprobación', 'Rechazado'],
+                    ['Rechazado por', userName(expense.rejected_by)],
+                    ['Fecha de rechazo', dateTime(expense.rejected_at)],
+                    ['Motivo de rechazo', expense.approval_observation || '-']
+                ]
+                : [
+                    ['Estado de aprobación', status[0]],
+                    ['Situación actual', lastLifted && expense.approval_status === 'pendiente_aprobacion'
+                        ? 'Enviado nuevamente para revisión después del levantamiento.'
+                        : 'Pendiente de decisión administrativa.']
+                ];
+        const observationDetails = [
+            ['Última observación administrativa', lastObservation?.observation || 'Sin observaciones administrativas.'],
+            ['Observado por', lastObservation ? userName(lastObservation.observer) : '-'],
+            ['Último levantamiento del usuario', lastLifted?.correction_comment || 'Sin levantamientos registrados.'],
+            ['Levantado por', lastLifted ? userName(lastLifted.resolver) : '-'],
+            ['Fecha del levantamiento', lastLifted ? dateTime(lastLifted.resolved_at) : '-']
+        ];
+        const exchange = expense.exchange;
+        let exchangeDetails;
+        if (expense.exchange_status === 'CANJEADO' && exchange) {
+            const linkedReceipts = (exchange.items || []).map(item =>
+                `${item.receipt_type || 'RECIBO'} ${[item.receipt_series, item.receipt_correlative].filter(Boolean).join('-')}`
+            ).join(', ');
+            exchangeDetails = [
+                ['Estado de canje', 'Canjeado'],
+                ['Comprobante real', `${exchange.document_type || ''} ${exchange.document_full_number || '-'}`.trim()],
+                ['Fecha de canje', date(exchange.exchange_date || expense.exchanged_at)],
+                ['Canje realizado por', userName(exchange.creator)],
+                ['Recibos vinculados', linkedReceipts || 'Sin detalle de recibos vinculados.']
+            ];
+        } else if (expense.exchange_status === 'PENDIENTE_CANJE') {
+            exchangeDetails = [
+                ['Estado de canje', 'Pendiente de canje'],
+                ['Detalle', 'El recibo está aprobado y pendiente de ser reemplazado por el comprobante definitivo.']
+            ];
+        } else {
+            exchangeDetails = [['Estado de canje', 'No aplica para este gasto.']];
+        }
+        const detailCard = (title, icon, modifier, items) => `
+            <section class="petty-expense-admin-card ${modifier}">
+                <header><span><i class="fas ${icon}"></i></span><div><small>${escapeHtml(title.toUpperCase())}</small><h6>${escapeHtml(title)}</h6></div></header>
+                <div>${items.map(item => `<article><small>${escapeHtml(item[0])}</small><strong>${escapeHtml(item[1] || '-')}</strong></article>`).join('')}</div>
+            </section>`;
+        $('#pced_approval_exchange').html([
+            detailCard('Aprobación', 'fa-user-check', `is-${expense.approval_status || 'pending'}`, approvalDetails),
+            detailCard('Observaciones y levantamientos', 'fa-comments', 'is-observation', observationDetails),
+            detailCard('Canje', 'fa-exchange-alt', 'is-exchange', exchangeDetails)
+        ].join(''));
+    };
+
+    const openExpenseDetailModal = expenseId => {
+        $('#pced_summary_tab').tab('show');
+        $('#pced_content').addClass('d-none');
+        $('#pced_loading').removeClass('d-none');
+        $('#pettyCashExpenseDetailModal').modal('show');
+        api({
+            url: `${app.data('expense-detail-base-url')}/${expenseId}/detail`,
+            method: 'GET'
+        }).done(response => {
+            renderExpenseDetail(response.data);
+            $('#pced_loading').addClass('d-none');
+            $('#pced_content').removeClass('d-none');
+        }).fail(() => {
+            $('#pettyCashExpenseDetailModal').modal('hide');
+            notify('error', 'No se pudo cargar el detalle del gasto.');
         });
     };
     const syncExpenseFileInput = () => {
@@ -767,7 +957,7 @@ $(function () {
             const isPending = expense.approval_status === 'pendiente_aprobacion';
             const isObserved = expense.approval_status === 'observado';
             const canCorrectObserved = isObserved && (app.data('can-expense-update') || Number(expense.created_by) === Number(app.data('current-user-id')));
-            const actions = box.can_manage_expenses ? `<span class="petty-row-actions">${isPending && app.data('can-expense-approve') ? `<button class="btn approvePettyCashExpense" data-id="${expense.id}" title="Aprobar"><i class="fas fa-check"></i></button><button class="btn rejectPettyCashExpense" data-id="${expense.id}" title="Rechazar"><i class="fas fa-times"></i></button>` : ''}${isPending && app.data('can-expense-observe') ? `<button class="btn petty-observe-btn observePettyCashExpense" data-id="${expense.id}" title="Observar gasto"><i class="fas fa-comment-alt"></i></button>` : ''}${((isPending && app.data('can-expense-update')) || canCorrectObserved) ? `<button class="btn editPettyCashExpense" data-id="${expense.id}" title="${isObserved ? 'Corregir gasto observado' : 'Editar gasto'}"><i class="fas fa-edit"></i></button>` : ''}${app.data('can-expense-delete') ? `<button class="btn deletePettyCashExpense" data-id="${expense.id}" title="Eliminar gasto"><i class="fas fa-trash"></i></button>` : ''}</span>` : '';
+            const actions = `<span class="petty-row-actions"><button class="btn viewPettyCashExpenseDetail" data-id="${expense.id}" data-toggle="tooltip" title="Ver detalle del gasto" aria-label="Ver detalle del gasto"><i class="fas fa-eye"></i></button>${box.can_manage_expenses ? `${isPending && app.data('can-expense-approve') ? `<button class="btn approvePettyCashExpense" data-id="${expense.id}" title="Aprobar"><i class="fas fa-check"></i></button><button class="btn rejectPettyCashExpense" data-id="${expense.id}" title="Rechazar"><i class="fas fa-times"></i></button>` : ''}${isPending && app.data('can-expense-observe') ? `<button class="btn petty-observe-btn observePettyCashExpense" data-id="${expense.id}" title="Observar gasto"><i class="fas fa-comment-alt"></i></button>` : ''}${((isPending && app.data('can-expense-update')) || canCorrectObserved) ? `<button class="btn editPettyCashExpense" data-id="${expense.id}" title="${isObserved ? 'Corregir gasto observado' : 'Editar gasto'}"><i class="fas fa-edit"></i></button>` : ''}${app.data('can-expense-delete') ? `<button class="btn deletePettyCashExpense" data-id="${expense.id}" title="Eliminar gasto"><i class="fas fa-trash"></i></button>` : ''}` : ''}</span>`;
             const number = expense.document_full_number || expense.document_number || '';
             const voucher = number ? [expense.document_type, number].filter(Boolean).join(' ') : '-';
             const approval = approvalStatusHtml(expense);
@@ -812,6 +1002,11 @@ $(function () {
 
     $(document).on('click', '#viewPettyCashModal .petty-document-btn', function () {
         $(this).tooltip('hide');
+    });
+
+    $(document).on('click', '.viewPettyCashExpenseDetail', function () {
+        $(this).tooltip('hide');
+        openExpenseDetailModal($(this).data('id'));
     });
 
     $(document).on('click', '.viewPettyCash', function () {
@@ -862,6 +1057,15 @@ $(function () {
         $('#pca_documents').html((expense.documents || []).map((document, index) =>
             `<a target="_blank" href="${document.view_url}"><i class="fas ${String(document.mime_type).includes('pdf') ? 'fa-file-pdf' : 'fa-image'} mr-1"></i>${String(document.mime_type).includes('pdf') ? 'Ver PDF' : `Ver imagen ${index + 1}`}</a>`
         ).join('') || '<span class="text-muted d-block mt-2">Sin comprobantes adjuntos.</span>');
+        $('#pca_expense_observation').text(
+            String(expense.observation || '').trim() || 'Sin observación registrada.'
+        );
+        const lifted = latestLiftedObservation(expense);
+        $('#pca_lifted_observation').toggleClass('d-none', !lifted);
+        $('#pca_lifted_observation_message').text(lifted?.correction_comment || '');
+        $('#pca_lifted_observation_user').text(userName(lifted?.resolver));
+        $('#pca_lifted_observation_date').text(dateTime(lifted?.resolved_at));
+        $('#btnViewApprovalObservationHistory').data('id', expense.id);
         $('#pettyCashExpenseApprovalModal').modal('show');
     };
 
@@ -950,6 +1154,12 @@ $(function () {
         const expense = findObservedExpense($(this).data('id'));
         if (expense) openObservationDetail(expense);
     });
+    $(document).on('click', '#btnViewApprovalObservationHistory', function () {
+        const expense = findObservedExpense($(this).data('id')) || approvalExpense;
+        if (!expense) return;
+        $('#pettyCashExpenseApprovalModal').modal('hide');
+        openObservationDetail(expense);
+    });
     $('#btnObservedPettyCashExpenses').on('click', function () {
         loadObservedExpenses()
             .done(() => $('#observedPettyCashExpensesModal').modal('show'))
@@ -1030,6 +1240,7 @@ $(function () {
         $('#pce_correction_section').addClass('d-none');
         $('#pce_correction_comment').prop('required', false).val('');
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(''); $('#pc_expense_box_id').val($(this).data('id'));
+        resetExpenseDocumentDuplicateState();
         resetExpenseDocuments();
         $('#pcExpenseTitle').text('Registrar gasto'); $('#pettyCashExpenseModal').modal('show');
     });
@@ -1047,6 +1258,7 @@ $(function () {
             );
         }
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(expense.id); $('#pc_expense_box_id').val(currentBox.id);
+        resetExpenseDocumentDuplicateState();
         resetExpenseDocuments(expense.documents || []);
         ['expense_date','document_type','document_series','document_correlative','supplier_ruc','supplier_name','concept','amount','observation'].forEach(field => {
             let value = expense[field] ?? '';
@@ -1112,6 +1324,55 @@ $(function () {
     });
 
     let supplierRucRequest = null;
+    let expenseDocumentCheckRequest = null;
+    let expenseDocumentCheckTimer = null;
+    let expenseDocumentIsDuplicate = false;
+
+    const resetExpenseDocumentDuplicateState = () => {
+        expenseDocumentIsDuplicate = false;
+        $('#pce_document_duplicate_alert').addClass('d-none').find('span')
+            .text('Este comprobante ya fue registrado en caja chica.');
+        $('#btnSavePettyCashExpense').prop('disabled', false);
+    };
+
+    const checkExpenseDocumentDuplicate = () => {
+        const payload = {
+            document_type: String($('#pce_document_type').val() || '').trim().toUpperCase(),
+            document_series: String($('#pce_document_series').val() || '').trim().toUpperCase(),
+            document_correlative: String($('#pce_document_correlative').val() || '').trim(),
+            supplier_ruc: String($('#pce_supplier_ruc').val() || '').trim(),
+            expense_id: $('#pc_expense_id').val() || null
+        };
+
+        resetExpenseDocumentDuplicateState();
+        if (!payload.document_type || !payload.document_series || !payload.document_correlative
+            || !/^\d{11}$/.test(payload.supplier_ruc)) return;
+
+        if (expenseDocumentCheckRequest) expenseDocumentCheckRequest.abort();
+        expenseDocumentCheckRequest = api({
+            url: app.data('expense-document-check-url'),
+            method: 'GET',
+            data: payload
+        }).done(response => {
+            expenseDocumentIsDuplicate = Boolean(response.exists);
+            $('#pce_document_duplicate_alert')
+                .toggleClass('d-none', !expenseDocumentIsDuplicate)
+                .find('span').text(response.message || 'Este comprobante ya fue registrado en caja chica.');
+            $('#btnSavePettyCashExpense').prop('disabled', expenseDocumentIsDuplicate);
+        }).fail(xhr => {
+            if (xhr.statusText !== 'abort') resetExpenseDocumentDuplicateState();
+        }).always(() => {
+            expenseDocumentCheckRequest = null;
+        });
+    };
+
+    $('#pce_document_type, #pce_document_series, #pce_document_correlative, #pce_supplier_ruc')
+        .on('input change blur', function () {
+            clearTimeout(expenseDocumentCheckTimer);
+            resetExpenseDocumentDuplicateState();
+            expenseDocumentCheckTimer = setTimeout(checkExpenseDocumentDuplicate, 350);
+        });
+
     $('#pce_supplier_ruc').on('input', function () {
         this.value = this.value.replace(/\D/g, '').slice(0, 11);
         $('#pce_supplier_ruc_status').removeClass('text-success text-danger text-muted').text('');
@@ -1151,22 +1412,48 @@ $(function () {
 
     $('#pettyCashExpenseForm').on('submit', function (event) {
         event.preventDefault();
+        if (expenseDocumentIsDuplicate) {
+            notify('error', $('#pce_document_duplicate_alert span').text());
+            return;
+        }
         const id = $('#pc_expense_id').val(), boxId = $('#pc_expense_box_id').val(), data = new FormData(this);
+        const wasObservedCorrection = Boolean(id) && !$('#pce_correction_section').hasClass('d-none');
         if (id) data.append('_method', 'PUT');
         loading($(this), true);
         api({ url: id ? `${base}/expenses/${id}` : `${base}/${boxId}/expenses`, method: 'POST', data, processData: false, contentType: false })
             .done(response => {
-                const detailIsOpen = $('#viewPettyCashModal').hasClass('show');
                 $('#pettyCashExpenseModal').modal('hide');
                 table.ajax.reload(null, false);
-                loadObservedExpenses();
-
-                if (detailIsOpen) {
-                    loadBox(boxId)
-                        .done(renderDetail)
-                        .fail(xhr => notify('error', errorMessage(xhr)));
+                if (response.counts) {
+                    updateAttentionCounter('#btnPendingPettyCashExpenses', '#pcPendingExpensesBadge', response.counts.pending, 'Gastos por aprobar');
+                    updateAttentionCounter('#btnObservedPettyCashExpenses', '#pcObservedExpensesBadge', response.counts.observed, 'Gastos observados');
                 }
-
+                if (response.expense) {
+                    const updatedExpense = response.expense;
+                    pendingExpenses = pendingExpenses
+                        .filter(item => Number(item.id) !== Number(updatedExpense.id));
+                    if (updatedExpense.approval_status === 'pendiente_aprobacion') pendingExpenses.unshift(updatedExpense);
+                    observedExpenses = observedExpenses
+                        .filter(item => Number(item.id) !== Number(updatedExpense.id));
+                    $('#pendingPettyCashExpensesModal').data('expenses', pendingExpenses);
+                    if (currentBox && Number(currentBox.id) === Number(boxId)) {
+                        currentBox.expenses = (currentBox.expenses || []).map(item =>
+                            Number(item.id) === Number(updatedExpense.id) ? updatedExpense : item
+                        );
+                        renderDetail(currentBox);
+                    }
+                    if ($('#pettyCashObservationDetailModal').hasClass('show')) openObservationDetail(updatedExpense);
+                }
+                loadPendingExpenses();
+                loadObservedExpenses();
+                loadBox(boxId).done(box => {
+                    currentBox = box;
+                    renderDetail(box);
+                }).fail(xhr => notify('error', errorMessage(xhr)));
+                if (wasObservedCorrection) {
+                    $('#pce_correction_comment').val('');
+                    $('#pce_correction_section').addClass('d-none');
+                }
                 notify('success', response.message);
             })
             .fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));

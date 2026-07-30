@@ -68,6 +68,11 @@
                                     </div>
                                     <div class="form-group col-md-8"><label>Proveedor *</label><input name="supplier_name" id="pce_supplier_name" class="form-control text-uppercase" required placeholder="Razón social"></div>
                                 </div>
+                                <div id="pce_document_duplicate_alert" class="alert alert-danger py-2 px-3 mb-0 d-none"
+                                    role="alert" aria-live="polite">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    <span>Este comprobante ya fue registrado en caja chica.</span>
+                                </div>
                             </section>
 
                             <section class="petty-expense-card mb-0">
@@ -97,7 +102,7 @@
 
                 <div class="modal-footer petty-expense-footer">
                     <button type="button" class="btn btn-light petty-btn-secondary" data-dismiss="modal"><i class="fas fa-times mr-1"></i> Cancelar</button>
-                    <button class="btn btn-success petty-btn-primary" type="submit"><i class="fas fa-save mr-1"></i> Guardar gasto</button>
+                    <button id="btnSavePettyCashExpense" class="btn btn-success petty-btn-primary" type="submit"><i class="fas fa-save mr-1"></i> Guardar gasto</button>
                 </div>
             </form>
         </div>

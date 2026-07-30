@@ -15,7 +15,7 @@ beforeEach(function () {
     $this->company = Company::create(['business_name' => 'DROPAIV S.A.C.', 'trade_name' => 'DROPAIV', 'ruc' => '20123456789', 'status' => true]);
     $this->currency = Currency::create(['code' => 'PEN', 'description' => 'Soles', 'symbol' => 'S/', 'status' => 'ACTIVE']);
     $this->manager = User::factory()->create();
-    foreach (['admin.petty-cash.approved-amount.index', 'admin.petty-cash.approved-amount.update', 'admin.petty-cash.store', 'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.approve', 'admin.petty-cash.close', 'admin.petty-cash.replenishments.store'] as $name) {
+    foreach (['admin.petty-cash.approved-amount.index', 'admin.petty-cash.approved-amount.update', 'admin.petty-cash.show', 'admin.petty-cash.store', 'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.approve', 'admin.petty-cash.close', 'admin.petty-cash.replenishments.store'] as $name) {
         Permission::findOrCreate($name, 'web');
     }
     $this->manager->givePermissionTo(Permission::all());
@@ -130,6 +130,11 @@ it('solo afecta los saldos al aprobar y excluye los gastos rechazados', function
     ])->assertCreated();
     $rejected = PettyCashExpense::latest('id')->first();
     $this->postJson(route('admin.petty-cash.expenses.reject', $rejected), ['approval_observation' => 'Comprobante ilegible'])->assertOk();
+    $this->getJson(route('admin.petty-cash.expenses.detail', $rejected))
+        ->assertOk()
+        ->assertJsonPath('data.approval_status', PettyCashExpense::APPROVAL_REJECTED)
+        ->assertJsonPath('data.approval_observation', 'Comprobante ilegible')
+        ->assertJsonPath('data.rejected_by.id', $this->manager->id);
     $this->assertDatabaseHas('petty_cash_expenses', ['id' => $rejected->id, 'approval_status' => 'rechazado', 'rejected_by_user_id' => $this->manager->id]);
     $this->assertDatabaseHas('petty_cash_boxes', ['id' => $boxId, 'total_expenses' => 300, 'cash_balance' => 1700, 'reimbursement_amount' => 300]);
 });

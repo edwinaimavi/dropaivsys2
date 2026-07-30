@@ -20,6 +20,7 @@ use App\Services\DocumentLookupService;
 use App\Services\PettyCashCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -36,7 +37,7 @@ class PettyCashController extends Controller
             'index', 'list', 'previousBalance', 'sourceBankAccounts',
         ]);
         $this->middleware('can:admin.petty-cash.store')->only('store');
-        $this->middleware('can:admin.petty-cash.show')->only(['show', 'viewDocument']);
+        $this->middleware('can:admin.petty-cash.show')->only(['show', 'expenseDetail', 'viewDocument']);
         $this->middleware('can:admin.petty-cash.update')->only('update');
         $this->middleware('can:admin.petty-cash.destroy')->only('destroy');
         $this->middleware('can:admin.petty-cash.expenses.store')->only('storeExpense');
@@ -204,6 +205,12 @@ class PettyCashController extends Controller
             });
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(array_filter($storedPaths));
+            if ($exception instanceof QueryException
+                && str_contains($exception->getMessage(), 'petty_cash_expenses_document_unique')) {
+                throw ValidationException::withMessages([
+                    'document_correlative' => $this->duplicateExpenseDocumentMessage($validated),
+                ]);
+            }
             throw $exception;
         }
 
@@ -271,6 +278,13 @@ class PettyCashController extends Controller
         }
 
         return response()->json(['data' => $pettyCash]);
+    }
+
+    public function expenseDetail(PettyCashExpense $expense)
+    {
+        $this->loadExpenseDetailRelations($expense);
+
+        return response()->json(['data' => $expense]);
     }
 
     public function previousBalance(Request $request)
@@ -407,6 +421,34 @@ class PettyCashController extends Controller
         );
 
         return $this->saveExpense($request, $expense->pettyCashBox, $expense);
+    }
+
+    public function checkExpenseDocument(Request $request)
+    {
+        abort_unless(
+            Auth::user()?->can('admin.petty-cash.expenses.store')
+                || Auth::user()?->can('admin.petty-cash.expenses.update'),
+            403
+        );
+
+        $this->normalizeExpenseDocumentRequest($request);
+        $validated = $request->validate([
+            'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA', 'RECIBO', 'TICKET', 'OTRO'])],
+            'document_series' => ['required', 'string', 'max:20'],
+            'document_correlative' => ['required', 'string', 'max:50'],
+            'supplier_ruc' => ['required', 'digits:11'],
+            'expense_id' => ['nullable', 'integer', 'exists:petty_cash_expenses,id'],
+        ]);
+
+        $exists = $this->duplicateExpenseDocumentQuery(
+            $validated,
+            isset($validated['expense_id']) ? (int) $validated['expense_id'] : null
+        )->exists();
+
+        return response()->json([
+            'exists' => $exists,
+            'message' => $exists ? $this->duplicateExpenseDocumentMessage($validated) : null,
+        ]);
     }
 
     public function destroyExpense(PettyCashExpense $expense)
@@ -773,6 +815,7 @@ class PettyCashController extends Controller
     {
         abort_unless($box->canManageExpenses(), 422, 'La caja chica no admite gastos.');
         $isResolvingObservation = $expense?->approval_status === PettyCashExpense::APPROVAL_OBSERVED;
+        $this->normalizeExpenseDocumentRequest($request);
         $validated = $request->validate([
             'expense_date' => [
                 'required',
@@ -809,9 +852,11 @@ class PettyCashController extends Controller
             $request->file('document'),
         ]));
         $storedPaths = [];
+        $saved = null;
+        $wasObserved = false;
 
         try {
-            DB::transaction(function () use ($box, $expense, $validated, $files, &$storedPaths) {
+            DB::transaction(function () use ($box, $expense, $validated, $files, &$storedPaths, &$saved, &$wasObserved) {
                 $locked = PettyCashBox::lockForUpdate()->findOrFail($box->id);
                 abort_unless($locked->canManageExpenses(), 422, 'La caja chica no admite gastos.');
                 if ($expense) {
@@ -852,6 +897,7 @@ class PettyCashController extends Controller
                     $data['document_series'],
                     $data['document_correlative']
                 );
+                $this->assertExpenseDocumentIsUnique($data, $expense);
                 $newExchangeStatus = ($data['document_type'] ?? null) === 'RECIBO'
                     ? PettyCashExpense::EXCHANGE_PENDING
                     : PettyCashExpense::EXCHANGE_NOT_APPLICABLE;
@@ -903,11 +949,48 @@ class PettyCashController extends Controller
             throw $exception;
         }
 
+        $this->loadExpenseDetailRelations($saved);
+        $latestLiftedObservation = $saved->observations
+            ->where('status', PettyCashExpenseObservation::STATUS_RESOLVED)
+            ->sortByDesc('id')
+            ->first();
+
         return response()->json([
-            'message' => $expense
-                ? 'Gasto actualizado correctamente. Continúa pendiente de aprobación administrativa.'
-                : 'Gasto registrado correctamente. Queda pendiente de aprobación administrativa.',
+            'success' => true,
+            'message' => $wasObserved
+                ? 'Gasto corregido y enviado nuevamente para aprobación.'
+                : ($expense
+                    ? 'Gasto actualizado correctamente. Continúa pendiente de aprobación administrativa.'
+                    : 'Gasto registrado correctamente. Queda pendiente de aprobación administrativa.'),
+            'expense' => $saved,
+            'history' => $saved->observations,
+            'latest_lifted_observation' => $latestLiftedObservation,
+            'counts' => [
+                'pending' => PettyCashExpense::query()
+                    ->where('status', 'ACTIVE')
+                    ->pendingApproval()
+                    ->count(),
+                'observed' => $this->visibleObservedExpensesQuery()->count(),
+            ],
         ], $expense ? 200 : 201);
+    }
+
+    private function loadExpenseDetailRelations(PettyCashExpense $expense): void
+    {
+        $expense->load([
+            'pettyCashBox.company:id,business_name,trade_name',
+            'pettyCashBox.currency:id,code,symbol',
+            'creator:id,name,lastname',
+            'approvedBy:id,name,lastname',
+            'rejectedBy:id,name,lastname',
+            'documents',
+            'observations.observer:id,name,lastname',
+            'observations.resolver:id,name,lastname',
+            'exchange.creator:id,name,lastname',
+            'exchange.items:id,exchange_id,petty_cash_expense_id,amount,concept,receipt_type,receipt_series,receipt_correlative',
+        ]);
+
+        $this->appendDocumentUrls($expense);
     }
 
     private function visibleObservedExpensesQuery()
@@ -930,6 +1013,66 @@ class PettyCashController extends Controller
         $value = trim((string) $value);
 
         return $value === '' ? null : mb_strtoupper($value);
+    }
+
+    private function normalizeExpenseDocumentRequest(Request $request): void
+    {
+        $request->merge([
+            'document_type' => $this->normalizeDocumentPart($request->input('document_type')),
+            'document_series' => $this->normalizeDocumentPart($request->input('document_series')),
+            'document_correlative' => $this->normalizeNullableTrim($request->input('document_correlative')),
+            'supplier_ruc' => $this->normalizeNullableTrim($request->input('supplier_ruc')),
+        ]);
+    }
+
+    private function normalizeNullableTrim(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    private function duplicateExpenseDocumentQuery(array $data, ?int $ignoreExpenseId = null)
+    {
+        $query = PettyCashExpense::withTrashed()
+            ->whereRaw('UPPER(TRIM(document_type)) = ?', [$data['document_type']])
+            ->whereRaw('UPPER(TRIM(document_series)) = ?', [$data['document_series']])
+            ->whereRaw('TRIM(document_correlative) = ?', [$data['document_correlative']])
+            ->whereRaw('TRIM(supplier_ruc) = ?', [$data['supplier_ruc']]);
+
+        return $ignoreExpenseId ? $query->where('id', '!=', $ignoreExpenseId) : $query;
+    }
+
+    private function assertExpenseDocumentIsUnique(array $data, ?PettyCashExpense $expense = null): void
+    {
+        if (!$this->hasCompleteExpenseDocumentIdentity($data)) {
+            return;
+        }
+
+        if ($this->duplicateExpenseDocumentQuery($data, $expense?->id)->exists()) {
+            throw ValidationException::withMessages([
+                'document_correlative' => $this->duplicateExpenseDocumentMessage($data),
+            ]);
+        }
+    }
+
+    private function hasCompleteExpenseDocumentIdentity(array $data): bool
+    {
+        return filled($data['document_type'] ?? null)
+            && filled($data['document_series'] ?? null)
+            && filled($data['document_correlative'] ?? null)
+            && filled($data['supplier_ruc'] ?? null);
+    }
+
+    private function duplicateExpenseDocumentMessage(array $data): string
+    {
+        return sprintf(
+            'El comprobante %s %s-%s ya fue registrado para el proveedor con RUC %s.',
+            $data['document_type'],
+            $data['document_series'],
+            $data['document_correlative'],
+            $data['supplier_ruc']
+        );
     }
 
     private function buildDocumentNumber(?string $series, ?string $correlative): ?string

@@ -71,6 +71,10 @@ Route::get('petty-cash/approved-amount/configuration', [PettyCashApprovedAmountC
 Route::put('petty-cash/approved-amount', [PettyCashApprovedAmountController::class, 'update'])
     ->name('petty-cash.approved-amount.update');
 Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
+Route::get('petty-cash/expenses/check-document', [PettyCashController::class, 'checkExpenseDocument'])
+    ->name('petty-cash.expenses.check-document');
+Route::get('petty-cash/expenses/{expense}/detail', [PettyCashController::class, 'expenseDetail'])
+    ->name('petty-cash.expenses.detail');
 Route::put('petty-cash/expenses/{expense}', [PettyCashController::class, 'updateExpense'])->name('petty-cash.expenses.update');
 Route::delete('petty-cash/expenses/{expense}', [PettyCashController::class, 'destroyExpense'])->name('petty-cash.expenses.destroy');
 Route::get('petty-cash/pending-expenses', [PettyCashController::class, 'pendingExpenses'])->name('petty-cash.expenses.pending');
