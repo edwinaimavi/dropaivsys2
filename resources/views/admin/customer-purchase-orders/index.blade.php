@@ -53,12 +53,22 @@
                     class="btn btn-outline-secondary btn-sm mb-2"
                     aria-pressed="false">
                     <i class="fas fa-eye mr-1"></i>
-                    Mostrar Todos
+                    Mostrar atendidas/finalizadas
                 </button>
             </div>
         </div>
 
         <div class="card-body pt-2">
+            <div class="customer-order-status-filters mb-3" role="group" aria-label="Filtrar órdenes por estado">
+                <button type="button" class="customer-order-filter is-active" data-status-filter="active">Activas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="registered">Registradas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="in_purchase">En compra</button>
+                <button type="button" class="customer-order-filter" data-status-filter="partial_entered">Ingreso parcial</button>
+                <button type="button" class="customer-order-filter" data-status-filter="attended">Atendidas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="entered">Abastecidas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="overdue">Vencidas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="all">Todas</button>
+            </div>
             <div class="table-responsive">
                 <table id="tableCustomerPurchaseOrder" class="table table-hover align-middle text-center w-100">
                     <thead class="bg-light">
@@ -228,6 +238,15 @@
         .delivery-period-info .delivery-period-badge { color: #075985; background: #e0f2fe; }
         .delivery-period-muted { border-color: #9ca3af; background: #f8fafc; text-align: center; }
         .delivery-period-muted .delivery-period-badge { color: #4b5563; background: #e5e7eb; }
+        .delivery-period-completed { border-color:#86b99f;background:#f3f8f5 }
+        .delivery-period-completed .delivery-period-badge { color:#35634d;background:#dfeee5 }
+        .delivery-period-note{display:block;margin-top:4px;color:#718078;font-size:10px!important;font-weight:600;line-height:1.3}
+        .customer-order-status-filters{display:flex;gap:7px;overflow-x:auto;padding:3px 1px 7px;scrollbar-width:thin}
+        .customer-order-filter{flex:0 0 auto;padding:6px 11px;border:1px solid #dfe7e4;border-radius:999px;background:#fff;color:#61716b;font-size:10.5px;font-weight:750;transition:.18s}
+        .customer-order-filter:hover{border-color:#9fcdbb;background:#f1faf6;color:#176348}
+        .customer-order-filter.is-active{border-color:#16845f;background:#16845f;color:#fff;box-shadow:0 7px 16px rgba(22,132,95,.18)}
+        .customer-order-filter:focus{outline:0;box-shadow:0 0 0 3px rgba(22,132,95,.16)}
+        @media(max-width:575px){.customer-order-status-filters{margin-left:-4px;margin-right:-4px}.customer-order-filter{padding:5px 9px;font-size:10px}}
 
         .breadcrumb {
             margin-bottom: 0;

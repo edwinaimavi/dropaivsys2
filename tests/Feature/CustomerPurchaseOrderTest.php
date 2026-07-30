@@ -2,9 +2,25 @@
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
     $this->user = User::factory()->create();
+    $this->user->forceFill(['dni' => '12345678'])->save();
+    $permissions = [
+        'admin.customer-purchase-orders.index',
+        'admin.customer-purchase-orders.load-items',
+        'admin.customer-purchase-orders.store',
+        'admin.customer-purchase-orders.update',
+        'admin.customer-purchase-orders.destroy',
+        'admin.customer-purchase-orders.show',
+    ];
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo($permissions);
     $now = now();
 
     $this->companyId = DB::table('companies')->insertGetId([
@@ -314,6 +330,54 @@ test('deleting one of multiple active orders keeps quote approved', function () 
         'id' => $this->quoteId,
         'status' => 'approved',
     ]);
+});
+
+test('filters active and attended orders and only marks active overdue orders as expired', function () {
+    $this->actingAs($this->user);
+
+    $activeId = createCustomerPurchaseOrderForDestroyTest($this, 'P-ACTIVE');
+    DB::table('customer_purchase_orders')->where('id', $activeId)->update([
+        'delivery_start_date' => today()->subDays(8)->toDateString(),
+        'delivery_end_date' => today()->subDays(3)->toDateString(),
+        'delivery_days' => 5,
+        'status' => 'registered',
+    ]);
+
+    $attendedId = createCustomerPurchaseOrderForDestroyTest($this, 'P-ATTENDED');
+    DB::table('customer_purchase_orders')->where('id', $attendedId)->update([
+        'delivery_start_date' => today()->subDays(10)->toDateString(),
+        'delivery_end_date' => today()->subDays(5)->toDateString(),
+        'delivery_days' => 5,
+        'status' => 'attended',
+        'attention_closed_at' => today()->subDay(),
+        'updated_at' => today()->subDay(),
+    ]);
+
+    $activeResponse = $this->getJson(route('admin.customer-purchase-orders.list', ['status_filter' => 'active']))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.code', 'P-ACTIVE')
+        ->assertSee('delivery-period-danger', false);
+    expect($activeResponse->json('data.0.delivery_period'))->toContain('Vencido hace 3 días');
+
+    $attendedResponse = $this->getJson(route('admin.customer-purchase-orders.list', ['status_filter' => 'attended']))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.code', 'P-ATTENDED')
+        ->assertSee('delivery-period-completed', false)
+        ->assertDontSee('delivery-period-danger', false);
+    expect($attendedResponse->json('data.0.delivery_period'))
+        ->toContain('Atendida')
+        ->toContain('Regularizado con 4 días de atraso');
+
+    $this->getJson(route('admin.customer-purchase-orders.list', ['status_filter' => 'overdue']))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.code', 'P-ACTIVE');
+
+    $this->getJson(route('admin.customer-purchase-orders.list', ['status_filter' => 'all']))
+        ->assertOk()
+        ->assertJsonCount(2, 'data');
 });
 
 test('deleting last order marks an expired quote as expired', function () {

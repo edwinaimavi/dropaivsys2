@@ -33,6 +33,20 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class CustomerPurchaseOrderController extends Controller
 {
+    private const ACTIVE_STATUSES = [
+        'approved',
+        self::STATUS_REGISTERED,
+        self::STATUS_IN_PURCHASE,
+        self::STATUS_PARTIAL_ENTERED,
+    ];
+    private const FINAL_STATUSES = [
+        self::STATUS_ENTERED,
+        self::STATUS_ATTENDED,
+        self::STATUS_NOT_ATTENDED,
+        self::STATUS_CANCELLED,
+        self::STATUS_DELIVERED,
+        self::STATUS_INVOICED,
+    ];
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_IN_PURCHASE = 'in_purchase';
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
@@ -156,23 +170,38 @@ class CustomerPurchaseOrderController extends Controller
                 },
             ]);
 
-        if (! $request->boolean('show_all')) {
-            $orders->whereNotIn('status', [
-                self::STATUS_ATTENDED,
-                self::STATUS_NOT_ATTENDED,
-            ]);
-        }
-
         $today = today()->toDateString();
+        $statusFilter = (string) $request->input(
+            'status_filter',
+            $request->boolean('show_all') ? 'all' : 'active'
+        );
+
+        match ($statusFilter) {
+            'registered' => $orders->whereIn('status', ['approved', self::STATUS_REGISTERED]),
+            'in_purchase' => $orders->where('status', self::STATUS_IN_PURCHASE),
+            'partial_entered' => $orders->where('status', self::STATUS_PARTIAL_ENTERED),
+            'attended' => $orders->whereIn('status', [self::STATUS_ATTENDED, self::STATUS_NOT_ATTENDED]),
+            'entered' => $orders->where('status', self::STATUS_ENTERED),
+            'overdue' => $orders
+                ->whereIn('status', self::ACTIVE_STATUSES)
+                ->whereDate('delivery_end_date', '<', $today),
+            'all' => null,
+            default => $orders->whereIn('status', self::ACTIVE_STATUSES),
+        };
+
         $orders
             ->orderByRaw(
                 'CASE
-                    WHEN delivery_end_date IS NULL THEN 3
-                    WHEN delivery_end_date < ? THEN 0
-                    WHEN delivery_end_date >= ? THEN 1
-                    ELSE 2
+                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                        AND delivery_end_date < ? THEN 0
+                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                        AND delivery_end_date = ? THEN 1
+                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                        AND delivery_end_date > ? THEN 2
+                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered") THEN 3
+                    ELSE 4
                 END ASC',
-                [$today, $today]
+                [$today, $today, $today]
             )
             ->orderBy('delivery_end_date')
             ->orderByDesc('id');
@@ -371,9 +400,27 @@ class CustomerPurchaseOrderController extends Controller
         $dayLabel = fn (int $days) => $days === 1 ? 'día' : 'días';
         $visualState = 'success';
         $message = '';
+        $note = '';
 
-        if ($order->status === self::STATUS_ENTERED) {
-            $message = 'Entrega completada';
+        if (in_array($order->status, self::FINAL_STATUSES, true)) {
+            $visualState = 'completed';
+            $message = match ($order->status) {
+                self::STATUS_ENTERED => 'Entrega completada',
+                self::STATUS_ATTENDED => 'Atendida',
+                self::STATUS_NOT_ATTENDED => 'Atención cerrada',
+                self::STATUS_CANCELLED => 'Cancelada',
+                self::STATUS_DELIVERED => 'Entregada',
+                self::STATUS_INVOICED => 'Finalizada',
+                default => 'Finalizada',
+            };
+            $completedAt = $order->attention_closed_at ?? $order->updated_at;
+            if ($order->status !== self::STATUS_CANCELLED && $completedAt) {
+                $lateDays = (int) $end->copy()->startOfDay()
+                    ->diffInDays($completedAt->copy()->startOfDay(), false);
+                if ($lateDays > 0) {
+                    $note = "Regularizado con {$lateDays} {$dayLabel($lateDays)} de atraso";
+                }
+            }
         } elseif ($order->status === self::STATUS_PARTIAL_ENTERED) {
             if ($remainingDays < 0) {
                 $visualState = 'danger';
@@ -389,9 +436,6 @@ class CustomerPurchaseOrderController extends Controller
                 $visualState = 'info';
                 $message = "Ingreso parcial · vence en {$remainingDays} {$dayLabel($remainingDays)}";
             }
-        } elseif ($order->status === self::STATUS_CANCELLED) {
-            $visualState = 'muted';
-            $message = 'Cancelada';
         } elseif ($remainingDays < 0) {
             $visualState = 'danger';
             $expiredDays = abs($remainingDays);
@@ -412,13 +456,15 @@ class CustomerPurchaseOrderController extends Controller
                 <div><strong>Hasta:</strong> %s</div>
                 <div class="delivery-period-days"><strong>Plazo:</strong> %d %s calendario</div>
                 <span class="delivery-period-badge">%s</span>
+                %s
             </div>',
             $visualState,
             e($start->format('d/m/Y')),
             e($end->format('d/m/Y')),
             $configuredDays,
             $dayLabel($configuredDays),
-            e($message)
+            e($message),
+            $note !== '' ? '<small class="delivery-period-note">' . e($note) . '</small>' : ''
         );
     }
 

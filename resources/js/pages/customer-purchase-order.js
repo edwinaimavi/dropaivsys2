@@ -1,5 +1,5 @@
 let tableCustomerPurchaseOrder;
-let showAllCustomerPurchaseOrders = false;
+let customerPurchaseOrderStatusFilter = 'active';
 let purchaseOrderItemIndex = 0;
 let currentCustomerOrderItemRow = null;
 let quickBrandReturnTarget = 'row';
@@ -36,20 +36,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     initPurchaseOrderSelect2($('#customerPurchaseOrderModal'));
     initPurchaseOrderSelect2($('#quickCustomerModalForCustomerOrder'));
+    updateCustomerPurchaseOrderStatusFilters();
     initCustomerPurchaseOrderTable();
 
     $(document).on('click', '#btnToggleSuppliedOrders', function () {
-        showAllCustomerPurchaseOrders = !showAllCustomerPurchaseOrders;
-
-        $(this)
-            .toggleClass('btn-outline-secondary', !showAllCustomerPurchaseOrders)
-            .toggleClass('btn-primary', showAllCustomerPurchaseOrders)
-            .attr('aria-pressed', showAllCustomerPurchaseOrders ? 'true' : 'false')
-            .html(showAllCustomerPurchaseOrders
-                ? '<i class="fas fa-eye-slash mr-1"></i> Ocultar cerradas'
-                : '<i class="fas fa-eye mr-1"></i> Mostrar Todos');
-
+        customerPurchaseOrderStatusFilter = customerPurchaseOrderStatusFilter === 'all' ? 'active' : 'all';
+        updateCustomerPurchaseOrderStatusFilters();
         tableCustomerPurchaseOrder.ajax.reload(null, false);
+    });
+    $(document).on('click', '.customer-order-filter', function () {
+        customerPurchaseOrderStatusFilter = String($(this).data('status-filter') || 'active');
+        updateCustomerPurchaseOrderStatusFilters();
+        tableCustomerPurchaseOrder.ajax.reload();
     });
 
     $(document).on('click', '.closeCustomerPurchaseOrderAttention', function () {
@@ -370,7 +368,7 @@ function initCustomerPurchaseOrderTable() {
         ajax: {
             url: window.routes.customerPurchaseOrderList,
             data: function (data) {
-                data.show_all = showAllCustomerPurchaseOrders ? 1 : 0;
+                data.status_filter = customerPurchaseOrderStatusFilter;
             }
         },
         columns: [
@@ -437,6 +435,23 @@ function initCustomerPurchaseOrderTable() {
             $('[data-toggle="tooltip"]').tooltip();
         }
     });
+}
+
+function updateCustomerPurchaseOrderStatusFilters() {
+    const showingAll = customerPurchaseOrderStatusFilter === 'all';
+    $('.customer-order-filter')
+        .removeClass('is-active')
+        .attr('aria-pressed', 'false')
+        .filter(`[data-status-filter="${customerPurchaseOrderStatusFilter}"]`)
+        .addClass('is-active')
+        .attr('aria-pressed', 'true');
+    $('#btnToggleSuppliedOrders')
+        .toggleClass('btn-outline-secondary', !showingAll)
+        .toggleClass('btn-primary', showingAll)
+        .attr('aria-pressed', showingAll ? 'true' : 'false')
+        .html(showingAll
+            ? '<i class="fas fa-eye-slash mr-1"></i> Ocultar atendidas/finalizadas'
+            : '<i class="fas fa-eye mr-1"></i> Mostrar atendidas/finalizadas');
 }
 
 function initPurchaseOrderSelect2(scope) {
