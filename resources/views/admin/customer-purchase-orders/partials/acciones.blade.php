@@ -1,35 +1,62 @@
-<div class="btn-group shadow-sm" role="group" aria-label="Acciones">
+<div class="customer-order-main-actions" role="group" aria-label="Acciones de la orden">
     @can('admin.customer-purchase-orders.show')
-    <button type="button" class="btn btn-outline-info btn-sm viewCustomerPurchaseOrder"
-        data-id="{{ $order->id }}" data-toggle="tooltip" title="Ver orden">
-        <i class="fas fa-eye"></i>
-    </button>
-    <a href="{{ route('admin.customer-purchase-orders.pdf', $order) }}" target="_blank" rel="noopener"
-        class="btn btn-outline-secondary btn-sm" data-toggle="tooltip" title="Ver PDF">
-        <i class="fas fa-file-pdf"></i>
-    </a>
+        <button type="button" class="btn btn-sm btn-success viewCustomerPurchaseOrder"
+            data-id="{{ $order->id }}" title="Ver detalle de la orden">
+            <i class="fas fa-eye mr-1" aria-hidden="true"></i> Ver
+        </button>
     @endcan
 
-    @can('admin.customer-purchase-orders.update')
-    @if ($order->status === \App\Models\CustomerPurchaseOrder::STATUS_ENTERED)
-    <button type="button" class="btn btn-outline-success btn-sm closeCustomerPurchaseOrderAttention"
-        data-id="{{ $order->id }}" data-code="{{ $order->code }}"
-        data-toggle="tooltip" title="Cerrar atención">
-        <i class="fas fa-clipboard-check"></i>
-        <span class="ml-1">Cerrar atención</span>
-    </button>
-    @endif
+    @canany(['admin.customer-purchase-orders.show', 'admin.customer-purchase-orders.update', 'admin.customer-purchase-orders.destroy'])
+    <div class="dropdown customer-order-actions-dropdown">
+        <button type="button"
+            class="btn btn-sm btn-light border dropdown-toggle customer-order-actions-trigger"
+            data-toggle="dropdown" data-boundary="window" data-display="static"
+            aria-haspopup="true" aria-expanded="false">
+            <i class="fas fa-ellipsis-v mr-1" aria-hidden="true"></i> Acciones
+        </button>
 
-    <button type="button" class="btn btn-outline-primary btn-sm editCustomerPurchaseOrder"
-        data-id="{{ $order->id }}" data-toggle="tooltip" title="Editar orden">
-        <i class="fas fa-pen"></i>
-    </button>
-    @endcan
+        <div class="dropdown-menu dropdown-menu-right customer-order-actions-menu">
+            @can('admin.customer-purchase-orders.update')
+                <h6 class="dropdown-header">Acciones operativas</h6>
+                <button type="button" class="dropdown-item editCustomerPurchaseOrder"
+                    data-id="{{ $order->id }}">
+                    <i class="fas fa-pen text-primary" aria-hidden="true"></i> Editar orden
+                </button>
+            @endcan
 
-    @can('admin.customer-purchase-orders.destroy')
-    <button type="button" class="btn btn-outline-danger btn-sm deleteCustomerPurchaseOrder"
-        data-id="{{ $order->id }}" data-toggle="tooltip" title="Eliminar orden">
-        <i class="fas fa-trash"></i>
-    </button>
-    @endcan
+            @can('admin.customer-purchase-orders.show')
+                @can('admin.customer-purchase-orders.update')
+                    <div class="dropdown-divider"></div>
+                @endcan
+                <h6 class="dropdown-header">Documentos</h6>
+                <a href="{{ route('admin.customer-purchase-orders.pdf', $order) }}"
+                    target="_blank" rel="noopener" class="dropdown-item">
+                    <i class="fas fa-file-pdf text-danger" aria-hidden="true"></i> Ver PDF
+                </a>
+            @endcan
+
+            @canany(['admin.customer-purchase-orders.update', 'admin.customer-purchase-orders.destroy'])
+                <div class="dropdown-divider"></div>
+                <h6 class="dropdown-header">Cierre / anulación</h6>
+
+                @can('admin.customer-purchase-orders.update')
+                    @if ($order->status === \App\Models\CustomerPurchaseOrder::STATUS_ENTERED)
+                        <button type="button" class="dropdown-item closeCustomerPurchaseOrderAttention"
+                            data-id="{{ $order->id }}" data-code="{{ $order->code }}">
+                            <i class="fas fa-clipboard-check text-success" aria-hidden="true"></i>
+                            Cerrar atención
+                        </button>
+                    @endif
+                @endcan
+
+                @can('admin.customer-purchase-orders.destroy')
+                    <button type="button" class="dropdown-item text-danger deleteCustomerPurchaseOrder"
+                        data-id="{{ $order->id }}">
+                        <i class="fas fa-trash" aria-hidden="true"></i> Eliminar orden
+                    </button>
+                @endcan
+            @endcanany
+        </div>
+    </div>
+    @endcanany
 </div>

@@ -435,6 +435,97 @@ function initCustomerPurchaseOrderTable() {
             $('[data-toggle="tooltip"]').tooltip();
         }
     });
+
+    const positionCustomerOrderActionsMenu = dropdown => {
+        const container = $(dropdown);
+        const button = container.find('.customer-order-actions-trigger').get(0);
+        const menu = container.data('customerOrderActionsMenu')
+            || container.find('.customer-order-actions-menu');
+        if (!button || !menu.length) return;
+
+        const buttonRect = button.getBoundingClientRect();
+        const viewportPadding = 12;
+        const menuGap = 6;
+        menu.css({
+            display: 'block',
+            visibility: 'hidden',
+            maxHeight: `${window.innerHeight - (viewportPadding * 2)}px`
+        });
+
+        const menuWidth = Math.min(menu.outerWidth(), window.innerWidth - (viewportPadding * 2));
+        const naturalMenuHeight = menu.outerHeight();
+        const spaceBelow = Math.max(0, window.innerHeight - buttonRect.bottom - viewportPadding - menuGap);
+        const spaceAbove = Math.max(0, buttonRect.top - viewportPadding - menuGap);
+        const openUp = naturalMenuHeight > spaceBelow && spaceAbove > spaceBelow;
+        const availableHeight = Math.max(80, openUp ? spaceAbove : spaceBelow);
+        const menuLeft = Math.min(
+            Math.max(viewportPadding, buttonRect.right - menuWidth),
+            window.innerWidth - menuWidth - viewportPadding
+        );
+
+        container.toggleClass('dropup', openUp);
+        menu.css('max-height', `${availableHeight}px`);
+        const renderedMenuHeight = menu.outerHeight();
+        const menuTop = openUp
+            ? Math.max(viewportPadding, buttonRect.top - renderedMenuHeight - menuGap)
+            : Math.min(buttonRect.bottom + menuGap, window.innerHeight - renderedMenuHeight - viewportPadding);
+
+        const menuElement = menu.get(0);
+        menuElement.style.setProperty('--customer-order-menu-top', `${menuTop}px`);
+        menuElement.style.setProperty('--customer-order-menu-left', `${menuLeft}px`);
+        menu.css('visibility', 'visible');
+    };
+
+    const portalCustomerOrderActionsMenu = dropdown => {
+        const container = $(dropdown);
+        const menu = container.find('.customer-order-actions-menu');
+        if (!menu.length) return;
+
+        container.data('customerOrderActionsMenu', menu);
+        menu.data('customerOrderActionsOwner', container)
+            .addClass('customer-order-actions-portal')
+            .appendTo(document.body);
+        positionCustomerOrderActionsMenu(dropdown);
+    };
+
+    const restoreCustomerOrderActionsMenu = dropdown => {
+        const container = $(dropdown);
+        const menu = container.data('customerOrderActionsMenu');
+        if (!menu || !menu.length) return;
+
+        menu.removeClass('customer-order-actions-portal')
+            .removeAttr('style')
+            .removeData('customerOrderActionsOwner')
+            .appendTo(container);
+        container.removeData('customerOrderActionsMenu').removeClass('dropup');
+    };
+
+    $('#tableCustomerPurchaseOrder')
+        .on('show.bs.dropdown', '.customer-order-actions-dropdown', function () {
+            $(this).closest('.table-responsive').addClass('customer-order-dropdown-is-open');
+            portalCustomerOrderActionsMenu(this);
+        })
+        .on('shown.bs.dropdown', '.customer-order-actions-dropdown', function () {
+            positionCustomerOrderActionsMenu(this);
+        })
+        .on('hidden.bs.dropdown', '.customer-order-actions-dropdown', function () {
+            restoreCustomerOrderActionsMenu(this);
+            $(this).closest('.table-responsive').removeClass('customer-order-dropdown-is-open');
+        })
+        .on('preDraw.dt', function () {
+            $(this).find('.customer-order-actions-trigger[aria-expanded="true"]').dropdown('hide');
+        });
+
+    $(document)
+        .off('click.customerOrderActionsMenu', '.customer-order-actions-menu .dropdown-item')
+        .on('click.customerOrderActionsMenu', '.customer-order-actions-menu .dropdown-item', function () {
+            const owner = $(this).closest('.customer-order-actions-menu').data('customerOrderActionsOwner');
+            owner?.find('.customer-order-actions-trigger').dropdown('hide');
+        });
+
+    $(window).on('resize.customerOrderActions scroll.customerOrderActions', function () {
+        $('#tableCustomerPurchaseOrder .customer-order-actions-trigger[aria-expanded="true"]').dropdown('hide');
+    });
 }
 
 function updateCustomerPurchaseOrderStatusFilters() {

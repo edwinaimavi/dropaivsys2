@@ -248,6 +248,19 @@
         .customer-order-filter:focus{outline:0;box-shadow:0 0 0 3px rgba(22,132,95,.16)}
         @media(max-width:575px){.customer-order-status-filters{margin-left:-4px;margin-right:-4px}.customer-order-filter{padding:5px 9px;font-size:10px}}
 
+        .customer-order-main-actions{position:relative;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+        .customer-order-main-actions>.btn,.customer-order-actions-trigger{height:31px;border-radius:8px;font-size:.68rem;font-weight:800}
+        .customer-order-actions-trigger:after{display:none}
+        .customer-order-actions-menu{z-index:3000!important;min-width:220px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);padding:7px;overflow-x:hidden;overflow-y:auto;border:1px solid #e0e7e4;border-radius:12px;box-shadow:0 14px 35px rgba(15,23,42,.16);overscroll-behavior:contain}
+        .customer-order-actions-menu.customer-order-actions-portal{position:fixed!important;top:var(--customer-order-menu-top,0)!important;left:var(--customer-order-menu-left,0)!important;right:auto!important;bottom:auto!important;margin:0!important;transform:none!important;will-change:auto!important}
+        .customer-order-actions-menu .dropdown-header{padding:5px 9px;color:#96a09c;font-size:.52rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+        .customer-order-actions-menu .dropdown-item{display:flex;gap:7px;align-items:center;padding:7px 9px;border:0;border-radius:7px;background:transparent;color:#42534d;font-size:.67rem}
+        .customer-order-actions-menu .dropdown-item i{width:20px;margin-right:0;text-align:center}
+        .customer-order-actions-menu .dropdown-item:hover,.customer-order-actions-menu .dropdown-item:focus{background:#f0f7f4;color:#205f49}
+        .customer-order-actions-menu .dropdown-item.text-danger:hover,.customer-order-actions-menu .dropdown-item.text-danger:focus{background:#fff1f2;color:#b42318!important}
+        .customer-order-actions-menu .dropdown-divider{margin:5px 0;border-color:#edf1ef}
+        .table-responsive.customer-order-dropdown-is-open{overflow:visible!important}
+
         .breadcrumb {
             margin-bottom: 0;
         }
