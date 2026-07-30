@@ -264,7 +264,7 @@
 
             supplierSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}",
 
-            supplierConsultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
+            supplierConsultarRuc: "{{ url('admin/document-lookup/ruc') }}",
 
             supplierByRuc: "{{ url('admin/suppliers/by-ruc') }}",
 

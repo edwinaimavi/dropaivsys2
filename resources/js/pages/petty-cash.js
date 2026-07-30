@@ -935,12 +935,42 @@ $(function () {
         expensePreviewUrls = [];
     });
 
-    $('#pce_supplier_ruc').on('blur', function () {
-        const ruc = this.value.trim(); if (ruc.length !== 11) return;
-        api({ url: `${app.data('ruc-url')}/${ruc}`, method: 'GET' }).done(response => {
-            const data = response.data || response;
-            $('#pce_supplier_name').val(data.razonSocial || data.razon_social || data.nombre_o_razon_social || data.name || '');
-        });
+    let supplierRucRequest = null;
+    $('#pce_supplier_ruc').on('input', function () {
+        this.value = this.value.replace(/\D/g, '').slice(0, 11);
+        $('#pce_supplier_ruc_status').removeClass('text-success text-danger text-muted').text('');
+    }).on('blur', function () {
+        const ruc = this.value.trim();
+        const status = $('#pce_supplier_ruc_status');
+        if (!ruc) return;
+        if (ruc.length !== 11) {
+            status.addClass('text-danger').text('Ingrese un RUC válido de 11 dígitos.');
+            return;
+        }
+
+        if (supplierRucRequest) supplierRucRequest.abort();
+        $('#pce_supplier_ruc_loading').removeClass('d-none');
+        status.removeClass('text-success text-danger').addClass('text-muted').text('Consultando RUC...');
+        supplierRucRequest = api({ url: `${app.data('ruc-url')}/${ruc}`, method: 'GET' })
+            .done(response => {
+                const data = response.data || response;
+                const businessName = response.razon_social || data.razonSocial || data.razon_social || data.nombre || data.nombre_o_razon_social || data.name || '';
+                if (businessName) {
+                    $('#pce_supplier_name').val(businessName).trigger('change');
+                    status.removeClass('text-muted text-danger').addClass('text-success').text('Razón social encontrada.');
+                }
+            })
+            .fail(xhr => {
+                if (xhr.statusText === 'abort') return;
+                status.removeClass('text-muted text-success').addClass('text-danger').text(
+                    xhr.responseJSON?.message || 'No se pudo consultar el RUC. Verifique la configuración del servicio o complete manualmente.'
+                );
+                $('#pce_supplier_name').prop('readonly', false);
+            })
+            .always(() => {
+                supplierRucRequest = null;
+                $('#pce_supplier_ruc_loading').addClass('d-none');
+            });
     });
 
     $('#pettyCashExpenseForm').on('submit', function (event) {

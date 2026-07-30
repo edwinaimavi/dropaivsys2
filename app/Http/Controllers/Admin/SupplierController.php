@@ -8,6 +8,8 @@ use App\Models\Currency;
 use App\Models\Supplier;
 use App\Models\SupplierAccount;
 use App\Models\Ubigeo;
+use App\Services\DocumentLookupException;
+use App\Services\DocumentLookupService;
 
 use Illuminate\Http\Request;
 
@@ -761,7 +763,7 @@ class SupplierController extends Controller
     }
 
 
-    public function consultarRuc($numero)
+    public function consultarRuc(string $numero, DocumentLookupService $documentLookup)
     {
         if (!preg_match('/^\d+$/', $numero)) {
             return response()->json([
@@ -777,86 +779,29 @@ class SupplierController extends Controller
             ], 422);
         }
 
-        $token = 'apis-token-7645.70qIyk7rGHUBVYCLNlcITcM1fo-mBqvp'; // mejor en .env, no hardcodeado
-
-        $curl = curl_init();
-        curl_setopt_array($curl, [
-            CURLOPT_URL => 'https://api.apis.net.pe/v2/sunat/ruc?numero=' . $numero,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_ENCODING => '',
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => 0,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_CUSTOMREQUEST => 'GET',
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json',
-                'Authorization: Bearer ' . $token,
-            ],
-        ]);
-
-        $response = curl_exec($curl);
-
-        if ($response === false) {
-            $error = curl_error($curl);
-            curl_close($curl);
-
+        try {
+            $empresa = $documentLookup->lookupRuc($numero);
+        } catch (DocumentLookupException $exception) {
             return response()->json([
                 'status'  => false,
-                'message' => 'Error al conectar con el servicio de RUC.',
-                'error'   => $error,
-            ], 500);
+                'message' => $exception->getMessage(),
+            ], $exception->httpStatus());
         }
 
-        curl_close($curl);
-        $empresa = json_decode($response);
-
-        // VALIDAR SI NO EXISTE
-        if (
-            !$empresa ||
-            isset($empresa->error) ||
-            (
-                empty($empresa->nombre) &&
-                empty($empresa->razonSocial)
-            )
-        ) {
-
-            return response()->json([
-                'status'  => false,
-                'message' => 'El RUC ingresado no existe.',
-                'data'    => $empresa
-            ], 404);
-        }
+        $businessName = $empresa['nombre'] ?? $empresa['razonSocial'] ?? $empresa['razon_social'] ?? '';
+        $address = $empresa['direccion'] ?? $empresa['domicilioFiscal'] ?? '';
+        $location = collect([
+            $empresa['distrito'] ?? null,
+            $empresa['provincia'] ?? null,
+            $empresa['departamento'] ?? null,
+        ])->filter()->implode(' - ');
 
         return response()->json([
             'status'       => true,
             'type'         => 'RUC',
             'data'         => $empresa,
-            'razon_social' => $empresa->nombre
-                ?? $empresa->razonSocial
-                ?? '',
-            'direccion' => trim(
-
-                ($empresa->direccion ?? $empresa->domicilioFiscal ?? '')
-
-                    .
-
-                    (
-                        !empty($empresa->distrito)
-                        || !empty($empresa->provincia)
-                        || !empty($empresa->departamento)
-
-                        ? ' - ' .
-                        collect([
-                            $empresa->distrito ?? null,
-                            $empresa->provincia ?? null,
-                            $empresa->departamento ?? null
-                        ])->filter()->implode(' - ')
-
-                        : ''
-                    )
-
-            ),
+            'razon_social' => $businessName,
+            'direccion' => trim($address . ($location !== '' ? ' - ' . $location : '')),
         ]);
     }
 

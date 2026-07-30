@@ -18,6 +18,12 @@ return [
         'token' => env('POSTMARK_TOKEN'),
     ],
 
+    'apisperu' => [
+        'token' => env('APISPERU_TOKEN'),
+        'base_url' => env('APISPERU_BASE_URL', 'https://dniruc.apisperu.com/api/v1'),
+        'timeout' => (int) env('APISPERU_TIMEOUT', 15),
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),

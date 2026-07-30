@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DocumentLookupController;
 use App\Http\Controllers\Admin\ElectronicInvoiceApiLogController;
 use App\Http\Controllers\Admin\ElectronicInvoiceCatalogController;
 use App\Http\Controllers\Admin\ElectronicInvoiceController;
@@ -44,6 +45,15 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
+Route::prefix('document-lookup')->name('document-lookup.')->group(function () {
+    Route::get('ruc/{ruc}', [DocumentLookupController::class, 'ruc'])
+        ->where('ruc', '[0-9]+')
+        ->name('ruc');
+    Route::get('dni/{dni}', [DocumentLookupController::class, 'dni'])
+        ->where('dni', '[0-9]+')
+        ->name('dni');
+});
+
 Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateTheme'])
     ->name('user-preferences.theme.update');
 
@@ -51,6 +61,9 @@ Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty
 Route::get('petty-cash/previous-balance', [PettyCashController::class, 'previousBalance'])->name('petty-cash.previous-balance');
 Route::get('petty-cash/source-companies/{company}/bank-accounts', [PettyCashController::class, 'sourceBankAccounts'])
     ->name('petty-cash.source-bank-accounts');
+Route::get('petty-cash/consult-supplier-ruc/{ruc}', [PettyCashController::class, 'consultSupplierRuc'])
+    ->where('ruc', '[0-9]{11}')
+    ->name('petty-cash.consult-supplier-ruc');
 Route::get('petty-cash/approved-amount/active', [PettyCashApprovedAmountController::class, 'active'])
     ->name('petty-cash.approved-amount.active');
 Route::get('petty-cash/approved-amount/configuration', [PettyCashApprovedAmountController::class, 'show'])

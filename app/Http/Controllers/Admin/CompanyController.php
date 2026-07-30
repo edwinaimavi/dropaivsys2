@@ -184,6 +184,8 @@ class CompanyController extends Controller
 
     public function consultarRuc(string $numero)
     {
+        return app(DocumentLookupController::class)->ruc($numero);
+
         if (!preg_match('/^\d+$/', $numero)) {
             return response()->json([
                 'status' => false,
@@ -208,7 +210,7 @@ class CompanyController extends Controller
             ], 422);
         }
 
-        $token = env('APIS_PERU_TOKEN', 'apis-token-7645.70qIyk7rGHUBVYCLNlcITcM1fo-mBqvp');
+        $token = config('services.apis_peru.token');
         $curl = curl_init();
 
         curl_setopt_array($curl, [

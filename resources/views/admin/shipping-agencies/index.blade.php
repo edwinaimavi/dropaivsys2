@@ -146,7 +146,7 @@
             shippingAgencyShow: "{{ url('admin/shipping-agencies') }}",
             shippingAgencyUpdate: "{{ url('admin/shipping-agencies') }}",
             shippingAgencyDelete: "{{ url('admin/shipping-agencies') }}",
-            consultarRucShippingAgency: "{{ url('admin/shipping-agencies/consultar-ruc') }}",
+            consultarRucShippingAgency: "{{ url('admin/document-lookup/ruc') }}",
         });
     </script>
     @vite(['resources/js/pages/shipping-agency.js'])

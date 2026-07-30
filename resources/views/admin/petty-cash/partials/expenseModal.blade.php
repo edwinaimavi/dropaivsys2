@@ -56,7 +56,16 @@
                                     <div><h6>Datos del proveedor</h6><small>Consulta automática mediante el RUC</small></div>
                                 </div>
                                 <div class="form-row">
-                                    <div class="form-group col-md-4"><label>RUC proveedor</label><input name="supplier_ruc" id="pce_supplier_ruc" class="form-control" maxlength="11" inputmode="numeric" placeholder="11 dígitos"></div>
+                                    <div class="form-group col-md-4">
+                                        <label>RUC proveedor</label>
+                                        <div class="input-group">
+                                            <input name="supplier_ruc" id="pce_supplier_ruc" class="form-control" maxlength="11" inputmode="numeric" placeholder="11 dígitos">
+                                            <div class="input-group-append">
+                                                <span id="pce_supplier_ruc_loading" class="input-group-text d-none" aria-label="Consultando RUC"><i class="fas fa-spinner fa-spin"></i></span>
+                                            </div>
+                                        </div>
+                                        <small id="pce_supplier_ruc_status" class="form-text"></small>
+                                    </div>
                                     <div class="form-group col-md-8"><label>Proveedor *</label><input name="supplier_name" id="pce_supplier_name" class="form-control text-uppercase" required placeholder="Razón social"></div>
                                 </div>
                             </section>

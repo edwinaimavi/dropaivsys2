@@ -2267,7 +2267,9 @@ function consultQuickCustomerDocument(documentType, number) {
 
     $('#quickCustomerDocumentLoading').removeClass('d-none');
 
-    const url = window.routes.quoteCustomerDocumentConsult.replace('DOC_PLACEHOLDER', number);
+    const url = window.routes.quoteCustomerDocumentConsult
+        .replace('TYPE_PLACEHOLDER', documentType.toLowerCase())
+        .replace('DOC_PLACEHOLDER', number);
 
     $.ajax({
         url: url,

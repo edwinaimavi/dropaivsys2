@@ -251,7 +251,7 @@
             customerPurchaseOrderCustomersQuickStore: "{{ route('admin.customer-purchase-orders.customers.quick-store') }}",
             customerPurchaseOrderSellerUser: "{{ url('admin/customer-purchase-orders/seller-user') }}",
             customerPurchaseOrderCloseAttention: "{{ url('admin/customer-purchase-orders') }}",
-            customerPurchaseOrderCustomerDocumentConsult: "{{ route('admin.customers.consultar', ['numero' => 'DOC_PLACEHOLDER']) }}",
+            customerPurchaseOrderCustomerDocumentConsult: "{{ url('admin/document-lookup/TYPE_PLACEHOLDER/DOC_PLACEHOLDER') }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
             quickStorePresentation: "{{ route('admin.presentations.quick-store') }}",

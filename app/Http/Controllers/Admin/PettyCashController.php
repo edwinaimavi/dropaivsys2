@@ -14,6 +14,8 @@ use App\Models\PettyCashApprovedAmount;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
 use App\Models\PettyCashReplenishment;
+use App\Services\DocumentLookupException;
+use App\Services\DocumentLookupService;
 use App\Services\PettyCashCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -70,6 +72,41 @@ class PettyCashController extends Controller
             'defaultCurrencyId',
             'banks'
         ));
+    }
+
+    public function consultSupplierRuc(string $ruc, DocumentLookupService $documentLookup)
+    {
+        $user = Auth::user();
+        abort_unless(
+            $user?->can('admin.petty-cash.expenses.store')
+                || $user?->can('admin.petty-cash.expenses.update'),
+            403
+        );
+
+        if (!preg_match('/^\d{11}$/', $ruc)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'El RUC debe tener 11 dígitos.',
+            ], 422);
+        }
+
+        try {
+            $company = $documentLookup->lookupRuc($ruc);
+        } catch (DocumentLookupException $exception) {
+            return response()->json([
+                'status' => false,
+                'message' => $exception->getMessage(),
+            ], $exception->httpStatus());
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => $company,
+            'razon_social' => $company['nombre']
+                ?? $company['razonSocial']
+                ?? $company['razon_social']
+                ?? '',
+        ]);
     }
 
     public function list()

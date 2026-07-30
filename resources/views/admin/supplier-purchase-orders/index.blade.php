@@ -580,11 +580,11 @@
             supplierOrderShippingAgencyContacts: "{{ url('admin/shipping-agencies/:id/contacts') }}",
             supplierOrderShippingBranchContacts: "{{ url('admin/shipping-agency-branches/:id/contacts') }}",
             shippingAgencyStore: "{{ route('admin.shipping-agencies.store') }}",
-            shippingAgencySearchRuc: "{{ url('admin/shipping-agencies/consultar-ruc') }}",
+            shippingAgencySearchRuc: "{{ url('admin/document-lookup/ruc') }}",
             supplierQuickStore: "{{ route('admin.suppliers.quick-store-with-account') }}",
             supplierQuickAccountStore: "{{ url('admin/suppliers/:id/quick-account') }}",
             supplierQuickByRuc: "{{ url('admin/suppliers/by-ruc') }}",
-            supplierQuickConsultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
+            supplierQuickConsultarRuc: "{{ url('admin/document-lookup/ruc') }}",
             supplierQuickSearchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}",
             supplierPurchaseOrderTrackings: "{{ url('admin/supplier-purchase-orders') }}",
             supplierPurchaseOrderTrackingEvents: "{{ url('admin/supplier-purchase-order-trackings') }}"

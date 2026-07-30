@@ -348,7 +348,7 @@
 
             searchUbigeo: "{{ route('admin.suppliers.searchUbigeo') }}",
 
-            consultarRuc: "{{ url('admin/suppliers/consultar-ruc') }}",
+            consultarRuc: "{{ url('admin/document-lookup/ruc') }}",
 
             supplierAccountsList: "{{ url('admin/supplier-accounts/list') }}",
 

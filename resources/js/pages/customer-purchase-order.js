@@ -608,6 +608,7 @@ function searchPurchaseOrderSellerDni() {
             }
 
             const externalUrl = window.routes.customerPurchaseOrderCustomerDocumentConsult
+                .replace('TYPE_PLACEHOLDER', 'dni')
                 .replace('DOC_PLACEHOLDER', dni);
             $.get(externalUrl)
                 .done(function (documentResponse) {
@@ -1129,7 +1130,9 @@ function consultQuickCustomerDocument(documentType, documentNumber) {
         quickCustomerDocumentRequest.abort();
     }
 
-    const url = window.routes.customerPurchaseOrderCustomerDocumentConsult.replace('DOC_PLACEHOLDER', documentNumber);
+    const url = window.routes.customerPurchaseOrderCustomerDocumentConsult
+        .replace('TYPE_PLACEHOLDER', documentType.toLowerCase())
+        .replace('DOC_PLACEHOLDER', documentNumber);
 
     $('#quickCustomerDocumentStatus')
         .removeClass('text-danger text-success')

@@ -218,6 +218,8 @@ class ShippingAgencyController extends Controller
 
     public function consultarRuc($numero)
     {
+        return app(DocumentLookupController::class)->ruc($numero);
+
         if (!preg_match('/^\d+$/', $numero)) {
             return response()->json([
                 'status'  => false,
@@ -260,7 +262,7 @@ class ShippingAgencyController extends Controller
             ]);
         }
 
-        $token = env('APIS_PERU_TOKEN', 'apis-token-7645.70qIyk7rGHUBVYCLNlcITcM1fo-mBqvp');
+        $token = config('services.apis_peru.token');
 
         $curl = curl_init();
 

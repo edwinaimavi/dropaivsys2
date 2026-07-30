@@ -332,7 +332,7 @@
 
             quoteCustomerQuickStore: "{{ route('admin.quotes.customers.quick-store') }}",
 
-            quoteCustomerDocumentConsult: "{{ route('admin.customers.consultar', 'DOC_PLACEHOLDER') }}",
+            quoteCustomerDocumentConsult: "{{ url('admin/document-lookup/TYPE_PLACEHOLDER/DOC_PLACEHOLDER') }}",
 
             generateQuoteNumber: "{{ route('admin.quotes.generateNumber') }}",
 

@@ -671,7 +671,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (numero.length !== 8 && numero.length !== 11) return;
 
-        let url = window.routes.consultarDocumento.replace('DOC_PLACEHOLDER', numero);
+        let url = window.routes.consultarDocumento
+            .replace('TYPE_PLACEHOLDER', numero.length === 8 ? 'dni' : 'ruc')
+            .replace('DOC_PLACEHOLDER', numero);
 
 
         // LOADER

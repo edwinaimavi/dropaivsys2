@@ -638,7 +638,7 @@
             companiesShow: "{{ url('admin/companies') }}",
             companiesUpdate: "{{ url('admin/companies') }}",
             companiesDelete: "{{ url('admin/companies') }}",
-            companiesConsultarRuc: "{{ url('admin/companies/consultar-ruc') }}",
+            companiesConsultarRuc: "{{ url('admin/document-lookup/ruc') }}",
             companyBankAccountsBase: "{{ url('admin/companies') }}"
         });
     </script>

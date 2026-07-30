@@ -217,7 +217,7 @@
              * CLIENTES
              * ========================== */
             customerList: "{{ route('admin.customers.list') }}",
-            consultarDocumento: "{{ route('admin.customers.consultar', 'DOC_PLACEHOLDER') }}",
+            consultarDocumento: "{{ url('admin/document-lookup/TYPE_PLACEHOLDER/DOC_PLACEHOLDER') }}",
             searchUbigeo: "{{ route('admin.customers.searchUbigeo') }}",
 
             /* ==========================

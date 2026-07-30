@@ -389,6 +389,10 @@ data-withholding_agent="' . e($customer->withholding_agent) . '"
 
     public function consultarDocumento($numero)
     {
+        return strlen($numero) === 8
+            ? app(DocumentLookupController::class)->dni($numero)
+            : app(DocumentLookupController::class)->ruc($numero);
+
 
         // Solo números
         if (!preg_match('/^\d+$/', $numero)) {
@@ -406,7 +410,7 @@ data-withholding_agent="' . e($customer->withholding_agent) . '"
             ], 422);
         }
 
-        $token = 'apis-token-7645.70qIyk7rGHUBVYCLNlcITcM1fo-mBqvp';
+        $token = config('services.apis_peru.token');
 
         // ========= DNI (8 dígitos) =========
         if (strlen($numero) === 8) {
