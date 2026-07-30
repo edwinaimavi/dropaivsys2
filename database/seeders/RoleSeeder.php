@@ -22,6 +22,10 @@ class RoleSeeder extends Seeder
             'name' => 'Vendedor',
             'guard_name' => 'web',
         ]);
+        $accountingRole = Role::firstOrCreate([
+            'name' => 'Contabilidad',
+            'guard_name' => 'web',
+        ]);
 
         foreach ($this->permissions() as $name => $description) {
             Permission::updateOrCreate(
@@ -40,6 +44,12 @@ class RoleSeeder extends Seeder
         Permission::where('guard_name', 'web')
             ->get()
             ->each(fn (Permission $permission) => $adminRole->givePermissionTo($permission));
+
+        $accountingRole->givePermissionTo(
+            Permission::findByName('admin.petty-cash.expense-documents.update', 'web')
+        );
+        $accountingRole->revokePermissionTo('admin.petty-cash.expenses.approve');
+        $accountingRole->revokePermissionTo('admin.petty-cash.expenses.observe');
     }
 
     private function permissions(): array
@@ -244,6 +254,7 @@ class RoleSeeder extends Seeder
             'admin.petty-cash.destroy' => 'Anular cajas chicas',
             'admin.petty-cash.expenses.store' => 'Registrar gastos de caja chica',
             'admin.petty-cash.expenses.update' => 'Actualizar gastos de caja chica',
+            'admin.petty-cash.expense-documents.update' => 'Editar comprobantes de caja chica',
             'admin.petty-cash.expenses.destroy' => 'Eliminar gastos de caja chica',
             'admin.petty-cash.expenses.approve' => 'Aprobar o rechazar gastos de caja chica',
             'admin.petty-cash.expenses.observe' => 'Observar gastos de caja chica',

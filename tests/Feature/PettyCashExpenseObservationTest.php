@@ -32,6 +32,7 @@ beforeEach(function () {
         'admin.petty-cash.store',
         'admin.petty-cash.expenses.store',
         'admin.petty-cash.expenses.update',
+        'admin.petty-cash.expense-documents.update',
         'admin.petty-cash.expenses.approve',
         'admin.petty-cash.expenses.observe',
     ] as $name) {
@@ -141,6 +142,49 @@ it('entrega la observación original para los modales administrativos y conserva
     $this->actingAs($unauthorized)
         ->getJson(route('admin.petty-cash.expenses.detail', $this->expense))
         ->assertForbidden();
+});
+
+it('separa la edición de comprobantes de los permisos administrativos', function () {
+    $accounting = User::factory()->create();
+    $accounting->givePermissionTo([
+        'admin.petty-cash.index',
+        'admin.petty-cash.show',
+        'admin.petty-cash.expenses.store',
+        'admin.petty-cash.expenses.update',
+        'admin.petty-cash.expense-documents.update',
+    ]);
+
+    expect($accounting->can('admin.petty-cash.expense-documents.update'))->toBeTrue()
+        ->and($accounting->can('admin.petty-cash.expenses.observe'))->toBeFalse()
+        ->and($accounting->can('admin.petty-cash.expenses.approve'))->toBeFalse();
+
+    $this->actingAs($accounting)
+        ->get(route('admin.petty-cash.index'))
+        ->assertOk()
+        ->assertSee('data-can-edit-expense-document="1"', false)
+        ->assertSee('id="pettyCashImageEditorModal"', false)
+        ->assertDontSee('Gastos por aprobar')
+        ->assertDontSee('id="btnPendingPettyCashExpenses"', false);
+
+    $this->getJson(route('admin.petty-cash.expenses.pending'))->assertForbidden();
+    $this->postJson(route('admin.petty-cash.expenses.observe', $this->expense), [
+        'observation' => 'No debe poder observar administrativamente este gasto.',
+    ])->assertForbidden();
+    $this->postJson(route('admin.petty-cash.expenses.approve', $this->expense))
+        ->assertForbidden();
+
+    $this->postJson(route('admin.petty-cash.expenses.store', $this->boxId), [
+        'expense_date' => '2026-07-03',
+        'supplier_name' => 'PROVEEDOR CONTABLE',
+        'concept' => 'GASTO OPERATIVO',
+        'amount' => 25,
+    ])->assertCreated();
+
+    $this->actingAs($this->creator)
+        ->get(route('admin.petty-cash.index'))
+        ->assertOk()
+        ->assertSee('Gastos por aprobar')
+        ->assertSee('id="btnPendingPettyCashExpenses"', false);
 });
 
 it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobación', function () {

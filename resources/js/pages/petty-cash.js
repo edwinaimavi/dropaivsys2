@@ -7,6 +7,7 @@ $(function () {
 
     const base = app.data('base-url');
     const csrf = $('meta[name="csrf-token"]').attr('content');
+    const canEditExpenseDocument = Boolean(app.data('can-edit-expense-document'));
     let currentBox = null;
     let table;
     let applyingPreviousBalance = false;
@@ -346,7 +347,7 @@ $(function () {
         const size = fileSize(source.file_size ?? source.size);
         const actions = isExisting
             ? `<a href="${source.view_url}" target="_blank" class="petty-receipt-action is-view" title="Abrir comprobante"><i class="fas fa-external-link-alt"></i></a><button type="button" class="petty-receipt-action is-remove removeExistingExpenseDocument" data-id="${source.id}" title="Eliminar comprobante"><i class="fas fa-trash"></i></button>`
-            : `${isImage ? `<button type="button" class="petty-receipt-action is-edit editPendingReceiptImage" data-collection="expense" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>` : '<span class="petty-receipt-pdf-help" title="Los PDF no requieren edición visual"><i class="fas fa-lock"></i></span>'}<button type="button" class="petty-receipt-action is-remove removePendingExpenseDocument" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button>`;
+            : `${isImage && canEditExpenseDocument ? `<button type="button" class="petty-receipt-action is-edit editPendingReceiptImage" data-collection="expense" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>` : (!isImage ? '<span class="petty-receipt-pdf-help" title="Los PDF no requieren edición visual"><i class="fas fa-lock"></i></span>' : '')}<button type="button" class="petty-receipt-action is-remove removePendingExpenseDocument" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button>`;
 
         return `<article class="petty-receipt-item">${preview}<div class="petty-receipt-meta"><strong title="${name}">${name}</strong><small>${isExisting ? 'Guardado' : 'Nuevo'} · ${size}</small></div><div class="petty-receipt-actions">${actions}</div></article>`;
     };
@@ -392,7 +393,9 @@ $(function () {
                 const url = URL.createObjectURL(file);
                 state.urls.push(url);
                 visual = `<a class="petty-source-image-preview" href="${url}" target="_blank" title="Ver comprobante"><img src="${url}" alt=""></a>`;
-                editAction = `<button type="button" class="editPendingReceiptImage" data-collection="${key}" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>`;
+                editAction = canEditExpenseDocument
+                    ? `<button type="button" class="editPendingReceiptImage" data-collection="${key}" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>`
+                    : '';
             }
             return `<article class="petty-source-file">${visual}<div><strong>${escapeHtml(file.name)}</strong><small>Nuevo · ${fileSize(file.size)}${file.type === 'application/pdf' ? ' · PDF sin edición visual' : ''}</small></div>${editAction}<button type="button" class="removeSourceReceipt" data-key="${key}" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button></article>`;
         });
@@ -435,6 +438,9 @@ $(function () {
         $('#pcie_image').attr('src', '');
     };
     const openImageEditor = (collection, index) => {
+        if (!canEditExpenseDocument) {
+            return notify('error', 'No tienes permiso para editar comprobantes de caja chica.');
+        }
         const file = imageEditorCollection(collection)?.[index];
         if (!file || !String(file.type).startsWith('image/')) return;
         closeImageEditor();

@@ -63,6 +63,11 @@
     data-dni-url="{{ route('admin.document-lookup.dni', 'DNI_PLACEHOLDER') }}"
     data-can-expense-update="{{ auth()->user()->can('admin.petty-cash.expenses.update') ? 1 : 0 }}"
     data-can-expense-store="{{ auth()->user()->can('admin.petty-cash.expenses.store') ? 1 : 0 }}"
+    data-can-edit-expense-document="{{ auth()->user()->canAny([
+        'admin.petty-cash.expense-documents.update',
+        'admin.petty-cash.expenses.store',
+        'admin.petty-cash.expenses.update',
+    ]) ? 1 : 0 }}"
     data-can-expense-delete="{{ auth()->user()->can('admin.petty-cash.expenses.destroy') ? 1 : 0 }}"
     data-can-expense-approve="{{ auth()->user()->can('admin.petty-cash.expenses.approve') ? 1 : 0 }}"
     data-can-expense-observe="{{ auth()->user()->can('admin.petty-cash.expenses.observe') ? 1 : 0 }}"
@@ -112,8 +117,14 @@
 @canany(['admin.petty-cash.expenses.approve', 'admin.petty-cash.expenses.observe'])
 @include('admin.petty-cash.partials.expenseApprovalModals')
 @include('admin.petty-cash.partials.expenseDetailModal')
-@include('admin.petty-cash.partials.imageEditorModal')
 @endcanany
+@if(auth()->user()->canAny([
+    'admin.petty-cash.expense-documents.update',
+    'admin.petty-cash.expenses.store',
+    'admin.petty-cash.expenses.update',
+]))
+    @include('admin.petty-cash.partials.imageEditorModal')
+@endif
 @include('admin.petty-cash.partials.expenseObservationModals')
 @can('admin.petty-cash.approved-amount.update')
 @include('admin.petty-cash.partials.approvedAmountModal')
