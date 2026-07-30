@@ -127,6 +127,7 @@
         };
     </script>
     @vite('resources/js/pages/theme-preferences.js')
+    @vite('resources/js/pages/table-actions.js')
     {{--     <script src="{{ asset('vendor/datatables/js/popper.min.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.bootstrap4.js') }}"></script>    

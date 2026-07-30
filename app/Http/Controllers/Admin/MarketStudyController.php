@@ -70,62 +70,8 @@ class MarketStudyController extends Controller
                     ? '<span class="badge bg-success text-light rounded-pill px-3 py-2 shadow-sm">ACTIVO</span>'
                     : '<span class="badge bg-secondary text-light rounded-pill px-3 py-2 shadow-sm">INACTIVO</span>';
             })
-            ->addColumn('acciones', function ($marketStudy) {
-
-                return '
-<div class="btn-group shadow-sm" role="group">
-
-    <button type="button"
-        class="btn btn-outline-info btn-sm viewMarketStudy mr-2"
-        title="Ver Estudio"
-        data-id="' . $marketStudy->id . '">
-
-        <i class="fas fa-eye"></i>
-    </button>
-
-    <button type="button"
-        class="btn btn-outline-primary btn-sm editMarketStudy mr-2"
-        title="Editar Estudio"
-        data-id="' . $marketStudy->id . '"
-        data-code="' . e($marketStudy->code) . '"
-        data-description="' . e($marketStudy->description) . '"
-        data-reference_terms="' . e($marketStudy->reference_terms) . '"
-        data-status="' . ($marketStudy->status ? 1 : 0) . '">
-
-        <i class="fas fa-pen"></i>
-    </button>
-
-    <button type="button"
-        class="btn btn-outline-warning btn-sm manageQuotes mr-2"
-        title="Gestionar Cotizaciones"
-        data-id="' . $marketStudy->id . '"
-        data-code="' . e($marketStudy->code) . '"
-        data-description="' . e($marketStudy->description) . '">
-
-        <i class="fas fa-file-invoice-dollar"></i>
-    </button>
-
-    <button type="button"
-        class="btn btn-outline-success btn-sm compareQuotes mr-2"
-        title="Comparativo de Cotizaciones"
-        data-id="' . $marketStudy->id . '"
-        data-code="' . e($marketStudy->code) . '"
-        data-description="' . e($marketStudy->description) . '">
-
-        <i class="fas fa-balance-scale"></i>
-    </button>
-
-    <button type="button"
-        class="btn btn-outline-danger btn-sm deleteMarketStudy"
-        title="Eliminar Estudio"
-        data-id="' . $marketStudy->id . '">
-
-        <i class="fas fa-trash"></i>
-    </button>
-
-</div>
-';
-            })
+            ->addColumn('acciones', fn ($marketStudy) =>
+                view('admin.market-studies.partials.acciones', compact('marketStudy'))->render())
 
             ->rawColumns([
                 'code',

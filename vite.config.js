@@ -39,6 +39,7 @@ export default defineConfig({
                 'resources/js/pages/dashboard.js',
                 'resources/js/pages/supplier-purchase-order-tracking.js',
                 'resources/js/pages/theme-preferences.js',
+                'resources/js/pages/table-actions.js',
                 'resources/js/pages/theme-preferences.js',
             ],
             refresh: true,

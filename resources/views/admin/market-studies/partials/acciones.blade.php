@@ -1,46 +1,29 @@
-<div class="btn-group shadow-sm" role="group" aria-label="Actions">
-
-    {{-- VIEW --}}
-    @can('admin.market-studies.show')
-    <button type="button" class="btn btn-outline-info btn-sm viewMarketStudy" data-toggle="tooltip"
-        title="Ver Estudio de Mercado" data-id="{{ $marketStudy->id }}">
-
-        <i class="fas fa-eye"></i>
-
-    </button>
-    @endcan
-
-    {{-- EDIT --}}
-    @can('admin.market-studies.update')
-    <button type="button" class="btn btn-outline-primary btn-sm editMarketStudy" data-toggle="tooltip"
-        title="Editar Estudio de Mercado" data-id="{{ $marketStudy->id }}" data-code="{{ $marketStudy->code }}"
-        data-description="{{ $marketStudy->description }}" data-reference_terms="{{ $marketStudy->reference_terms }}"
-        data-status="{{ $marketStudy->status }}">
-
-        <i class="fas fa-pen"></i>
-
-    </button>
-    @endcan
-
-    {{-- COTIZACIONES --}}
-    @can('admin.market-studies.quotes')
-    <button type="button" class="btn btn-outline-warning btn-sm quoteMarketStudy" data-toggle="tooltip"
-        title="Gestionar Cotizaciones" data-id="{{ $marketStudy->id }}" data-code="{{ $marketStudy->code }}"
-        data-description="{{ $marketStudy->description }}">
-
-        <i class="fas fa-file-invoice-dollar"></i>
-
-    </button>
-    @endcan
-
-    {{-- DELETE --}}
-    @can('admin.market-studies.destroy')
-    <button type="button" class="btn btn-outline-danger btn-sm deleteMarketStudy" data-id="{{ $marketStudy->id }}"
-        data-toggle="tooltip" title="Eliminar Estudio de Mercado">
-
-        <i class="fas fa-trash"></i>
-
-    </button>
-    @endcan
-
-</div>
+<x-table-actions-dropdown label="Acciones del estudio de mercado">
+    <x-slot name="main">
+        <button type="button" class="btn btn-sm btn-success dp-action-main viewMarketStudy"
+            data-id="{{ $marketStudy->id }}" title="Ver estudio">
+            <i class="fas fa-eye mr-1"></i> Ver
+        </button>
+    </x-slot>
+    <x-slot name="menu">
+        <h6 class="dropdown-header">Acciones operativas</h6>
+        <button type="button" class="dropdown-item editMarketStudy" data-id="{{ $marketStudy->id }}"
+            data-code="{{ $marketStudy->code }}" data-description="{{ $marketStudy->description }}"
+            data-reference_terms="{{ $marketStudy->reference_terms }}" data-status="{{ $marketStudy->status ? 1 : 0 }}">
+            <i class="fas fa-pen text-primary"></i> Editar estudio
+        </button>
+        <button type="button" class="dropdown-item manageQuotes" data-id="{{ $marketStudy->id }}"
+            data-code="{{ $marketStudy->code }}" data-description="{{ $marketStudy->description }}">
+            <i class="fas fa-file-invoice-dollar text-warning"></i> Gestionar cotizaciones
+        </button>
+        <button type="button" class="dropdown-item compareQuotes" data-id="{{ $marketStudy->id }}"
+            data-code="{{ $marketStudy->code }}" data-description="{{ $marketStudy->description }}">
+            <i class="fas fa-balance-scale text-success"></i> Comparativo de cotizaciones
+        </button>
+        <div class="dropdown-divider"></div>
+        <h6 class="dropdown-header">Cierre / anulación</h6>
+        <button type="button" class="dropdown-item text-danger deleteMarketStudy" data-id="{{ $marketStudy->id }}">
+            <i class="fas fa-trash"></i> Eliminar estudio
+        </button>
+    </x-slot>
+</x-table-actions-dropdown>

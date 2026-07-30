@@ -62,23 +62,8 @@ class ElectronicInvoiceSeriesController extends Controller
                 $series->status === 'ACTIVE'
                     ? '<span class="badge badge-success rounded-pill px-3">Activo</span>'
                     : '<span class="badge badge-secondary rounded-pill px-3">Inactivo</span>')
-            ->addColumn('acciones', function (ElectronicInvoiceSeries $series) {
-                $buttons = '<div class="btn-group" role="group">';
-
-                if (auth()->user()?->can('admin.electronic-invoice-series.show')) {
-                    $buttons .= '<button class="btn btn-sm btn-outline-info viewElectronicInvoiceSeries" data-id="' . $series->id . '" title="Ver"><i class="fas fa-eye"></i></button>';
-                }
-
-                if (auth()->user()?->can('admin.electronic-invoice-series.update')) {
-                    $buttons .= '<button class="btn btn-sm btn-outline-primary editElectronicInvoiceSeries" data-id="' . $series->id . '" title="Editar"><i class="fas fa-edit"></i></button>';
-                }
-
-                if (auth()->user()?->can('admin.electronic-invoice-series.destroy')) {
-                    $buttons .= '<button class="btn btn-sm btn-outline-danger deleteElectronicInvoiceSeries" data-id="' . $series->id . '" title="Eliminar"><i class="fas fa-trash"></i></button>';
-                }
-
-                return $buttons . '</div>';
-            })
+            ->addColumn('acciones', fn (ElectronicInvoiceSeries $series) =>
+                view('admin.electronic-invoice-series.partials.acciones', compact('series'))->render())
             ->orderColumn('id', "{$table}.id $1")
             ->orderColumn('company', 'companies.business_name $1')
             ->orderColumn('document_type_label', "{$table}.document_type $1")

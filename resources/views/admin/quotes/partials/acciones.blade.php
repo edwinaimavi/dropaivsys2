@@ -1,42 +1,31 @@
-<div class="btn-group shadow-sm " role="group" aria-label="Acciones">
-
-    {{-- EDIT --}}
-    @can('admin.quotes.update')
-    <button type="button" class="btn btn-outline-primary btn-sm editQuote mr-2" data-toggle="tooltip"
-        title="Editar Cotizacion" data-id="{{ $quote->id }}">
-
-        <i class="fas fa-pen"></i>
-
-    </button>
-    @endcan
-
-    {{-- PDF --}}
-    @can('admin.quotes.pdf')
-    @if ($pdfUrl)
-        <a href="{{ $pdfUrl }}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm mr-2"
-            data-toggle="tooltip" title="Ver PDF">
-
-            <i class="fas fa-file-pdf"></i>
-
-        </a>
-    @else
-        <button type="button" class="btn btn-outline-secondary btn-sm mr-2" data-toggle="tooltip"
-            title="PDF no generado" disabled>
-
-            <i class="fas fa-file-pdf"></i>
-
-        </button>
-    @endif
-    @endcan
-
-    {{-- DELETE --}}
-    @can('admin.quotes.destroy')
-    <button type="button" class="btn btn-outline-danger btn-sm deleteQuote mr-2" data-id="{{ $quote->id }}"
-        data-toggle="tooltip" title="Eliminar Cotizacion">
-
-        <i class="fas fa-trash"></i>
-
-    </button>
-    @endcan
-
-</div>
+<x-table-actions-dropdown label="Acciones de la cotización">
+    <x-slot name="main">
+        @can('admin.quotes.pdf')
+            @if ($pdfUrl)
+                <a href="{{ $pdfUrl }}" target="_blank" rel="noopener"
+                    class="btn btn-sm btn-success dp-action-main" title="Ver PDF">
+                    <i class="fas fa-eye mr-1"></i> Ver PDF
+                </a>
+            @else
+                <button type="button" class="btn btn-sm btn-secondary dp-action-main" disabled title="PDF no generado">
+                    <i class="fas fa-eye mr-1"></i> Ver PDF
+                </button>
+            @endif
+        @endcan
+    </x-slot>
+    <x-slot name="menu">
+        @can('admin.quotes.update')
+            <h6 class="dropdown-header">Acciones operativas</h6>
+            <button type="button" class="dropdown-item editQuote" data-id="{{ $quote->id }}">
+                <i class="fas fa-pen text-primary"></i> Editar cotización
+            </button>
+        @endcan
+        @can('admin.quotes.destroy')
+            <div class="dropdown-divider"></div>
+            <h6 class="dropdown-header">Cierre / anulación</h6>
+            <button type="button" class="dropdown-item text-danger deleteQuote" data-id="{{ $quote->id }}">
+                <i class="fas fa-trash"></i> Eliminar cotización
+            </button>
+        @endcan
+    </x-slot>
+</x-table-actions-dropdown>
