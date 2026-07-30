@@ -56,6 +56,11 @@ $(function () {
             .toggleClass('petty-cash-alert-attention', count > 0)
             .attr('aria-label', `${label}: ${count}`);
     };
+    const expenseActionUrl = (action, expenseId) => ({
+        approve: `${base}/expenses/${expenseId}/approve`,
+        reject: `${base}/expenses/${expenseId}/reject`,
+        observe: `${base}/expenses/${expenseId}/observe`
+    })[action] || null;
     const approvalStatusHtml = expense => {
         const states = {
             pendiente_aprobacion: ['Pendiente de aprobación', 'is-pending'],
@@ -928,7 +933,12 @@ $(function () {
             const box = expense.petty_cash_box;
             const observation = expense.current_observation?.observation || '';
             const excerpt = observation.length > 52 ? `${observation.slice(0, 52)}…` : observation;
-            return `<tr><td>${date(expense.expense_date)}</td><td><strong>${escapeHtml(box?.code || '-')}</strong><small class="d-block text-muted">${escapeHtml(box?.company?.trade_name || box?.company?.business_name || '-')}</small></td><td>${escapeHtml(expense.supplier_name)}</td><td class="petty-concept-cell">${escapeHtml(expense.concept)}</td><td class="text-right petty-amount-cell">${money(expense.amount, box?.currency?.symbol)}</td><td><small class="petty-observation-excerpt">${escapeHtml(excerpt || '-')}</small></td><td><button class="btn btn-sm btn-outline-warning viewPettyCashObservation" data-id="${expense.id}"><i class="fas fa-eye mr-1"></i>Ver detalle</button> <button class="btn btn-sm btn-warning correctObservedPettyCashExpense" data-id="${expense.id}"><i class="fas fa-edit mr-1"></i>Corregir</button></td></tr>`;
+            const canCorrect = Boolean(app.data('can-expense-update'))
+                || Number(expense.created_by) === Number(app.data('current-user-id'));
+            const correctAction = canCorrect
+                ? ` <button class="btn btn-sm btn-warning correctObservedPettyCashExpense" data-id="${expense.id}"><i class="fas fa-edit mr-1"></i>Corregir</button>`
+                : '';
+            return `<tr><td>${date(expense.expense_date)}</td><td><strong>${escapeHtml(box?.code || '-')}</strong><small class="d-block text-muted">${escapeHtml(box?.company?.trade_name || box?.company?.business_name || '-')}</small></td><td>${escapeHtml(expense.supplier_name)}</td><td class="petty-concept-cell">${escapeHtml(expense.concept)}</td><td class="text-right petty-amount-cell">${money(expense.amount, box?.currency?.symbol)}</td><td><small class="petty-observation-excerpt">${escapeHtml(excerpt || '-')}</small></td><td><button class="btn btn-sm btn-outline-warning viewPettyCashObservation" data-id="${expense.id}"><i class="fas fa-eye mr-1"></i>Ver detalle</button>${correctAction}</td></tr>`;
         }).join('') : '<tr><td colspan="7" class="petty-empty-state"><i class="fas fa-check-circle"></i><strong>No tienes gastos observados por corregir.</strong></td></tr>');
     });
 
@@ -987,19 +997,27 @@ $(function () {
     $('#pettyCashExpenseApprovalForm').on('submit', function (event) {
         event.preventDefault();
         const action = $('#pca_action').val();
+        const expenseId = $('#pca_expense_id').val();
+        const url = expenseActionUrl(action, expenseId);
         const observation = $('#pca_observation').val().trim();
+        if (!url) return notify('error', 'La acción administrativa seleccionada no es válida.');
         if (action === 'reject' && !observation) return notify('warning', 'Ingresa el motivo del rechazo.');
         if (action === 'observe' && observation.length < 10) return notify('warning', 'Ingresa una observación clara de al menos 10 caracteres.');
         loading($(this), true);
         api({
-            url: `${base}/expenses/${$('#pca_expense_id').val()}/${action}`,
+            url,
             method: 'POST',
             data: action === 'observe' ? { observation } : { approval_observation: observation }
         })
             .done(response => {
                 $('#pettyCashExpenseApprovalModal').modal('hide');
+                if (response.counts) {
+                    updateAttentionCounter('#btnPendingPettyCashExpenses', '#pcPendingExpensesBadge', response.counts.pending, 'Gastos por aprobar');
+                    updateAttentionCounter('#btnObservedPettyCashExpenses', '#pcObservedExpensesBadge', response.counts.observed, 'Gastos observados');
+                }
                 table.ajax.reload(null, false);
                 loadPendingExpenses();
+                loadObservedExpenses();
                 if (currentBox) loadBox(currentBox.id).done(renderDetail);
                 notify('success', response.message);
             }).fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));

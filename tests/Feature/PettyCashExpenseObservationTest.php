@@ -73,15 +73,22 @@ beforeEach(function () {
 });
 
 it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobación', function () {
-    $this->actingAs($this->observer)
+    $observeResponse = $this->actingAs($this->observer)
         ->postJson(route('admin.petty-cash.expenses.observe', $this->expense), [
             'observation' => 'Detallar origen, destino, mercadería trasladada y orden relacionada.',
         ])
-        ->assertOk();
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('expense.status', PettyCashExpense::APPROVAL_OBSERVED)
+        ->assertJsonPath('expense.status_label', 'Observado')
+        ->assertJsonPath('counts.pending', 0)
+        ->assertJsonPath('counts.observed', 1);
 
     $this->assertDatabaseHas('petty_cash_expenses', [
         'id' => $this->expense->id,
         'approval_status' => PettyCashExpense::APPROVAL_OBSERVED,
+        'approved_at' => null,
+        'approved_by_user_id' => null,
     ]);
     $this->assertDatabaseHas('petty_cash_expense_observations', [
         'petty_cash_expense_id' => $this->expense->id,
@@ -97,6 +104,10 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
     $this->getJson(route('admin.petty-cash.expenses.pending'))
         ->assertOk()
         ->assertJsonCount(0, 'data');
+    $this->getJson(route('admin.petty-cash.expenses.observed'))
+        ->assertOk()
+        ->assertJsonPath('count', 1)
+        ->assertJsonPath('data.0.id', $this->expense->id);
     $this->actingAs($this->creator)
         ->getJson(route('admin.petty-cash.expenses.observed'))
         ->assertOk()
@@ -170,13 +181,23 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         )
         ->assertJsonPath('data.0.observations.0.resolver.id', $this->creator->id);
 
-    $this->actingAs($this->observer)
+    $reobserveResponse = $this->actingAs($this->observer)
         ->postJson(route('admin.petty-cash.expenses.observe', $this->expense), [
             'observation' => 'Adjuntar también el comprobante emitido por la agencia de transporte.',
         ])
-        ->assertOk();
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('expense.status', PettyCashExpense::APPROVAL_OBSERVED)
+        ->assertJsonPath('counts.pending', 0)
+        ->assertJsonPath('counts.observed', 1);
 
     expect(PettyCashExpenseObservation::where('petty_cash_expense_id', $this->expense->id)->count())->toBe(2);
+    $this->assertDatabaseHas('petty_cash_expenses', [
+        'id' => $this->expense->id,
+        'approval_status' => PettyCashExpense::APPROVAL_OBSERVED,
+        'approved_at' => null,
+        'approved_by_user_id' => null,
+    ]);
     $this->assertDatabaseHas('petty_cash_expense_observations', [
         'petty_cash_expense_id' => $this->expense->id,
         'observation' => 'Adjuntar también el comprobante emitido por la agencia de transporte.',
@@ -187,6 +208,19 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         'correction_comment' => 'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.',
         'status' => PettyCashExpenseObservation::STATUS_RESOLVED,
     ]);
+    $this->assertDatabaseHas('petty_cash_boxes', [
+        'id' => $this->boxId,
+        'total_expenses' => 0,
+        'cash_balance' => 2000,
+        'reimbursement_amount' => 0,
+    ]);
+    $this->getJson(route('admin.petty-cash.expenses.pending'))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+    $this->getJson(route('admin.petty-cash.expenses.observed'))
+        ->assertOk()
+        ->assertJsonPath('count', 1)
+        ->assertJsonCount(2, 'data.0.observations');
 
     $this->actingAs($this->creator)
         ->putJson(route('admin.petty-cash.expenses.update', $this->expense), [

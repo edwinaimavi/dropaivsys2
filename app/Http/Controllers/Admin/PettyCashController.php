@@ -122,11 +122,7 @@ class PettyCashController extends Controller
                 ->where('status', 'ACTIVE')
                 ->pendingApproval()
                 ->count(),
-            'observed_expenses_count' => PettyCashExpense::query()
-                ->where('status', 'ACTIVE')
-                ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED)
-                ->where('created_by', Auth::id())
-                ->count(),
+            'observed_expenses_count' => $this->visibleObservedExpensesQuery()->count(),
         ];
         $query = PettyCashBox::query()
             ->with(['company:id,business_name,trade_name', 'currency:id,code,symbol'])
@@ -459,10 +455,7 @@ class PettyCashController extends Controller
 
     public function observedExpenses()
     {
-        $expenses = PettyCashExpense::query()
-            ->where('status', 'ACTIVE')
-            ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED)
-            ->where('created_by', Auth::id())
+        $expenses = $this->visibleObservedExpensesQuery()
             ->with([
                 'pettyCashBox.company:id,business_name,trade_name',
                 'pettyCashBox.currency:id,code,symbol',
@@ -601,7 +594,20 @@ class PettyCashController extends Controller
         });
 
         return response()->json([
+            'success' => true,
             'message' => 'Gasto observado correctamente. No afecta el saldo hasta ser corregido y aprobado.',
+            'expense' => [
+                'id' => $expense->id,
+                'status' => PettyCashExpense::APPROVAL_OBSERVED,
+                'status_label' => 'Observado',
+            ],
+            'counts' => [
+                'pending' => PettyCashExpense::query()
+                    ->where('status', 'ACTIVE')
+                    ->pendingApproval()
+                    ->count(),
+                'observed' => $this->visibleObservedExpensesQuery()->count(),
+            ],
         ]);
     }
 
@@ -902,6 +908,21 @@ class PettyCashController extends Controller
                 ? 'Gasto actualizado correctamente. Continúa pendiente de aprobación administrativa.'
                 : 'Gasto registrado correctamente. Queda pendiente de aprobación administrativa.',
         ], $expense ? 200 : 201);
+    }
+
+    private function visibleObservedExpensesQuery()
+    {
+        $query = PettyCashExpense::query()
+            ->where('status', 'ACTIVE')
+            ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED);
+
+        $user = Auth::user();
+        if (!$user?->can('admin.petty-cash.expenses.approve')
+            && !$user?->can('admin.petty-cash.expenses.observe')) {
+            $query->where('created_by', Auth::id());
+        }
+
+        return $query;
     }
 
     private function normalizeDocumentPart(?string $value): ?string
