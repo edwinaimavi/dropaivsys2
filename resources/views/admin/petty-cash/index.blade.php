@@ -112,6 +112,7 @@
 @canany(['admin.petty-cash.expenses.approve', 'admin.petty-cash.expenses.observe'])
 @include('admin.petty-cash.partials.expenseApprovalModals')
 @include('admin.petty-cash.partials.expenseDetailModal')
+@include('admin.petty-cash.partials.imageEditorModal')
 @endcanany
 @include('admin.petty-cash.partials.expenseObservationModals')
 @can('admin.petty-cash.approved-amount.update')
@@ -198,6 +199,7 @@
     .petty-source-previews{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}
     .petty-source-file{display:flex;min-width:0;padding:7px;align-items:center;border:1px solid #e0e8e4;border-radius:9px;background:#fff}
     .petty-source-file>img,.petty-source-file>span{display:flex;width:36px;height:36px;flex:0 0 36px;align-items:center;justify-content:center;border-radius:8px;object-fit:cover;background:#fae9eb;color:#bd3f49}
+    .petty-source-file>.petty-source-image-preview{display:block!important;width:36px!important;height:36px!important;flex:0 0 36px!important;margin-left:0!important;overflow:hidden;border-radius:8px!important;background:none!important}.petty-source-image-preview img{width:100%;height:100%;object-fit:cover}
     .petty-source-file>div{min-width:0;margin-left:7px}
     .petty-source-file strong,.petty-source-file small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .petty-source-file strong{color:#42534d;font-size:.62rem}
@@ -458,6 +460,7 @@
     .petty-receipts-list{display:flex;max-height:338px;gap:7px;flex-direction:column;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#c8d3ce transparent}
     .petty-receipt-item{display:flex;min-height:54px;padding:7px;align-items:center;border:1px solid #e1e8e5;border-radius:10px;background:#fff}
     .petty-receipt-item>img,.petty-receipt-pdf{display:flex;width:40px;height:40px;flex:0 0 40px;align-items:center;justify-content:center;border-radius:8px;object-fit:cover}
+    .petty-receipt-image-preview{display:block;width:40px;height:40px;flex:0 0 40px;overflow:hidden;border-radius:8px}.petty-receipt-image-preview img{width:100%;height:100%;object-fit:cover}
     .petty-receipt-pdf{background:#fbeaea;color:#bd3f49;font-size:18px}
     .petty-receipt-meta{min-width:0;margin-left:8px}
     .petty-receipt-meta strong,.petty-receipt-meta small{display:block}
@@ -466,6 +469,7 @@
     .petty-receipt-actions{display:flex;gap:4px;margin-left:auto}
     .petty-receipt-action{display:flex;width:25px;height:25px;padding:0;align-items:center;justify-content:center;border:0;border-radius:7px;cursor:pointer;font-size:9px;transition:.15s ease}
     .petty-receipt-action.is-view{background:#e8f4ef;color:#267657}
+    .petty-receipt-action.is-edit{background:#e8f0fa;color:#3e6f9d}.petty-receipt-pdf-help{display:flex;width:25px;height:25px;align-items:center;justify-content:center;border-radius:7px;background:#f1f3f2;color:#86918d;font-size:8px}
     .petty-receipt-action.is-remove{background:#faecee;color:#b53d49}
     .petty-receipt-action:hover{transform:translateY(-1px);filter:brightness(.97);text-decoration:none}
     .petty-receipts-empty{display:flex;min-height:130px;padding:18px;align-items:center;justify-content:center;flex-direction:column;border-radius:11px;background:#f8faf9;text-align:center}
@@ -613,6 +617,11 @@
     .petty-expense-timeline-icon{position:absolute;top:5px;left:-34px;z-index:1;display:flex;width:27px;height:27px;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50%;background:#73869a;color:#fff;font-size:.55rem;box-shadow:0 0 0 1px #d8e0e5}
     .petty-expense-timeline-item>div{padding:9px 11px;border:1px solid #e5eae8;border-radius:9px;background:#fafcfb}.petty-expense-timeline-item header{display:flex;align-items:center;justify-content:space-between;gap:8px}.petty-expense-timeline-item header strong{font-size:.72rem}.petty-expense-timeline-item time,.petty-expense-timeline-item small{color:#84908b;font-size:.57rem}.petty-expense-timeline-item p{margin:6px 0 0;padding-top:6px;border-top:1px solid #e9eeec;color:#4b5954;font-size:.68rem;line-height:1.45;white-space:pre-wrap}
     .petty-expense-timeline-item.is-observed .petty-expense-timeline-icon{background:#d79528}.petty-expense-timeline-item.is-corrected .petty-expense-timeline-icon{background:#4b82b2}.petty-expense-timeline-item.is-approved .petty-expense-timeline-icon{background:#299266}.petty-expense-timeline-item.is-rejected .petty-expense-timeline-icon{background:#c75454}
+    .petty-image-editor-modal .modal-content{max-height:calc(100vh - 28px);overflow:hidden;border-radius:18px;box-shadow:0 28px 75px rgba(15,23,42,.28)}.petty-image-editor-body{display:flex;min-height:0;flex-direction:column;padding:12px 14px!important;background:#f3f6f5!important}
+    .petty-image-editor-tools{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}.petty-image-editor-tools .btn{display:flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #dce5e1;border-radius:8px;background:#fff;color:#526a61;font-size:.65rem;font-weight:700}.petty-image-editor-tools .btn:hover{border-color:#9fc6b6;background:#edf7f2;color:#267657}
+    .petty-image-editor-stage{display:flex;min-height:280px;max-height:58vh;align-items:center;justify-content:center;overflow:hidden;border:1px solid #dbe4e0;border-radius:12px;background:#202724}.petty-image-editor-stage img{display:block;max-width:100%;max-height:55vh}
+    .petty-image-editor-help{display:block;margin-top:8px;color:#77857f;font-size:.62rem}.petty-image-editor-modal .cropper-view-box,.petty-image-editor-modal .cropper-face{border-radius:2px}
+    @media(max-width:575px){.petty-image-editor-tools{flex-wrap:nowrap;overflow-x:auto}.petty-image-editor-tools .btn{flex:0 0 auto}.petty-image-editor-tools .btn span{display:none}.petty-image-editor-stage{min-height:230px;max-height:52vh}}
     .petty-expense-approval-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.petty-expense-admin-card{padding:12px;border:1px solid #e1e8e5;border-radius:12px;background:#fff;box-shadow:0 4px 14px rgba(15,23,42,.035)}.petty-expense-admin-card.is-exchange{grid-column:1/-1}
     .petty-expense-admin-card>header{display:flex;align-items:center;gap:9px;margin-bottom:9px}.petty-expense-admin-card>header>span{display:flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:9px;background:#e9f4ef;color:#33775e;font-size:.7rem}.petty-expense-admin-card>header small,.petty-expense-admin-card>header h6{display:block;margin:0}.petty-expense-admin-card>header small{color:#83918b;font-size:.52rem;font-weight:900;letter-spacing:.065em}.petty-expense-admin-card>header h6{margin-top:1px;color:#34463f;font-size:.76rem;font-weight:800}
     .petty-expense-admin-card>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.petty-expense-admin-card article{min-width:0;padding:7px 8px;border-radius:8px;background:#f7faf9}.petty-expense-admin-card article small,.petty-expense-admin-card article strong{display:block}.petty-expense-admin-card article small{color:#85918c;font-size:.52rem;font-weight:800;text-transform:uppercase}.petty-expense-admin-card article strong{margin-top:2px;overflow-wrap:anywhere;color:#3b4c46;font-size:.65rem;line-height:1.4}.petty-expense-admin-card.is-observation>header>span{background:#fff3dd;color:#a76d18}.petty-expense-admin-card.is-rechazado>header>span{background:#fbe9e9;color:#ae4949}.petty-expense-admin-card.is-exchange>header>span{background:#e9f0f8;color:#4e7298}

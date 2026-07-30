@@ -1,3 +1,6 @@
+import Cropper from 'cropperjs';
+import 'cropperjs/dist/cropper.css';
+
 $(function () {
     const app = $('#pettyCashApp');
     if (!app.length) return;
@@ -16,6 +19,9 @@ $(function () {
     let observedExpenses = [];
     let receiptExchangeFiles = [];
     let receiptExchangePreviewUrls = [];
+    let imageEditorCropper = null;
+    let imageEditorTarget = null;
+    let imageEditorObjectUrl = null;
     let pendingExchangeReceipts = [];
     const sourceReceipts = {
         opening: { files: [], existing: [], urls: [] },
@@ -87,7 +93,7 @@ $(function () {
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
-    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal';
+    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const renderReceiptExchangeFiles = () => {
         receiptExchangePreviewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -331,7 +337,7 @@ $(function () {
         if (isImage) {
             const url = isExisting ? source.view_url : URL.createObjectURL(source);
             if (!isExisting) expensePreviewUrls.push(url);
-            preview = `<img src="${url}" alt="">`;
+            preview = `<a class="petty-receipt-image-preview" href="${url}" target="_blank" title="Ver comprobante"><img src="${url}" alt=""></a>`;
         } else {
             preview = '<span class="petty-receipt-pdf"><i class="fas fa-file-pdf"></i></span>';
         }
@@ -340,7 +346,7 @@ $(function () {
         const size = fileSize(source.file_size ?? source.size);
         const actions = isExisting
             ? `<a href="${source.view_url}" target="_blank" class="petty-receipt-action is-view" title="Abrir comprobante"><i class="fas fa-external-link-alt"></i></a><button type="button" class="petty-receipt-action is-remove removeExistingExpenseDocument" data-id="${source.id}" title="Eliminar comprobante"><i class="fas fa-trash"></i></button>`
-            : `<button type="button" class="petty-receipt-action is-remove removePendingExpenseDocument" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button>`;
+            : `${isImage ? `<button type="button" class="petty-receipt-action is-edit editPendingReceiptImage" data-collection="expense" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>` : '<span class="petty-receipt-pdf-help" title="Los PDF no requieren edición visual"><i class="fas fa-lock"></i></span>'}<button type="button" class="petty-receipt-action is-remove removePendingExpenseDocument" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button>`;
 
         return `<article class="petty-receipt-item">${preview}<div class="petty-receipt-meta"><strong title="${name}">${name}</strong><small>${isExisting ? 'Guardado' : 'Nuevo'} · ${size}</small></div><div class="petty-receipt-actions">${actions}</div></article>`;
     };
@@ -381,12 +387,14 @@ $(function () {
         });
         const pending = state.files.map((file, index) => {
             let visual = '<span><i class="fas fa-file-pdf"></i></span>';
+            let editAction = '';
             if (file.type.startsWith('image/')) {
                 const url = URL.createObjectURL(file);
                 state.urls.push(url);
-                visual = `<img src="${url}" alt="">`;
+                visual = `<a class="petty-source-image-preview" href="${url}" target="_blank" title="Ver comprobante"><img src="${url}" alt=""></a>`;
+                editAction = `<button type="button" class="editPendingReceiptImage" data-collection="${key}" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>`;
             }
-            return `<article class="petty-source-file">${visual}<div><strong>${escapeHtml(file.name)}</strong><small>Nuevo · ${fileSize(file.size)}</small></div><button type="button" class="removeSourceReceipt" data-key="${key}" data-index="${index}"><i class="fas fa-times"></i></button></article>`;
+            return `<article class="petty-source-file">${visual}<div><strong>${escapeHtml(file.name)}</strong><small>Nuevo · ${fileSize(file.size)}${file.type === 'application/pdf' ? ' · PDF sin edición visual' : ''}</small></div>${editAction}<button type="button" class="removeSourceReceipt" data-key="${key}" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button></article>`;
         });
         $(config.preview).html([...saved, ...pending].join(''));
     };
@@ -405,6 +413,46 @@ $(function () {
         });
         syncSourceReceipts(key);
         renderSourceReceipts(key);
+    };
+    const imageEditorCollection = collection => collection === 'expense'
+        ? pendingExpenseFiles
+        : sourceReceipts[collection]?.files;
+    const refreshEditedImageCollection = collection => {
+        if (collection === 'expense') {
+            syncExpenseFileInput();
+            renderExpenseDocuments();
+            return;
+        }
+        syncSourceReceipts(collection);
+        renderSourceReceipts(collection);
+    };
+    const closeImageEditor = () => {
+        imageEditorCropper?.destroy();
+        imageEditorCropper = null;
+        imageEditorTarget = null;
+        if (imageEditorObjectUrl) URL.revokeObjectURL(imageEditorObjectUrl);
+        imageEditorObjectUrl = null;
+        $('#pcie_image').attr('src', '');
+    };
+    const openImageEditor = (collection, index) => {
+        const file = imageEditorCollection(collection)?.[index];
+        if (!file || !String(file.type).startsWith('image/')) return;
+        closeImageEditor();
+        imageEditorTarget = { collection, index };
+        imageEditorObjectUrl = URL.createObjectURL(file);
+        $('#pcie_image').attr('src', imageEditorObjectUrl);
+        $('#pettyCashImageEditorModal').modal('show');
+        $('#pettyCashImageEditorModal').one('shown.bs.modal', () => {
+            imageEditorCropper = new Cropper(document.getElementById('pcie_image'), {
+                viewMode: 1,
+                dragMode: 'crop',
+                aspectRatio: NaN,
+                autoCropArea: 0.92,
+                responsive: true,
+                background: false,
+                checkOrientation: true
+            });
+        });
     };
     const loadSourceAccounts = (companyId, selectSelector, helpSelector, selectedId = '') => {
         const select = $(selectSelector).prop('disabled', true);
@@ -442,6 +490,53 @@ $(function () {
             $('body').addClass('modal-open');
         }
     });
+    $(document).on('click', '.editPendingReceiptImage', function () {
+        openImageEditor(String($(this).data('collection')), Number($(this).data('index')));
+    });
+    $('#pcie_rotate_left').on('click', () => imageEditorCropper?.rotate(-90));
+    $('#pcie_rotate_right').on('click', () => imageEditorCropper?.rotate(90));
+    $('#pcie_crop').on('click', () => imageEditorCropper?.crop().setDragMode('crop'));
+    $('#pcie_reset').on('click', () => imageEditorCropper?.reset());
+    $('#pcie_apply').on('click', function () {
+        if (!imageEditorCropper || !imageEditorTarget) return;
+        const target = { ...imageEditorTarget };
+        const original = imageEditorCollection(target.collection)?.[target.index];
+        if (!original) return;
+        const outputType = original.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const extension = outputType === 'image/png' ? 'png' : 'jpg';
+        const safeBaseName = String(original.name || 'comprobante')
+            .replace(/\.[^.]+$/, '')
+            .replace(/[^\w.-]+/g, '-');
+        const button = $(this).prop('disabled', true);
+        const canvas = imageEditorCropper.getCroppedCanvas({
+            maxWidth: 3000,
+            maxHeight: 3000,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high',
+            fillColor: outputType === 'image/jpeg' ? '#fff' : 'transparent'
+        });
+        if (!canvas) {
+            button.prop('disabled', false);
+            return notify('error', 'No se pudo generar la imagen editada.');
+        }
+        canvas.toBlob(blob => {
+            button.prop('disabled', false);
+            if (!blob) return notify('error', 'No se pudo generar la imagen editada.');
+            if (blob.size > 10 * 1024 * 1024) {
+                return notify('error', 'La imagen editada supera el tamaño máximo permitido.');
+            }
+            const collection = imageEditorCollection(target.collection);
+            if (!collection?.[target.index]) return;
+            collection[target.index] = new File([blob], `${safeBaseName}-editado.${extension}`, {
+                type: outputType,
+                lastModified: Date.now()
+            });
+            refreshEditedImageCollection(target.collection);
+            $('#pettyCashImageEditorModal').modal('hide');
+            notify('success', 'La imagen fue editada y se guardará con el comprobante.');
+        }, outputType, outputType === 'image/jpeg' ? 0.88 : undefined);
+    });
+    $('#pettyCashImageEditorModal').on('hidden.bs.modal', closeImageEditor);
     const updateOpeningAmount = () => {
         const previous = Math.max(0, Number($('#pc_previous_balance').val()) || 0);
         const approvedAmount = Math.max(0, Number(currentApprovedAmount?.amount) || 0);

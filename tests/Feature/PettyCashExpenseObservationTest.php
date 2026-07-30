@@ -130,7 +130,12 @@ it('entrega la observación original para los modales administrativos y conserva
         ->assertSee('id="pced_documents_tab"', false)
         ->assertSee('id="pced_history_tab"', false)
         ->assertSee('id="pced_approval_tab"', false)
-        ->assertSee('Canje / Aprobación');
+        ->assertSee('Canje / Aprobación')
+        ->assertSee('id="pettyCashImageEditorModal"', false)
+        ->assertSee('Editar comprobante')
+        ->assertSee('Girar izquierda')
+        ->assertSee('Girar derecha')
+        ->assertSee('Aplicar cambios');
 
     $unauthorized = User::factory()->create();
     $this->actingAs($unauthorized)
