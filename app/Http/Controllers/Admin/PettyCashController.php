@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\UploadedFile;
 use Yajra\DataTables\Facades\DataTables;
 
 class PettyCashController extends Controller
@@ -37,7 +38,7 @@ class PettyCashController extends Controller
             'index', 'list', 'previousBalance', 'sourceBankAccounts',
         ]);
         $this->middleware('can:admin.petty-cash.store')->only('store');
-        $this->middleware('can:admin.petty-cash.show')->only(['show', 'expenseDetail', 'viewDocument']);
+        $this->middleware('can:admin.petty-cash.show')->only(['show', 'expenseDetail']);
         $this->middleware('can:admin.petty-cash.update')->only('update');
         $this->middleware('can:admin.petty-cash.destroy')->only('destroy');
         $this->middleware('can:admin.petty-cash.expenses.store')->only('storeExpense');
@@ -682,6 +683,62 @@ class PettyCashController extends Controller
         return response()->json(['message' => 'Comprobante eliminado correctamente.']);
     }
 
+    public function replaceExpenseDocumentImage(Request $request, PettyCashExpense $expense, Document $document)
+    {
+        $user = Auth::user();
+        abort_unless($user?->can('admin.petty-cash.expense-documents.update')
+            || $user?->can('admin.petty-cash.expenses.update'), 403, 'No tienes permiso para editar este comprobante.');
+        abort_unless($expense->pettyCashBox->canManageExpenses(), 422, 'La caja chica no admite cambios.');
+        abort_unless($document->documentable_type === PettyCashExpense::class
+            && (int) $document->documentable_id === (int) $expense->id, 404, 'El comprobante no pertenece a este gasto.');
+        abort_unless($this->isEditableExpenseImage($document), 422, 'El comprobante no es una imagen editable.');
+
+        $validated = $request->validate([
+            'image' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ], [
+            'image.image' => 'El comprobante no es una imagen editable.',
+            'image.mimes' => 'El comprobante no es una imagen editable.',
+            'image.max' => 'La imagen supera el tamaño máximo permitido.',
+        ]);
+
+        /** @var UploadedFile $image */
+        $image = $validated['image'];
+        $newPath = $image->store('petty-cash/' . class_basename($expense) . '/' . $expense->id, 'public');
+        $oldPath = $document->file_path;
+        $oldName = $document->stored_name;
+
+        try {
+            DB::transaction(function () use ($document, $image, $newPath, $oldPath, $oldName, $expense) {
+                $locked = Document::lockForUpdate()->findOrFail($document->id);
+                abort_unless($locked->documentable_type === PettyCashExpense::class
+                    && (int) $locked->documentable_id === (int) $expense->id, 404);
+                $locked->update([
+                    'stored_name' => basename($newPath),
+                    'file_path' => $newPath,
+                    'mime_type' => $image->getMimeType(),
+                    'extension' => strtolower($image->getClientOriginalExtension()),
+                    'file_size' => $image->getSize(),
+                    'updated_by' => Auth::id(),
+                ]);
+                $expense->events()->create([
+                    'document_id' => $locked->id,
+                    'event' => 'comprobante_actualizado',
+                    'description' => 'El comprobante fue editado visualmente: giro/recorte aplicado.',
+                    'metadata' => ['previous_file' => $oldName ?: basename((string) $oldPath), 'new_file' => basename($newPath)],
+                    'created_by' => Auth::id(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($newPath);
+            throw $exception;
+        }
+
+        if ($oldPath && $oldPath !== $newPath) Storage::disk('public')->delete($oldPath);
+        $document->refresh()->setAttribute('view_url', route('admin.petty-cash.documents.view', $document));
+
+        return response()->json(['message' => 'Comprobante actualizado correctamente.', 'document' => $document]);
+    }
+
     public function close(Request $request, PettyCashBox $pettyCash)
     {
         $validated = $request->validate([
@@ -778,6 +835,14 @@ class PettyCashController extends Controller
 
     public function viewDocument(Document $document)
     {
+        if ($document->documentable_type === PettyCashExpense::class) {
+            $user = Auth::user();
+            abort_unless($user?->can('admin.petty-cash.show')
+                || $user?->can('admin.petty-cash.expense-documents.update')
+                || $user?->can('admin.petty-cash.expenses.update'), 403);
+        } else {
+            abort_unless(Auth::user()?->can('admin.petty-cash.show'), 403);
+        }
         abort_unless(in_array($document->documentable_type, [
             PettyCashExpense::class,
             PettyCashReplenishment::class,
@@ -986,6 +1051,7 @@ class PettyCashController extends Controller
             'documents',
             'observations.observer:id,name,lastname',
             'observations.resolver:id,name,lastname',
+            'events.creator:id,name,lastname',
             'exchange.creator:id,name,lastname',
             'exchange.items:id,exchange_id,petty_cash_expense_id,amount,concept,receipt_type,receipt_series,receipt_correlative',
         ]);
@@ -1248,6 +1314,12 @@ class PettyCashController extends Controller
         ]);
 
         return $path;
+    }
+
+    private function isEditableExpenseImage(Document $document): bool
+    {
+        return in_array(strtolower((string) $document->extension), ['jpg', 'jpeg', 'png', 'webp'], true)
+            && in_array(strtolower((string) $document->mime_type), ['image/jpeg', 'image/png', 'image/webp'], true);
     }
 
     private function appendDocumentUrls($model): void

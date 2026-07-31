@@ -84,6 +84,8 @@ Route::post('petty-cash/expenses/{expense}/reject', [PettyCashController::class,
 Route::post('petty-cash/expenses/{expense}/observe', [PettyCashController::class, 'observeExpense'])->name('petty-cash.expenses.observe');
 Route::delete('petty-cash/expenses/{expense}/documents/{document}', [PettyCashController::class, 'destroyExpenseDocument'])
     ->name('petty-cash.expenses.documents.destroy');
+Route::post('petty-cash/expenses/{expense}/documents/{document}/replace-image', [PettyCashController::class, 'replaceExpenseDocumentImage'])
+    ->name('petty-cash.expenses.documents.replace-image');
 Route::post('petty-cash/{pettyCash}/close', [PettyCashController::class, 'close'])->name('petty-cash.close');
 Route::post('petty-cash/{pettyCash}/replenishments', [PettyCashController::class, 'storeReplenishment'])->name('petty-cash.replenishments.store');
 Route::get('petty-cash/{pettyCash}/receipt-exchanges/pending', [PettyCashExpenseExchangeController::class, 'pending'])

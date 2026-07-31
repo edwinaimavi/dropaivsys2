@@ -213,6 +213,15 @@ $(function () {
                 });
             }
         });
+        (expense.events || []).forEach(event => events.push({
+            title: event.event === 'comprobante_actualizado' ? 'Comprobante actualizado' : 'Actividad administrativa',
+            at: event.created_at,
+            user: event.creator,
+            label: 'Detalle',
+            message: event.description,
+            icon: 'fa-crop-alt',
+            className: 'is-corrected'
+        }));
         if (expense.approved_at) events.push({
             title: 'Aprobado',
             at: expense.approved_at,
@@ -332,7 +341,7 @@ $(function () {
     const receiptPreview = (source, isExisting, index) => {
         const extension = String(source.extension || source.name?.split('.').pop() || '').toLowerCase();
         const mime = String(source.mime_type || source.type || '');
-        const isImage = mime.startsWith('image/') || ['jpg', 'jpeg', 'png'].includes(extension);
+        const isImage = mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp'].includes(extension);
         let preview;
 
         if (isImage) {
@@ -346,7 +355,7 @@ $(function () {
         const name = escapeHtml(source.original_name || source.name || 'Comprobante');
         const size = fileSize(source.file_size ?? source.size);
         const actions = isExisting
-            ? `<a href="${source.view_url}" target="_blank" class="petty-receipt-action is-view" title="Abrir comprobante"><i class="fas fa-external-link-alt"></i></a><button type="button" class="petty-receipt-action is-remove removeExistingExpenseDocument" data-id="${source.id}" title="Eliminar comprobante"><i class="fas fa-trash"></i></button>`
+            ? `<a href="${source.view_url}" target="_blank" class="petty-receipt-action is-view" title="Abrir comprobante"><i class="fas fa-external-link-alt"></i></a>${isImage && canEditExpenseDocument ? `<button type="button" class="petty-receipt-action is-edit editStoredReceiptImage" data-id="${source.id}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>` : ''}<button type="button" class="petty-receipt-action is-remove removeExistingExpenseDocument" data-id="${source.id}" title="Eliminar comprobante"><i class="fas fa-trash"></i></button>`
             : `${isImage && canEditExpenseDocument ? `<button type="button" class="petty-receipt-action is-edit editPendingReceiptImage" data-collection="expense" data-index="${index}" title="Editar imagen"><i class="fas fa-crop-alt"></i></button>` : (!isImage ? '<span class="petty-receipt-pdf-help" title="Los PDF no requieren edición visual"><i class="fas fa-lock"></i></span>' : '')}<button type="button" class="petty-receipt-action is-remove removePendingExpenseDocument" data-index="${index}" title="Quitar archivo"><i class="fas fa-times"></i></button>`;
 
         return `<article class="petty-receipt-item">${preview}<div class="petty-receipt-meta"><strong title="${name}">${name}</strong><small>${isExisting ? 'Guardado' : 'Nuevo'} · ${size}</small></div><div class="petty-receipt-actions">${actions}</div></article>`;
@@ -460,6 +469,32 @@ $(function () {
             });
         });
     };
+    const openStoredImageEditor = documentId => {
+        if (!canEditExpenseDocument) return notify('error', 'No tienes permiso para editar comprobantes de caja chica.');
+        const storedDocument = existingExpenseDocuments.find(item => Number(item.id) === Number(documentId));
+        if (!storedDocument || !String(storedDocument.mime_type || '').startsWith('image/')) return;
+        closeImageEditor();
+        const sourceUrl = `${storedDocument.view_url}${String(storedDocument.view_url).includes('?') ? '&' : '?'}v=${Date.now()}`;
+        fetch(sourceUrl, { credentials: 'same-origin', headers: { Accept: 'image/*' } })
+            .then(response => {
+                if (!response.ok || !String(response.headers.get('content-type') || '').startsWith('image/')) {
+                    throw new Error('No se pudo cargar la imagen guardada.');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                imageEditorTarget = { type: 'stored', documentId: Number(documentId), expenseId: Number($('#pc_expense_id').val()), document: storedDocument };
+                imageEditorObjectUrl = URL.createObjectURL(blob);
+                $('#pcie_image').attr('src', imageEditorObjectUrl);
+                $('#pettyCashImageEditorModal').modal('show').one('shown.bs.modal', () => {
+                    imageEditorCropper = new Cropper(document.getElementById('pcie_image'), {
+                        viewMode: 1, dragMode: 'crop', aspectRatio: NaN, autoCropArea: 0.92,
+                        responsive: true, background: false, checkOrientation: true
+                    });
+                });
+            })
+            .catch(error => notify('error', error.message || 'No se pudo cargar la imagen guardada.'));
+    };
     const loadSourceAccounts = (companyId, selectSelector, helpSelector, selectedId = '') => {
         const select = $(selectSelector).prop('disabled', true);
         $(helpSelector).text('');
@@ -499,6 +534,9 @@ $(function () {
     $(document).on('click', '.editPendingReceiptImage', function () {
         openImageEditor(String($(this).data('collection')), Number($(this).data('index')));
     });
+    $(document).on('click', '.editStoredReceiptImage', function () {
+        openStoredImageEditor(Number($(this).data('id')));
+    });
     $('#pcie_rotate_left').on('click', () => imageEditorCropper?.rotate(-90));
     $('#pcie_rotate_right').on('click', () => imageEditorCropper?.rotate(90));
     $('#pcie_crop').on('click', () => imageEditorCropper?.crop().setDragMode('crop'));
@@ -506,11 +544,12 @@ $(function () {
     $('#pcie_apply').on('click', function () {
         if (!imageEditorCropper || !imageEditorTarget) return;
         const target = { ...imageEditorTarget };
-        const original = imageEditorCollection(target.collection)?.[target.index];
+        const original = target.type === 'stored' ? target.document : imageEditorCollection(target.collection)?.[target.index];
         if (!original) return;
-        const outputType = original.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const extension = outputType === 'image/png' ? 'png' : 'jpg';
-        const safeBaseName = String(original.name || 'comprobante')
+        const originalType = original.type || original.mime_type;
+        const outputType = originalType === 'image/png' ? 'image/png' : (originalType === 'image/webp' ? 'image/webp' : 'image/jpeg');
+        const extension = outputType === 'image/png' ? 'png' : (outputType === 'image/webp' ? 'webp' : 'jpg');
+        const safeBaseName = String(original.name || original.original_name || 'comprobante')
             .replace(/\.[^.]+$/, '')
             .replace(/[^\w.-]+/g, '-');
         const button = $(this).prop('disabled', true);
@@ -531,12 +570,34 @@ $(function () {
             if (blob.size > 10 * 1024 * 1024) {
                 return notify('error', 'La imagen editada supera el tamaño máximo permitido.');
             }
-            const collection = imageEditorCollection(target.collection);
-            if (!collection?.[target.index]) return;
-            collection[target.index] = new File([blob], `${safeBaseName}-editado.${extension}`, {
+            const editedFile = new File([blob], `${safeBaseName}-editado.${extension}`, {
                 type: outputType,
                 lastModified: Date.now()
             });
+            if (target.type === 'stored') {
+                const formData = new FormData();
+                formData.append('image', editedFile);
+                button.prop('disabled', true);
+                api({
+                    url: `${base}/expenses/${target.expenseId}/documents/${target.documentId}/replace-image`,
+                    method: 'POST', data: formData, processData: false, contentType: false
+                }).done(response => {
+                    const updated = response.document;
+                    updated.view_url = `${updated.view_url}${String(updated.view_url).includes('?') ? '&' : '?'}v=${Date.now()}`;
+                    const index = existingExpenseDocuments.findIndex(item => Number(item.id) === target.documentId);
+                    if (index !== -1) existingExpenseDocuments[index] = updated;
+                    const expense = currentBox?.expenses?.find(item => Number(item.id) === target.expenseId);
+                    if (expense) expense.documents = [...existingExpenseDocuments];
+                    renderExpenseDocuments();
+                    if (currentBox) renderDetail(currentBox);
+                    $('#pettyCashImageEditorModal').modal('hide');
+                    notify('success', response.message);
+                }).fail(xhr => notify('error', errorMessage(xhr))).always(() => button.prop('disabled', false));
+                return;
+            }
+            const collection = imageEditorCollection(target.collection);
+            if (!collection?.[target.index]) return;
+            collection[target.index] = editedFile;
             refreshEditedImageCollection(target.collection);
             $('#pettyCashImageEditorModal').modal('hide');
             notify('success', 'La imagen fue editada y se guardará con el comprobante.');

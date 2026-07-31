@@ -58,6 +58,7 @@ class PettyCashExpense extends Model
     public function exchange() { return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id'); }
     public function exchangeItems() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id'); }
     public function observations() { return $this->hasMany(PettyCashExpenseObservation::class)->latest('observed_at'); }
+    public function events() { return $this->hasMany(PettyCashExpenseEvent::class)->latest(); }
     public function currentObservation()
     {
         return $this->hasOne(PettyCashExpenseObservation::class)
