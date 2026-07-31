@@ -208,6 +208,12 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.load-order' => 'Cargar orden de compra proveedor',
             'admin.warehouse-entries.load-items' => 'Cargar items de orden de compra proveedor',
             'admin.warehouse-entries.pdf' => 'Ver PDF de ingresos de almacen',
+            'admin.warehouse-entries.documents.index' => 'Ver documentos de ingresos de almacen',
+            'admin.warehouse-entries.documents.store' => 'Adjuntar documentos de ingresos de almacen',
+            'admin.warehouse-entries.documents.destroy' => 'Eliminar documentos de ingresos de almacen',
+            'admin.warehouse-entries.lot-documents.index' => 'Ver documentos por lote de ingresos de almacen',
+            'admin.warehouse-entries.lot-documents.store' => 'Adjuntar documentos por lote de ingresos de almacen',
+            'admin.warehouse-entries.lot-documents.destroy' => 'Eliminar documentos por lote de ingresos de almacen',
 
             'admin.labelings.index' => 'Ver rotulaciones',
             'admin.labelings.list' => 'Listar rotulaciones',

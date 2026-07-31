@@ -4,6 +4,8 @@ let warehouseEntrySourceLoadRequest = null;
 let warehouseEntrySourceLoadTimer = null;
 let warehouseEntryPendingDocuments = [];
 let warehouseEntryExistingDocuments = [];
+let warehouseEntryPendingLotDocuments = [];
+let warehouseEntryExistingLotDocuments = [];
 let warehouseEntryActiveLotsRow = null;
 
 const warehouseEntryDocumentTypes = {
@@ -172,6 +174,30 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('click', '#btnAddWarehouseEntryDocument', addWarehouseEntryPendingDocument);
+    $(document).on('change', '#warehouse_entry_lot_document_item', refreshWarehouseEntryLotDocumentLots);
+    $(document).on('change', '#warehouse_entry_lot_document_lot', renderWarehouseEntrySelectedLotInfo);
+    $(document).on('click', '#btnAddWarehouseEntryLotDocument', addWarehouseEntryPendingLotDocument);
+    $(document).on('change', '#warehouse_entry_lot_document_file', function () {
+        const file = this.files?.[0];
+        $(this).siblings('.custom-file-label')
+            .text(file ? file.name : 'Seleccionar archivo')
+            .attr('title', file?.name || '');
+    });
+    $(document).on('click', '.btnWarehouseEntryLotDocuments', function () {
+        const visualRow = $(this).closest('tr');
+        const itemRow = visualRow.hasClass('warehouse-entry-item-row') ? visualRow : visualRow.prevAll('.warehouse-entry-item-row').first();
+        const itemIndex = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').index(itemRow);
+        $('#warehouseEntryModal .warehouse-entry-form-tabs a[href="#warehouse_entry_tab_documents"]').tab('show');
+        $('#warehouse_entry_lot_document_item').val(String(itemIndex)).trigger('change');
+        $('#warehouse_entry_lot_document_lot').val($(this).data('lot-key')).trigger('change');
+    });
+    $(document).on('click', '.btnRemovePendingLotDocument', function () {
+        warehouseEntryPendingLotDocuments.splice(Number($(this).data('index')), 1);
+        renderWarehouseEntryLotDocuments();
+    });
+    $(document).on('click', '.btnDeleteExistingLotDocument', function () {
+        deleteWarehouseEntryLotDocument($(this).data('id'));
+    });
 
     $(document).on('click', '.btnRemoveWarehouseEntryPendingDocument', function () {
         const index = Number($(this).data('index'));
@@ -367,8 +393,11 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_guide_ruc').val('');
     warehouseEntryPendingDocuments = [];
     warehouseEntryExistingDocuments = [];
+    warehouseEntryPendingLotDocuments = [];
+    warehouseEntryExistingLotDocuments = [];
     resetWarehouseEntryDocumentInputs();
     renderWarehouseEntryDocuments();
+    refreshWarehouseEntryLotDocumentItems();
     setWarehouseEntrySupplierLocked(false);
     syncWarehouseEntryPayableAmount();
     $('#warehouseEntryModal .warehouse-entry-form-tabs .nav-link').first().tab('show');
@@ -410,6 +439,13 @@ function saveWarehouseEntry(form) {
         formData.append(`warehouse_entry_documents[${index}][type]`, document.type);
         formData.append(`warehouse_entry_documents[${index}][description]`, document.description || '');
         formData.append(`warehouse_entry_documents[${index}][file]`, document.file);
+    });
+    warehouseEntryPendingLotDocuments.forEach(function (document, index) {
+        formData.append(`warehouse_entry_lot_documents[${index}][item_index]`, document.itemIndex);
+        formData.append(`warehouse_entry_lot_documents[${index}][lot_key]`, document.lotKey);
+        formData.append(`warehouse_entry_lot_documents[${index}][type]`, document.type);
+        formData.append(`warehouse_entry_lot_documents[${index}][description]`, document.description || '');
+        formData.append(`warehouse_entry_lot_documents[${index}][file]`, document.file);
     });
 
     $.ajax({
@@ -571,6 +607,7 @@ function addWarehouseEntryItemRow(data = {}) {
     const row = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').last();
 
     row.find('.item-supplier-purchase-order-item-id').val(data.supplier_purchase_order_item_id || '');
+    row.find('.item-entry-id').val(data.id || '');
     row.find('.item-article-id').val(data.article_id || '');
     row.find('.item-article-code').val(data.article_code || '');
     row.find('.item-billing-name').val(data.billing_name_snapshot || '');
@@ -664,6 +701,9 @@ function refreshWarehouseEntryItemIndexes() {
 
 function normalizeWarehouseEntryLot(lot) {
     return {
+        id: lot.id || null,
+        client_key: lot.client_key || (lot.id ? `id:${lot.id}` : `new:${Date.now()}:${Math.random().toString(36).slice(2)}`),
+        documents: Array.isArray(lot.documents) ? lot.documents : [],
         lot_code: String(lot.lot_code || '').trim().toUpperCase(),
         quantity: parseWarehouseEntryNumber(lot.quantity),
         expiration_date: formatWarehouseEntryDate(lot.expiration_date),
@@ -686,6 +726,7 @@ function addWarehouseEntryLotEditorRow(lot = {}) {
     const requireExpiration = Number(warehouseEntryActiveLotsRow?.find('.item-has-expiration').val()) === 1;
     $('#warehouseEntryLotsTbody').append(`
         <tr>
+            <td class="d-none"><input type="hidden" class="lot-editor-id" value="${lot.id || ''}"><input type="hidden" class="lot-editor-key" value="${escapeWarehouseEntryHtml(lot.client_key || '')}"></td>
             <td class="lot-editor-index align-middle"></td>
             <td><input type="text" class="form-control form-control-sm lot-editor-code text-uppercase" maxlength="100" value="${escapeWarehouseEntryHtml(lot.lot_code || '')}"></td>
             <td><input type="number" class="form-control form-control-sm lot-editor-quantity text-right" min="0.0001" step="0.0001" value="${lot.quantity || ''}"></td>
@@ -715,13 +756,17 @@ function refreshWarehouseEntryLotEditor() {
 
 function applyWarehouseEntryLots() {
     const lots = [];
+    const previousLots = warehouseEntryActiveLotsRow.data('lots') || [];
     let error = '';
     $('#warehouseEntryLotsTbody tr').each(function () {
         const lot = normalizeWarehouseEntryLot({
+            id: $(this).find('.lot-editor-id').val() || null,
+            client_key: $(this).find('.lot-editor-key').val() || null,
             lot_code: $(this).find('.lot-editor-code').val(),
             quantity: $(this).find('.lot-editor-quantity').val(),
             expiration_date: $(this).find('.lot-editor-expiration').val()
         });
+        lot.documents = previousLots.find(previous => previous.client_key === lot.client_key)?.documents || [];
         if (!lot.lot_code) error = 'Todos los lotes deben tener codigo.';
         else if (lot.quantity <= 0) error = 'La cantidad de cada lote debe ser mayor a cero.';
         else if (Number(warehouseEntryActiveLotsRow.find('.item-has-expiration').val()) === 1 && !lot.expiration_date) error = 'La fecha de vencimiento es obligatoria para este articulo.';
@@ -737,6 +782,7 @@ function applyWarehouseEntryLots() {
     warehouseEntryActiveLotsRow.data('lots', lots);
     renderWarehouseEntryLotsSummary(warehouseEntryActiveLotsRow);
     renderWarehouseEntryLotRows(warehouseEntryActiveLotsRow);
+    refreshWarehouseEntryLotDocumentItems();
     $('#warehouseEntryLotsModal').modal('hide');
 }
 
@@ -818,13 +864,14 @@ function warehouseEntryLotBadge(lot, number) {
     const expirationLabel = expiration
         ? `<small class="d-block text-muted mt-1">Vence: ${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(expiration))}</small>`
         : '';
-    return `<span class="badge warehouse-entry-lot-badge"><i class="fas fa-tag mr-1"></i>${escapeWarehouseEntryHtml(lot.lot_code || `Lote ${number}`)}</span>${expirationLabel}`;
+    const documentCount = (lot.documents || []).length + warehouseEntryPendingLotDocuments.filter(document => document.lotKey === lot.client_key).length;
+    return `<span class="badge warehouse-entry-lot-badge"><i class="fas fa-tag mr-1"></i>${escapeWarehouseEntryHtml(lot.lot_code || `Lote ${number}`)}</span>${expirationLabel}<button type="button" class="btn btn-outline-info btn-xs mt-1 btnWarehouseEntryLotDocuments" data-lot-key="${escapeWarehouseEntryHtml(lot.client_key)}"><i class="fas fa-paperclip"></i> ${documentCount}</button>`;
 }
 
 function syncWarehouseEntryLotInputs(row, itemIndex) {
     const container = row.find('.warehouse-entry-lots-inputs').empty();
     (row.data('lots') || []).forEach(function (lot, lotIndex) {
-        ['lot_code', 'quantity', 'expiration_date', 'manufacturing_date'].forEach(function (field) {
+        ['id', 'client_key', 'lot_code', 'quantity', 'expiration_date', 'manufacturing_date'].forEach(function (field) {
             $('<input>', { type: 'hidden', name: `items[${itemIndex}][lots][${lotIndex}][${field}]`, value: lot[field] || '' }).appendTo(container);
         });
     });
@@ -1021,8 +1068,22 @@ function fillWarehouseEntryForm(entry) {
     showEmptyWarehouseEntryItemsRow();
     warehouseEntryPendingDocuments = [];
     warehouseEntryExistingDocuments = entry.documents || [];
+    warehouseEntryPendingLotDocuments = [];
+    warehouseEntryExistingLotDocuments = (entry.items || []).flatMap((item, itemIndex) =>
+        (item.lots || []).flatMap(lot => (lot.documents || []).map(document => ({
+            ...document,
+            itemIndex,
+            lotKey: `id:${lot.id}`,
+            lotId: lot.id,
+            lotCode: lot.lot_code,
+            lotQuantity: lot.quantity,
+            articleName: item.billing_name_snapshot || item.article?.billing_name || '-'
+        })))
+    );
     resetWarehouseEntryDocumentInputs();
     renderWarehouseEntryDocuments();
+    refreshWarehouseEntryLotDocumentItems();
+    renderWarehouseEntryLotDocuments();
     calculateWarehouseEntryTotals();
     syncWarehouseEntryPayableAmount();
 }
@@ -1108,6 +1169,95 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
 
     $('#vwe_items').html(rows || '<tr><td colspan="10" class="text-center text-muted py-3">Sin articulos ingresados.</td></tr>');
     renderWarehouseEntryDetailDocuments(entry.documents || [], entry.id);
+    renderWarehouseEntryDetailLotDocuments(entry.items || [], entry.id);
+}
+
+function refreshWarehouseEntryLotDocumentItems() {
+    const current = $('#warehouse_entry_lot_document_item').val();
+    const options = ['<option value="">Seleccione artículo</option>'];
+    $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function (index) {
+        const name = $(this).find('.item-billing-name').val() || $(this).find('.item-article-picker option:selected').text().trim() || `Artículo ${index + 1}`;
+        options.push(`<option value="${index}">${escapeWarehouseEntryHtml(name)}</option>`);
+    });
+    $('#warehouse_entry_lot_document_item').html(options.join('')).val(current || '');
+    refreshWarehouseEntryLotDocumentLots();
+    renderWarehouseEntryLotDocuments();
+}
+
+function refreshWarehouseEntryLotDocumentLots() {
+    const itemIndex = Number($('#warehouse_entry_lot_document_item').val());
+    const row = Number.isInteger(itemIndex) ? $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').eq(itemIndex) : $();
+    const options = ['<option value="">Seleccione lote</option>'];
+    (row.data('lots') || []).forEach(lot => options.push(`<option value="${escapeWarehouseEntryHtml(lot.client_key)}">${escapeWarehouseEntryHtml(lot.lot_code)} · ${formatWarehouseEntryMoney(lot.quantity)}</option>`));
+    $('#warehouse_entry_lot_document_lot').html(options.join(''));
+    renderWarehouseEntrySelectedLotInfo();
+}
+
+function selectedWarehouseEntryLotContext() {
+    const itemIndex = Number($('#warehouse_entry_lot_document_item').val());
+    const lotKey = $('#warehouse_entry_lot_document_lot').val();
+    if (!Number.isInteger(itemIndex) || !lotKey) return null;
+    const row = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').eq(itemIndex);
+    const lot = (row.data('lots') || []).find(value => value.client_key === lotKey);
+    if (!lot) return null;
+    return { itemIndex, lotKey, lot, articleName: row.find('.item-billing-name').val() || '-' };
+}
+
+function renderWarehouseEntrySelectedLotInfo() {
+    const context = selectedWarehouseEntryLotContext();
+    const box = $('#warehouseEntryLotSelectedInfo');
+    if (!context) return box.addClass('d-none').empty();
+    const count = [...warehouseEntryExistingLotDocuments, ...warehouseEntryPendingLotDocuments]
+        .filter(document => document.itemIndex === context.itemIndex && document.lotKey === context.lotKey).length;
+    box.removeClass('d-none').html(`<strong>${escapeWarehouseEntryHtml(context.articleName)}</strong><span>Lote ${escapeWarehouseEntryHtml(context.lot.lot_code)} · Cantidad ${formatWarehouseEntryMoney(context.lot.quantity)}${context.lot.expiration_date ? ` · Vence ${formatWarehouseEntryDisplayDate(context.lot.expiration_date)}` : ''} · ${count} documento(s)</span>`);
+}
+
+function addWarehouseEntryPendingLotDocument() {
+    const context = selectedWarehouseEntryLotContext();
+    const file = $('#warehouse_entry_lot_document_file')[0]?.files?.[0];
+    const type = $('#warehouse_entry_lot_document_type').val();
+    if (!$('#warehouse_entry_lot_document_item').val()) return Swal.fire('Atención', 'Seleccione el artículo.', 'warning');
+    if (!$('#warehouse_entry_lot_document_lot').val() || !context) return Swal.fire('Atención', 'Seleccione el lote.', 'warning');
+    if (!type) return Swal.fire('Atención', 'Seleccione el tipo de documento.', 'warning');
+    if (!file) return Swal.fire('Atención', 'Seleccione un archivo para adjuntar al lote.', 'warning');
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(getWarehouseEntryFileExtension(file.name))) return Swal.fire('Archivo no permitido', 'Adjunte PDF, JPG, JPEG o PNG.', 'warning');
+    if (file.size > warehouseEntryMaxDocumentSize) return Swal.fire('Archivo muy pesado', 'El documento no debe superar 10 MB.', 'warning');
+    warehouseEntryPendingLotDocuments.push({ ...context, type, description: $('#warehouse_entry_lot_document_description').val(), file, original_name: file.name });
+    $('#warehouse_entry_lot_document_description, #warehouse_entry_lot_document_file').val('');
+    $('#warehouse_entry_lot_document_file').siblings('.custom-file-label').text('Seleccionar archivo').removeAttr('title');
+    renderWarehouseEntryLotDocuments();
+    renderWarehouseEntryLotRows($('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').eq(context.itemIndex));
+}
+
+function renderWarehouseEntryLotDocuments() {
+    const documents = [
+        ...warehouseEntryExistingLotDocuments.map(document => ({ ...document, existing: true })),
+        ...warehouseEntryPendingLotDocuments.map((document, pendingIndex) => ({ ...document, pendingIndex }))
+    ];
+    if (!documents.length) {
+        $('#warehouseEntryLotDocumentsList').html('<div class="warehouse-entry-lot-documents-empty"><i class="fas fa-folder-open"></i>No hay documentos específicos por lote.</div>');
+        return renderWarehouseEntrySelectedLotInfo();
+    }
+    const groups = {};
+    documents.forEach(document => {
+        const key = `${document.itemIndex}:${document.lotKey}`;
+        (groups[key] ||= { articleName: document.articleName, lotCode: document.lot?.lot_code || document.lotCode, quantity: document.lot?.quantity || document.lotQuantity, documents: [] }).documents.push(document);
+    });
+    $('#warehouseEntryLotDocumentsList').html(Object.values(groups).map(group => `<div class="warehouse-entry-lot-document-group"><div class="warehouse-entry-lot-document-group-title"><strong>${escapeWarehouseEntryHtml(group.articleName)}</strong><span>Lote ${escapeWarehouseEntryHtml(group.lotCode)} · ${formatWarehouseEntryMoney(group.quantity)}</span></div>${group.documents.map(document => `<div class="warehouse-entry-lot-document-row"><span>${escapeWarehouseEntryHtml(warehouseEntryDocumentTypes[document.document_type || document.type]?.label || 'Documento')} · ${escapeWarehouseEntryHtml(document.original_name)}</span><span>${document.existing ? `<a target="_blank" class="btn btn-outline-info btn-sm" href="/storage/${encodeURI(document.file_path)}"><i class="fas fa-eye"></i></a> <button type="button" class="btn btn-outline-danger btn-sm btnDeleteExistingLotDocument" data-id="${document.id}"><i class="fas fa-ban"></i></button>` : `<button type="button" class="btn btn-outline-danger btn-sm btnRemovePendingLotDocument" data-index="${document.pendingIndex}"><i class="fas fa-times"></i></button>`}</span></div>`).join('')}</div>`).join(''));
+    renderWarehouseEntrySelectedLotInfo();
+}
+
+function deleteWarehouseEntryLotDocument(documentId) {
+    const entryId = $('#warehouse_entry_id').val();
+    if (!entryId) return;
+    $.ajax({ url: `${window.routes.warehouseEntryShow}/${entryId}/lot-documents/${documentId}`, type: 'DELETE' })
+        .done(() => { warehouseEntryExistingLotDocuments = warehouseEntryExistingLotDocuments.filter(document => Number(document.id) !== Number(documentId)); renderWarehouseEntryLotDocuments(); })
+        .fail(xhr => Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo anular el documento.', 'error'));
+}
+
+function renderWarehouseEntryDetailLotDocuments(items, entryId) {
+    const groups = items.flatMap(item => (item.lots || []).map(lot => ({ item, lot, documents: lot.documents || [] }))).filter(group => group.documents.length);
+    $('#vwe_lot_documents').html(groups.length ? groups.map(group => `<div class="warehouse-entry-lot-document-group"><div class="warehouse-entry-lot-document-group-title"><strong>${escapeWarehouseEntryHtml(group.item.billing_name_snapshot || group.item.article?.billing_name || '-')}</strong><span>Lote ${escapeWarehouseEntryHtml(group.lot.lot_code)} · ${formatWarehouseEntryMoney(group.lot.quantity)}</span></div>${group.documents.map(document => `<div class="warehouse-entry-lot-document-row"><span>${escapeWarehouseEntryHtml(warehouseEntryDocumentTypes[document.document_type]?.label || 'Documento')} · ${escapeWarehouseEntryHtml(document.original_name)}</span><span><a target="_blank" class="btn btn-outline-info btn-sm" href="/storage/${encodeURI(document.file_path)}"><i class="fas fa-eye"></i></a> <a class="btn btn-outline-success btn-sm" href="${window.routes.warehouseEntryShow}/${entryId}/lot-documents/${document.id}/download"><i class="fas fa-download"></i></a></span></div>`).join('')}</div>`).join('') : '<div class="warehouse-entry-lot-documents-empty">No hay documentos específicos por lote.</div>');
 }
 
 function formatWarehouseEntryUser(user) {

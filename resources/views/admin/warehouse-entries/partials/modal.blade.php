@@ -391,8 +391,8 @@
                                             <i class="fas fa-folder-open"></i>
                                         </span>
                                         <div>
-                                            <h6 class="mb-0 font-weight-bold text-dark">Documentos del ingreso</h6>
-                                            <small class="text-muted">Adjunta comprobantes, gu&iacute;as, certificados y documentos sanitarios.</small>
+                                            <h6 class="mb-0 font-weight-bold text-dark">Documentos generales del ingreso</h6>
+                                            <small class="text-muted">Adjunta comprobantes, gu&iacute;as o documentos que aplican a todo el ingreso.</small>
                                         </div>
                                     </div>
                                     <span class="warehouse-entry-document-counter">
@@ -472,6 +472,35 @@
                                         </tbody>
                                     </table>
                                 </div>
+
+                                <div class="warehouse-entry-lot-documents-section mt-3 pt-3 border-top">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="warehouse-entry-document-icon mr-2"><i class="fas fa-tags"></i></span>
+                                        <div><h6 class="mb-0 font-weight-bold">Documentos por lote</h6><small class="text-muted">Adjunta documentos espec&iacute;ficos para cada lote recibido.</small></div>
+                                    </div>
+                                    <div class="warehouse-entry-lot-document-form"><div class="row align-items-end">
+                                        <div class="form-group col-lg-4 col-md-6"><label>ART&Iacute;CULO</label><select id="warehouse_entry_lot_document_item" class="form-control form-control-sm"><option value="">Seleccione art&iacute;culo</option></select></div>
+                                        <div class="form-group col-lg-3 col-md-6"><label>LOTE</label><select id="warehouse_entry_lot_document_lot" class="form-control form-control-sm"><option value="">Seleccione lote</option></select></div>
+                                        <div class="form-group col-lg-5 col-md-6"><label>TIPO</label><select id="warehouse_entry_lot_document_type" class="form-control form-control-sm">
+                                            <option value="dispatch_guide">Gu&iacute;a de remisi&oacute;n</option><option value="analysis_certificate">Certificado de an&aacute;lisis</option><option value="sanitary_registration">Registro sanitario</option><option value="quality_certificate">Certificado de calidad</option><option value="bpm_bpa_certificate">Certificado BPM / BPA</option><option value="technical_sheet">Ficha t&eacute;cnica</option><option value="medicine_document">Documento del medicamento</option><option value="other">Otro</option>
+                                        </select></div>
+                                        <div class="w-100 d-none d-lg-block"></div>
+                                        <div class="form-group col-lg-4 col-md-6"><label>DESCRIPCI&Oacute;N</label><input id="warehouse_entry_lot_document_description" class="form-control form-control-sm" maxlength="255"></div>
+                                        <div class="form-group col-lg-5 col-md-7">
+                                            <label>ARCHIVO</label>
+                                            <div class="custom-file warehouse-entry-document-file">
+                                                <input type="file" id="warehouse_entry_lot_document_file"
+                                                    class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png">
+                                                <label class="custom-file-label" for="warehouse_entry_lot_document_file">
+                                                    Seleccionar archivo
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="form-group col-lg-3 col-md-5"><button type="button" id="btnAddWarehouseEntryLotDocument" class="btn btn-info btn-sm btn-block warehouse-entry-document-add"><i class="fas fa-paperclip mr-1"></i>Adjuntar</button></div>
+                                    </div></div>
+                                    <div id="warehouseEntryLotSelectedInfo" class="warehouse-entry-lot-selected-info d-none"></div>
+                                    <div id="warehouseEntryLotDocumentsList" class="warehouse-entry-lot-documents-list mt-2"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -480,6 +509,7 @@
                         <tr class="warehouse-entry-item-row">
                             <td class="warehouse-entry-item-index align-middle"></td>
                             <td>
+                                <input type="hidden" name="items[__INDEX__][id]" class="item-entry-id">
                                 <input type="hidden" name="items[__INDEX__][supplier_purchase_order_item_id]"
                                     class="item-supplier-purchase-order-item-id">
                                 <input type="hidden" name="items[__INDEX__][article_id]" class="item-article-id">

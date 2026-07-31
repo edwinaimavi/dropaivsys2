@@ -21,4 +21,22 @@ class WarehouseEntryItemLot extends Model
     {
         return $this->belongsTo(WarehouseEntryItem::class);
     }
+
+    public function warehouseEntry()
+    {
+        return $this->hasOneThrough(
+            WarehouseEntry::class,
+            WarehouseEntryItem::class,
+            'id',
+            'id',
+            'warehouse_entry_item_id',
+            'warehouse_entry_id'
+        );
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(WarehouseEntryItemLotDocument::class)
+            ->where('status', 'ACTIVE');
+    }
 }

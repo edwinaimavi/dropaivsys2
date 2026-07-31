@@ -18,6 +18,7 @@ use App\Models\SupplierPurchaseOrderItem;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryItemLotDocument;
 use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -44,6 +45,8 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
         $this->middleware('can:admin.warehouse-entries.show')->only(['show', 'downloadDocument']);
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
+        $this->middleware('can:admin.warehouse-entries.lot-documents.index')->only(['downloadLotDocument']);
+        $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
     }
 
     public function index()
@@ -179,7 +182,7 @@ class WarehouseEntryController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
-            'items.lots',
+            'items.lots.documents',
             'documents' => function ($query) {
                 $query->where(function ($innerQuery) {
                     $innerQuery->whereNull('observation')
@@ -255,6 +258,22 @@ class WarehouseEntryController extends Controller
             'status' => 'success',
             'message' => 'Documento eliminado correctamente.',
         ]);
+    }
+
+    public function downloadLotDocument(WarehouseEntry $warehouseEntry, WarehouseEntryItemLotDocument $lotDocument)
+    {
+        $this->ensureEntryLotDocument($warehouseEntry, $lotDocument);
+        abort_unless($lotDocument->file_path && Storage::disk('public')->exists($lotDocument->file_path), 404);
+
+        return Storage::disk('public')->download($lotDocument->file_path, $lotDocument->original_name);
+    }
+
+    public function destroyLotDocument(WarehouseEntry $warehouseEntry, WarehouseEntryItemLotDocument $lotDocument)
+    {
+        $this->ensureEntryLotDocument($warehouseEntry, $lotDocument);
+        $lotDocument->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+
+        return response()->json(['status' => 'success', 'message' => 'Documento del lote anulado correctamente.']);
     }
 
     public function destroy(WarehouseEntry $warehouseEntry, WarehouseKardexService $kardexService)
@@ -402,6 +421,7 @@ class WarehouseEntryController extends Controller
             'observations' => ['nullable', 'string'],
             'status' => ['nullable', Rule::in($this->statusValues())],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_items,id'],
             'items.*.supplier_purchase_order_item_id' => ['nullable', 'exists:supplier_purchase_order_items,id'],
             'items.*.article_id' => ['required', 'exists:articles,id'],
             'items.*.article_code' => ['nullable', 'string', 'max:255'],
@@ -415,6 +435,8 @@ class WarehouseEntryController extends Controller
             'items.*.expiration_date' => ['nullable', 'date'],
             'items.*.lot_number' => ['nullable', 'string', 'max:100'],
             'items.*.lots' => ['nullable', 'array'],
+            'items.*.lots.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_item_lots,id'],
+            'items.*.lots.*.client_key' => ['nullable', 'string', 'max:100'],
             'items.*.lots.*.lot_code' => ['required', 'string', 'max:100'],
             'items.*.lots.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.lots.*.expiration_date' => ['nullable', 'date'],
@@ -426,6 +448,12 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_documents.*.type' => ['required_with:warehouse_entry_documents.*.file', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
             'warehouse_entry_documents.*.description' => ['nullable', 'string', 'max:255'],
             'warehouse_entry_documents.*.file' => ['required_with:warehouse_entry_documents.*.type', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
+            'warehouse_entry_lot_documents' => ['nullable', 'array'],
+            'warehouse_entry_lot_documents.*.item_index' => ['required', 'integer', 'min:0'],
+            'warehouse_entry_lot_documents.*.lot_key' => ['required', 'string', 'max:100'],
+            'warehouse_entry_lot_documents.*.type' => ['required', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
+            'warehouse_entry_lot_documents.*.description' => ['nullable', 'string', 'max:255'],
+            'warehouse_entry_lot_documents.*.file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ]);
 
         $this->validateItemLots($validated['items']);
@@ -499,30 +527,58 @@ class WarehouseEntryController extends Controller
 
                 if ($entry) {
                     $entry->update($entryData);
-                    $entry->items()->delete();
                 } else {
                     $entryData['entry_number'] = $this->nextEntryNumber();
                     $entryData['created_by'] = Auth::id();
                     $entry = WarehouseEntry::create($entryData);
                 }
 
-                foreach ($preparedItems as $item) {
+                $retainedItemIds = [];
+                $lotMap = [];
+                foreach ($preparedItems as $itemIndex => $item) {
                     $lots = $item['lots'] ?? [];
+                    $itemId = $item['_item_id'] ?? null;
                     unset($item['lots']);
-                    $entryItem = $entry->items()->create($item);
+                    unset($item['_item_id']);
+                    $entryItem = $itemId
+                        ? $entry->items()->whereKey($itemId)->firstOrFail()
+                        : $entry->items()->make();
+                    $entryItem->fill($item)->save();
+                    $retainedItemIds[] = $entryItem->id;
+                    $retainedLotIds = [];
 
                     foreach ($lots as $lot) {
-                        $entryItem->lots()->create($lot + [
-                            'status' => 'active',
-                            'created_by' => Auth::id(),
-                            'updated_by' => Auth::id(),
-                        ]);
+                        $lotId = $lot['id'] ?? null;
+                        $clientKey = $lot['client_key'] ?? ($lotId ? 'id:' . $lotId : null);
+                        unset($lot['id'], $lot['client_key']);
+                        $entryLot = $lotId
+                            ? $entryItem->lots()->whereKey($lotId)->firstOrFail()
+                            : $entryItem->lots()->make(['created_by' => Auth::id()]);
+                        $entryLot->fill($lot + ['status' => 'active', 'updated_by' => Auth::id()])->save();
+                        $retainedLotIds[] = $entryLot->id;
+                        if ($clientKey) $lotMap[$itemIndex . ':' . $clientKey] = $entryLot;
                     }
+
+                    $removedLots = $entryItem->lots()->whereNotIn('id', $retainedLotIds)->get();
+                    foreach ($removedLots as $removedLot) {
+                        $removedLot->documents()->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+                        $removedLot->update(['status' => 'inactive', 'updated_by' => Auth::id()]);
+                    }
+                }
+
+                if ($isUpdate) {
+                    $entry->items()->whereNotIn('id', $retainedItemIds)->update(['status' => 'deleted']);
                 }
 
                 $currentCustomerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($entry);
 
                 $this->storeEntryDocuments($entry, $request->input('warehouse_entry_documents', []), $request->file('warehouse_entry_documents', []));
+                $this->storeEntryLotDocuments(
+                    $entry,
+                    $lotMap,
+                    $request->input('warehouse_entry_lot_documents', []),
+                    $request->file('warehouse_entry_lot_documents', [])
+                );
 
                 $freshEntry = $entry->fresh([
                     'supplier',
@@ -604,6 +660,7 @@ class WarehouseEntryController extends Controller
             $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
 
             return [
+                '_item_id' => $item['id'] ?? null,
                 'supplier_purchase_order_item_id' => $item['supplier_purchase_order_item_id'] ?? null,
                 'article_id' => $item['article_id'],
                 'article_code' => $this->upperOrNull($item['article_code'] ?? null),
@@ -624,6 +681,8 @@ class WarehouseEntryController extends Controller
                 'line_total' => $lineTotal,
                 'status' => 'active',
                 'lots' => collect($item['lots'] ?? [])->map(fn (array $lot) => [
+                    'id' => $lot['id'] ?? null,
+                    'client_key' => $lot['client_key'] ?? (($lot['id'] ?? null) ? 'id:' . $lot['id'] : null),
                     'lot_code' => $this->upperOrNull($lot['lot_code'] ?? null),
                     'quantity' => round((float) ($lot['quantity'] ?? 0), 4),
                     'expiration_date' => $lot['expiration_date'] ?? null,
@@ -1074,7 +1133,7 @@ class WarehouseEntryController extends Controller
             }
 
             $documentType = $this->resolveWarehouseEntryDocumentType($document['type'] ?? 'other');
-            $storedPath = $file->store('warehouse_entries/documents', 'public');
+            $storedPath = $file->store("warehouse_entries/{$entry->id}/documents/general", 'public');
 
             Document::create([
                 'documentable_type' => WarehouseEntry::class,
@@ -1087,6 +1146,41 @@ class WarehouseEntryController extends Controller
                 'extension' => $file->getClientOriginalExtension(),
                 'file_size' => $file->getSize(),
                 'observation' => $this->upperOrNull($document['description'] ?? null),
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+    }
+
+    private function storeEntryLotDocuments(
+        WarehouseEntry $entry,
+        array $lotMap,
+        array $documentData,
+        array $documentFiles
+    ): void {
+        foreach ($documentData as $index => $document) {
+            $file = $documentFiles[$index]['file'] ?? null;
+            $mapKey = ($document['item_index'] ?? '') . ':' . ($document['lot_key'] ?? '');
+            $lot = $lotMap[$mapKey] ?? null;
+
+            if (! $file || ! $lot || (int) $lot->warehouseEntryItem->warehouse_entry_id !== (int) $entry->id) {
+                throw ValidationException::withMessages([
+                    "warehouse_entry_lot_documents.$index.lot_key" => 'El lote seleccionado no existe en este ingreso.',
+                ]);
+            }
+
+            $storedPath = $file->store("warehouse_entries/{$entry->id}/documents/lots/{$lot->id}", 'public');
+            WarehouseEntryItemLotDocument::create([
+                'warehouse_entry_id' => $entry->id,
+                'warehouse_entry_item_id' => $lot->warehouse_entry_item_id,
+                'warehouse_entry_item_lot_id' => $lot->id,
+                'document_type' => $document['type'],
+                'description' => $this->upperOrNull($document['description'] ?? null),
+                'file_path' => $storedPath,
+                'original_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
                 'status' => 'ACTIVE',
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
@@ -1132,6 +1226,15 @@ class WarehouseEntryController extends Controller
         abort_unless(
             $document->documentable_type === WarehouseEntry::class
             && (int) $document->documentable_id === (int) $entry->id,
+            404
+        );
+    }
+
+    private function ensureEntryLotDocument(WarehouseEntry $entry, WarehouseEntryItemLotDocument $lotDocument): void
+    {
+        abort_unless(
+            (int) $lotDocument->warehouse_entry_id === (int) $entry->id
+            && $lotDocument->status === 'ACTIVE',
             404
         );
     }

@@ -589,6 +589,16 @@ Route::delete(
 )->name('warehouse-entries.documents.destroy');
 
 Route::get(
+    'warehouse-entries/{warehouseEntry}/lot-documents/{lotDocument}/download',
+    [WarehouseEntryController::class, 'downloadLotDocument']
+)->name('warehouse-entries.lot-documents.download');
+
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/lot-documents/{lotDocument}',
+    [WarehouseEntryController::class, 'destroyLotDocument']
+)->name('warehouse-entries.lot-documents.destroy');
+
+Route::get(
     'warehouse-entries/{warehouseEntry}/pdf',
     [WarehouseEntryController::class, 'pdf']
 )->name('warehouse-entries.pdf');

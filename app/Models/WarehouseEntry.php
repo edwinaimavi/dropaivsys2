@@ -84,7 +84,7 @@ class WarehouseEntry extends Model
 
     public function items()
     {
-        return $this->hasMany(WarehouseEntryItem::class);
+        return $this->hasMany(WarehouseEntryItem::class)->where('status', '!=', 'deleted');
     }
 
     public function creator()
@@ -100,5 +100,10 @@ class WarehouseEntry extends Model
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function lotDocuments()
+    {
+        return $this->hasMany(WarehouseEntryItemLotDocument::class);
     }
 }

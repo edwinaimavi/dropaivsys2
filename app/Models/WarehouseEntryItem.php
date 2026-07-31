@@ -71,6 +71,11 @@ class WarehouseEntryItem extends Model
 
     public function lots()
     {
-        return $this->hasMany(WarehouseEntryItemLot::class);
+        return $this->hasMany(WarehouseEntryItemLot::class)->where('status', 'active');
+    }
+
+    public function lotDocuments()
+    {
+        return $this->hasMany(WarehouseEntryItemLotDocument::class);
     }
 }

@@ -335,6 +335,15 @@
         #warehouseEntryModal .warehouse-entry-side-metrics strong, #warehouseEntryModal .warehouse-entry-side-metrics small { display: block; }
         #warehouseEntryModal .warehouse-entry-side-metrics strong { color: #11867a; font-size: 15px; }
         #warehouseEntryModal .warehouse-entry-side-metrics small { color: #788681; font-size: 9px; text-transform: uppercase; }
+        .warehouse-entry-lot-selected-info { display: flex; gap: 6px; padding: 9px 11px; flex-direction: column; border: 1px solid #cfe5e1; border-radius: 8px; background: #f1faf8; font-size: 11px; }
+        .warehouse-entry-lot-selected-info strong { color: #25544d; }
+        .warehouse-entry-lot-selected-info span { color: #667773; }
+        .warehouse-entry-lot-document-group { margin-bottom: 9px; border: 1px solid #e2eaea; border-radius: 9px; overflow: hidden; background: #fff; }
+        .warehouse-entry-lot-document-group-title { display: flex; justify-content: space-between; gap: 10px; padding: 8px 11px; background: #f4f8f7; font-size: 11px; }
+        .warehouse-entry-lot-document-group-title span { color: #64736f; }
+        .warehouse-entry-lot-document-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 11px; align-items: center; border-top: 1px solid #edf1f1; color: #46534f; font-size: 11px; }
+        .warehouse-entry-lot-documents-empty { padding: 18px; border: 1px dashed #d7e1e0; border-radius: 9px; color: #7c8986; background: #fafcfc; text-align: center; font-size: 11px; }
+        .warehouse-entry-lot-documents-empty i { display: block; margin-bottom: 5px; font-size: 20px; }
 
         #warehouseEntryModal .warehouse-entry-review-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
         #warehouseEntryModal .warehouse-entry-review-grid > div { min-height: 58px; padding: 9px 11px; border: 1px solid #e4ecec; border-radius: 9px; background: #fff; }
