@@ -68,4 +68,9 @@ class WarehouseEntryItem extends Model
     {
         return $this->belongsTo(Brand::class);
     }
+
+    public function lots()
+    {
+        return $this->hasMany(WarehouseEntryItemLot::class);
+    }
 }

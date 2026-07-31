@@ -4,6 +4,7 @@ let warehouseEntrySourceLoadRequest = null;
 let warehouseEntrySourceLoadTimer = null;
 let warehouseEntryPendingDocuments = [];
 let warehouseEntryExistingDocuments = [];
+let warehouseEntryActiveLotsRow = null;
 
 const warehouseEntryDocumentTypes = {
     purchase_invoice: { label: 'Factura', badge: 'badge-doc-green' },
@@ -45,6 +46,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    prepareWarehouseEntryModalLayers();
+    initializeWarehouseEntryFormTabs();
+
     $('#warehouseEntryModal').modal({
         backdrop: 'static',
         keyboard: false,
@@ -56,12 +60,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('click', '#btnCreateWarehouseEntry', function () {
         resetWarehouseEntryForm();
-        $('#warehouseEntryModalLabel').text('Registrar Ingreso de Almacen');
+        $('#warehouseEntryModalLabel').text('Nuevo Ingreso de Almacen');
         generateWarehouseEntryNumber();
         $('#warehouseEntryModal').modal('show');
     });
 
-    $('#warehouseEntryModal').on('hidden.bs.modal', resetWarehouseEntryForm);
+    $('#warehouseEntryModal')
+        .on('shown.bs.modal', function () {
+            tagWarehouseEntryBackdrop('warehouse-entry-backdrop-main');
+            document.body.classList.add('warehouse-entry-active');
+        })
+        .on('hidden.bs.modal', function () {
+            resetWarehouseEntryForm();
+            cleanupWarehouseEntryModalBackdrops();
+        });
+
+    $('#warehouseEntryLotsModal')
+        .on('shown.bs.modal', function () {
+            tagWarehouseEntryBackdrop('warehouse-entry-backdrop-lots');
+        })
+        .on('hidden.bs.modal', function () {
+            warehouseEntryActiveLotsRow = null;
+            if ($('#warehouseEntryModal').hasClass('show')) {
+                document.body.classList.add('modal-open', 'warehouse-entry-active');
+                $('#warehouseEntryModal').trigger('focus');
+            } else {
+                cleanupWarehouseEntryModalBackdrops();
+            }
+        });
 
     $(document).on('submit', '#warehouseEntryForm', function (event) {
         event.preventDefault();
@@ -74,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('click', '.btnRemoveWarehouseEntryItem', function () {
         const row = $(this).closest('tr');
+        row.nextUntil('.warehouse-entry-item-row').filter('.warehouse-entry-lot-visual-row').remove();
         destroyWarehouseEntryRowSelect2(row);
         row.remove();
         refreshWarehouseEntryItemIndexes();
@@ -95,6 +122,14 @@ document.addEventListener('DOMContentLoaded', function () {
         $('#warehouseEntrySideWarehouse').text($(this).val() ? text : 'Sin almacen');
     });
 
+    $(document).on('change', '#warehouse_entry_company_id', function () {
+        const text = $(this).find('option:selected').text().trim();
+        $('#warehouseEntrySideCompany').text($(this).val() ? text : 'Seleccione empresa');
+        updateWarehouseEntryReview();
+    });
+
+    $(document).on('shown.bs.tab', '#warehouseEntryModal .warehouse-entry-form-tabs a[data-toggle="pill"]', updateWarehouseEntryReview);
+
     $(document).on('change', '#warehouse_entry_currency_id', updateWarehouseEntryCurrency);
 
     $(document).on(
@@ -108,6 +143,26 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '.item-article-picker', function () {
         applySelectedWarehouseEntryArticle($(this).closest('tr'));
     });
+
+    $(document).on('input change', '.item-quantity', function () {
+        renderWarehouseEntryLotsSummary($(this).closest('tr'));
+    });
+
+    $(document).on('click', '.btnManageWarehouseEntryLots', function () {
+        openWarehouseEntryLotsModal($(this).closest('tr'));
+    });
+
+    $(document).on('click', '#btnAddWarehouseEntryLot', function () {
+        addWarehouseEntryLotEditorRow();
+    });
+
+    $(document).on('click', '.btnRemoveWarehouseEntryLot', function () {
+        $(this).closest('tr').remove();
+        refreshWarehouseEntryLotEditor();
+    });
+
+    $(document).on('input change', '#warehouseEntryLotsTbody input', refreshWarehouseEntryLotEditor);
+    $(document).on('click', '#btnApplyWarehouseEntryLots', applyWarehouseEntryLots);
 
     $(document).on('click', '#btnLoadWarehouseEntrySource', loadWarehouseEntrySourceItems);
 
@@ -140,6 +195,56 @@ document.addEventListener('DOMContentLoaded', function () {
         deleteWarehouseEntry($(this).data('id'));
     });
 });
+
+function prepareWarehouseEntryModalLayers() {
+    const mainModal = document.getElementById('warehouseEntryModal');
+    const lotsModal = document.getElementById('warehouseEntryLotsModal');
+
+    if (mainModal && mainModal.parentElement !== document.body) {
+        document.body.appendChild(mainModal);
+    }
+    if (lotsModal && lotsModal.parentElement !== document.body) {
+        document.body.appendChild(lotsModal);
+    }
+}
+
+function initializeWarehouseEntryFormTabs() {
+    const destinations = [
+        ['#warehouseEntryOriginalDataCard', '#warehouse_entry_tab_data'],
+        ['#warehouseEntryOriginalItemsCard', '#warehouse_entry_tab_items'],
+        ['#warehouseEntryOriginalDocumentsCard', '#warehouse_entry_tab_documents']
+    ];
+
+    destinations.forEach(function ([cardSelector, tabSelector]) {
+        const card = $(cardSelector);
+        if (card.length) {
+            card.removeClass('mb-3').appendTo(tabSelector);
+            card.parent().closest('.col-12').removeClass('mt-3');
+        }
+    });
+}
+
+function tagWarehouseEntryBackdrop(className) {
+    const backdrop = Array.from(document.querySelectorAll('.modal-backdrop'))
+        .reverse()
+        .find(element => !element.classList.contains('warehouse-entry-backdrop-main')
+            && !element.classList.contains('warehouse-entry-backdrop-lots'));
+
+    if (backdrop) {
+        backdrop.classList.add(className);
+    }
+}
+
+function cleanupWarehouseEntryModalBackdrops() {
+    if (document.querySelector('.modal.show')) {
+        return;
+    }
+
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+    document.body.classList.remove('modal-open', 'warehouse-entry-active');
+    document.body.style.removeProperty('padding-right');
+    document.body.style.removeProperty('overflow');
+}
 
 function initWarehouseEntryTable() {
     tableWarehouseEntry = $('#tableWarehouseEntry').DataTable({
@@ -247,6 +352,7 @@ function resetWarehouseEntryForm() {
     showEmptyWarehouseEntryItemsRow();
     warehouseEntryItemIndex = 0;
     $('#warehouseEntrySideSupplier').text('Seleccione proveedor');
+    $('#warehouseEntrySideCompany').text('Seleccione empresa');
     $('#warehouseEntrySideWarehouse').text('Sin almacen');
     $('#warehouseEntrySideGrandTotal').text('0.00');
     $('.warehouse-entry-currency-symbol').text('S/');
@@ -265,6 +371,8 @@ function resetWarehouseEntryForm() {
     renderWarehouseEntryDocuments();
     setWarehouseEntrySupplierLocked(false);
     syncWarehouseEntryPayableAmount();
+    $('#warehouseEntryModal .warehouse-entry-form-tabs .nav-link').first().tab('show');
+    updateWarehouseEntryReview();
 }
 
 function clearWarehouseEntryValidation() {
@@ -281,6 +389,10 @@ function saveWarehouseEntry(form) {
             icon: 'warning',
             title: 'Agregue al menos un articulo.'
         });
+        return;
+    }
+
+    if (!validateWarehouseEntryLots()) {
         return;
     }
 
@@ -469,8 +581,19 @@ function addWarehouseEntryItemRow(data = {}) {
     row.find('.item-brand-id').val(data.brand_id || '');
     row.find('.item-origin').val(data.origin || '');
     row.find('.item-cost-type').val(data.cost_type || 'PESO');
-    row.find('.item-expiration-date').val(formatWarehouseEntryDate(data.expiration_date));
-    row.find('.item-lot-number').val(data.lot_number || '');
+    const articleOption = row.find('.item-article-picker option:selected');
+    row.find('.item-has-batch').val(data.has_batch ?? articleOption.data('has-batch') ?? 0);
+    row.find('.item-has-expiration').val(data.has_expiration ?? articleOption.data('has-expiration') ?? 0);
+    let lots = Array.isArray(data.lots) ? data.lots.map(normalizeWarehouseEntryLot) : [];
+    if (!lots.length && data.lot_number) {
+        lots = [{
+            lot_code: data.lot_number,
+            quantity: parseWarehouseEntryNumber(data.quantity),
+            expiration_date: formatWarehouseEntryDate(data.expiration_date),
+            manufacturing_date: ''
+        }];
+    }
+    row.data('lots', lots);
     row.find('.item-ordered-quantity').val(formatWarehouseEntryMoney(data.ordered_quantity || 0));
     row.find('.item-quantity').val(formatWarehouseEntryMoney(data.quantity || 1));
     row.find('.item-unit-price').val(formatWarehouseEntryMoney(data.unit_price || 0));
@@ -479,6 +602,8 @@ function addWarehouseEntryItemRow(data = {}) {
 
     warehouseEntryItemIndex++;
     refreshWarehouseEntryItemIndexes();
+    renderWarehouseEntryLotsSummary(row);
+    renderWarehouseEntryLotRows(row);
     calculateWarehouseEntryTotals();
 }
 
@@ -489,6 +614,8 @@ function applySelectedWarehouseEntryArticle(row) {
     row.find('.item-article-id').val(articleId);
     row.find('.item-article-code').val(option.data('code') || '');
     row.find('.item-billing-name').val(option.data('billing-name') || '');
+    row.find('.item-has-batch').val(option.data('has-batch') || 0);
+    row.find('.item-has-expiration').val(option.data('has-expiration') || 0);
 
     if (articleId) {
         row.find('.item-unit-id').val(option.data('unit-id') || '').trigger('change.select2');
@@ -511,7 +638,7 @@ function showEmptyWarehouseEntryItemsRow() {
 
     $('#warehouseEntryItemsTbody').html(`
         <tr id="warehouseEntryItemsEmptyRow">
-            <td colspan="15" class="text-center text-muted py-4">
+            <td colspan="14" class="text-center text-muted py-4">
                 <i class="fas fa-box-open d-block mb-2"></i>
                 Carga una orden o inserta articulos para registrar el ingreso.
             </td>
@@ -529,7 +656,196 @@ function refreshWarehouseEntryItemIndexes() {
                 $(this).attr('name', name.replace(/items\[\d+]/, `items[${index}]`));
             }
         });
+        syncWarehouseEntryLotInputs($(this), index);
     });
+    $('#warehouseEntrySideItemCount').text($('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length);
+    updateWarehouseEntryReview();
+}
+
+function normalizeWarehouseEntryLot(lot) {
+    return {
+        lot_code: String(lot.lot_code || '').trim().toUpperCase(),
+        quantity: parseWarehouseEntryNumber(lot.quantity),
+        expiration_date: formatWarehouseEntryDate(lot.expiration_date),
+        manufacturing_date: formatWarehouseEntryDate(lot.manufacturing_date)
+    };
+}
+
+function openWarehouseEntryLotsModal(row) {
+    warehouseEntryActiveLotsRow = row;
+    const lots = row.data('lots') || [];
+    $('#warehouseEntryLotsArticle').text(row.find('.item-billing-name').val() || 'Articulo');
+    $('#warehouseEntryLotsTbody').empty();
+    lots.forEach(addWarehouseEntryLotEditorRow);
+    if (!lots.length) addWarehouseEntryLotEditorRow();
+    refreshWarehouseEntryLotEditor();
+    $('#warehouseEntryLotsModal').modal({ backdrop: 'static', keyboard: false, show: true });
+}
+
+function addWarehouseEntryLotEditorRow(lot = {}) {
+    const requireExpiration = Number(warehouseEntryActiveLotsRow?.find('.item-has-expiration').val()) === 1;
+    $('#warehouseEntryLotsTbody').append(`
+        <tr>
+            <td class="lot-editor-index align-middle"></td>
+            <td><input type="text" class="form-control form-control-sm lot-editor-code text-uppercase" maxlength="100" value="${escapeWarehouseEntryHtml(lot.lot_code || '')}"></td>
+            <td><input type="number" class="form-control form-control-sm lot-editor-quantity text-right" min="0.0001" step="0.0001" value="${lot.quantity || ''}"></td>
+            <td><input type="date" class="form-control form-control-sm lot-editor-expiration" ${requireExpiration ? 'required' : ''} value="${formatWarehouseEntryDate(lot.expiration_date)}"></td>
+            <td><button type="button" class="btn btn-outline-danger btn-sm btnRemoveWarehouseEntryLot"><i class="fas fa-trash-alt"></i></button></td>
+        </tr>`);
+    refreshWarehouseEntryLotEditor();
+}
+
+function refreshWarehouseEntryLotEditor() {
+    if (!warehouseEntryActiveLotsRow) return;
+    const quantity = parseWarehouseEntryNumber(warehouseEntryActiveLotsRow.find('.item-quantity').val());
+    let total = 0;
+    $('#warehouseEntryLotsTbody tr').each(function (index) {
+        $(this).find('.lot-editor-index').text(index + 1);
+        total += parseWarehouseEntryNumber($(this).find('.lot-editor-quantity').val());
+    });
+    const difference = Math.round((quantity - total) * 10000) / 10000;
+    $('#warehouseEntryLotsQuantity').text(formatWarehouseEntryMoney(quantity));
+    $('#warehouseEntryLotsTotal').text(formatWarehouseEntryMoney(total));
+    $('#warehouseEntryLotsDifference').text(formatWarehouseEntryMoney(Math.abs(difference)))
+        .toggleClass('text-success', Math.abs(difference) <= 0.0001)
+        .toggleClass('text-warning', difference > 0.0001)
+        .toggleClass('text-danger', difference < -0.0001);
+    $('#warehouseEntryLotsError').text(difference > 0.0001 ? `Faltan ${formatWarehouseEntryMoney(difference)}.` : difference < -0.0001 ? `Excede ${formatWarehouseEntryMoney(Math.abs(difference))}.` : '');
+}
+
+function applyWarehouseEntryLots() {
+    const lots = [];
+    let error = '';
+    $('#warehouseEntryLotsTbody tr').each(function () {
+        const lot = normalizeWarehouseEntryLot({
+            lot_code: $(this).find('.lot-editor-code').val(),
+            quantity: $(this).find('.lot-editor-quantity').val(),
+            expiration_date: $(this).find('.lot-editor-expiration').val()
+        });
+        if (!lot.lot_code) error = 'Todos los lotes deben tener codigo.';
+        else if (lot.quantity <= 0) error = 'La cantidad de cada lote debe ser mayor a cero.';
+        else if (Number(warehouseEntryActiveLotsRow.find('.item-has-expiration').val()) === 1 && !lot.expiration_date) error = 'La fecha de vencimiento es obligatoria para este articulo.';
+        lots.push(lot);
+    });
+    const expected = parseWarehouseEntryNumber(warehouseEntryActiveLotsRow.find('.item-quantity').val());
+    const total = lots.reduce((sum, lot) => sum + lot.quantity, 0);
+    if (!error && Math.abs(total - expected) > 0.0001) error = 'La suma de los lotes debe coincidir con la cantidad ingresada del articulo.';
+    if (error) {
+        $('#warehouseEntryLotsError').text(error);
+        return;
+    }
+    warehouseEntryActiveLotsRow.data('lots', lots);
+    renderWarehouseEntryLotsSummary(warehouseEntryActiveLotsRow);
+    renderWarehouseEntryLotRows(warehouseEntryActiveLotsRow);
+    $('#warehouseEntryLotsModal').modal('hide');
+}
+
+function renderWarehouseEntryLotsSummary(row) {
+    const lots = row.data('lots') || [];
+    const expected = parseWarehouseEntryNumber(row.find('.item-quantity').val());
+    const total = lots.reduce((sum, lot) => sum + parseWarehouseEntryNumber(lot.quantity), 0);
+    const difference = Math.round((expected - total) * 10000) / 10000;
+    let state = 'text-muted';
+    let detail = 'Sin lotes';
+    if (lots.length) {
+        state = Math.abs(difference) <= 0.0001 ? 'text-success' : difference > 0 ? 'text-warning' : 'text-danger';
+        detail = `${lots.length} ${lots.length === 1 ? 'lote' : 'lotes'} · Total: ${formatWarehouseEntryMoney(total)} / ${formatWarehouseEntryMoney(expected)}`;
+    }
+    row.find('.warehouse-entry-lots-summary').attr('class', `warehouse-entry-lots-summary mt-1 small ${state}`).text(detail);
+}
+
+function renderWarehouseEntryLotRows(row) {
+    row.nextUntil('.warehouse-entry-item-row').filter('.warehouse-entry-lot-visual-row').remove();
+
+    const lots = Array.isArray(row.data('lots')) ? row.data('lots') : [];
+    const quantityInput = row.find('.item-quantity');
+    const quantityDisplay = row.find('.warehouse-entry-lot-quantity-display');
+    const firstLotContainer = row.find('.warehouse-entry-first-lot');
+
+    if (!lots.length) {
+        quantityInput.removeClass('d-none');
+        quantityDisplay.empty().addClass('d-none');
+        firstLotContainer.empty();
+        return;
+    }
+
+    const unitPrice = parseWarehouseEntryNumber(row.find('.item-unit-price').val());
+    const firstLot = lots[0];
+    quantityInput.addClass('d-none');
+    quantityDisplay.removeClass('d-none').text(formatWarehouseEntryMoney(firstLot.quantity));
+    firstLotContainer.html(warehouseEntryLotBadge(firstLot, 1));
+
+    const article = row.find('.item-article-picker option:selected').text().trim()
+        || row.find('.item-billing-name').val()
+        || '-';
+    const note = row.find('.item-note').val() || '-';
+    const unit = warehouseEntrySelectedText(row.find('.item-unit-id'));
+    const presentation = warehouseEntrySelectedText(row.find('.item-presentation-id'));
+    const brand = warehouseEntrySelectedText(row.find('.item-brand-id'));
+    const origin = row.find('.item-origin').val() || '-';
+    const costType = row.find('.item-cost-type').val() || '-';
+    const visualRows = lots.slice(1).map(function (lot, lotIndex) {
+        const lotTotal = parseWarehouseEntryNumber(lot.quantity) * unitPrice;
+        return `
+            <tr class="warehouse-entry-lot-visual-row">
+                <td class="text-center"><span class="warehouse-entry-lot-branch"><i class="fas fa-level-up-alt fa-rotate-90"></i></span></td>
+                <td><span class="warehouse-entry-lot-repeat">${escapeWarehouseEntryHtml(article)}</span></td>
+                <td>${escapeWarehouseEntryHtml(note)}</td>
+                <td>${escapeWarehouseEntryHtml(unit)}</td>
+                <td>${escapeWarehouseEntryHtml(presentation)}</td>
+                <td>${escapeWarehouseEntryHtml(brand)}</td>
+                <td>${escapeWarehouseEntryHtml(origin)}</td>
+                <td>${escapeWarehouseEntryHtml(costType)}</td>
+                <td>${warehouseEntryLotBadge(lot, lotIndex + 2)}</td>
+                <td class="text-right text-muted">-</td>
+                <td class="text-right text-success font-weight-bold">${formatWarehouseEntryMoney(lot.quantity)}</td>
+                <td class="text-right">${formatWarehouseEntryMoney(unitPrice)}</td>
+                <td class="text-right warehouse-entry-lot-reference-total">${formatWarehouseEntryMoney(lotTotal)}</td>
+                <td></td>
+            </tr>`;
+    }).join('');
+
+    row.after(visualRows);
+}
+
+function warehouseEntrySelectedText(select) {
+    const text = select.find('option:selected').text().trim();
+    return text && text !== '-' ? text : '-';
+}
+
+function warehouseEntryLotBadge(lot, number) {
+    const expiration = formatWarehouseEntryDate(lot.expiration_date);
+    const expirationLabel = expiration
+        ? `<small class="d-block text-muted mt-1">Vence: ${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(expiration))}</small>`
+        : '';
+    return `<span class="badge warehouse-entry-lot-badge"><i class="fas fa-tag mr-1"></i>${escapeWarehouseEntryHtml(lot.lot_code || `Lote ${number}`)}</span>${expirationLabel}`;
+}
+
+function syncWarehouseEntryLotInputs(row, itemIndex) {
+    const container = row.find('.warehouse-entry-lots-inputs').empty();
+    (row.data('lots') || []).forEach(function (lot, lotIndex) {
+        ['lot_code', 'quantity', 'expiration_date', 'manufacturing_date'].forEach(function (field) {
+            $('<input>', { type: 'hidden', name: `items[${itemIndex}][lots][${lotIndex}][${field}]`, value: lot[field] || '' }).appendTo(container);
+        });
+    });
+}
+
+function validateWarehouseEntryLots() {
+    let message = '';
+    $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function (index) {
+        const row = $(this);
+        const lots = row.data('lots') || [];
+        const required = Number(row.find('.item-has-batch').val()) === 1;
+        const expected = parseWarehouseEntryNumber(row.find('.item-quantity').val());
+        const total = lots.reduce((sum, lot) => sum + parseWarehouseEntryNumber(lot.quantity), 0);
+        const name = row.find('.item-billing-name').val() || `#${index + 1}`;
+        if (required && !lots.length) message = `El articulo ${name} debe tener al menos un lote.`;
+        else if (lots.length && Math.abs(total - expected) > 0.0001) message = `La suma de lotes del articulo ${name} es ${formatWarehouseEntryMoney(total)}, pero la cantidad ingresada es ${formatWarehouseEntryMoney(expected)}.`;
+        if (message) return false;
+        syncWarehouseEntryLotInputs(row, index);
+    });
+    if (message) Swal.fire({ icon: 'warning', title: 'Lotes incompletos', text: message });
+    return !message;
 }
 
 function calculateWarehouseEntryTotals() {
@@ -554,6 +870,7 @@ function calculateWarehouseEntryTotals() {
         igv += lineIgv;
         total += lineTotal;
         row.find('.item-line-total').text(formatWarehouseEntryMoney(lineTotal));
+        renderWarehouseEntryLotRows(row);
     });
 
     $('#warehouse_entry_subtotal').val(formatWarehouseEntryMoney(subtotal));
@@ -561,6 +878,55 @@ function calculateWarehouseEntryTotals() {
     $('#warehouse_entry_grand_total').val(formatWarehouseEntryMoney(total));
     $('#warehouseEntrySideGrandTotal').text(formatWarehouseEntryMoney(total));
     syncWarehouseEntryPayableAmount(total);
+    updateWarehouseEntryReview();
+}
+
+function updateWarehouseEntryReview() {
+    const itemRows = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row');
+    const itemCount = itemRows.length;
+    const documentCount = warehouseEntryExistingDocuments.length + warehouseEntryPendingDocuments.length;
+    let lotCount = 0;
+    const alerts = [];
+
+    itemRows.each(function () {
+        const row = $(this);
+        const lots = row.data('lots') || [];
+        const expected = parseWarehouseEntryNumber(row.find('.item-quantity').val());
+        const lotTotal = lots.reduce((sum, lot) => sum + parseWarehouseEntryNumber(lot.quantity), 0);
+        const name = row.find('.item-billing-name').val() || 'Artículo sin nombre';
+        lotCount += lots.length;
+        if (Number(row.find('.item-has-batch').val()) === 1 && !lots.length) alerts.push(`${name}: requiere lotes.`);
+        else if (lots.length && Math.abs(lotTotal - expected) > 0.0001) alerts.push(`${name}: la suma de lotes no coincide.`);
+    });
+
+    if (!$('#warehouse_entry_company_id').val()) alerts.push('Seleccione una empresa.');
+    if (!$('#warehouse_entry_supplier_id').val()) alerts.push('Seleccione un proveedor.');
+    if (!$('#warehouse_entry_warehouse_id').val()) alerts.push('Seleccione un almacén.');
+    if (!itemCount) alerts.push('Agregue al menos un artículo.');
+
+    $('#warehouseEntrySideItemCount').text(itemCount);
+    $('#warehouseEntrySideDocumentCount').text(documentCount);
+    const companyText = $('#warehouse_entry_company_id option:selected').text().trim();
+    $('#warehouseEntrySideCompany').text($('#warehouse_entry_company_id').val() ? companyText : 'Seleccione empresa');
+
+    const selectedText = selector => $(selector).find('option:selected').text().trim() || '-';
+    const alertHtml = alerts.length
+        ? `<div class="warehouse-entry-review-alert"><i class="fas fa-exclamation-triangle"></i><div><strong>Revisión pendiente</strong><ul>${alerts.map(alert => `<li>${escapeWarehouseEntryHtml(alert)}</li>`).join('')}</ul></div></div>`
+        : '<div class="warehouse-entry-review-ok"><i class="fas fa-check-circle"></i><div><strong>Ingreso listo para guardar</strong><small>No se detectaron inconsistencias en artículos o lotes.</small></div></div>';
+
+    $('#warehouseEntryReview').html(`
+        <div class="card border-0 shadow-sm warehouse-entry-review-card">
+            <div class="card-header border-0 warehouse-entry-section-header"><h6 class="mb-0"><i class="fas fa-clipboard-check text-info mr-1"></i>Revisión antes de guardar</h6></div>
+            <div class="card-body"><div class="warehouse-entry-review-grid">
+                <div><small>Empresa</small><strong>${escapeWarehouseEntryHtml(selectedText('#warehouse_entry_company_id'))}</strong></div>
+                <div><small>Proveedor</small><strong>${escapeWarehouseEntryHtml(selectedText('#warehouse_entry_supplier_id'))}</strong></div>
+                <div><small>Almacén</small><strong>${escapeWarehouseEntryHtml(selectedText('#warehouse_entry_warehouse_id'))}</strong></div>
+                <div><small>Documento</small><strong>${escapeWarehouseEntryHtml([$('#warehouse_entry_document_series').val(), $('#warehouse_entry_document_number').val()].filter(Boolean).join('-') || '-')}</strong></div>
+                <div><small>Fecha</small><strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate($('#warehouse_entry_document_date').val()))}</strong></div>
+                <div><small>Artículos</small><strong>${itemCount}</strong></div><div><small>Lotes</small><strong>${lotCount}</strong></div><div><small>Documentos</small><strong>${documentCount}</strong></div>
+                <div><small>Subtotal</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_subtotal').val())}</strong></div><div><small>IGV</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_igv').val())}</strong></div><div class="warehouse-entry-review-grand"><small>Total ingreso</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_grand_total').val())}</strong></div>
+            </div>${alertHtml}</div>
+        </div>`);
 }
 
 function syncWarehouseEntryPayableAmount(total = null) {
@@ -665,6 +1031,7 @@ function loadWarehouseEntryDetail(id) {
     $.get(`${window.routes.warehouseEntryShow}/${id}`)
         .done(function (response) {
             renderWarehouseEntryDetail(response.data, response.warehouse_name);
+            $('#warehouseEntryViewModal .warehouse-entry-view-tabs .nav-link').first().tab('show');
             $('#warehouseEntryViewModal').modal('show');
         })
         .fail(function () {
@@ -704,26 +1071,55 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     $('#vwe_subtotal').text(formatWarehouseEntryMoney(entry.subtotal || 0));
     $('#vwe_igv').text(formatWarehouseEntryMoney(entry.igv || 0));
     $('#vwe_total').text(formatWarehouseEntryMoney(entry.grand_total || 0));
+    $('#vwe_created_by').text(formatWarehouseEntryUser(entry.creator));
+    $('#vwe_created_at').text(formatWarehouseEntryDateTime(entry.created_at));
+    $('#vwe_updated_by').text(formatWarehouseEntryUser(entry.updater));
+    $('#vwe_updated_at').text(formatWarehouseEntryDateTime(entry.updated_at));
+    $('#vwe_audit_status').text(status[0]);
 
-    const rows = (entry.items || []).map(function (item, index) {
-        return `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${escapeWarehouseEntryHtml(item.billing_name_snapshot || item.article?.billing_name || '-')}</td>
-                <td>${escapeWarehouseEntryHtml(item.unit?.description || '-')}</td>
-                <td>${escapeWarehouseEntryHtml(item.presentation?.description || '-')}</td>
-                <td>${escapeWarehouseEntryHtml(item.brand?.description || '-')}</td>
-                <td>${escapeWarehouseEntryHtml(item.lot_number || '-')}</td>
-                <td class="text-right">${formatWarehouseEntryMoney(item.ordered_quantity || 0)}</td>
-                <td class="text-right">${formatWarehouseEntryMoney(item.quantity || 0)}</td>
-                <td class="text-right">${formatWarehouseEntryMoney(item.unit_price || 0)}</td>
-                <td class="text-right">${formatWarehouseEntryMoney(item.line_total || 0)}</td>
-            </tr>
-        `;
+    let detailRowNumber = 0;
+    const rows = (entry.items || []).flatMap(function (item) {
+        const lots = Array.isArray(item.lots) && item.lots.length
+            ? item.lots
+            : (item.lot_number ? [{ lot_code: item.lot_number, quantity: item.quantity }] : [null]);
+
+        return lots.map(function (lot) {
+            detailRowNumber += 1;
+            const quantity = lot ? parseWarehouseEntryNumber(lot.quantity) : parseWarehouseEntryNumber(item.quantity);
+            const rowTotal = lot
+                ? quantity * parseWarehouseEntryNumber(item.unit_price)
+                : parseWarehouseEntryNumber(item.line_total);
+
+            return `
+                <tr class="${lot ? 'warehouse-entry-detail-lot-row' : ''}">
+                    <td>${detailRowNumber}</td>
+                    <td>${escapeWarehouseEntryHtml(item.billing_name_snapshot || item.article?.billing_name || '-')}</td>
+                    <td>${escapeWarehouseEntryHtml(item.unit?.description || '-')}</td>
+                    <td>${escapeWarehouseEntryHtml(item.presentation?.description || '-')}</td>
+                    <td>${escapeWarehouseEntryHtml(item.brand?.description || '-')}</td>
+                    <td>${escapeWarehouseEntryHtml(item.origin || '-')}</td>
+                    <td>${lot ? `<span class="warehouse-entry-lot-badge"><i class="fas fa-tag mr-1"></i>${escapeWarehouseEntryHtml(lot.lot_code || 'Sin código')}</span>` : '<span class="text-muted">Sin lote</span>'}</td>
+                    <td class="text-right">${formatWarehouseEntryMoney(quantity)}</td>
+                    <td class="text-right">${formatWarehouseEntryMoney(item.unit_price || 0)}</td>
+                    <td class="text-right font-weight-bold">${formatWarehouseEntryMoney(rowTotal)}</td>
+                </tr>`;
+        });
     }).join('');
 
     $('#vwe_items').html(rows || '<tr><td colspan="10" class="text-center text-muted py-3">Sin articulos ingresados.</td></tr>');
     renderWarehouseEntryDetailDocuments(entry.documents || [], entry.id);
+}
+
+function formatWarehouseEntryUser(user) {
+    if (!user) return '-';
+    return [user.name, user.lastname].filter(Boolean).join(' ') || user.email || '-';
+}
+
+function formatWarehouseEntryDateTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function deleteWarehouseEntry(id) {
@@ -860,6 +1256,8 @@ function renderWarehouseEntryDocuments() {
     });
 
     $('#warehouseEntryDocumentCount').text(rows.length);
+    $('#warehouseEntrySideDocumentCount').text(rows.length);
+    updateWarehouseEntryReview();
 
     $('#warehouseEntryDocumentsTbody').html(rows.join('') || `
         <tr id="warehouseEntryDocumentsEmptyRow">
@@ -881,8 +1279,9 @@ function renderWarehouseEntryDetailDocuments(documents, entryId) {
 
     $('#vwe_documents').html(rows.join('') || `
         <tr>
-            <td colspan="6" class="text-center text-muted py-3">
-                No hay documentos adjuntos.
+            <td colspan="6" class="text-center text-muted py-4 warehouse-entry-empty-state">
+                <i class="fas fa-folder-open d-block mb-2"></i>
+                No hay documentos adjuntos para este ingreso.
             </td>
         </tr>
     `);

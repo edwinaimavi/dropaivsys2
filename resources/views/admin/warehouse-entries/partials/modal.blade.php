@@ -11,9 +11,9 @@
                     </span>
                     <span>
                         <h5 class="modal-title" id="warehouseEntryModalLabel">
-                            Registrar Ingreso de Almac&eacute;n
+                            Nuevo Ingreso de Almac&eacute;n
                         </h5>
-                        <small>Registro f&iacute;sico y documental de mercader&iacute;a</small>
+                        <small>Registro f&iacute;sico y documental de mercader&iacute;a ingresada</small>
                     </span>
                 </div>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
@@ -49,6 +49,9 @@
                                         Seleccione proveedor
                                     </div>
 
+                                    <small class="text-muted d-block">Empresa</small>
+                                    <div class="font-weight-600 mb-2 text-break" id="warehouseEntrySideCompany">Seleccione empresa</div>
+
                                     <small class="text-muted d-block">Almac&eacute;n</small>
                                     <div class="font-weight-600 mb-2" id="warehouseEntrySideWarehouse">
                                         Sin almac&eacute;n
@@ -59,13 +62,32 @@
                                         <span class="warehouse-entry-currency-symbol">S/</span>
                                         <span id="warehouseEntrySideGrandTotal">0.00</span>
                                     </div>
+
+                                    <div class="warehouse-entry-side-metrics mt-3">
+                                        <div><strong id="warehouseEntrySideItemCount">0</strong><small>Art&iacute;culos</small></div>
+                                        <div><strong id="warehouseEntrySideDocumentCount">0</strong><small>Documentos</small></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="col-lg-9">
-                        <div class="card border-0 shadow-sm mb-3 warehouse-entry-card">
+                    <div class="col-lg-9 warehouse-entry-tabs-column">
+                        <nav class="warehouse-entry-form-tabs" aria-label="Secciones del ingreso">
+                            <div class="nav nav-pills flex-nowrap" role="tablist">
+                                <a class="nav-link active" data-toggle="pill" href="#warehouse_entry_tab_data"><i class="fas fa-clipboard-list"></i><span>Datos del ingreso</span></a>
+                                <a class="nav-link" data-toggle="pill" href="#warehouse_entry_tab_items"><i class="fas fa-boxes"></i><span>Art&iacute;culos y lotes</span></a>
+                                <a class="nav-link" data-toggle="pill" href="#warehouse_entry_tab_documents"><i class="fas fa-paperclip"></i><span>Documentos adjuntos</span></a>
+                                <a class="nav-link" data-toggle="pill" href="#warehouse_entry_tab_summary"><i class="fas fa-check-circle"></i><span>Resumen</span></a>
+                            </div>
+                        </nav>
+                        <div class="tab-content warehouse-entry-form-tab-content">
+                            <div class="tab-pane fade show active" id="warehouse_entry_tab_data"></div>
+                            <div class="tab-pane fade" id="warehouse_entry_tab_items"></div>
+                            <div class="tab-pane fade" id="warehouse_entry_tab_documents"></div>
+                            <div class="tab-pane fade" id="warehouse_entry_tab_summary"><div id="warehouseEntryReview"></div></div>
+                        </div>
+                        <div id="warehouseEntryOriginalDataCard" class="card border-0 shadow-sm mb-3 warehouse-entry-card">
                             <div class="card-header border-0 py-2 warehouse-entry-section-header">
                                 <h6 class="mb-0 font-weight-bold text-dark">
                                     <i class="fas fa-file-alt text-info mr-1"></i>
@@ -279,7 +301,7 @@
                     </div>
 
                     <div class="col-12">
-                        <div class="card border-0 shadow-sm warehouse-entry-card">
+                        <div id="warehouseEntryOriginalItemsCard" class="card border-0 shadow-sm warehouse-entry-card">
                             <div class="card-header border-0 py-2 px-3 warehouse-entry-section-header">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
@@ -317,8 +339,7 @@
                                             <th>MARCA</th>
                                             <th>PROCEDENCIA</th>
                                             <th>C. COSTEO</th>
-                                            <th>F. VENC.</th>
-                                            <th>LOTE</th>
+                                            <th>LOTES</th>
                                             <th>CANT. ORDENADA</th>
                                             <th>CANT. INGRESO</th>
                                             <th>PRECIO</th>
@@ -328,7 +349,7 @@
                                     </thead>
                                     <tbody id="warehouseEntryItemsTbody">
                                         <tr id="warehouseEntryItemsEmptyRow">
-                                            <td colspan="15" class="text-center text-muted py-4">
+                                            <td colspan="14" class="text-center text-muted py-4">
                                                 <i class="fas fa-box-open d-block mb-2"></i>
                                                 Carga una orden o inserta art&iacute;culos para registrar el ingreso.
                                             </td>
@@ -362,7 +383,7 @@
                     </div>
 
                     <div class="col-12 mt-3">
-                        <div class="card border-0 shadow-sm warehouse-entry-card warehouse-entry-documents-card">
+                        <div id="warehouseEntryOriginalDocumentsCard" class="card border-0 shadow-sm warehouse-entry-card warehouse-entry-documents-card">
                             <div class="card-header border-0 py-2 px-3 warehouse-entry-section-header">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div class="warehouse-entry-document-title">
@@ -482,7 +503,9 @@
                                             data-search="{{ implode(' ', array_filter([$article->code, $article->legal_name, $article->commercial_name, $article->billing_name, $article->institutional_code])) }}"
                                             data-unit-id="{{ $article->unit_id }}"
                                             data-presentation-id="{{ $article->presentation_id }}"
-                                            data-brand-id="{{ $article->brand_id }}">
+                                            data-brand-id="{{ $article->brand_id }}"
+                                            data-has-batch="{{ $article->has_batch ? 1 : 0 }}"
+                                            data-has-expiration="{{ $article->has_expiration ? 1 : 0 }}">
                                             {{ $articleOptionText }}
                                         </option>
                                     @endforeach
@@ -515,10 +538,23 @@
                             </td>
                             <td><input type="text" name="items[__INDEX__][origin]" class="form-control form-control-sm item-origin text-uppercase"></td>
                             <td><input type="text" name="items[__INDEX__][cost_type]" class="form-control form-control-sm item-cost-type text-uppercase" value="PESO"></td>
-                            <td><input type="date" name="items[__INDEX__][expiration_date]" class="form-control form-control-sm item-expiration-date"></td>
-                            <td><input type="text" name="items[__INDEX__][lot_number]" class="form-control form-control-sm item-lot-number text-uppercase"></td>
+                            <td class="warehouse-entry-lots-cell">
+                                <input type="hidden" name="items[__INDEX__][lot_number]" class="item-lot-number">
+                                <input type="hidden" name="items[__INDEX__][expiration_date]" class="item-expiration-date">
+                                <input type="hidden" class="item-has-batch" value="0">
+                                <input type="hidden" class="item-has-expiration" value="0">
+                                <button type="button" class="btn btn-outline-info btn-sm btnManageWarehouseEntryLots">
+                                    <i class="fas fa-boxes mr-1"></i> Gestionar lotes
+                                </button>
+                                <div class="warehouse-entry-first-lot mt-1"></div>
+                                <div class="warehouse-entry-lots-summary mt-1 text-muted small">Sin lotes</div>
+                                <div class="warehouse-entry-lots-inputs"></div>
+                            </td>
                             <td><input type="number" step="0.01" min="0" name="items[__INDEX__][ordered_quantity]" class="form-control form-control-sm text-right item-ordered-quantity" value="0.00" readonly></td>
-                            <td><input type="number" step="0.01" min="0.01" name="items[__INDEX__][quantity]" class="form-control form-control-sm text-right item-quantity" value="1.00"></td>
+                            <td class="warehouse-entry-item-quantity-cell">
+                                <input type="number" step="0.01" min="0.01" name="items[__INDEX__][quantity]" class="form-control form-control-sm text-right item-quantity" value="1.00">
+                                <span class="warehouse-entry-lot-quantity-display text-success font-weight-bold d-none"></span>
+                            </td>
                             <td><input type="number" step="0.01" min="0" name="items[__INDEX__][unit_price]" class="form-control form-control-sm text-right item-unit-price" value="0.00"></td>
                             <td class="text-right font-weight-bold item-line-total">0.00</td>
                             <td class="text-center">
@@ -528,6 +564,42 @@
                             </td>
                         </tr>
                     </template>
+
+                    <div class="modal fade warehouse-entry-lots-modal" id="warehouseEntryLotsModal" tabindex="-1" role="dialog" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+                            <div class="modal-content warehouse-entry-lots-modal-content">
+                                <div class="modal-header">
+                                    <div>
+                                        <h6 class="modal-title font-weight-bold">Gestionar lotes del art&iacute;culo</h6>
+                                        <small class="text-muted">Distribuye la cantidad ingresada entre uno o m&aacute;s lotes.</small>
+                                    </div>
+                                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="warehouse-entry-lots-metrics mb-3">
+                                        <div><small>ART&Iacute;CULO</small><strong id="warehouseEntryLotsArticle">-</strong></div>
+                                        <div><small>CANTIDAD INGRESO</small><strong id="warehouseEntryLotsQuantity">0.00</strong></div>
+                                        <div><small>TOTAL DISTRIBUIDO</small><strong id="warehouseEntryLotsTotal">0.00</strong></div>
+                                        <div><small>DIFERENCIA</small><strong id="warehouseEntryLotsDifference">0.00</strong></div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm warehouse-entry-lots-table mb-2">
+                                            <thead><tr><th>#</th><th>Lote</th><th>Cantidad</th><th>F. vencimiento</th><th></th></tr></thead>
+                                            <tbody id="warehouseEntryLotsTbody"></tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" id="btnAddWarehouseEntryLot" class="btn btn-outline-info btn-sm">
+                                        <i class="fas fa-plus mr-1"></i> Agregar lote
+                                    </button>
+                                    <div id="warehouseEntryLotsError" class="text-danger small mt-2"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cancelar</button>
+                                    <button type="button" id="btnApplyWarehouseEntryLots" class="btn btn-info btn-sm">Aplicar lotes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

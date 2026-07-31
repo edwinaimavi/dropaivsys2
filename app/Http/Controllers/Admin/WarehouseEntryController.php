@@ -71,6 +71,8 @@ class WarehouseEntryController extends Controller
                 'unit_id',
                 'presentation_id',
                 'brand_id',
+                'has_batch',
+                'has_expiration',
             ]);
         $units = Unit::query()->where('status', 'ACTIVE')->orderBy('description')->get();
         $presentations = Presentation::query()->where('status', 'ACTIVE')->orderBy('description')->get();
@@ -170,11 +172,14 @@ class WarehouseEntryController extends Controller
             'customer',
             'currency',
             'warehouse',
+            'creator:id,name,lastname,email',
+            'updater:id,name,lastname,email',
             'items.article',
             'items.supplierPurchaseOrderItem',
             'items.unit',
             'items.presentation',
             'items.brand',
+            'items.lots',
             'documents' => function ($query) {
                 $query->where(function ($innerQuery) {
                     $innerQuery->whereNull('observation')
@@ -409,6 +414,11 @@ class WarehouseEntryController extends Controller
             'items.*.cost_type' => ['nullable', 'string', 'max:100'],
             'items.*.expiration_date' => ['nullable', 'date'],
             'items.*.lot_number' => ['nullable', 'string', 'max:100'],
+            'items.*.lots' => ['nullable', 'array'],
+            'items.*.lots.*.lot_code' => ['required', 'string', 'max:100'],
+            'items.*.lots.*.quantity' => ['required', 'numeric', 'gt:0'],
+            'items.*.lots.*.expiration_date' => ['nullable', 'date'],
+            'items.*.lots.*.manufacturing_date' => ['nullable', 'date'],
             'items.*.ordered_quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
@@ -417,6 +427,8 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_documents.*.description' => ['nullable', 'string', 'max:255'],
             'warehouse_entry_documents.*.file' => ['required_with:warehouse_entry_documents.*.type', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
         ]);
+
+        $this->validateItemLots($validated['items']);
 
         try {
             return DB::transaction(function () use (
@@ -495,7 +507,17 @@ class WarehouseEntryController extends Controller
                 }
 
                 foreach ($preparedItems as $item) {
-                    $entry->items()->create($item);
+                    $lots = $item['lots'] ?? [];
+                    unset($item['lots']);
+                    $entryItem = $entry->items()->create($item);
+
+                    foreach ($lots as $lot) {
+                        $entryItem->lots()->create($lot + [
+                            'status' => 'active',
+                            'created_by' => Auth::id(),
+                            'updated_by' => Auth::id(),
+                        ]);
+                    }
                 }
 
                 $currentCustomerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($entry);
@@ -509,6 +531,7 @@ class WarehouseEntryController extends Controller
                     'items.unit',
                     'items.presentation',
                     'items.brand',
+                    'items.lots',
                 ]);
 
                 if ($isUpdate) {
@@ -600,8 +623,53 @@ class WarehouseEntryController extends Controller
                 'tax_amount' => $taxAmount,
                 'line_total' => $lineTotal,
                 'status' => 'active',
+                'lots' => collect($item['lots'] ?? [])->map(fn (array $lot) => [
+                    'lot_code' => $this->upperOrNull($lot['lot_code'] ?? null),
+                    'quantity' => round((float) ($lot['quantity'] ?? 0), 4),
+                    'expiration_date' => $lot['expiration_date'] ?? null,
+                    'manufacturing_date' => $lot['manufacturing_date'] ?? null,
+                ])->all(),
             ];
         })->all();
+    }
+
+    private function validateItemLots(array $items): void
+    {
+        $articles = Article::query()
+            ->whereIn('id', collect($items)->pluck('article_id')->filter()->unique())
+            ->get(['id', 'billing_name', 'has_batch', 'has_expiration'])
+            ->keyBy('id');
+
+        foreach ($items as $index => $item) {
+            $article = $articles->get((int) $item['article_id']);
+            $lots = collect($item['lots'] ?? []);
+            $name = $item['billing_name_snapshot'] ?? $article?->billing_name ?? 'seleccionado';
+
+            if ($article?->has_batch && $lots->isEmpty()) {
+                throw ValidationException::withMessages([
+                    "items.$index.lots" => "El articulo {$name} debe tener al menos un lote.",
+                ]);
+            }
+
+            if ($lots->isEmpty()) {
+                continue;
+            }
+
+            if ($article?->has_expiration && $lots->contains(fn ($lot) => empty($lot['expiration_date']))) {
+                throw ValidationException::withMessages([
+                    "items.$index.lots" => "Todos los lotes del articulo {$name} requieren fecha de vencimiento.",
+                ]);
+            }
+
+            $total = round((float) $lots->sum(fn ($lot) => (float) ($lot['quantity'] ?? 0)), 4);
+            $quantity = round((float) $item['quantity'], 4);
+
+            if (abs($total - $quantity) > 0.0001) {
+                throw ValidationException::withMessages([
+                    "items.$index.lots" => "La suma de los lotes del articulo {$name} es {$total}, pero la cantidad ingresada es {$quantity}.",
+                ]);
+            }
+        }
     }
 
     private function validatePendingQuantities(array $items, ?int $entryId = null): void
@@ -698,6 +766,8 @@ class WarehouseEntryController extends Controller
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
             'line_total' => $lineTotal,
+            'has_batch' => (bool) $article?->has_batch,
+            'has_expiration' => (bool) $article?->has_expiration,
         ];
     }
 
@@ -905,6 +975,7 @@ class WarehouseEntryController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
+            'items.lots',
         ]);
     }
 

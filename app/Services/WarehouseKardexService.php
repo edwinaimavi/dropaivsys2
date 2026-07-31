@@ -59,6 +59,7 @@ class WarehouseKardexService
                 'items.unit',
                 'items.presentation',
                 'items.brand',
+                'items.lots',
             ]);
 
             if (! $entry->warehouse_id) {
@@ -84,6 +85,7 @@ class WarehouseKardexService
                 'items.unit',
                 'items.presentation',
                 'items.brand',
+                'items.lots',
             ]));
         });
     }
@@ -364,12 +366,23 @@ class WarehouseKardexService
             return;
         }
 
-        $quantity = round((float) $item->quantity, 4);
         $unitCost = round((float) $item->unit_price, 6);
 
-        if ($quantity <= 0) {
+        $allocations = $item->lots->isNotEmpty()
+            ? $item->lots->map(fn ($lot) => [
+                'quantity' => (float) $lot->quantity,
+                'lot_number' => $lot->lot_code,
+                'expiration_date' => $lot->expiration_date,
+            ])
+            : collect([[
+                'quantity' => (float) $item->quantity,
+                'lot_number' => $item->lot_number,
+                'expiration_date' => $item->expiration_date,
+            ]]);
+
+        if (abs((float) $allocations->sum('quantity') - (float) $item->quantity) > 0.0001) {
             throw ValidationException::withMessages([
-                'items' => 'La cantidad del Kardex debe ser mayor a cero.',
+                'items' => 'La suma de lotes no coincide con la cantidad del detalle de ingreso.',
             ]);
         }
 
@@ -379,7 +392,16 @@ class WarehouseKardexService
             ]);
         }
 
-        $stock = $this->findOrCreateStock($entry, $item);
+        foreach ($allocations as $allocation) {
+        $quantity = round((float) $allocation['quantity'], 4);
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages(['items' => 'La cantidad del Kardex debe ser mayor a cero.']);
+        }
+
+        $stockItem = clone $item;
+        $stockItem->lot_number = $allocation['lot_number'];
+        $stockItem->expiration_date = $allocation['expiration_date'];
+        $stock = $this->findOrCreateStock($entry, $stockItem);
         $previousQuantity = round((float) $stock->current_quantity, 4);
         $previousTotalCost = round((float) $stock->total_cost, 2);
         $entryTotalCost = round($quantity * $unitCost, 2);
@@ -408,8 +430,8 @@ class WarehouseKardexService
             'unit_id' => $item->unit_id,
             'presentation_id' => $item->presentation_id,
             'brand_id' => $item->brand_id,
-            'lot_number' => $this->upperOrNull($item->lot_number),
-            'expiration_date' => $item->expiration_date,
+            'lot_number' => $this->upperOrNull($allocation['lot_number']),
+            'expiration_date' => $allocation['expiration_date'],
             'origin' => $this->upperOrNull($item->origin),
             'cost_type' => $this->upperOrNull($item->cost_type),
             'movement_date' => now(),
@@ -440,6 +462,7 @@ class WarehouseKardexService
             'created_by' => Auth::id(),
             'updated_by' => Auth::id(),
         ]);
+        }
     }
 
     private function reverseEntryMovement(WarehouseKardexMovement $movement, WarehouseEntry $entry, ?string $reason): void

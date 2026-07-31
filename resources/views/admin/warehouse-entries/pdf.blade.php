@@ -379,7 +379,15 @@
                     <td>{{ $item->presentation?->description ?? '-' }}</td>
                     <td>{{ $item->brand?->description ?? '-' }}</td>
                     <td>{{ $item->origin ?: '-' }}</td>
-                    <td>{{ $item->lot_number ?: '-' }}</td>
+                    <td>
+                        @if ($item->lots->isNotEmpty())
+                            @foreach ($item->lots as $lot)
+                                <div>{{ $lot->lot_code }} ({{ number_format((float) $lot->quantity, 2) }})</div>
+                            @endforeach
+                        @else
+                            {{ $item->lot_number ?: '-' }}
+                        @endif
+                    </td>
                     <td class="text-center">{{ $formatDate($item->expiration_date) }}</td>
                     <td class="text-right">{{ $formatQty($item->ordered_quantity) }}</td>
                     <td class="text-right">{{ $formatQty($item->quantity) }}</td>
