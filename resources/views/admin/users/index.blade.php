@@ -477,7 +477,8 @@
         window.routes = Object.assign(window.routes || {}, {
             storeUser: "{{ route('admin.users.store') }}",
             usersList: "{{ route('admin.users.list') }}",
-            deleteUser: "{{ url('admin/users') }}"
+            deleteUser: "{{ url('admin/users') }}",
+            userDniLookup: "{{ route('admin.document-lookup.dni', 'DNI_PLACEHOLDER') }}"
         });
 
         function previewImage(event, querySelector) {

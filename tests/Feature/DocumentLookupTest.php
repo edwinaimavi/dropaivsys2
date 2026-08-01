@@ -46,7 +46,12 @@ it('devuelve DNI normalizado desde la ruta interna', function () {
         ->getJson(route('admin.document-lookup.dni', '70587639'))
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('full_name', 'ANA PEREZ LOPEZ');
+        ->assertJsonPath('full_name', 'ANA PEREZ LOPEZ')
+        ->assertJsonPath('data.dni', '70587639')
+        ->assertJsonPath('data.nombres', 'ANA')
+        ->assertJsonPath('data.apellidoPaterno', 'PEREZ')
+        ->assertJsonPath('data.apellidoMaterno', 'LOPEZ')
+        ->assertJsonPath('data.apellidos', 'PEREZ LOPEZ');
 });
 
 it('responde con errores controlados y nunca con 500', function () {

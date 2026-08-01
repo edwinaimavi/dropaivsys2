@@ -111,7 +111,16 @@ class DocumentLookupService
         }
 
         $document = $this->first($data, ['dni', 'numeroDocumento', 'numero_documento'], $dni);
+        $lastnames = trim($paternalLastname.' '.$maternalLastname);
         $fullName = trim($names.' '.$paternalLastname.' '.$maternalLastname);
+
+        $normalizedData = array_merge($data, [
+            'dni' => $document,
+            'nombres' => $names,
+            'apellidoPaterno' => $paternalLastname,
+            'apellidoMaterno' => $maternalLastname,
+            'apellidos' => $lastnames,
+        ]);
 
         return [
             'success' => true,
@@ -127,11 +136,12 @@ class DocumentLookupService
             'maternal_lastname' => $maternalLastname,
             'apellido_materno' => $maternalLastname,
             'apellidoMaterno' => $maternalLastname,
+            'apellidos' => $lastnames,
             'full_name' => $fullName,
             'nombre_completo' => $fullName,
             'cod_verifica' => $this->first($data, ['codVerifica', 'cod_verifica']),
             'raw' => $data,
-            'data' => $data,
+            'data' => $normalizedData,
         ];
     }
 

@@ -1,5 +1,8 @@
 var divLoading = document.getElementById('divLoading');
 let tableUser;
+let userDniLookupRequest = null;
+let userDniLookupTimer = null;
+let lastUserDniLookup = '';
 
 const defaultUserImage = 'https://www.shutterstock.com/image-vector/default-avatar-profile-icon-social-600nw-1906669723.jpg';
 
@@ -11,6 +14,24 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     initUserTable();
+
+    $('#dni').on('input', function () {
+        const sanitizedDni = String(this.value || '').replace(/\D/g, '').slice(0, 8);
+        this.value = sanitizedDni;
+
+        if (sanitizedDni !== lastUserDniLookup) {
+            lastUserDniLookup = '';
+        }
+
+        clearTimeout(userDniLookupTimer);
+        if (sanitizedDni.length === 8) {
+            userDniLookupTimer = setTimeout(() => lookupUserDni(), 450);
+        }
+    });
+
+    $('#btnSearchUserDni').on('click', function () {
+        lookupUserDni(true);
+    });
 
     $('#userForm').on('submit', function (e) {
         e.preventDefault();
@@ -265,6 +286,94 @@ function resetUserModal() {
     $('#error-messages').addClass('d-none').empty();
     $('#imgPreview').attr('src', defaultUserImage);
     $('#image').val('');
+    clearTimeout(userDniLookupTimer);
+    lastUserDniLookup = '';
+    setUserDniLookupLoading(false);
+}
+
+function lookupUserDni(forceLookup = false) {
+    const $dni = $('#dni');
+    const dni = String($dni.val() || '').replace(/\D/g, '').slice(0, 8);
+    $dni.val(dni);
+
+    if (!/^\d{8}$/.test(dni)) {
+        if (forceLookup) {
+            showUserDniMessage('El DNI debe tener exactamente 8 dígitos.', 'warning');
+        }
+        return;
+    }
+
+    if (!forceLookup && lastUserDniLookup === dni) {
+        return;
+    }
+
+    if (userDniLookupRequest) {
+        userDniLookupRequest.abort();
+    }
+
+    lastUserDniLookup = dni;
+    setUserDniLookupLoading(true);
+
+    userDniLookupRequest = $.ajax({
+        url: window.routes.userDniLookup.replace('DNI_PLACEHOLDER', dni),
+        type: 'GET',
+        dataType: 'json'
+    }).done(function (response) {
+        if (String($('#dni').val()) !== dni) return;
+
+        const person = response.data || response;
+        const names = person.nombres || response.nombres || '';
+        const lastnames = person.apellidos
+            || response.apellidos
+            || [person.apellidoPaterno, person.apellidoMaterno].filter(Boolean).join(' ')
+            || [response.apellidoPaterno, response.apellidoMaterno].filter(Boolean).join(' ');
+
+        if (!response.success || (!names && !lastnames)) {
+            showUserDniMessage();
+            return;
+        }
+
+        if (names) $('#name').val(names);
+        if (lastnames) $('#lastname').val(lastnames);
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Datos encontrados',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2200
+        });
+    }).fail(function (xhr, status) {
+        if (status === 'abort') return;
+        showUserDniMessage(xhr.responseJSON?.message);
+    }).always(function () {
+        userDniLookupRequest = null;
+        setUserDniLookupLoading(false);
+    });
+}
+
+function setUserDniLookupLoading(isLoading) {
+    $('#btnSearchUserDni').prop('disabled', isLoading);
+    $('#userDniSearchIcon').toggleClass('d-none', isLoading);
+    $('#userDniSearchLoading').toggleClass('d-none', !isLoading);
+}
+
+function showUserDniMessage(message, icon = 'warning') {
+    const fallbackMessage = 'No se pudo consultar el DNI. Complete los datos manualmente.';
+    const detail = message && !String(message).includes('Complete los datos manualmente')
+        ? `${message} Complete los datos manualmente.`
+        : (message || fallbackMessage);
+
+    Swal.fire({
+        icon: icon,
+        title: 'Consulta de DNI',
+        text: detail,
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 4000
+    });
 }
 
 function restoreUserSaveButton(id) {

@@ -79,7 +79,7 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'dni' => 'required|min:8|max:8|unique:users,dni',
+            'dni' => 'required|digits:8|unique:users,dni',
             'name' => 'required|min:3|max:50',
             'lastname' => 'required|min:3|max:50',
             'email' => 'required|email|unique:users,email',
@@ -133,7 +133,7 @@ class UserController extends Controller
     {
         //
         $data = $request->validate([
-            'dni' => 'required|min:8|max:8|unique:users,dni,' . $user->id,
+            'dni' => 'required|digits:8|unique:users,dni,' . $user->id,
             'name' => 'required|min:3|max:50',
             'lastname' => 'required|min:3|max:50',
             'email' => 'required|email|unique:users,email,' . $user->id,

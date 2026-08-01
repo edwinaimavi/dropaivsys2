@@ -64,8 +64,22 @@
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
                                             <label for="dni">DNI <span class="text-danger">*</span></label>
-                                            <input type="text" class="form-control form-control-sm" id="dni"
-                                                name="dni" placeholder="Ingrese DNI" required>
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control" id="dni" name="dni"
+                                                    placeholder="Ingrese DNI" inputmode="numeric" pattern="[0-9]{8}"
+                                                    minlength="8" maxlength="8" autocomplete="off" required>
+                                                <div class="input-group-append">
+                                                    <button type="button" class="btn btn-outline-success"
+                                                        id="btnSearchUserDni" title="Buscar DNI">
+                                                        <span id="userDniSearchIcon"><i class="fas fa-search"></i></span>
+                                                        <span id="userDniSearchLoading" class="d-none">
+                                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                                aria-hidden="true"></span>
+                                                        </span>
+                                                        <span class="ml-1">Buscar DNI</span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="form-group col-md-4">
                                             <label for="name">Nombres <span class="text-danger">*</span></label>
