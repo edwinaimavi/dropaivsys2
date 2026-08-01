@@ -13,6 +13,12 @@ class CustomerPurchaseOrder extends Model
     public const STATUS_ENTERED = 'entered';
     public const STATUS_ATTENDED = 'attended';
     public const STATUS_NOT_ATTENDED = 'not_attended';
+    public const STATUS_IN_PURCHASE = 'in_purchase';
+
+    private const IN_PURCHASE_STATUS_VALUES = [
+        self::STATUS_IN_PURCHASE,
+        'en_compra',
+    ];
 
     protected $fillable = [
         'code',
@@ -109,6 +115,25 @@ class CustomerPurchaseOrder extends Model
         )->withTimestamps();
     }
 
+    public function scopeAvailableForSupplierPurchase($query)
+    {
+        return $query->where(function ($query) {
+            $query->whereNull('status')
+                ->orWhereNotIn(
+                    DB::raw("LOWER(REPLACE(TRIM(status), ' ', '_'))"),
+                    self::IN_PURCHASE_STATUS_VALUES
+                );
+        });
+    }
+
+    public function isInPurchase(): bool
+    {
+        $status = strtolower(trim((string) $this->status));
+        $status = str_replace([' ', '-'], '_', $status);
+
+        return in_array($status, self::IN_PURCHASE_STATUS_VALUES, true);
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -196,7 +221,7 @@ class CustomerPurchaseOrder extends Model
         });
 
         $status = match (true) {
-            $totalEntered <= 0 => 'in_purchase',
+            $totalEntered <= 0 => self::STATUS_IN_PURCHASE,
             $isComplete => 'entered',
             default => 'partial_entered',
         };

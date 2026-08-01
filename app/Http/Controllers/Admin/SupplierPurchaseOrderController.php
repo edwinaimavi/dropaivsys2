@@ -95,6 +95,7 @@ class SupplierPurchaseOrderController extends Controller
             ->get(['id', 'description', 'short_name']);
 
         $customerPurchaseOrders = CustomerPurchaseOrder::query()
+            ->availableForSupplierPurchase()
             ->with(
                 'customer:id,business_name,full_name,first_name,last_name',
                 'currency:id,code,symbol'
@@ -387,8 +388,10 @@ class SupplierPurchaseOrderController extends Controller
             'supplierAccount.bank',
             'supplierAccount.currency',
             'currency',
-            'customerPurchaseOrder',
+            'customerPurchaseOrder.customer',
+            'customerPurchaseOrder.currency',
             'customerPurchaseOrders.customer',
+            'customerPurchaseOrders.currency',
             'quote',
             'marketStudy',
             'destinationUbigeo',
@@ -659,6 +662,10 @@ class SupplierPurchaseOrderController extends Controller
                 $previousCustomerOrderIds = $order
                     ? $this->customerPurchaseOrderIdsForSupplierOrder($order)
                     : collect();
+                $this->validateCustomerOrdersAvailableForSupplierPurchase(
+                    $customerOrderIds,
+                    $previousCustomerOrderIds
+                );
                 $affectIgv = (bool) ($validated['affect_igv'] ?? true);
                 $this->validateCustomerOrderItemUnitPrices($validated['items']);
                 $validated['items'] = $this->applySupplierAwardDataToItems(
@@ -1081,6 +1088,27 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_id' => $supplierId,
             'items' => $items,
         ]);
+    }
+
+    private function validateCustomerOrdersAvailableForSupplierPurchase(
+        array $customerOrderIds,
+        $previousCustomerOrderIds
+    ): void {
+        $previousIds = collect($previousCustomerOrderIds)
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $hasUnavailableOrder = CustomerPurchaseOrder::query()
+            ->whereIn('id', array_diff($customerOrderIds, $previousIds))
+            ->lockForUpdate()
+            ->get(['id', 'status'])
+            ->contains(fn (CustomerPurchaseOrder $customerOrder) => $customerOrder->isInPurchase());
+
+        if ($hasUnavailableOrder) {
+            throw ValidationException::withMessages([
+                'customer_purchase_order_ids' => 'Esta orden de cliente ya se encuentra en compra y no puede volver a usarse para generar una orden a proveedor.',
+            ]);
+        }
     }
 
     private function customerOrderItemPurchaseProgress(array $customerOrderItemIds, $excludeSupplierPurchaseOrderId = null): array

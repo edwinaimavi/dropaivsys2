@@ -1492,8 +1492,25 @@ function fillSupplierPurchaseOrderForm(order) {
     $('#supplier_order_supplier_id').val(order.supplier_id || '').trigger('change.select2');
     const supplierAccountsRequest = loadSupplierAccounts(order.supplier_id, order.supplier_account_id, { suppressInstructionSync: true });
     $('#supplier_order_currency_id').val(order.currency_id || '').trigger('change');
-    const customerPurchaseOrderIds = (order.customer_purchase_orders || [])
+    const relatedCustomerOrders = (order.customer_purchase_orders || []).length
+        ? order.customer_purchase_orders
+        : (order.customer_purchase_order ? [order.customer_purchase_order] : []);
+    const customerPurchaseOrderIds = relatedCustomerOrders
         .map(customerOrder => String(customerOrder.id));
+    relatedCustomerOrders.forEach(function (customerOrder) {
+        const select = $('#supplier_order_customer_purchase_order_ids');
+
+        if (!select.find(`option[value="${customerOrder.id}"]`).length) {
+            const customerName = customerOrder.customer?.business_name
+                || customerOrder.customer?.full_name
+                || [customerOrder.customer?.first_name, customerOrder.customer?.last_name].filter(Boolean).join(' ')
+                || 'Sin cliente';
+            const orderNumber = customerOrder.purchase_order_number || customerOrder.code;
+            const currency = customerOrder.currency?.symbol || '';
+            const total = Number(customerOrder.grand_total || 0).toFixed(2);
+            select.append(new Option(`${orderNumber} | ${customerName} | ${currency} ${total}`.trim(), customerOrder.id));
+        }
+    });
     $('#supplier_order_customer_purchase_order_ids')
         .val(customerPurchaseOrderIds.length ? customerPurchaseOrderIds : (order.customer_purchase_order_id ? [String(order.customer_purchase_order_id)] : []))
         .trigger('change.select2');
