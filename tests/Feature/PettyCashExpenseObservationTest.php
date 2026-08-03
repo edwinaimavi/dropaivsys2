@@ -415,3 +415,38 @@ it('impide observar sin el permiso específico', function () {
 
     expect($this->expense->fresh()->approval_status)->toBe(PettyCashExpense::APPROVAL_PENDING);
 });
+
+it('registra la aprobación administrativa y devuelve los contadores actualizados', function () {
+    $this->actingAs($this->creator)
+        ->postJson(route('admin.petty-cash.expenses.approve', $this->expense), [
+            'approval_observation' => 'Sustento conforme.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('counts.pending', 0)
+        ->assertJsonPath('counts.observed', 0);
+
+    $this->assertDatabaseHas('petty_cash_expense_events', [
+        'petty_cash_expense_id' => $this->expense->id,
+        'event' => 'gasto_aprobado',
+        'created_by' => $this->creator->id,
+    ]);
+});
+
+it('exige motivo y registra el rechazo en el historial administrativo', function () {
+    $this->actingAs($this->creator)
+        ->postJson(route('admin.petty-cash.expenses.reject', $this->expense))
+        ->assertUnprocessable();
+
+    $this->postJson(route('admin.petty-cash.expenses.reject', $this->expense), [
+        'approval_observation' => 'El comprobante no corresponde al gasto registrado.',
+    ])
+        ->assertOk()
+        ->assertJsonPath('counts.pending', 0)
+        ->assertJsonPath('counts.observed', 0);
+
+    $this->assertDatabaseHas('petty_cash_expense_events', [
+        'petty_cash_expense_id' => $this->expense->id,
+        'event' => 'gasto_rechazado',
+        'created_by' => $this->creator->id,
+    ]);
+});

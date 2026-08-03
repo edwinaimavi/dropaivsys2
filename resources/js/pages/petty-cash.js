@@ -1179,36 +1179,32 @@ $(function () {
         }).fail(xhr => notify('error', errorMessage(xhr)));
     });
 
-    const openApprovalModal = (expense, action) => {
-        approvalExpense = expense;
+    const selectReviewAction = action => {
         const reject = action === 'reject';
         const observe = action === 'observe';
+        $('#pca_action').val(action);
+        $('#pca_decision_field').removeClass('d-none');
+        $('#pca_review_observation').val('').prop('required', reject || observe).attr({
+            maxlength: observe ? 2000 : 1000,
+            placeholder: observe ? 'Describe claramente qué debe corregir el usuario.' : (reject ? 'Indica el motivo del rechazo.' : 'Nota administrativa opcional.')
+        }).trigger('focus');
+        $('#pca_observation_label').text(observe ? 'Observación del administrador *' : (reject ? 'Motivo de rechazo *' : 'Observación administrativa (opcional)'));
+        $('#pca_observation_help').text(observe ? 'Se enviará al usuario para que corrija el gasto.' : (reject ? 'El motivo quedará registrado en el historial administrativo.' : 'Puedes dejar una nota antes de aprobar.'));
+        $('#btnConfirmExpenseApproval').removeClass('d-none btn-success btn-danger btn-warning')
+            .addClass(observe ? 'btn-warning' : (reject ? 'btn-danger' : 'btn-success'))
+            .find('span').text(observe ? 'Confirmar observación' : (reject ? 'Confirmar rechazo' : 'Confirmar aprobación'));
+        $('.selectExpenseReviewAction').removeClass('active').filter(`[data-action="${action}"]`).addClass('active');
+    };
+
+    const openApprovalModal = expense => {
+        approvalExpense = expense;
         const box = expense.petty_cash_box || currentBox;
         const symbol = box?.currency?.symbol || currentBox?.currency?.symbol || '';
         const number = expense.document_full_number || expense.document_number || '-';
         $('#pca_expense_id').val(expense.id);
-        $('#pca_action').val(action);
-        $('#pca_observation').val('').prop('required', reject || observe).attr({
-            maxlength: observe ? 2000 : 1000,
-            placeholder: observe ? 'Ejemplo: Detallar qué transporte se pagó, origen/destino, mercadería trasladada y motivo del gasto.' : ''
-        });
-        $('#pca_title').text(observe ? 'Observar gasto' : (reject ? 'Rechazar gasto' : 'Aprobar gasto'));
-        $('#pettyCashExpenseApprovalModal .modal-header p').text(observe
-            ? 'Registra el motivo de la observación para que el usuario corrija la información.'
-            : 'Confirma los datos y revisa sus comprobantes.');
-        $('#pca_observation_label').text(reject ? 'Motivo de rechazo *' : 'Observación de aprobación (opcional)');
-        $('#pca_observation_help').text(reject ? 'El motivo es obligatorio y quedará en la auditoría.' : 'Puedes registrar una nota administrativa.');
-        $('#btnConfirmExpenseApproval').toggleClass('btn-success', !reject).toggleClass('btn-danger', reject)
-            .find('span').text(reject ? 'Confirmar rechazo' : 'Confirmar aprobación');
-        if (observe) {
-            $('#pca_observation_label').text('Observación del administrador *');
-            $('#pca_observation_help').text('Indica claramente qué información o sustento debe corregirse.');
-        }
-        $('#pca_icon i').attr('class', `fas ${observe ? 'fa-comment-alt' : (reject ? 'fa-times' : 'fa-check')}`);
-        $('#btnConfirmExpenseApproval')
-            .removeClass('btn-success btn-danger btn-warning')
-            .addClass(observe ? 'btn-warning' : (reject ? 'btn-danger' : 'btn-success'))
-            .find('span').text(observe ? 'Enviar observación' : (reject ? 'Confirmar rechazo' : 'Confirmar aprobación'));
+        $('#pca_action').val('');
+        $('#pca_decision_field,#btnConfirmExpenseApproval').addClass('d-none');
+        $('.selectExpenseReviewAction').removeClass('active');
         $('#pca_expense_data').html([
             ['Fecha', date(expense.expense_date)], ['Proveedor', expense.supplier_name],
             ['Concepto', expense.concept], ['Importe', money(expense.amount, symbol)],
@@ -1228,6 +1224,11 @@ $(function () {
         $('#pca_lifted_observation_user').text(userName(lifted?.resolver));
         $('#pca_lifted_observation_date').text(dateTime(lifted?.resolved_at));
         $('#btnViewApprovalObservationHistory').data('id', expense.id);
+        const history = [];
+        (expense.observations || []).forEach(item => history.push({ at: item.observed_at, icon: 'fa-comment-alt', title: 'Gasto observado', user: item.observer, detail: item.observation }));
+        (expense.events || []).forEach(item => history.push({ at: item.created_at, icon: item.event === 'gasto_aprobado' ? 'fa-check' : (item.event === 'gasto_rechazado' ? 'fa-times' : 'fa-clipboard-check'), title: item.description, user: item.creator, detail: item.metadata?.observation || item.metadata?.reason || '' }));
+        history.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+        $('#pca_history').html(history.length ? history.map(item => `<article><i class="fas ${item.icon}"></i><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(userName(item.user))} · ${dateTime(item.at)}</small>${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ''}</div></article>`).join('') : '<span class="text-muted d-block mt-2">Sin decisiones administrativas previas.</span>');
         $('#pettyCashExpenseApprovalModal').modal('show');
     };
 
@@ -1239,7 +1240,7 @@ $(function () {
             const box = expense.petty_cash_box;
             const docs = (expense.documents || []).map(document => `<a target="_blank" href="${document.view_url}" class="petty-document-btn"><i class="fas fa-paperclip"></i></a>`).join('') || '-';
             const history = liftedObservationBadge(expense);
-            const actions = `${app.data('can-expense-approve') ? `<button class="btn btn-sm btn-outline-success approvePendingPettyCashExpense" data-id="${expense.id}" title="Aprobar"><i class="fas fa-check"></i></button> <button class="btn btn-sm btn-outline-danger rejectPendingPettyCashExpense" data-id="${expense.id}" title="Rechazar"><i class="fas fa-times"></i></button>` : ''} ${app.data('can-expense-observe') ? `<button class="btn btn-sm btn-outline-warning observePendingPettyCashExpense" data-id="${expense.id}" title="Observar gasto"><i class="fas fa-comment-alt"></i></button>` : ''}`;
+            const actions = `<button class="btn btn-sm btn-outline-success reviewPendingPettyCashExpense" data-id="${expense.id}" title="Revisar gasto"><i class="fas fa-clipboard-check mr-1"></i>Revisar</button>`;
             return `<tr><td>${date(expense.expense_date)}</td><td><strong>${escapeHtml(box?.code || '-')}</strong><small class="d-block text-muted">${escapeHtml(box?.company?.trade_name || box?.company?.business_name || '-')}</small></td><td>${escapeHtml(expense.supplier_name)}</td><td>${escapeHtml(expense.concept)}${history ? `<div class="mt-1">${history}</div>` : ''}</td><td>${escapeHtml(userName(expense.creator))}</td><td class="text-center">${docs}</td><td class="text-right petty-amount-cell">${money(expense.amount, box?.currency?.symbol)}</td><td>${actions}</td></tr>`;
         }).join('') : '<tr><td colspan="8" class="petty-empty-state"><i class="fas fa-check-circle"></i><strong>No hay gastos pendientes de aprobación.</strong></td></tr>');
         $('#pendingPettyCashExpensesModal').data('expenses', expenses);
@@ -1356,22 +1357,18 @@ $(function () {
             openApprovalModal(expense, action);
         }
     });
-    $(document).on('click', '.approvePendingPettyCashExpense, .rejectPendingPettyCashExpense, .observePendingPettyCashExpense', function () {
+    $(document).on('click', '.reviewPendingPettyCashExpense', function () {
         const expenses = $('#pendingPettyCashExpensesModal').data('expenses') || [];
         const expense = expenses.find(item => Number(item.id) === Number($(this).data('id')));
-        if (expense) {
-            const action = $(this).hasClass('observePendingPettyCashExpense')
-                ? 'observe'
-                : ($(this).hasClass('rejectPendingPettyCashExpense') ? 'reject' : 'approve');
-            openApprovalModal(expense, action);
-        }
+        if (expense) openApprovalModal(expense);
     });
+    $(document).on('click', '.selectExpenseReviewAction', function () { selectReviewAction($(this).data('action')); });
     $('#pettyCashExpenseApprovalForm').on('submit', function (event) {
         event.preventDefault();
         const action = $('#pca_action').val();
         const expenseId = $('#pca_expense_id').val();
         const url = expenseActionUrl(action, expenseId);
-        const observation = $('#pca_observation').val().trim();
+        const observation = $('#pca_review_observation').val().trim();
         if (!url) return notify('error', 'La acción administrativa seleccionada no es válida.');
         if (action === 'reject' && !observation) return notify('warning', 'Ingresa el motivo del rechazo.');
         if (action === 'observe' && observation.length < 10) return notify('warning', 'Ingresa una observación clara de al menos 10 caracteres.');

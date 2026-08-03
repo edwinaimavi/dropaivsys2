@@ -484,6 +484,7 @@ class PettyCashController extends Controller
                 'currentObservation.observer:id,name,lastname',
                 'observations.observer:id,name,lastname',
                 'observations.resolver:id,name,lastname',
+                'events.creator:id,name,lastname',
             ])
             ->latest('created_at')
             ->get();
@@ -549,10 +550,16 @@ class PettyCashController extends Controller
                 'approval_observation' => $validated['approval_observation'] ?? null,
                 'updated_by' => Auth::id(),
             ]);
+            $lockedExpense->events()->create([
+                'event' => 'gasto_aprobado',
+                'description' => 'Gasto aprobado administrativamente.',
+                'metadata' => ['observation' => $validated['approval_observation'] ?? null],
+                'created_by' => Auth::id(),
+            ]);
             $this->recalculateTotals($box);
         });
 
-        return response()->json(['message' => 'Gasto aprobado correctamente. Ya afecta el saldo de la caja.']);
+        return response()->json(['message' => 'Gasto aprobado correctamente. Ya afecta el saldo de la caja.', 'counts' => $this->expenseApprovalCounts()]);
     }
 
     public function rejectExpense(Request $request, PettyCashExpense $expense)
@@ -581,10 +588,16 @@ class PettyCashController extends Controller
                 'approval_observation' => $validated['approval_observation'],
                 'updated_by' => Auth::id(),
             ]);
+            $lockedExpense->events()->create([
+                'event' => 'gasto_rechazado',
+                'description' => 'Gasto rechazado administrativamente.',
+                'metadata' => ['reason' => $validated['approval_observation']],
+                'created_by' => Auth::id(),
+            ]);
             $this->recalculateTotals($box);
         });
 
-        return response()->json(['message' => 'Gasto rechazado correctamente. No afecta el saldo de la caja.']);
+        return response()->json(['message' => 'Gasto rechazado correctamente. No afecta el saldo de la caja.', 'counts' => $this->expenseApprovalCounts()]);
     }
 
     public function observeExpense(Request $request, PettyCashExpense $expense)
@@ -632,6 +645,12 @@ class PettyCashController extends Controller
                 'approval_observation' => null,
                 'updated_by' => Auth::id(),
             ]);
+            $lockedExpense->events()->create([
+                'event' => 'gasto_observado',
+                'description' => 'Gasto observado administrativamente.',
+                'metadata' => ['observation' => $validated['observation']],
+                'created_by' => Auth::id(),
+            ]);
 
             $this->recalculateTotals($box);
         });
@@ -644,14 +663,16 @@ class PettyCashController extends Controller
                 'status' => PettyCashExpense::APPROVAL_OBSERVED,
                 'status_label' => 'Observado',
             ],
-            'counts' => [
-                'pending' => PettyCashExpense::query()
-                    ->where('status', 'ACTIVE')
-                    ->pendingApproval()
-                    ->count(),
-                'observed' => $this->visibleObservedExpensesQuery()->count(),
-            ],
+            'counts' => $this->expenseApprovalCounts(),
         ]);
+    }
+
+    private function expenseApprovalCounts(): array
+    {
+        return [
+            'pending' => PettyCashExpense::query()->where('status', 'ACTIVE')->pendingApproval()->count(),
+            'observed' => $this->visibleObservedExpensesQuery()->count(),
+        ];
     }
 
     public function destroyExpenseDocument(PettyCashExpense $expense, Document $document)
