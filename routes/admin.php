@@ -597,6 +597,10 @@ Route::delete(
     'warehouse-entries/{warehouseEntry}/lot-documents/{lotDocument}',
     [WarehouseEntryController::class, 'destroyLotDocument']
 )->name('warehouse-entries.lot-documents.destroy');
+Route::get(
+    'warehouse-entries/{warehouseEntry}/expense-documents/{expenseDocument}/view',
+    [WarehouseEntryController::class, 'viewExpenseDocument']
+)->name('warehouse-entries.expenses.documents.view');
 
 Route::get(
     'warehouse-entries/{warehouseEntry}/pdf',

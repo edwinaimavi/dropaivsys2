@@ -366,7 +366,7 @@ class WarehouseKardexService
             return;
         }
 
-        $unitCost = round((float) $item->unit_price, 6);
+        $unitCost = round((float) ($item->real_unit_cost ?: $item->unit_price), 6);
 
         $allocations = $item->lots->isNotEmpty()
             ? $item->lots->map(fn ($lot) => [

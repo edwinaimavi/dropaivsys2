@@ -214,6 +214,11 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.lot-documents.index' => 'Ver documentos por lote de ingresos de almacen',
             'admin.warehouse-entries.lot-documents.store' => 'Adjuntar documentos por lote de ingresos de almacen',
             'admin.warehouse-entries.lot-documents.destroy' => 'Eliminar documentos por lote de ingresos de almacen',
+            'admin.warehouse-entries.expenses.index' => 'Ver gastos vinculados de ingresos de almacén',
+            'admin.warehouse-entries.expenses.store' => 'Registrar gastos vinculados de ingresos de almacén',
+            'admin.warehouse-entries.expenses.update' => 'Actualizar gastos vinculados de ingresos de almacén',
+            'admin.warehouse-entries.expenses.destroy' => 'Eliminar gastos vinculados de ingresos de almacén',
+            'admin.warehouse-entries.expenses.documents.index' => 'Ver documentos de gastos vinculados de ingresos de almacén',
 
             'admin.labelings.index' => 'Ver rotulaciones',
             'admin.labelings.list' => 'Listar rotulaciones',

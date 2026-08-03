@@ -26,6 +26,8 @@ class WarehouseEntryItem extends Model
         'subtotal',
         'tax_amount',
         'line_total',
+        'additional_cost',
+        'real_unit_cost',
         'status',
     ];
 
@@ -37,6 +39,8 @@ class WarehouseEntryItem extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'additional_cost' => 'decimal:2',
+        'real_unit_cost' => 'decimal:6',
     ];
 
     public function warehouseEntry()
@@ -77,5 +81,10 @@ class WarehouseEntryItem extends Model
     public function lotDocuments()
     {
         return $this->hasMany(WarehouseEntryItemLotDocument::class);
+    }
+
+    public function expenseDistributions()
+    {
+        return $this->hasMany(WarehouseEntryExpenseDistribution::class);
     }
 }

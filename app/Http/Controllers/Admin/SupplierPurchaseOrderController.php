@@ -1100,13 +1100,13 @@ class SupplierPurchaseOrderController extends Controller
 
         $hasUnavailableOrder = CustomerPurchaseOrder::query()
             ->whereIn('id', array_diff($customerOrderIds, $previousIds))
+            ->whereNotIn('id', CustomerPurchaseOrder::query()->availableForSupplierPurchase()->select('id'))
             ->lockForUpdate()
-            ->get(['id', 'status'])
-            ->contains(fn (CustomerPurchaseOrder $customerOrder) => $customerOrder->isInPurchase());
+            ->exists();
 
         if ($hasUnavailableOrder) {
             throw ValidationException::withMessages([
-                'customer_purchase_order_ids' => 'Esta orden de cliente ya se encuentra en compra y no puede volver a usarse para generar una orden a proveedor.',
+                'customer_purchase_order_ids' => 'La orden de cliente ya no tiene artículos con cantidad pendiente de compra.',
             ]);
         }
     }
@@ -1172,6 +1172,13 @@ class SupplierPurchaseOrderController extends Controller
             return;
         }
 
+        $duplicateItemId = collect($customerOrderItemIds)->map(fn ($id) => (int) $id)->duplicates()->first();
+        if ($duplicateItemId) {
+            throw ValidationException::withMessages([
+                'items' => 'No se puede duplicar el mismo artículo de la orden del cliente en una orden a proveedor.',
+            ]);
+        }
+
         $progress = $this->customerOrderItemPurchaseProgress(
             $customerOrderItemIds,
             $currentSupplierPurchaseOrderId
@@ -1194,7 +1201,7 @@ class SupplierPurchaseOrderController extends Controller
 
             if ($quantity > $pending) {
                 throw ValidationException::withMessages([
-                    "items.$index.quantity" => 'La cantidad a comprar supera el saldo pendiente de la orden del cliente.',
+                    "items.$index.quantity" => 'La cantidad a comprar no puede superar la cantidad pendiente del cliente.',
                 ]);
             }
         }

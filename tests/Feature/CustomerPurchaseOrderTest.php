@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Models\CustomerPurchaseOrder;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -137,6 +138,22 @@ beforeEach(function () {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+});
+
+test('supplier purchase availability query is evaluated by pending item quantity', function () {
+    $orderId = DB::table('customer_purchase_orders')->insertGetId([
+        'code' => 'P-PENDING', 'company_id' => $this->companyId, 'customer_id' => $this->customerId,
+        'order_type' => 'articles', 'currency_id' => $this->currencyId, 'status' => 'in_purchase',
+        'created_by' => $this->user->id, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('customer_purchase_order_items')->insert([
+        'customer_purchase_order_id' => $orderId, 'article_id' => $this->articleId,
+        'billing_name_snapshot' => 'ARTÍCULO PENDIENTE', 'quantity' => 3, 'status' => 'active',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    expect(CustomerPurchaseOrder::query()->availableForSupplierPurchase()->pluck('id')->all())
+        ->toContain($orderId);
 });
 
 test('customer purchase order backend flow works', function () {

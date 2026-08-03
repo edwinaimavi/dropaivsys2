@@ -18,6 +18,8 @@ use App\Models\SupplierPurchaseOrderItem;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryExpense;
+use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemLotDocument;
 use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -47,6 +49,7 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.index')->only(['downloadLotDocument']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
+        $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
     }
 
     public function index()
@@ -183,6 +186,10 @@ class WarehouseEntryController extends Controller
             'items.presentation',
             'items.brand',
             'items.lots.documents',
+            'expenses.provider:id,business_name,short_name,ruc',
+            'expenses.currency:id,code,symbol',
+            'expenses.distributions.item:id,warehouse_entry_id,billing_name_snapshot,quantity,unit_price',
+            'expenses.documents',
             'documents' => function ($query) {
                 $query->where(function ($innerQuery) {
                     $innerQuery->whereNull('observation')
@@ -191,10 +198,31 @@ class WarehouseEntryController extends Controller
             },
         ]);
 
+        if (! Auth::user()?->can('admin.warehouse-entries.expenses.index')) {
+            $warehouseEntry->unsetRelation('expenses');
+        } else {
+            $warehouseEntry->expenses->each(function (WarehouseEntryExpense $expense) use ($warehouseEntry) {
+                $expense->documents->each(fn (WarehouseEntryExpenseDocument $document) => $document->setAttribute(
+                    'view_url', route('admin.warehouse-entries.expenses.documents.view', [$warehouseEntry, $document])
+                ));
+            });
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => $warehouseEntry,
             'warehouse_name' => $warehouseEntry->warehouse?->name ?? 'SIN ALMACEN',
+        ]);
+    }
+
+    public function viewExpenseDocument(WarehouseEntry $warehouseEntry, WarehouseEntryExpenseDocument $expenseDocument)
+    {
+        abort_unless((int) $expenseDocument->expense?->warehouse_entry_id === (int) $warehouseEntry->id, 404);
+        abort_unless($expenseDocument->status === 'ACTIVE' && Storage::disk('public')->exists($expenseDocument->file_path), 404);
+
+        return response()->file(Storage::disk('public')->path($expenseDocument->file_path), [
+            'Content-Type' => $expenseDocument->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . ($expenseDocument->original_name ?: basename($expenseDocument->file_path)) . '"',
         ]);
     }
 
@@ -454,7 +482,35 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_lot_documents.*.type' => ['required', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
             'warehouse_entry_lot_documents.*.description' => ['nullable', 'string', 'max:255'],
             'warehouse_entry_lot_documents.*.file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'expenses' => ['nullable', 'array'],
+            'expenses.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_expenses,id'],
+            'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
+            'expenses.*.cost_origin' => ['required', Rule::in(['included_in_purchase_price', 'same_purchase_document', 'third_party', 'internal_without_document'])],
+            'expenses.*.expense_type' => ['required', Rule::in(['transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
+            'expenses.*.provider_id' => ['nullable', 'exists:suppliers,id'],
+            'expenses.*.provider_ruc' => ['nullable', 'string', 'max:20'],
+            'expenses.*.provider_name' => ['nullable', 'string', 'max:255'],
+            'expenses.*.document_type' => ['nullable', 'string', 'max:50'],
+            'expenses.*.document_series' => ['nullable', 'string', 'max:20'],
+            'expenses.*.document_number' => ['nullable', 'string', 'max:50'],
+            'expenses.*.document_date' => ['nullable', 'date'],
+            'expenses.*.currency_id' => ['nullable', 'exists:currencies,id'],
+            'expenses.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.affects_inventory_cost' => ['required', 'boolean'],
+            'expenses.*.distribution_method' => ['nullable', Rule::in(['quantity', 'amount', 'weight', 'manual'])],
+            'expenses.*.description' => ['nullable', 'string', 'max:1000'],
+            'expenses.*.distributions' => ['nullable', 'array'],
+            'expenses.*.distributions.*.item_index' => ['required', 'integer', 'min:0'],
+            'expenses.*.distributions.*.distributed_amount' => ['required', 'numeric', 'min:0'],
+            'expenses.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'expense_management' => ['nullable', 'boolean'],
         ]);
+
+        if ($request->boolean('expense_management')) {
+            abort_unless(Auth::user()?->can($entry
+                ? 'admin.warehouse-entries.expenses.update'
+                : 'admin.warehouse-entries.expenses.store'), 403);
+        }
 
         $this->validateItemLots($validated['items']);
 
@@ -570,6 +626,10 @@ class WarehouseEntryController extends Controller
                     $entry->items()->whereNotIn('id', $retainedItemIds)->update(['status' => 'deleted']);
                 }
 
+                if ($request->boolean('expense_management')) {
+                    $this->syncEntryExpenses($entry, $validated['expenses'] ?? [], $request->file('expenses', []), $retainedItemIds);
+                }
+
                 $currentCustomerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($entry);
 
                 $this->storeEntryDocuments($entry, $request->input('warehouse_entry_documents', []), $request->file('warehouse_entry_documents', []));
@@ -588,6 +648,7 @@ class WarehouseEntryController extends Controller
                     'items.presentation',
                     'items.brand',
                     'items.lots',
+                    'expenses.distributions',
                 ]);
 
                 if ($isUpdate) {
@@ -690,6 +751,170 @@ class WarehouseEntryController extends Controller
                 ])->all(),
             ];
         })->all();
+    }
+
+    private function syncEntryExpenses(WarehouseEntry $entry, array $expenses, array $expenseFiles, array $itemIds): void
+    {
+        $itemsById = $entry->items()->whereIn('id', $itemIds)->get()->keyBy('id');
+        $items = collect($itemIds)->map(fn ($id) => $itemsById->get($id))->filter()->values();
+        $retainedExpenseIds = [];
+        $submittedExpenseIds = collect($expenses)->pluck('id')->filter()->map(fn ($id) => (int) $id);
+        $removesExistingExpenses = $entry->expenses()->whereNotIn('id', $submittedExpenseIds)->exists();
+        abort_if($removesExistingExpenses && ! Auth::user()?->can('admin.warehouse-entries.expenses.destroy'), 403, 'No tiene permiso para anular gastos vinculados.');
+
+        foreach ($expenses as $index => $data) {
+            $data = $this->prepareLinkedExpense($data, $index);
+            $affectsCost = (bool) $data['affects_inventory_cost'];
+            $method = $affectsCost ? ($data['distribution_method'] ?? null) : null;
+            if ($affectsCost && $items->isEmpty()) {
+                throw ValidationException::withMessages(["expenses.$index.distribution_method" => 'Debe existir al menos un artículo para distribuir el gasto.']);
+            }
+            if ($affectsCost && ! $method) {
+                throw ValidationException::withMessages(["expenses.$index.distribution_method" => 'Seleccione un método de distribución.']);
+            }
+            if ($method === 'weight') {
+                throw ValidationException::withMessages(["expenses.$index.distribution_method" => 'Los artículos del ingreso no tienen peso registrado. Seleccione otro método.']);
+            }
+
+            foreach (['provider_ruc', 'document_type', 'document_series', 'document_number'] as $field) {
+                $data[$field] = $this->upperOrNull($data[$field] ?? null);
+            }
+            if (! $data['provider_ruc'] && ! empty($data['provider_id'])) {
+                $data['provider_ruc'] = $this->upperOrNull(Supplier::query()->whereKey($data['provider_id'])->value('ruc'));
+            }
+            if ($data['provider_ruc'] && $data['document_type'] && $data['document_series'] && $data['document_number']) {
+                $duplicate = WarehouseEntryExpense::query()
+                    ->where('status', 'ACTIVE')
+                    ->where('provider_ruc', $data['provider_ruc'])
+                    ->where('document_type', $data['document_type'])
+                    ->where('document_series', $data['document_series'])
+                    ->where('document_number', $data['document_number'])
+                    ->when($data['id'] ?? null, fn ($query, $id) => $query->where('id', '!=', $id))
+                    ->exists();
+                if ($duplicate) {
+                    throw ValidationException::withMessages(["expenses.$index.document_number" => 'Ya existe un gasto con este comprobante para el proveedor.']);
+                }
+            }
+
+            $expense = ! empty($data['id'])
+                ? $entry->expenses()->whereKey($data['id'])->firstOrFail()
+                : $entry->expenses()->make(['created_by' => Auth::id()]);
+            $expense->fill([
+                'supplier_purchase_order_id' => $entry->supplier_purchase_order_id,
+                'expense_category' => $data['expense_category'],
+                'cost_origin' => $data['cost_origin'],
+                'expense_type' => $data['expense_type'],
+                'provider_id' => $data['provider_id'] ?? null,
+                'provider_ruc' => $data['provider_ruc'],
+                'provider_name' => $this->upperOrNull($data['provider_name'] ?? null),
+                'document_type' => $data['document_type'],
+                'document_series' => $data['document_series'],
+                'document_number' => $data['document_number'],
+                'document_date' => $data['document_date'] ?? null,
+                'currency_id' => $data['currency_id'] ?? $entry->currency_id,
+                'amount' => round((float) $data['amount'], 2),
+                'affects_inventory_cost' => $affectsCost,
+                'distribution_method' => $method,
+                'description' => $this->upperOrNull($data['description'] ?? null),
+                'status' => 'ACTIVE',
+                'updated_by' => Auth::id(),
+            ])->save();
+            $retainedExpenseIds[] = $expense->id;
+
+            $allocations = $affectsCost
+                ? $this->expenseAllocations($data, $items, $method, (float) $expense->amount, $index)
+                : [];
+            $expense->distributions()->delete();
+            foreach ($allocations as $itemIndex => $amount) {
+                $expense->distributions()->create([
+                    'warehouse_entry_item_id' => $items[$itemIndex]->id,
+                    'distributed_amount' => $amount,
+                ]);
+            }
+
+            $file = $expenseFiles[$index]['file'] ?? null;
+            if ($file) {
+                $path = $file->store("warehouse_entries/{$entry->id}/expenses/{$expense->id}", 'public');
+                $expense->documents()->create([
+                    'document_type' => $data['document_type'],
+                    'description' => $data['description'] ?? null,
+                    'file_path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+            }
+        }
+
+        $entry->expenses()->whereNotIn('id', $retainedExpenseIds)->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+        $costs = DB::table('warehouse_entry_expense_distributions as distributions')
+            ->join('warehouse_entry_expenses as expenses', 'expenses.id', '=', 'distributions.warehouse_entry_expense_id')
+            ->where('expenses.warehouse_entry_id', $entry->id)->where('expenses.status', 'ACTIVE')
+            ->groupBy('distributions.warehouse_entry_item_id')
+            ->pluck(DB::raw('SUM(distributions.distributed_amount)'), 'distributions.warehouse_entry_item_id');
+        foreach ($items as $item) {
+            $additional = round((float) ($costs[$item->id] ?? 0), 2);
+            $item->update([
+                'additional_cost' => $additional,
+                'real_unit_cost' => round((float) $item->unit_price + ($additional / (float) $item->quantity), 6),
+            ]);
+        }
+    }
+
+    private function prepareLinkedExpense(array $data, int $index): array
+    {
+        $included = ($data['cost_origin'] ?? null) === 'included_in_purchase_price';
+        if ($included) {
+            $data['amount'] = 0;
+            $data['affects_inventory_cost'] = false;
+            $data['distribution_method'] = null;
+            $data['distributions'] = [];
+            if (blank($data['description'] ?? null)) {
+                $data['description'] = 'El proveedor asumió el flete / costo incluido en la compra.';
+            }
+            return $data;
+        }
+
+        if ((float) ($data['amount'] ?? 0) <= 0) {
+            throw ValidationException::withMessages([
+                "expenses.$index.amount" => 'El importe debe ser mayor a 0 para la forma de costo seleccionada.',
+            ]);
+        }
+
+        return $data;
+    }
+
+    private function expenseAllocations(array $data, $items, string $method, float $amount, int $expenseIndex): array
+    {
+        if ($method === 'manual') {
+            $allocations = array_fill(0, $items->count(), 0.0);
+            foreach ($data['distributions'] ?? [] as $distribution) {
+                if (! isset($items[(int) $distribution['item_index']])) {
+                    throw ValidationException::withMessages(["expenses.$expenseIndex.distributions" => 'La distribución contiene un artículo inválido.']);
+                }
+                $allocations[(int) $distribution['item_index']] = round((float) $distribution['distributed_amount'], 2);
+            }
+            if (abs(array_sum($allocations) - $amount) > 0.009) {
+                throw ValidationException::withMessages(["expenses.$expenseIndex.distributions" => 'La distribución del gasto debe coincidir con el importe total.']);
+            }
+            return $allocations;
+        }
+
+        $weights = $items->map(fn ($item) => $method === 'amount' ? (float) $item->line_total : (float) $item->quantity)->all();
+        $totalWeight = array_sum($weights);
+        if ($totalWeight <= 0) {
+            throw ValidationException::withMessages(["expenses.$expenseIndex.distribution_method" => 'No existen valores válidos para distribuir el gasto.']);
+        }
+        $remaining = (int) round($amount * 100);
+        $result = [];
+        foreach ($weights as $position => $weight) {
+            $cents = $position === array_key_last($weights) ? $remaining : (int) round(($amount * 100) * ($weight / $totalWeight));
+            $result[$position] = $cents / 100;
+            $remaining -= $cents;
+        }
+        return $result;
     }
 
     private function validateItemLots(array $items): void

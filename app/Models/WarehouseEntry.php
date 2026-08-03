@@ -106,4 +106,9 @@ class WarehouseEntry extends Model
     {
         return $this->hasMany(WarehouseEntryItemLotDocument::class);
     }
+
+    public function expenses()
+    {
+        return $this->hasMany(WarehouseEntryExpense::class)->where('status', 'ACTIVE');
+    }
 }

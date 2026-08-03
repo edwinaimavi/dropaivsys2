@@ -36,6 +36,7 @@ class CustomerPurchaseOrderController extends Controller
     private const ACTIVE_STATUSES = [
         'approved',
         self::STATUS_REGISTERED,
+        self::STATUS_PARTIAL_PURCHASE,
         self::STATUS_IN_PURCHASE,
         self::STATUS_PARTIAL_ENTERED,
     ];
@@ -49,6 +50,7 @@ class CustomerPurchaseOrderController extends Controller
     ];
     private const STATUS_REGISTERED = 'registered';
     private const STATUS_IN_PURCHASE = 'in_purchase';
+    private const STATUS_PARTIAL_PURCHASE = CustomerPurchaseOrder::STATUS_PARTIAL_PURCHASE;
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
     private const STATUS_ENTERED = CustomerPurchaseOrder::STATUS_ENTERED;
     private const STATUS_CANCELLED = 'cancelled';
@@ -178,7 +180,7 @@ class CustomerPurchaseOrderController extends Controller
 
         match ($statusFilter) {
             'registered' => $orders->whereIn('status', ['approved', self::STATUS_REGISTERED]),
-            'in_purchase' => $orders->where('status', self::STATUS_IN_PURCHASE),
+            'in_purchase' => $orders->whereIn('status', [self::STATUS_PARTIAL_PURCHASE, self::STATUS_IN_PURCHASE]),
             'partial_entered' => $orders->where('status', self::STATUS_PARTIAL_ENTERED),
             'attended' => $orders->whereIn('status', [self::STATUS_ATTENDED, self::STATUS_NOT_ATTENDED]),
             'entered' => $orders->where('status', self::STATUS_ENTERED),
@@ -192,13 +194,13 @@ class CustomerPurchaseOrderController extends Controller
         $orders
             ->orderByRaw(
                 'CASE
-                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
                         AND delivery_end_date < ? THEN 0
-                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
                         AND delivery_end_date = ? THEN 1
-                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
                         AND delivery_end_date > ? THEN 2
-                    WHEN status IN ("approved", "registered", "in_purchase", "partial_entered") THEN 3
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered") THEN 3
                     ELSE 4
                 END ASC',
                 [$today, $today, $today]
@@ -308,6 +310,11 @@ class CustomerPurchaseOrderController extends Controller
                         'label' => 'Registrada',
                         'class' => 'badge-secondary text-white',
                         'icon' => 'fas fa-clipboard-check',
+                    ],
+                    self::STATUS_PARTIAL_PURCHASE => [
+                        'label' => 'Compra parcial',
+                        'class' => 'badge-warning text-dark',
+                        'icon' => 'fas fa-shopping-basket',
                     ],
                     self::STATUS_IN_PURCHASE => [
                         'label' => 'En compra',
@@ -1392,6 +1399,7 @@ class CustomerPurchaseOrderController extends Controller
     {
         return [
             self::STATUS_REGISTERED,
+            self::STATUS_PARTIAL_PURCHASE,
             self::STATUS_IN_PURCHASE,
             self::STATUS_PARTIAL_ENTERED,
             self::STATUS_ENTERED,
@@ -1500,12 +1508,13 @@ class CustomerPurchaseOrderController extends Controller
             $requested = round((float) $item->quantity, 2);
             $purchase = round((float) ($purchaseByItem[$item->id] ?? 0), 2);
             $entered = round((float) ($enteredByItem[$item->id] ?? 0), 2);
-            $pending = max(round($requested - $entered, 2), 0);
+            $pending = max(round($requested - $purchase, 2), 0);
             $status = match (true) {
-                $purchase <= 0 => 'registered',
-                $entered <= 0 => 'in_purchase',
-                $pending <= 0 => 'entered',
-                default => 'partial_entered',
+                $entered >= $requested => 'entered',
+                $entered > 0 => 'partial_entered',
+                $purchase >= $requested => 'in_purchase',
+                $purchase > 0 => 'partial_purchase',
+                default => 'registered',
             };
 
             $item->setAttribute('requested_quantity', $requested);

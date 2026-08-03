@@ -1887,6 +1887,7 @@ function fillCustomerPurchaseOrderDetail(order) {
     const statuses = {
         approved: ['REGISTRADA', 'badge-secondary'],
         registered: ['REGISTRADA', 'badge-secondary'],
+        partial_purchase: ['COMPRA PARCIAL', 'badge-warning text-dark'],
         in_purchase: ['EN COMPRA', 'badge-warning text-dark'],
         partial_entered: ['INGRESO PARCIAL', 'badge-info'],
         entered: ['ABASTECIDA', 'badge-success'],
@@ -1940,6 +1941,7 @@ function fillCustomerPurchaseOrderDetail(order) {
     const items = order.items || [];
     const supplyStatuses = {
         registered: ['REGISTRADA', 'badge-secondary'],
+        partial_purchase: ['EN COMPRA PARCIAL', 'badge-warning text-dark'],
         in_purchase: ['EN COMPRA', 'badge-warning text-dark'],
         partial_entered: ['INGRESO PARCIAL', 'badge-info'],
         entered: ['ABASTECIDA', 'badge-success']

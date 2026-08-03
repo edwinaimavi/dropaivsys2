@@ -14,6 +14,7 @@ class CustomerPurchaseOrder extends Model
     public const STATUS_ATTENDED = 'attended';
     public const STATUS_NOT_ATTENDED = 'not_attended';
     public const STATUS_IN_PURCHASE = 'in_purchase';
+    public const STATUS_PARTIAL_PURCHASE = 'partial_purchase';
 
     private const IN_PURCHASE_STATUS_VALUES = [
         self::STATUS_IN_PURCHASE,
@@ -117,12 +118,17 @@ class CustomerPurchaseOrder extends Model
 
     public function scopeAvailableForSupplierPurchase($query)
     {
-        return $query->where(function ($query) {
-            $query->whereNull('status')
-                ->orWhereNotIn(
-                    DB::raw("LOWER(REPLACE(TRIM(status), ' ', '_'))"),
-                    self::IN_PURCHASE_STATUS_VALUES
-                );
+        return $query->whereHas('items', function ($items) {
+            $items->where('customer_purchase_order_items.status', '!=', 'deleted')
+                ->whereRaw('customer_purchase_order_items.quantity > COALESCE((
+                    SELECT SUM(spoi.quantity)
+                    FROM supplier_purchase_order_items spoi
+                    INNER JOIN supplier_purchase_orders spo ON spo.id = spoi.supplier_purchase_order_id
+                    WHERE spoi.customer_purchase_order_item_id = customer_purchase_order_items.id
+                      AND spoi.status != ?
+                      AND spo.status != ?
+                      AND spo.deleted_at IS NULL
+                ), 0)', ['deleted', 'cancelled']);
         });
     }
 
@@ -186,15 +192,18 @@ class CustomerPurchaseOrder extends Model
 
         $itemIds = $requestedByItem->keys()->all();
 
-        $hasSupplierPurchase = SupplierPurchaseOrderItem::query()
+        $purchasedByItem = SupplierPurchaseOrderItem::query()
             ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'supplier_purchase_order_items.supplier_purchase_order_id')
             ->whereIn('supplier_purchase_order_items.customer_purchase_order_item_id', $itemIds)
             ->whereNull('orders.deleted_at')
             ->where('orders.status', '!=', 'cancelled')
             ->where('supplier_purchase_order_items.status', '!=', 'deleted')
-            ->exists();
+            ->groupBy('supplier_purchase_order_items.customer_purchase_order_item_id')
+            ->selectRaw('supplier_purchase_order_items.customer_purchase_order_item_id, SUM(supplier_purchase_order_items.quantity) as purchased_quantity')
+            ->pluck('purchased_quantity', 'customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
 
-        if (! $hasSupplierPurchase) {
+        if ($purchasedByItem->isEmpty()) {
             $this->forceFill(['status' => 'registered'])->save();
             return;
         }
@@ -215,19 +224,28 @@ class CustomerPurchaseOrder extends Model
             ->pluck('entered_quantity', 'customer_purchase_order_item_id')
             ->map(fn ($quantity) => round((float) $quantity, 2));
 
-        $totalEntered = round((float) $enteredByItem->sum(), 2);
-        $isComplete = $requestedByItem->every(function (float $requested, $itemId) use ($enteredByItem) {
-            return round((float) ($enteredByItem[$itemId] ?? 0), 2) >= $requested;
-        });
-
-        $status = match (true) {
-            $totalEntered <= 0 => self::STATUS_IN_PURCHASE,
-            $isComplete => 'entered',
-            default => 'partial_entered',
-        };
+        $status = self::supplyStatusFromQuantities(
+            $requestedByItem->all(),
+            $purchasedByItem->all(),
+            $enteredByItem->all()
+        );
 
         if ($this->status !== $status) {
             $this->forceFill(['status' => $status])->save();
         }
+    }
+
+    public static function supplyStatusFromQuantities(array $requested, array $purchased, array $entered): string
+    {
+        $allEntered = collect($requested)->every(fn ($quantity, $itemId) =>
+            round((float) ($entered[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
+        if ($allEntered) return self::STATUS_ENTERED;
+
+        if (round((float) collect($entered)->sum(), 2) > 0) return 'partial_entered';
+
+        $allPurchased = collect($requested)->every(fn ($quantity, $itemId) =>
+            round((float) ($purchased[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
+
+        return $allPurchased ? self::STATUS_IN_PURCHASE : self::STATUS_PARTIAL_PURCHASE;
     }
 }
