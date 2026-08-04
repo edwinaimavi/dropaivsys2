@@ -10,6 +10,30 @@ class SupplierPurchaseOrder extends Model
 {
     use SoftDeletes;
 
+    public const DELIVERY_TYPE_AGENCY = 'agencia';
+    public const DELIVERY_TYPE_WAREHOUSE_PICKUP = 'recojo_almacen';
+    public const DELIVERY_TYPE_SUPPLIER_CARRIER = 'transportista_proveedor';
+
+    public const DELIVERY_TYPES = [
+        self::DELIVERY_TYPE_AGENCY,
+        self::DELIVERY_TYPE_WAREHOUSE_PICKUP,
+        self::DELIVERY_TYPE_SUPPLIER_CARRIER,
+    ];
+
+    public static function normalizeDeliveryType(?string $value): string
+    {
+        $normalized = mb_strtolower(\Illuminate\Support\Str::ascii(trim((string) $value)));
+        $normalized = str_replace(['.', '-'], '', $normalized);
+        $normalized = preg_replace('/\s+/', '_', $normalized);
+
+        return match ($normalized) {
+            'agencia_de_transporte', 'agencia_transporte', 'en_agencia', 'transporte' => self::DELIVERY_TYPE_AGENCY,
+            'recojo_de_almacen' => self::DELIVERY_TYPE_WAREHOUSE_PICKUP,
+            'transportista_del_proveedor' => self::DELIVERY_TYPE_SUPPLIER_CARRIER,
+            default => $normalized,
+        };
+    }
+
     protected $fillable = [
         'code',
         'purchase_order_sequence',

@@ -1966,10 +1966,10 @@ function normalizeSupplierOrderOption(value) {
         credito_60_dia: 'credito_60_dias',
         deposito_en_cuenta: 'deposito_cuenta',
         deposito_cuenta: 'deposito_cuenta',
-        agencia_de_transporte: 'agencia_transporte',
-        agencia_transporte: 'agencia_transporte',
-        en_agencia: 'en_agencia',
-        transporte: 'transporte',
+        agencia_de_transporte: 'agencia',
+        agencia_transporte: 'agencia',
+        en_agencia: 'agencia',
+        transporte: 'agencia',
         recojo_de_almacen: 'recojo_almacen',
         recojo_almacen: 'recojo_almacen',
         transportista_del_proveedor: 'transportista_proveedor',
@@ -1985,8 +1985,7 @@ function normalizeSupplierOrderOption(value) {
 }
 
 function supplierOrderRequiresShippingAgency(value) {
-    return ['agencia', 'agencia_transporte', 'en_agencia', 'transporte']
-        .includes(normalizeSupplierOrderOption(value));
+    return normalizeSupplierOrderOption(value) === 'agencia';
 }
 
 function supplierOrderUserName(user) {
@@ -2023,10 +2022,7 @@ function supplierOrderOptionLabel(value) {
         credito_45_dias: 'Credito 45 dias',
         credito_60_dias: 'Credito 60 dias',
         agencia: 'Agencia',
-        agencia_transporte: 'Agencia de transporte',
-        en_agencia: 'En agencia',
-        transporte: 'Transporte',
-        recojo_almacen: 'Recojo de almacen',
+        recojo_almacen: 'Recojo de almacén',
         transportista_proveedor: 'Transportista del proveedor',
         efectivo: 'Efectivo',
         tarjeta: 'Tarjeta',

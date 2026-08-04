@@ -37,6 +37,7 @@
     $pdfGrandTotal = $order->items->sum(fn ($item) => $pdfLineTotal($item));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d-m-Y') : null;
     $optionLabel = function (?string $value): string {
+        $normalized = \App\Models\SupplierPurchaseOrder::normalizeDeliveryType($value);
         $labels = [
             'contado' => 'Contado',
             'credito_20_dias' => 'Credito 20 dias',
@@ -46,14 +47,11 @@
             'terrestre' => 'Terrestre',
             'aereo' => 'Aereo',
             'agencia' => 'Agencia',
-            'agencia_transporte' => 'Agencia de transporte',
-            'en_agencia' => 'En agencia',
-            'transporte' => 'Transporte',
-            'recojo_almacen' => 'Recojo de almacen',
+            'recojo_almacen' => 'Recojo de almacén',
             'transportista_proveedor' => 'Transportista del proveedor',
         ];
 
-        return $labels[$value] ?? ($value ? ucfirst(str_replace('_', ' ', $value)) : '-');
+        return $labels[$normalized] ?? ($value ? ucfirst(str_replace('_', ' ', $value)) : '-');
     };
     $userName = function ($user): string {
         return $user

@@ -255,9 +255,6 @@
                                             class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione</option>
                                             <option value="agencia">Agencia</option>
-                                            <option value="agencia_transporte">Agencia de transporte</option>
-                                            <option value="en_agencia">En agencia</option>
-                                            <option value="transporte">Transporte</option>
                                             <option value="recojo_almacen">Recojo de almac&eacute;n</option>
                                             <option value="transportista_proveedor">Transportista del proveedor</option>
                                         </select>

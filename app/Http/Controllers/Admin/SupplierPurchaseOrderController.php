@@ -510,6 +510,12 @@ class SupplierPurchaseOrderController extends Controller
         Request $request,
         ?SupplierPurchaseOrder $order = null
     ) {
+        $request->merge([
+            'delivery_type' => SupplierPurchaseOrder::normalizeDeliveryType(
+                $request->input('delivery_type')
+            ),
+        ]);
+
         $validated = $request->validate([
             'company_id' => ['required', 'exists:companies,id'],
             'supplier_id' => ['required', 'exists:suppliers,id'],
@@ -1716,32 +1722,13 @@ class SupplierPurchaseOrderController extends Controller
 
     private function deliveryTypeOptions(): array
     {
-        return [
-            'agencia',
-            'agencia_transporte',
-            'en_agencia',
-            'transporte',
-            'recojo_almacen',
-            'transportista_proveedor',
-        ];
+        return SupplierPurchaseOrder::DELIVERY_TYPES;
     }
 
     private function deliveryRequiresShippingAgency(?string $deliveryType): bool
     {
-        $normalized = mb_strtolower(Str::ascii(trim((string) $deliveryType)));
-        $normalized = str_replace(['.', '-'], '', $normalized);
-        $normalized = preg_replace('/\s+/', '_', $normalized);
-
-        $aliases = [
-            'agencia_de_transporte' => 'agencia_transporte',
-        ];
-
-        return in_array($aliases[$normalized] ?? $normalized, [
-            'agencia',
-            'agencia_transporte',
-            'en_agencia',
-            'transporte',
-        ], true);
+        return SupplierPurchaseOrder::normalizeDeliveryType($deliveryType)
+            === SupplierPurchaseOrder::DELIVERY_TYPE_AGENCY;
     }
 
     private function paymentMethodOptions(): array
