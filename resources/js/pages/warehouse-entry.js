@@ -434,6 +434,16 @@ function saveWarehouseEntry(form) {
     clearWarehouseEntryValidation();
     syncWarehouseEntryPayableAmount();
 
+    if (!$('#warehouse_entry_warehouse_id').val()) {
+        const warehouse = $('#warehouse_entry_warehouse_id');
+        warehouse.addClass('is-invalid');
+        warehouse.closest('.form-group').find('.invalid-feedback').first().text('Debe seleccionar un almacén.');
+        warehouse.next('.select2-container').find('.select2-selection').addClass('is-invalid');
+        $('#warehouseEntryModal .warehouse-entry-form-tabs a[href="#warehouse_entry_tab_data"]').tab('show');
+        Swal.fire('Atención', 'Debe seleccionar un almacén.', 'warning');
+        return;
+    }
+
     if (!$('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length) {
         Swal.fire({
             icon: 'warning',
@@ -456,12 +466,16 @@ function saveWarehouseEntry(form) {
         formData.append('_method', 'PUT');
     }
 
-    warehouseEntryPendingDocuments.forEach(function (document, index) {
+    warehouseEntryPendingDocuments
+        .filter(document => document.file instanceof File)
+        .forEach(function (document, index) {
         formData.append(`warehouse_entry_documents[${index}][type]`, document.type);
         formData.append(`warehouse_entry_documents[${index}][description]`, document.description || '');
         formData.append(`warehouse_entry_documents[${index}][file]`, document.file);
     });
-    warehouseEntryPendingLotDocuments.forEach(function (document, index) {
+    warehouseEntryPendingLotDocuments
+        .filter(document => document.file instanceof File)
+        .forEach(function (document, index) {
         formData.append(`warehouse_entry_lot_documents[${index}][item_index]`, document.itemIndex);
         formData.append(`warehouse_entry_lot_documents[${index}][lot_key]`, document.lotKey);
         formData.append(`warehouse_entry_lot_documents[${index}][type]`, document.type);
@@ -520,16 +534,20 @@ function saveWarehouseEntry(form) {
 }
 
 function showWarehouseEntryValidationErrors(errors) {
+    const messages = [];
+
     Object.keys(errors).forEach(function (name) {
+        const message = Array.isArray(errors[name]) ? errors[name][0] : errors[name];
+        if (message) messages.push(message);
         const input = $(`[name="${name}"]`);
         input.addClass('is-invalid');
-        input.closest('.form-group, td').find('.invalid-feedback').first().text(errors[name][0]);
+        input.closest('.form-group, td').find('.invalid-feedback').first().text(message);
     });
 
     Swal.fire({
         icon: 'warning',
         title: 'Revise los datos ingresados',
-        text: 'Hay campos pendientes o con valores invalidos.'
+        text: messages[0] || 'Hay campos pendientes o con valores inválidos.'
     });
 }
 
@@ -1427,7 +1445,7 @@ function addWarehouseEntryPendingLotDocument() {
     if (!$('#warehouse_entry_lot_document_lot').val() || !context) return Swal.fire('Atención', 'Seleccione el lote.', 'warning');
     if (!type) return Swal.fire('Atención', 'Seleccione el tipo de documento.', 'warning');
     if (!file) return Swal.fire('Atención', 'Seleccione un archivo para adjuntar al lote.', 'warning');
-    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(getWarehouseEntryFileExtension(file.name))) return Swal.fire('Archivo no permitido', 'Adjunte PDF, JPG, JPEG o PNG.', 'warning');
+    if (!warehouseEntryAllowedDocumentExtensions.includes(getWarehouseEntryFileExtension(file.name))) return Swal.fire('Archivo no permitido', 'Adjunte PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.', 'warning');
     if (file.size > warehouseEntryMaxDocumentSize) return Swal.fire('Archivo muy pesado', 'El documento no debe superar 10 MB.', 'warning');
     warehouseEntryPendingLotDocuments.push({ ...context, type, description: $('#warehouse_entry_lot_document_description').val(), file, original_name: file.name });
     $('#warehouse_entry_lot_document_description, #warehouse_entry_lot_document_file').val('');

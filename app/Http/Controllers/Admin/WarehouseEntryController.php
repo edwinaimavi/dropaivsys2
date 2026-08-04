@@ -24,6 +24,7 @@ use App\Models\WarehouseEntryItemLotDocument;
 use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -417,6 +418,8 @@ class WarehouseEntryController extends Controller
         ]);
         $hasSupplierPurchaseOrder = $request->filled('supplier_purchase_order_id');
 
+        $documentRules = $this->newDocumentUploadRules($request);
+
         $validated = $request->validate([
             'supplier_purchase_order_id' => ['nullable', 'exists:supplier_purchase_orders,id'],
             'warehouse_id' => [
@@ -475,13 +478,11 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_documents' => ['nullable', 'array'],
             'warehouse_entry_documents.*.type' => ['required_with:warehouse_entry_documents.*.file', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
             'warehouse_entry_documents.*.description' => ['nullable', 'string', 'max:255'],
-            'warehouse_entry_documents.*.file' => ['required_with:warehouse_entry_documents.*.type', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
             'warehouse_entry_lot_documents' => ['nullable', 'array'],
             'warehouse_entry_lot_documents.*.item_index' => ['required', 'integer', 'min:0'],
             'warehouse_entry_lot_documents.*.lot_key' => ['required', 'string', 'max:100'],
             'warehouse_entry_lot_documents.*.type' => ['required', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
             'warehouse_entry_lot_documents.*.description' => ['nullable', 'string', 'max:255'],
-            'warehouse_entry_lot_documents.*.file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'expenses' => ['nullable', 'array'],
             'expenses.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_expenses,id'],
             'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
@@ -504,6 +505,15 @@ class WarehouseEntryController extends Controller
             'expenses.*.distributions.*.distributed_amount' => ['required', 'numeric', 'min:0'],
             'expenses.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'expense_management' => ['nullable', 'boolean'],
+        ] + $documentRules, [
+            'warehouse_id.required' => 'Debe seleccionar un almacén.',
+            'warehouse_id.exists' => 'El almacén seleccionado no existe o no está activo.',
+            'warehouse_entry_documents.*.file.file' => 'El comprobante adjunto debe ser un archivo válido.',
+            'warehouse_entry_documents.*.file.mimes' => 'El comprobante adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.',
+            'warehouse_entry_documents.*.file.max' => 'El comprobante adjunto no debe superar 10 MB.',
+            'warehouse_entry_lot_documents.*.file.file' => 'El documento del lote debe ser un archivo válido.',
+            'warehouse_entry_lot_documents.*.file.mimes' => 'El documento del lote debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.',
+            'warehouse_entry_lot_documents.*.file.max' => 'El documento del lote no debe superar 10 MB.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -1376,6 +1386,44 @@ class WarehouseEntryController extends Controller
                 'updated_by' => Auth::id(),
             ]);
         }
+    }
+
+    /**
+     * Keep only rows that contain a real upload. Existing document metadata is
+     * intentionally ignored: existing records are managed independently and
+     * must not be revalidated or recreated when an entry is edited.
+     */
+    private function newDocumentUploadRules(Request $request): array
+    {
+        $rules = [];
+
+        foreach (['warehouse_entry_documents', 'warehouse_entry_lot_documents'] as $collection) {
+            $inputRows = $request->input($collection, []);
+            $fileRows = $request->file($collection, []);
+            $newRows = [];
+
+            foreach ($fileRows as $index => $fileRow) {
+                $file = is_array($fileRow) ? ($fileRow['file'] ?? null) : null;
+
+                if (! $file instanceof UploadedFile) {
+                    continue;
+                }
+
+                $newRows[$index] = is_array($inputRows[$index] ?? null)
+                    ? $inputRows[$index]
+                    : [];
+                $rules["{$collection}.{$index}.file"] = [
+                    'nullable',
+                    'file',
+                    'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx',
+                    'max:10240',
+                ];
+            }
+
+            $request->merge([$collection => $newRows]);
+        }
+
+        return $rules;
     }
 
     private function storeEntryLotDocuments(

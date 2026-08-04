@@ -124,7 +124,7 @@
                                     <div class="form-group col-md-3">
                                         <label>ALMAC&Eacute;N</label>
                                         <select id="warehouse_entry_warehouse_id" name="warehouse_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select" required>
+                                            class="form-control form-control-sm js-warehouse-entry-select">
                                             <option value="">Seleccione almac&eacute;n</option>
                                             @foreach ($warehouses as $warehouse)
                                                 <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
