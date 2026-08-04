@@ -28,7 +28,7 @@
 
                     <div>
 
-                        <h6 class="mb-0 font-weight-bold">
+                        <h6 class="mb-0 font-weight-bold" id="documentModalTitle">
 
                             Agregar Documento
 
@@ -102,7 +102,7 @@
 
                         <label class="mb-1">
 
-                            Archivo PDF
+                            Archivo
 
                         </label>
 
@@ -118,7 +118,7 @@
 
                             <div class="font-weight-bold mt-1">
 
-                                Seleccionar PDF
+                                Seleccionar archivo
 
                             </div>
 
@@ -130,7 +130,8 @@
 
                         </div>
 
-                        <input type="file" id="document_file" accept=".pdf" style="display:none;">
+                        <input type="file" id="document_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" style="display:none;">
+                        <small id="documentFileHelp" class="text-muted">PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.</small>
 
                     </div>
 
@@ -214,7 +215,7 @@
 
                     <i class="fas fa-plus-circle"></i>
 
-                    Agregar
+                    <span id="documentSaveText">Agregar</span>
 
                 </button>
 

@@ -415,6 +415,18 @@
             background: #f8f9fa;
         }
 
+        #articleModal .modal-dialog{height:min(92vh,920px);margin-top:4vh;margin-bottom:4vh}
+        #articleModal .modal-content{display:flex;height:100%;max-height:92vh;overflow:hidden!important}
+        #articleModal .modal-header{flex:0 0 auto}
+        #articleModal .modal-body{display:flex;flex:1 1 auto;min-height:0;overflow:hidden}
+        #articleModal #articleForm{display:flex;flex:1 1 auto;min-width:0;min-height:0;flex-direction:column}
+        #articleModal #articleForm>.row{flex:1 1 auto;min-height:0;margin-right:-4px;margin-left:-4px;padding-right:4px;padding-left:4px;overflow-y:auto;overscroll-behavior:contain}
+        #articleModal .article-modal-footer{position:relative;z-index:12;flex:0 0 auto;margin-right:-.6rem;margin-left:-.6rem;padding:12px 14px;border-top:1px solid #dfe5e2;background:rgba(255,255,255,.96);box-shadow:0 -7px 18px rgba(31,45,39,.09);backdrop-filter:blur(6px)}
+        #articleModal .article-documents-scroll{max-height:280px;overflow:auto;border:1px solid #e3e8e6;border-radius:7px}
+        #articleModal .article-documents-scroll thead th{position:sticky;top:0;z-index:2;background:#f2f6f4;box-shadow:0 1px 0 #dfe5e2}
+        #articleModal .article-document-actions{display:flex;justify-content:center;gap:5px;white-space:nowrap}
+        #articleModal .article-document-actions .btn{width:30px;height:30px;padding:0;border-radius:7px}
+
         .section-title {
             padding: 8px 12px;
             border-radius: 8px 8px 0 0;

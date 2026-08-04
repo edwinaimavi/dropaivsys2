@@ -557,7 +557,7 @@
 
                                 <div class="card-body p-2">
 
-                                    <div class="table-responsive">
+                                    <div class="table-responsive article-documents-scroll">
 
                                         <table class="table table-sm table-bordered mb-0">
 
@@ -570,7 +570,7 @@
                                                     <th>Archivo</th>
                                                     <th>Emisión</th>
                                                     <th>Vencimiento</th>
-                                                    <th width="80">Acción</th>
+                                                    <th width="100" class="text-center">Acciones</th>
 
                                                 </tr>
 
@@ -603,7 +603,7 @@
                     </div>
 
                     {{-- FOOTER --}}
-                    <div class="text-right mt-3">
+                    <div class="article-modal-footer text-right mt-3">
 
                         <button type="button" class="btn btn-light border" data-dismiss="modal">
 

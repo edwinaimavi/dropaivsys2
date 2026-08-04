@@ -299,7 +299,7 @@ class ArticleController extends Controller
                 'nullable',
                 'json'
             ],
-            'documents_files.*' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'documents_files.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
             'images.*' => [
                 'nullable',
                 'image',
@@ -828,12 +828,13 @@ class ArticleController extends Controller
                 'max:4096'
             ],
             'documents_data' => ['nullable', 'json'],
-            'documents_files.*' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'documents_files.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
         ], $this->articleValidationMessages());
 
         $documentsData = $this->validatedDocumentData($request);
 
         $validated['brand_id'] = null;
+        $replacedDocumentPaths = [];
 
         try {
 
@@ -972,8 +973,7 @@ class ArticleController extends Controller
 
                 foreach ($deletedDocuments as $documentId) {
 
-                    $document =
-                        Document::find($documentId);
+                    $document = $article->documents()->whereKey($documentId)->first();
 
                     if ($document) {
 
@@ -1001,6 +1001,35 @@ class ArticleController extends Controller
                 foreach (
                     $documentsData as $index => $doc
                 ) {
+
+                    if (!empty($doc['id'])) {
+                        $document = $article->documents()->whereKey($doc['id'])->firstOrFail();
+                        $documentData = [
+                            'document_type_id' => $doc['document_type_id'],
+                            'brand_id' => $doc['brand_id'] ?? null,
+                            'issue_date' => $doc['issue_date'] ?? null,
+                            'expiration_date' => $doc['expiration_date'] ?? null,
+                            'observation' => $doc['observation'] ?? null,
+                            'updated_by' => Auth::id(),
+                        ];
+
+                        if ($request->hasFile("documents_files.$index")) {
+                            $file = $request->file("documents_files.$index");
+                            $storedPath = $file->store('articles', 'public');
+                            $replacedDocumentPaths[] = $document->file_path;
+                            $documentData += [
+                                'original_name' => $file->getClientOriginalName(),
+                                'stored_name' => basename($storedPath),
+                                'file_path' => $storedPath,
+                                'mime_type' => $file->getMimeType(),
+                                'extension' => strtolower($file->getClientOriginalExtension()),
+                                'file_size' => $file->getSize(),
+                            ];
+                        }
+
+                        $document->update($documentData);
+                        continue;
+                    }
 
                     if (
                         $request->hasFile(
@@ -1075,6 +1104,7 @@ class ArticleController extends Controller
             }
 
             DB::commit();
+            Storage::disk('public')->delete(array_filter($replacedDocumentPaths));
 
             return response()->json([
 
@@ -1135,6 +1165,7 @@ class ArticleController extends Controller
             [
                 'documents' => ['array'],
                 'documents.*' => ['array'],
+                'documents.*.id' => ['nullable', 'integer', 'exists:documents,id'],
                 'documents.*.document_type_id' => ['required', 'exists:document_types,id'],
                 'documents.*.brand_id' => ['nullable', 'exists:brands,id'],
                 'documents.*.issue_date' => ['nullable', 'date'],
@@ -1151,9 +1182,9 @@ class ArticleController extends Controller
         )->validate();
 
         foreach (array_keys($documents) as $index) {
-            if (!$request->hasFile("documents_files.$index")) {
+            if (empty($documents[$index]['id']) && !$request->hasFile("documents_files.$index")) {
                 throw ValidationException::withMessages([
-                    "documents_files.$index" => 'Seleccione el archivo PDF del documento.',
+                    "documents_files.$index" => 'Seleccione un archivo para el documento.',
                 ]);
             }
         }

@@ -119,6 +119,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 'documents_data',
                 JSON.stringify(cleanDocuments.map(d => ({
 
+                    id:
+                        d.id || null,
+
                     document_type_id:
                         d.document_type_id,
 
@@ -678,6 +681,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let documents = [];
     let images = [];
+    let editingDocumentIndex = null;
+
+    const renderArticleDocuments = () => {
+        const activeDocuments = documents.map((document, index) => ({ document, index })).filter(item => item.document !== null);
+        if (!activeDocuments.length) {
+            $('#documentsTableBody').html('<tr><td colspan="6" class="text-center text-muted">No hay documentos agregados</td></tr>');
+            return;
+        }
+        $('#documentsTableBody').html(activeDocuments.map(({ document, index }) => `
+            <tr data-index="${index}">
+                <td>${$('<div>').text(document.document_type || '-').html()}</td>
+                <td>${$('<div>').text(document.brand || 'Sin marca').html()}</td>
+                <td>${$('<div>').text(document.file?.name || document.original_name || '-').html()}</td>
+                <td>${$('<div>').text(document.issue_date || '-').html()}</td>
+                <td>${$('<div>').text(document.expiration_date || '-').html()}</td>
+                <td><div class="article-document-actions">
+                    <button type="button" class="btn btn-info btn-sm editArticleDocument" title="Editar documento"><i class="fas fa-pencil-alt"></i></button>
+                    <button type="button" class="btn btn-danger btn-sm ${document.id ? 'removeExistingDocument' : 'removeDocument'}" ${document.id ? `data-id="${document.id}"` : ''} title="Eliminar documento"><i class="fas fa-trash"></i></button>
+                </div></td>
+            </tr>`).join(''));
+    };
 
     /*
     |--------------------------------------------------------------------------
@@ -690,6 +714,11 @@ document.addEventListener('DOMContentLoaded', function () {
         function () {
 
             $('#documentForm')[0].reset();
+            editingDocumentIndex = null;
+            $('#documentModalTitle').text('Agregar Documento');
+            $('#documentSaveText').text('Agregar');
+            $('#selectedFileName').text('Ningún archivo seleccionado');
+            $('#documentFileHelp').text('PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.');
 
             if ($.fn.select2) {
                 const brandSelect = $('#document_brand_id');
@@ -741,6 +770,11 @@ document.addEventListener('DOMContentLoaded', function () {
             let expirationDate =
                 $('#expiration_date').val();
 
+            if (issueDate && expirationDate && expirationDate < issueDate) {
+                Swal.fire('Fechas no válidas', 'La fecha de vencimiento no puede ser anterior a la fecha de emisión.', 'warning');
+                return;
+            }
+
             let observation =
                 $('#document_observation').val();
 
@@ -758,10 +792,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            if (
-                !fileInput.files ||
-                !fileInput.files.length
-            ) {
+            const currentDocument = editingDocumentIndex === null ? null : documents[editingDocumentIndex];
+            if ((!fileInput.files || !fileInput.files.length) && !currentDocument?.original_name && !currentDocument?.file) {
 
                 Swal.fire(
                     'Atención',
@@ -772,13 +804,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            let file =
-                fileInput.files[0];
+            let file = fileInput.files?.[0] || null;
+            const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx'];
+            if (file && !allowedExtensions.includes((file.name.split('.').pop() || '').toLowerCase())) {
+                Swal.fire('Archivo no permitido', 'Use PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.', 'warning');
+                return;
+            }
 
-            let index =
-                documents.length;
-
-            documents.push({
+            const documentData = {
+                id: currentDocument?.id || null,
 
                 document_type_id:
                     documentTypeId,
@@ -792,8 +826,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 brand:
                     documentBrandText,
 
-                file:
-                    file,
+                file: file || currentDocument?.file || null,
+                original_name: file?.name || currentDocument?.original_name || null,
 
                 issue_date:
                     issueDate || null,
@@ -803,48 +837,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 observation:
                     observation || null
-
-            });
-
-            if ($('#documentsTableBody td[colspan]').length) {
-
-                $('#documentsTableBody').empty();
-
-            }
-
-            $('#documentsTableBody').append(`
-    <tr data-index="${index}">
-
-        <td>${documentTypeText}</td>
-
-        <td>${documentBrandText}</td>
-
-        <td>${file.name}</td>
-
-        <td>${issueDate || '-'}</td>
-
-        <td>${expirationDate || '-'}</td>
-
-        <td class="text-center">
-
-            <button
-                type="button"
-                class="btn btn-danger btn-sm removeDocument">
-
-                <i class="fas fa-trash"></i>
-
-            </button>
-
-        </td>
-
-    </tr>
-`);
+            };
+            if (editingDocumentIndex === null) documents.push(documentData);
+            else documents[editingDocumentIndex] = documentData;
+            renderArticleDocuments();
 
             $('#documentModal')
                 .modal('hide');
 
         }
     );
+
+    $(document).on('click', '.editArticleDocument', function () {
+        const index = Number($(this).closest('tr').data('index'));
+        const document = documents[index];
+        if (!document) return;
+        editingDocumentIndex = index;
+        $('#documentForm')[0].reset();
+        $('#document_type_id').val(String(document.document_type_id));
+        $('#document_brand_id').val(document.brand_id || '').trigger('change');
+        $('#issue_date').val(document.issue_date || '');
+        $('#expiration_date').val(document.expiration_date || '');
+        $('#document_observation').val(document.observation || '');
+        $('#selectedFileName').text(document.file?.name || document.original_name || 'Archivo actual');
+        $('#documentFileHelp').text('Opcional: seleccione otro archivo para reemplazar el actual.');
+        $('#documentModalTitle').text('Editar Documento');
+        $('#documentSaveText').text('Guardar cambios');
+        $('#documentModal').modal('show');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -865,27 +885,7 @@ document.addEventListener('DOMContentLoaded', function () {
             documents[index] =
                 null;
 
-            row.remove();
-
-            if (
-                $('#documentsTableBody tr').length === 0
-            ) {
-
-                $('#documentsTableBody').html(`
-                <tr>
-
-                    <td
-                        colspan="6"
-                        class="text-center text-muted">
-
-                        No hay documentos agregados
-
-                    </td>
-
-                </tr>
-            `);
-
-            }
+            renderArticleDocuments();
 
         }
     );
@@ -1552,52 +1552,19 @@ document.addEventListener('DOMContentLoaded', function () {
                         article.documents.length
                     ) {
 
-                        let html = '';
-
-                        article.documents.forEach(function (doc, index) {
-
-                            html += `
-    <tr>
-
-        <td>
-            ${doc.document_type?.description ?? '-'}
-        </td>
-
-        <td>
-            ${doc.brand?.description ?? 'Sin marca'}
-        </td>
-
-        <td>
-            ${doc.original_name}
-        </td>
-
-        <td>
-            ${doc.issue_date ?? '-'}
-        </td>
-
-        <td>
-            ${doc.expiration_date ?? '-'}
-        </td>
-
-        <td class="text-center">
-
-            <button
-                type="button"
-                class="btn btn-danger btn-sm removeExistingDocument"
-                data-id="${doc.id}">
-
-                <i class="fas fa-trash"></i>
-
-            </button>
-
-        </td>
-
-    </tr>
-`;
-                        });
-
-                        $('#documentsTableBody')
-                            .html(html);
+                        documents = article.documents.map(doc => ({
+                            id: doc.id,
+                            document_type_id: doc.document_type_id,
+                            document_type: doc.document_type?.description ?? '-',
+                            brand_id: doc.brand_id || null,
+                            brand: doc.brand?.description ?? 'Sin marca',
+                            original_name: doc.original_name,
+                            file: null,
+                            issue_date: doc.issue_date ? String(doc.issue_date).slice(0, 10) : null,
+                            expiration_date: doc.expiration_date ? String(doc.expiration_date).slice(0, 10) : null,
+                            observation: doc.observation || null
+                        }));
+                        renderArticleDocuments();
 
                     }
                     else {
@@ -1656,12 +1623,11 @@ document.addEventListener('DOMContentLoaded', function () {
         function () {
 
             let documentId = $(this).data('id');
+            const index = Number($(this).closest('tr').data('index'));
 
             deletedDocuments.push(documentId);
-
-            $(this)
-                .closest('tr')
-                .remove();
+            documents[index] = null;
+            renderArticleDocuments();
 
         }
     );
