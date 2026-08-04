@@ -188,6 +188,13 @@ class RoleSeeder extends Seeder
             'admin.customer-purchase-orders.pdf' => 'Ver PDF de ordenes de compra de clientes',
             'admin.customer-purchase-orders.load-items' => 'Cargar items de cotizacion',
 
+            'admin.customer-order-profitability.index' => 'Ver rentabilidad de ordenes de clientes',
+            'admin.customer-order-profitability.show' => 'Ver detalle de rentabilidad de ordenes de clientes',
+            'admin.customer-order-profitability.calculate' => 'Calcular rentabilidad de ordenes de clientes',
+            'admin.customer-order-profitability.recalculate' => 'Recalcular rentabilidad de ordenes de clientes',
+            'admin.customer-order-profitability.export' => 'Exportar rentabilidad de ordenes de clientes',
+            'admin.customer-order-profitability.print' => 'Imprimir rentabilidad de ordenes de clientes',
+
             'admin.supplier-purchase-orders.index' => 'Ver ordenes de compra a proveedores',
             'admin.supplier-purchase-orders.store' => 'Crear ordenes de compra a proveedores',
             'admin.supplier-purchase-orders.update' => 'Actualizar ordenes de compra a proveedores',

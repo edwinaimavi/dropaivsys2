@@ -6,7 +6,10 @@ use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashReplenishment;
+use App\Models\DocumentType;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -22,6 +25,7 @@ beforeEach(function () {
 });
 
 it('registra una reposición sin datos bancarios manuales y recalcula los saldos', function () {
+    Storage::fake('public');
     $bank = Bank::create([
         'description' => 'BANCO DE PRUEBA', 'short_name' => 'TEST', 'status' => 'ACTIVE',
     ]);
@@ -54,6 +58,7 @@ it('registra una reposición sin datos bancarios manuales y recalcula los saldos
         'fund_source_company_id' => $this->company->id,
         'fund_source_bank_account_id' => $account->id,
         'observation' => 'REPOSICIÓN COMPLETA',
+        'fund_source_receipts' => [UploadedFile::fake()->create('sustento.pdf', 100, 'application/pdf')],
     ])->assertCreated()
         ->assertJsonPath('data.total_spent', 300)
         ->assertJsonPath('data.total_replenished', 300)
@@ -66,7 +71,10 @@ it('registra una reposición sin datos bancarios manuales y recalcula los saldos
         ->and($replenishment->bank_account)->toBeNull()
         ->and($replenishment->reference_number)->toBeNull()
         ->and($replenishment->fund_source_company_id)->toBe($this->company->id)
-        ->and($replenishment->fund_source_bank_account_id)->toBe($account->id);
+        ->and($replenishment->fund_source_bank_account_id)->toBe($account->id)
+        ->and($replenishment->documents)->toHaveCount(1)
+        ->and($replenishment->documents->first()->documentType->code)->toBe('CAJA_REP')
+        ->and(DocumentType::where('code', 'CAJA_REP')->count())->toBe(1);
 });
 
 it('impide cerrar con gastos pendientes y permite cerrar después de resolverlos', function () {

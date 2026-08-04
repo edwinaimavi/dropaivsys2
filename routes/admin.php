@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\UserPreferenceController;
 use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
+use App\Http\Controllers\Admin\CustomerOrderProfitabilityController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentLookupController;
 use App\Http\Controllers\Admin\ElectronicInvoiceApiLogController;
@@ -506,6 +507,15 @@ Route::resource(
     'customer-purchase-orders',
     CustomerPurchaseOrderController::class
 )->except(['create']);
+
+Route::get('customer-order-profitability/list', [CustomerOrderProfitabilityController::class, 'list'])->name('customer-order-profitability.list');
+Route::post('customer-order-profitability/calculate', [CustomerOrderProfitabilityController::class, 'calculate'])->name('customer-order-profitability.calculate');
+Route::post('customer-order-profitability/{customerPurchaseOrder}/recalculate', [CustomerOrderProfitabilityController::class, 'recalculate'])->name('customer-order-profitability.recalculate');
+Route::get('customer-order-profitability/{customerPurchaseOrder}/pdf', [CustomerOrderProfitabilityController::class, 'pdf'])->name('customer-order-profitability.pdf');
+Route::get('customer-order-profitability/{customerPurchaseOrder}/print', [CustomerOrderProfitabilityController::class, 'print'])->name('customer-order-profitability.print');
+Route::get('customer-order-profitability/{customerPurchaseOrder}/documents/{document}/view', [CustomerOrderProfitabilityController::class, 'viewDocument'])->name('customer-order-profitability.documents.view');
+Route::get('customer-order-profitability/{customerPurchaseOrder}', [CustomerOrderProfitabilityController::class, 'show'])->name('customer-order-profitability.show');
+Route::get('customer-order-profitability', [CustomerOrderProfitabilityController::class, 'index'])->name('customer-order-profitability.index');
 
 // RUTAS PARA ORDENES DE COMPRA A PROVEEDORES
 Route::get(

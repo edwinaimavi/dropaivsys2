@@ -12,6 +12,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\Presentation;
+use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
 use App\Models\SupplierPurchaseOrderItem;
@@ -41,6 +42,7 @@ class WarehouseEntryController extends Controller
 
     public function __construct()
     {
+        $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
         $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
         $this->middleware('can:admin.warehouse-entries.load-items')->only(['loadSupplierPurchaseOrderItems']);
         $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
@@ -50,7 +52,6 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.index')->only(['downloadLotDocument']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
-        $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
     }
 
     public function index()
@@ -88,6 +89,11 @@ class WarehouseEntryController extends Controller
             ->where('status', 'ACTIVE')
             ->orderBy('name')
             ->get(['id', 'code', 'name', 'description']);
+        $shippingAgencies = ShippingAgency::query()
+            ->where('status', 'ACTIVE')
+            ->orderBy('trade_name')
+            ->orderBy('business_name')
+            ->get(['id', 'ruc', 'business_name', 'trade_name']);
 
         return view('admin.warehouse-entries.index', compact(
             'supplierPurchaseOrders',
@@ -99,7 +105,8 @@ class WarehouseEntryController extends Controller
             'units',
             'presentations',
             'brands',
-            'warehouses'
+            'warehouses',
+            'shippingAgencies'
         ));
     }
 
@@ -188,6 +195,7 @@ class WarehouseEntryController extends Controller
             'items.brand',
             'items.lots.documents',
             'expenses.provider:id,business_name,short_name,ruc',
+            'expenses.shippingAgency:id,business_name,trade_name,ruc',
             'expenses.currency:id,code,symbol',
             'expenses.distributions.item:id,warehouse_entry_id,billing_name_snapshot,quantity,unit_price',
             'expenses.documents',
@@ -399,8 +407,10 @@ class WarehouseEntryController extends Controller
             'currency_id' => $order->currency_id,
             'currency_name' => trim(($order->currency?->code ?? '') . ' - ' . ($order->currency?->description ?? '')),
             'purchase_order_number' => $order->code,
+            'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
+            'delivery_type' => SupplierPurchaseOrder::normalizeDeliveryType($order->delivery_type),
             'affect_igv' => (bool) $order->affect_igv,
             'items' => $items,
         ]);
@@ -415,6 +425,9 @@ class WarehouseEntryController extends Controller
 
         $request->merge([
             'document_type' => $this->normalizeDocumentType($request->input('document_type')),
+            'expenses' => collect($request->all('expenses')['expenses'] ?? [])
+                ->map(fn (array $expense) => $this->normalizeLinkedExpenseFields($expense))
+                ->all(),
         ]);
         $hasSupplierPurchaseOrder = $request->filled('supplier_purchase_order_id');
 
@@ -487,7 +500,8 @@ class WarehouseEntryController extends Controller
             'expenses.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_expenses,id'],
             'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
             'expenses.*.cost_origin' => ['required', Rule::in(['included_in_purchase_price', 'same_purchase_document', 'third_party', 'internal_without_document'])],
-            'expenses.*.expense_type' => ['required', Rule::in(['transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
+            'expenses.*.expense_type' => ['required', Rule::in(['agency_freight', 'pickup_transfer', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse', 'supplier_warehouse_pickup', 'transfer_to_agency', 'transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
+            'expenses.*.shipping_agency_id' => ['nullable', Rule::exists('shipping_agencies', 'id')->where('status', 'ACTIVE')],
             'expenses.*.provider_id' => ['nullable', 'exists:suppliers,id'],
             'expenses.*.provider_ruc' => ['nullable', 'string', 'max:20'],
             'expenses.*.provider_name' => ['nullable', 'string', 'max:255'],
@@ -497,6 +511,7 @@ class WarehouseEntryController extends Controller
             'expenses.*.document_date' => ['nullable', 'date'],
             'expenses.*.currency_id' => ['nullable', 'exists:currencies,id'],
             'expenses.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.distributed_amount' => ['nullable', 'numeric', 'min:0'],
             'expenses.*.affects_inventory_cost' => ['required', 'boolean'],
             'expenses.*.distribution_method' => ['nullable', Rule::in(['quantity', 'amount', 'weight', 'manual'])],
             'expenses.*.description' => ['nullable', 'string', 'max:1000'],
@@ -712,11 +727,22 @@ class WarehouseEntryController extends Controller
                 Storage::disk('public')->delete($generatedPdfPath);
             }
 
-            Log::error('Error saving warehouse entry: ' . $e->getMessage());
+            Log::error('Error saving warehouse entry', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => Auth::id(),
+                'request_keys' => array_keys($request->all()),
+            ]);
 
             return response()->json([
                 'status' => 'error',
                 'message' => 'No se pudo guardar el ingreso de almacen.',
+                'debug' => config('app.debug') ? [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ] : null,
             ], 500);
         }
     }
@@ -725,7 +751,7 @@ class WarehouseEntryController extends Controller
     {
         return collect($items)->map(function (array $item) use ($affectIgv) {
             $quantity = round((float) $item['quantity'], 2);
-            $unitPrice = round((float) $item['unit_price'], 2);
+            $unitPrice = round((float) $item['unit_price'], 6);
             $lineTotal = round($quantity * $unitPrice, 2);
             $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
             $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
@@ -774,6 +800,38 @@ class WarehouseEntryController extends Controller
 
         foreach ($expenses as $index => $data) {
             $data = $this->prepareLinkedExpense($data, $index);
+            $existingExpense = ! empty($data['id'])
+                ? $entry->expenses()->with('documents')->whereKey($data['id'])->firstOrFail()
+                : null;
+            $hasAttachedReceipt = isset($expenseFiles[$index]['file'])
+                || (bool) $existingExpense?->documents?->isNotEmpty();
+            if (! $existingExpense && empty($data['document_date'])) {
+                throw ValidationException::withMessages(["expenses.$index.document_date" => 'Seleccione una fecha válida.']);
+            }
+            if (! $existingExpense && blank($data['document_type'] ?? null)) {
+                throw ValidationException::withMessages(["expenses.$index.document_type" => 'Seleccione el tipo de documento.']);
+            }
+            if (($data['document_type'] ?? null) !== 'SIN_COMPROBANTE'
+                && (! $existingExpense || filled($data['document_type'] ?? null))
+                && (blank($data['document_series'] ?? null) || blank($data['document_number'] ?? null))) {
+                throw ValidationException::withMessages(["expenses.$index.document_number" => 'Ingrese la serie y el número del comprobante.']);
+            }
+            if ((($data['document_type'] ?? null) === 'SIN_COMPROBANTE' || ! $hasAttachedReceipt)
+                && blank($data['description'] ?? null)) {
+                throw ValidationException::withMessages(["expenses.$index.description" => 'Ingrese una observación cuando no adjunta comprobante.']);
+            }
+            if (($data['expense_type'] ?? null) === 'agency_freight'
+                && empty($data['shipping_agency_id'])) {
+                throw ValidationException::withMessages([
+                    "expenses.$index.shipping_agency_id" => 'Seleccione la agencia de envío.',
+                ]);
+            }
+            if (($data['expense_type'] ?? null) !== 'agency_freight'
+                && blank($data['provider_name'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "expenses.$index.provider_name" => 'Ingrese el responsable o persona que cobró.',
+                ]);
+            }
             $affectsCost = (bool) $data['affects_inventory_cost'];
             $method = $affectsCost ? ($data['distribution_method'] ?? null) : null;
             if ($affectsCost && $items->isEmpty()) {
@@ -789,16 +847,31 @@ class WarehouseEntryController extends Controller
             foreach (['provider_ruc', 'document_type', 'document_series', 'document_number'] as $field) {
                 $data[$field] = $this->upperOrNull($data[$field] ?? null);
             }
+            if (($data['expense_type'] ?? null) === 'agency_freight') {
+                $agency = ShippingAgency::query()->findOrFail($data['shipping_agency_id']);
+                $data['provider_name'] = $agency->trade_name ?: $agency->business_name;
+                $data['provider_ruc'] = $this->upperOrNull($agency->ruc);
+            }
             if (! $data['provider_ruc'] && ! empty($data['provider_id'])) {
                 $data['provider_ruc'] = $this->upperOrNull(Supplier::query()->whereKey($data['provider_id'])->value('ruc'));
             }
-            if ($data['provider_ruc'] && $data['document_type'] && $data['document_series'] && $data['document_number']) {
+            if ($data['document_type'] && $data['document_series'] && $data['document_number']) {
                 $duplicate = WarehouseEntryExpense::query()
                     ->where('status', 'ACTIVE')
-                    ->where('provider_ruc', $data['provider_ruc'])
                     ->where('document_type', $data['document_type'])
                     ->where('document_series', $data['document_series'])
                     ->where('document_number', $data['document_number'])
+                    ->where(function ($query) use ($data) {
+                        if (! empty($data['shipping_agency_id'])) {
+                            $query->where('shipping_agency_id', $data['shipping_agency_id']);
+                        } elseif (! empty($data['provider_id'])) {
+                            $query->where('provider_id', $data['provider_id']);
+                        } elseif (! empty($data['provider_ruc'])) {
+                            $query->where('provider_ruc', $data['provider_ruc']);
+                        } else {
+                            $query->where('provider_name', $this->upperOrNull($data['provider_name'] ?? null));
+                        }
+                    })
                     ->when($data['id'] ?? null, fn ($query, $id) => $query->where('id', '!=', $id))
                     ->exists();
                 if ($duplicate) {
@@ -806,14 +879,15 @@ class WarehouseEntryController extends Controller
                 }
             }
 
-            $expense = ! empty($data['id'])
-                ? $entry->expenses()->whereKey($data['id'])->firstOrFail()
+            $expense = $existingExpense
+                ? $existingExpense
                 : $entry->expenses()->make(['created_by' => Auth::id()]);
             $expense->fill([
                 'supplier_purchase_order_id' => $entry->supplier_purchase_order_id,
                 'expense_category' => $data['expense_category'],
                 'cost_origin' => $data['cost_origin'],
                 'expense_type' => $data['expense_type'],
+                'shipping_agency_id' => $data['expense_type'] === 'agency_freight' ? ($data['shipping_agency_id'] ?? null) : null,
                 'provider_id' => $data['provider_id'] ?? null,
                 'provider_ruc' => $data['provider_ruc'],
                 'provider_name' => $this->upperOrNull($data['provider_name'] ?? null),
@@ -863,7 +937,8 @@ class WarehouseEntryController extends Controller
             ->join('warehouse_entry_expenses as expenses', 'expenses.id', '=', 'distributions.warehouse_entry_expense_id')
             ->where('expenses.warehouse_entry_id', $entry->id)->where('expenses.status', 'ACTIVE')
             ->groupBy('distributions.warehouse_entry_item_id')
-            ->pluck(DB::raw('SUM(distributions.distributed_amount)'), 'distributions.warehouse_entry_item_id');
+            ->selectRaw('distributions.warehouse_entry_item_id, SUM(distributions.distributed_amount) as distributed_amount')
+            ->pluck('distributed_amount', 'warehouse_entry_item_id');
         foreach ($items as $item) {
             $additional = round((float) ($costs[$item->id] ?? 0), 2);
             $item->update([
@@ -887,11 +962,47 @@ class WarehouseEntryController extends Controller
             return $data;
         }
 
-        if ((float) ($data['amount'] ?? 0) <= 0) {
+        if ((bool) ($data['affects_inventory_cost'] ?? false) && (float) ($data['amount'] ?? 0) <= 0) {
             throw ValidationException::withMessages([
-                "expenses.$index.amount" => 'El importe debe ser mayor a 0 para la forma de costo seleccionada.',
+                "expenses.$index.amount" => 'Ingrese un importe válido.',
             ]);
         }
+
+        return $data;
+    }
+
+    private function normalizeLinkedExpenseFields(array $data): array
+    {
+        $requestedType = strtolower(trim((string) ($data['expense_type'] ?? $data['cost_type'] ?? $data['type'] ?? '')));
+        $simpleType = match ($requestedType) {
+            'agency_freight', 'flete_agencia', 'transport_agency', 'courier', 'shipping' => 'agency_freight',
+            'pickup_transfer', 'recojo_traslado', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse',
+            'supplier_warehouse_pickup', 'transfer_to_agency', 'truck', 'mobility', 'delivery', 'transfer',
+            'flete', 'transporte', 'movilidad' => 'pickup_transfer',
+            'other', 'otros', 'otros_gastos', 'stowage', 'packaging', 'toll', 'insurance', 'commission',
+            'handling', 'loading_unloading', 'estiba', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro' => 'other',
+            default => $requestedType,
+        };
+
+        $mapping = match ($simpleType) {
+            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
+            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
+            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
+            default => [],
+        };
+
+        if ($mapping) {
+            $data = array_merge($data, $mapping, ['expense_type' => $simpleType]);
+        }
+
+        $affectsInventoryCost = filter_var(
+            $data['affects_inventory_cost'] ?? true,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $data['affects_inventory_cost'] = $affectsInventoryCost;
+        $data['distributed_amount'] = round((float) (
+            $data['distributed_amount'] ?? ($affectsInventoryCost ? ($data['amount'] ?? 0) : 0)
+        ), 2);
 
         return $data;
     }
@@ -1036,7 +1147,7 @@ class WarehouseEntryController extends Controller
         bool $affectIgv
     ): array {
         $article = $item->article;
-        $unitPrice = round((float) $item->unit_price, 2);
+        $unitPrice = round((float) $item->unit_price, 6);
         $lineTotal = round($pendingQuantity * $unitPrice, 2);
         $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
         $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;

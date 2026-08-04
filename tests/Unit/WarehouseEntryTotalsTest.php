@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\WarehouseEntryController;
+use App\Models\SupplierPurchaseOrderItem;
 
 function prepareWarehouseEntryItemsForTest(array $items, bool $affectIgv): array
 {
@@ -69,4 +70,17 @@ it('suma los totales finales de varias lineas sin volver a agregar IGV', functio
         'igv' => 167.79,
         'grand_total' => 1100.0,
     ]);
+});
+
+it('conserva seis decimales del precio al cargar una orden de proveedor', function () {
+    $item = new SupplierPurchaseOrderItem([
+        'quantity' => 7000,
+        'unit_price' => '0.833551',
+    ]);
+    $item->setRelation('article', null);
+    $method = new ReflectionMethod(WarehouseEntryController::class, 'sourceItemPayload');
+    $payload = $method->invoke(new WarehouseEntryController(), $item, 7000, 7000, false);
+
+    expect($payload['unit_price'])->toBe(0.833551)
+        ->and($payload['line_total'])->toBe(5834.86);
 });

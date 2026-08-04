@@ -1729,7 +1729,10 @@ $(function () {
         const data = new FormData(this); loading($(this), true);
         api({ url: `${base}/${$('#pcr_box_id').val()}/replenishments`, method: 'POST', data, processData: false, contentType: false })
             .done(response => { $('#pettyCashReplenishmentModal').modal('hide'); table.ajax.reload(null, false); notify('success', response.message); })
-            .fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
+            .fail(xhr => {
+                if (window.console && xhr.responseJSON?.message) console.error('Error al registrar reposición:', xhr.responseJSON.message);
+                notify('error', 'No se pudo registrar la reposición. Revise los datos e inténtelo nuevamente.');
+            }).always(() => loading($(this), false));
     });
 
     const openReceiptExchange = box => {

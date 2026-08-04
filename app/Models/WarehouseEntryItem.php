@@ -35,7 +35,7 @@ class WarehouseEntryItem extends Model
         'expiration_date' => 'date',
         'ordered_quantity' => 'decimal:2',
         'quantity' => 'decimal:2',
-        'unit_price' => 'decimal:2',
+        'unit_price' => 'decimal:6',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'line_total' => 'decimal:2',

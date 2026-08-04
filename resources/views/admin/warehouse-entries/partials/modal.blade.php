@@ -113,7 +113,8 @@
                                                     data-code="{{ $order->code }}"
                                                     data-company-id="{{ $order->company_id }}"
                                                     data-supplier-id="{{ $order->supplier_id }}"
-                                                    data-currency-id="{{ $order->currency_id }}">
+                                                    data-currency-id="{{ $order->currency_id }}"
+                                                    data-delivery-type="{{ \App\Models\SupplierPurchaseOrder::normalizeDeliveryType($order->delivery_type) }}">
                                                     {{ $order->code }} | {{ $order->supplier?->short_name ?? $order->supplier?->business_name }}
                                                 </option>
                                             @endforeach
@@ -264,6 +265,7 @@
                                         <label>MONTO</label>
                                         <input type="number" step="0.01" min="0" id="warehouse_entry_payable_amount"
                                             name="payable_amount" class="form-control form-control-sm text-right" value="0.00" readonly>
+                                        <div id="warehouseEntryOrderAmountWarning" class="alert alert-warning d-none mt-2 mb-0 py-2 px-3 small"></div>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -392,32 +394,33 @@
                         @canany(['admin.warehouse-entries.expenses.store', 'admin.warehouse-entries.expenses.update'])
                         <input type="hidden" name="expense_management" value="1">
                         <div id="warehouseEntryOriginalExpensesCard" class="card border-0 shadow-sm warehouse-entry-card" data-can-destroy="{{ auth()->user()->can('admin.warehouse-entries.expenses.destroy') ? 1 : 0 }}">
-                            <div class="card-header border-0 py-2 warehouse-entry-section-header"><h6 class="mb-0 font-weight-bold"><i class="fas fa-truck-loading text-info mr-1"></i>Costos vinculados</h6><small class="text-muted">Separe el transporte de otros costos y evite duplicar importes ya incluidos en la compra.</small></div>
+                            <div class="card-header border-0 py-2 warehouse-entry-section-header"><h6 class="mb-0 font-weight-bold"><i class="fas fa-truck-loading text-info mr-1"></i>Costos vinculados al ingreso</h6><small class="text-muted">Registra fletes, recojos u otros gastos relacionados con la llegada de la mercader&iacute;a.</small></div>
                             <div class="card-body warehouse-entry-expense-body">
+                                <div id="warehouseEntryDeliveryCostHelp" class="warehouse-entry-delivery-help mb-3" role="status"></div>
                                 <div class="row warehouse-entry-expense-kpis">
-                                    <div class="col-6 col-xl-3"><div class="warehouse-entry-expense-kpi"><i class="fas fa-truck"></i><span>Flete / transporte<strong id="warehouseEntryFreightTotal">0.00</strong></span></div></div>
-                                    <div class="col-6 col-xl-3"><div class="warehouse-entry-expense-kpi"><i class="fas fa-receipt"></i><span>Otros gastos<strong id="warehouseEntryOtherExpenseTotal">0.00</strong></span></div></div>
-                                    <div class="col-6 col-xl-3"><div class="warehouse-entry-expense-kpi"><i class="fas fa-boxes"></i><span>Afecta inventario<strong id="warehouseEntryExpenseInventoryTotal">0.00</strong></span></div></div>
-                                    <div class="col-6 col-xl-3"><div class="warehouse-entry-expense-kpi"><i class="fas fa-info-circle"></i><span>Total informativo<strong id="warehouseEntryExpenseInformativeTotal">0.00</strong></span></div></div>
+                                    <div class="col-6 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-truck"></i><span>Total flete / transporte<strong id="warehouseEntryFreightTotal">0.00</strong></span></div></div>
+                                    <div class="col-6 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-receipt"></i><span>Total otros gastos<strong id="warehouseEntryOtherExpenseTotal">0.00</strong></span></div></div>
+                                    <div class="col-12 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-coins"></i><span>Total vinculado<strong id="warehouseEntryExpenseLinkedTotal">0.00</strong></span></div></div>
                                 </div>
                                 <div class="warehouse-entry-expense-form">
                                 <h6 class="font-weight-bold mb-3"><i class="fas fa-plus-circle text-info mr-1"></i>Registrar costo vinculado</h6>
                                 <div class="row">
                                     <input type="hidden" id="warehouse_entry_expense_edit_index">
-                                    <div class="form-group col-md-3"><label>CATEGOR&Iacute;A *</label><select id="warehouse_entry_expense_category" class="form-control form-control-sm"><option value="freight_transport">Flete / Transporte</option><option value="other_expense">Otro gasto adicional</option></select></div>
-                                    <div class="form-group col-md-6"><label>ORIGEN DEL COSTO *</label><select id="warehouse_entry_expense_cost_origin" class="form-control form-control-sm"><option value="third_party">Cobrado por tercero / agencia externa</option><option value="same_purchase_document">Cobrado en el mismo comprobante de compra</option><option value="included_in_purchase_price">Incluido en el precio de compra</option><option value="internal_without_document">Gasto interno sin comprobante</option></select></div>
-                                    <div class="form-group col-md-3"><label>TIPO DE COSTO *</label><select id="warehouse_entry_expense_type" class="form-control form-control-sm"></select></div>
-                                    <div class="form-group col-md-4"><label>AGENCIA / PROVEEDOR DEL COSTO</label><select id="warehouse_entry_expense_provider_id" class="form-control form-control-sm"><option value="">Sin proveedor registrado</option>@foreach($suppliers as $supplier)<option value="{{ $supplier->id }}" data-ruc="{{ $supplier->ruc }}">{{ $supplier->short_name ?? $supplier->business_name }}</option>@endforeach</select></div>
-                                    <div class="form-group col-md-3"><label>NOMBRE DEL PROVEEDOR O RESPONSABLE</label><input id="warehouse_entry_expense_provider_name" class="form-control form-control-sm text-uppercase" placeholder="Nombre libre"></div>
-                                    <div class="form-group col-md-2"><label>RUC / DNI</label><input id="warehouse_entry_expense_provider_ruc" class="form-control form-control-sm text-uppercase"></div>
+                                    <select id="warehouse_entry_expense_category" class="d-none"><option value="freight_transport">Transporte</option><option value="other_expense">Otros</option></select>
+                                    <select id="warehouse_entry_expense_cost_origin" class="d-none"><option value="third_party">Tercero</option></select>
+                                    <div class="form-group col-md-4"><label>TIPO DE COSTO *</label><select id="warehouse_entry_expense_type" class="form-control form-control-sm"><option value="agency_freight">Flete de agencia</option><option value="pickup_transfer">Recojo / traslado</option><option value="other">Otros gastos</option></select></div>
+                                    <div id="warehouseEntryExpenseAgencyGroup" class="form-group col-md-5"><label>AGENCIA DE ENVÍO *</label><select id="warehouse_entry_expense_shipping_agency_id" class="form-control form-control-sm"><option value="">Seleccione agencia de envío</option>@foreach($shippingAgencies as $agency)<option value="{{ $agency->id }}" data-ruc="{{ $agency->ruc }}">{{ $agency->trade_name ?? $agency->business_name }}</option>@endforeach</select></div>
+                                    <div id="warehouseEntryExpenseResponsibleGroup" class="form-group col-md-5 d-none"><label>RESPONSABLE / PERSONA QUE COBRÓ *</label><input id="warehouse_entry_expense_provider_name" class="form-control form-control-sm text-uppercase" placeholder="Nombre de persona, motorizado, taxi, personal o responsable"></div>
+                                    <select id="warehouse_entry_expense_provider_id" class="d-none"><option value=""></option></select>
+                                    <input type="hidden" id="warehouse_entry_expense_provider_ruc">
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
-                                    <div class="form-group col-md-2"><label>TIPO DOCUMENTO</label><input id="warehouse_entry_expense_document_type" class="form-control form-control-sm text-uppercase" placeholder="FACTURA"></div>
+                                    <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO">Recibo</option><option value="SIN_COMPROBANTE">Sin comprobante</option></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>NÚMERO</label><input id="warehouse_entry_expense_document_number" class="form-control form-control-sm text-uppercase"></div>
-                                    <div class="form-group col-md-2"><label>FECHA</label><input type="date" id="warehouse_entry_expense_document_date" class="form-control form-control-sm"></div>
-                                    <div class="form-group col-md-3"><label>AFECTA COSTO DE INVENTARIO</label><select id="warehouse_entry_expense_affects_cost" class="form-control form-control-sm"><option value="0">No</option><option value="1">Sí</option></select></div>
-                                    <div class="form-group col-md-2"><label>DISTRIBUCIÓN</label><select id="warehouse_entry_expense_distribution_method" class="form-control form-control-sm" disabled><option value="">Seleccione</option><option value="quantity">Por cantidad</option><option value="amount">Por valor</option><option value="weight">Por peso</option><option value="manual">Manual</option></select></div>
-                                    <div class="form-group col-lg-6"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Detalle del servicio o costo vinculado"></div>
+                                    <div class="form-group col-md-2"><label>FECHA *</label><input type="date" id="warehouse_entry_expense_document_date" class="form-control form-control-sm"></div>
+                                    <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="1">Sí</option></select>
+                                    <select id="warehouse_entry_expense_distribution_method" class="d-none"><option value="quantity">Por cantidad</option></select>
+                                    <div class="form-group col-lg-6"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria cuando no se adjunta comprobante"><small class="text-muted">Si no cuenta con comprobante adjunto, describa el motivo y responsable.</small></div>
                                     <div class="form-group col-lg-6">
                                         <label>COMPROBANTE ADJUNTO</label>
                                         <div id="warehouseEntryExpenseFilePicker" class="warehouse-entry-expense-file-picker">
@@ -439,7 +442,7 @@
                                 <div id="warehouseEntryExpenseManualDistribution" class="d-none mb-3"></div>
                                 <div class="warehouse-entry-expense-action"><small><i class="fas fa-info-circle mr-1"></i>El costo se incorporar&aacute; a la lista antes de guardar el ingreso.</small><button type="button" id="btnAddWarehouseEntryExpense" class="btn btn-info btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo</button></div>
                                 </div>
-                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Categoría</th><th>Tipo</th><th>Origen</th><th>Proveedor / responsable</th><th>Comprobante</th><th class="text-right">Importe</th><th>Afecta inventario</th><th>Distribución</th><th>Adjunto</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
+                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>Observación</th><th>Adjunto</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
                             </div>
                         </div>
                         @endcanany
@@ -646,7 +649,7 @@
                                 <input type="number" step="0.01" min="0.01" name="items[__INDEX__][quantity]" class="form-control form-control-sm text-right item-quantity" value="1.00">
                                 <span class="warehouse-entry-lot-quantity-display text-success font-weight-bold d-none"></span>
                             </td>
-                            <td><input type="number" step="0.01" min="0" name="items[__INDEX__][unit_price]" class="form-control form-control-sm text-right item-unit-price" value="0.00"></td>
+                            <td><input type="number" step="0.000001" min="0" name="items[__INDEX__][unit_price]" class="form-control form-control-sm text-right item-unit-price" value="0.00"></td>
                             <td class="text-right font-weight-bold item-line-total">0.00</td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-outline-danger btn-sm btnRemoveWarehouseEntryItem">

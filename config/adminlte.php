@@ -456,6 +456,13 @@ return [
             'icon' => 'fas fa-coins',
             'submenu' => [
                 [
+                    'text' => 'Rentabilidad OC Cliente',
+                    'icon' => 'fas fa-chart-line',
+                    'icon_color' => 'success',
+                    'url' => 'admin/customer-order-profitability',
+                    'can' => 'admin.customer-order-profitability.index',
+                ],
+                [
                     'text' => 'Caja Chica',
                     'icon' => 'fas fa-wallet',
                     'icon_color' => 'success',

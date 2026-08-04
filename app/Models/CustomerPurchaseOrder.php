@@ -16,6 +16,28 @@ class CustomerPurchaseOrder extends Model
     public const STATUS_IN_PURCHASE = 'in_purchase';
     public const STATUS_PARTIAL_PURCHASE = 'partial_purchase';
 
+    public static function statusPresentation(?string $status): array
+    {
+        return match (strtolower(trim((string) $status))) {
+            'registered' => ['label' => 'Registrada', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
+            'draft' => ['label' => 'Registrada', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
+            'sent' => ['label' => 'Enviada', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-paper-plane'],
+            'approved' => ['label' => 'Aprobada', 'class' => 'cop-status-attended', 'icon' => 'fa-check-circle'],
+            'received' => ['label' => 'Recibida', 'class' => 'cop-status-entered', 'icon' => 'fa-box'],
+            'in_purchase', 'en_compra' => ['label' => 'En compra', 'class' => 'cop-status-in-purchase', 'icon' => 'fa-shopping-cart'],
+            'partial_purchase' => ['label' => 'Compra parcial', 'class' => 'cop-status-partial-purchase', 'icon' => 'fa-cart-plus'],
+            'entered' => ['label' => 'Ingresada', 'class' => 'cop-status-entered', 'icon' => 'fa-box-open'],
+            'partial_entered' => ['label' => 'Ingreso parcial', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-box'],
+            'attended' => ['label' => 'Atendida', 'class' => 'cop-status-attended', 'icon' => 'fa-check'],
+            'not_attended' => ['label' => 'No atendida', 'class' => 'cop-status-not-attended', 'icon' => 'fa-times'],
+            'cancelled' => ['label' => 'Anulada', 'class' => 'cop-status-cancelled', 'icon' => 'fa-ban'],
+            'completed' => ['label' => 'Completada', 'class' => 'cop-status-completed', 'icon' => 'fa-check-double'],
+            'delivered' => ['label' => 'Entregada', 'class' => 'cop-status-completed', 'icon' => 'fa-truck'],
+            'invoiced' => ['label' => 'Facturada', 'class' => 'cop-status-entered', 'icon' => 'fa-file-invoice'],
+            default => ['label' => 'Sin estado', 'class' => 'cop-status-unknown', 'icon' => 'fa-minus'],
+        };
+    }
+
     private const IN_PURCHASE_STATUS_VALUES = [
         self::STATUS_IN_PURCHASE,
         'en_compra',
@@ -114,6 +136,11 @@ class CustomerPurchaseOrder extends Model
             SupplierPurchaseOrder::class,
             'supplier_purchase_order_customer_purchase_order'
         )->withTimestamps();
+    }
+
+    public function profitabilityAnalyses()
+    {
+        return $this->hasMany(CustomerOrderProfitabilityAnalysis::class);
     }
 
     public function scopeAvailableForSupplierPurchase($query)

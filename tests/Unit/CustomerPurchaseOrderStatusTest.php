@@ -2,6 +2,21 @@
 
 use App\Models\CustomerPurchaseOrder;
 
+it('presenta los estados de rentabilidad en español sin exponer códigos internos', function (string $status, string $label) {
+    expect(CustomerPurchaseOrder::statusPresentation($status)['label'])->toBe($label);
+})->with([
+    ['registered', 'Registrada'],
+    ['in_purchase', 'En compra'],
+    ['partial_purchase', 'Compra parcial'],
+    ['partial_entered', 'Ingreso parcial'],
+    ['entered', 'Ingresada'],
+    ['attended', 'Atendida'],
+    ['cancelled', 'Anulada'],
+    ['completed', 'Completada'],
+    ['sent', 'Enviada'],
+    ['approved', 'Aprobada'],
+]);
+
 it('recognizes every supported in-purchase status representation', function (string $status) {
     $order = new CustomerPurchaseOrder(['status' => $status]);
 

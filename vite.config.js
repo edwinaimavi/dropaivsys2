@@ -17,6 +17,7 @@ export default defineConfig({
                 'resources/js/pages/brand.js',
                 'resources/js/pages/category.js',
                 'resources/js/pages/customer-purchase-order.js',
+                'resources/js/pages/customer-order-profitability.js',
                 'resources/js/pages/customer.js',
                 'resources/js/pages/company.js',
                 'resources/js/pages/market-study.js',

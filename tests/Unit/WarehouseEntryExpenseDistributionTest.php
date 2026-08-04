@@ -18,6 +18,37 @@ function prepareWarehouseExpense(array $data): array
     return $reflection->invoke(new WarehouseEntryController(), $data, 0);
 }
 
+function normalizeWarehouseExpense(array $data): array
+{
+    $reflection = new ReflectionMethod(WarehouseEntryController::class, 'normalizeLinkedExpenseFields');
+    return $reflection->invoke(new WarehouseEntryController(), $data);
+}
+
+it('mapea automáticamente los campos técnicos desde el tipo de costo visible', function (string $type, array $expected) {
+    $expense = normalizeWarehouseExpense(['expense_type' => $type, 'amount' => 60]);
+
+    expect($expense)->toMatchArray($expected)
+        ->and($expense['affects_inventory_cost'])->toBeTrue()
+        ->and($expense['distribution_method'])->toBe('quantity')
+        ->and($expense['distributed_amount'])->toBe(60.0);
+})->with([
+    'flete de agencia' => ['agency_freight', ['expense_type' => 'agency_freight', 'expense_category' => 'freight_transport', 'cost_origin' => 'third_party']],
+    'recojo o traslado' => ['pickup_transfer', ['expense_type' => 'pickup_transfer', 'expense_category' => 'freight_transport', 'cost_origin' => 'third_party']],
+    'otros gastos' => ['other', ['expense_type' => 'other', 'expense_category' => 'other_expense', 'cost_origin' => 'third_party']],
+    'alias técnico de flete' => ['flete_agencia', ['expense_type' => 'agency_freight', 'expense_category' => 'freight_transport', 'cost_origin' => 'third_party']],
+]);
+
+it('usa cero distribuido para un costo informativo sin distributed_amount', function () {
+    $expense = normalizeWarehouseExpense([
+        'expense_type' => 'legacy_informative',
+        'amount' => 60,
+        'affects_inventory_cost' => false,
+    ]);
+
+    expect($expense['distributed_amount'])->toBe(0.0)
+        ->and($expense['affects_inventory_cost'])->toBeFalse();
+});
+
 it('mantiene informativo un costo incluido en la compra', function () {
     $expense = prepareWarehouseExpense([
         'cost_origin' => 'included_in_purchase_price',
@@ -32,12 +63,24 @@ it('mantiene informativo un costo incluido en la compra', function () {
         ->and($expense['description'])->toContain('incluido en la compra');
 });
 
-it('exige importe positivo cuando el costo no está incluido en la compra', function () {
+it('exige importe positivo cuando el costo afecta inventario', function () {
     expect(fn () => prepareWarehouseExpense([
         'cost_origin' => 'third_party',
         'amount' => 0,
+        'affects_inventory_cost' => true,
+    ]))->toThrow(ValidationException::class, 'Ingrese un importe válido');
+});
+
+it('permite importe cero cuando el gasto es informativo', function () {
+    $expense = prepareWarehouseExpense([
+        'cost_origin' => 'third_party',
+        'amount' => 0,
         'affects_inventory_cost' => false,
-    ]))->toThrow(ValidationException::class, 'El importe debe ser mayor a 0');
+        'description' => 'TRASLADO ASUMIDO SIN COSTO ADICIONAL',
+    ]);
+
+    expect($expense['amount'])->toBe(0)
+        ->and($expense['affects_inventory_cost'])->toBeFalse();
 });
 
 it('distribuye exactamente por cantidad incluyendo el ajuste de centavos', function () {

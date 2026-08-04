@@ -24,6 +24,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -829,7 +830,7 @@ class PettyCashController extends Controller
                 'updated_by' => Auth::id(),
             ]);
             foreach ($files as $file) {
-                $storedPaths[] = $this->storeDocument($replenishment, $file, 'PETTY_CASH_REPLENISHMENT');
+                $storedPaths[] = $this->storeDocument($replenishment, $file, 'CAJA_REP');
             }
 
             $this->recalculateTotals($box);
@@ -844,7 +845,21 @@ class PettyCashController extends Controller
             });
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(array_filter($storedPaths));
-            throw $exception;
+            if ($exception instanceof ValidationException
+                || $exception instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                throw $exception;
+            }
+
+            Log::error('No se pudo registrar la reposición de caja chica.', [
+                'petty_cash_box_id' => $pettyCash->id,
+                'user_id' => Auth::id(),
+                'exception' => $exception,
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No se pudo registrar la reposición. Revise los datos e inténtelo nuevamente.',
+            ], 500);
         }
 
         return response()->json([
@@ -1317,10 +1332,23 @@ class PettyCashController extends Controller
     {
         if (! $file) return null;
         $path = $file->store('petty-cash/' . class_basename($documentable) . '/' . $documentable->id, 'public');
-        $type = DocumentType::firstOrCreate(
+        $description = $typeCode === 'CAJA_REP'
+            ? 'Reposición de caja chica'
+            : str_replace('_', ' ', $typeCode);
+        $type = DocumentType::withTrashed()->firstOrCreate(
             ['code' => $typeCode],
-            ['description' => str_replace('_', ' ', $typeCode), 'status' => 'ACTIVE', 'created_by' => Auth::id(), 'updated_by' => Auth::id()]
+            ['description' => $description, 'status' => 'ACTIVE', 'created_by' => Auth::id(), 'updated_by' => Auth::id()]
         );
+        if ($type->trashed()) {
+            $type->restore();
+        }
+        if ($type->description !== $description || $type->status !== 'ACTIVE') {
+            $type->update([
+                'description' => $description,
+                'status' => 'ACTIVE',
+                'updated_by' => Auth::id(),
+            ]);
+        }
         $documentable->documents()->create([
             'document_type_id' => $type->id,
             'original_name' => $file->getClientOriginalName(),
