@@ -875,7 +875,7 @@ class CustomerPurchaseOrderController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                if ($order->status !== self::STATUS_ENTERED) {
+                if (! in_array($order->status, [self::STATUS_ENTERED, self::STATUS_ATTENDED], true)) {
                     throw ValidationException::withMessages([
                         'status' => 'Solo se puede cerrar la atención de una orden abastecida.',
                     ]);

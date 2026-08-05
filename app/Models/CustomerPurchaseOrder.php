@@ -15,6 +15,7 @@ class CustomerPurchaseOrder extends Model
     public const STATUS_NOT_ATTENDED = 'not_attended';
     public const STATUS_IN_PURCHASE = 'in_purchase';
     public const STATUS_PARTIAL_PURCHASE = 'partial_purchase';
+    public const STATUS_PARTIAL_ENTERED = 'partial_entered';
 
     public static function statusPresentation(?string $status): array
     {
@@ -192,16 +193,15 @@ class CustomerPurchaseOrder extends Model
         return $this->morphMany(Document::class, 'documentable');
     }
 
-    public function refreshSupplyStatus(): void
+    public function refreshSupplyStatus(): bool
     {
         if (in_array($this->status, [
             'cancelled',
             'delivered',
             'invoiced',
-            self::STATUS_ATTENDED,
             self::STATUS_NOT_ATTENDED,
         ], true)) {
-            return;
+            return false;
         }
 
         $requestedByItem = $this->items()
@@ -213,8 +213,7 @@ class CustomerPurchaseOrder extends Model
             ]);
 
         if ($requestedByItem->isEmpty()) {
-            $this->forceFill(['status' => 'registered'])->save();
-            return;
+            return $this->applySupplyStatus('registered');
         }
 
         $itemIds = $requestedByItem->keys()->all();
@@ -231,8 +230,7 @@ class CustomerPurchaseOrder extends Model
             ->map(fn ($quantity) => round((float) $quantity, 2));
 
         if ($purchasedByItem->isEmpty()) {
-            $this->forceFill(['status' => 'registered'])->save();
-            return;
+            return $this->applySupplyStatus('registered');
         }
 
         $enteredByItem = DB::table('warehouse_entry_items as items')
@@ -257,22 +255,28 @@ class CustomerPurchaseOrder extends Model
             $enteredByItem->all()
         );
 
-        if ($this->status !== $status) {
-            $this->forceFill(['status' => $status])->save();
-        }
+        return $this->applySupplyStatus($status);
     }
 
     public static function supplyStatusFromQuantities(array $requested, array $purchased, array $entered): string
     {
         $allEntered = collect($requested)->every(fn ($quantity, $itemId) =>
             round((float) ($entered[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
-        if ($allEntered) return self::STATUS_ENTERED;
+        if ($allEntered) return self::STATUS_ATTENDED;
 
-        if (round((float) collect($entered)->sum(), 2) > 0) return 'partial_entered';
+        if (round((float) collect($entered)->sum(), 2) > 0) return self::STATUS_PARTIAL_ENTERED;
 
-        $allPurchased = collect($requested)->every(fn ($quantity, $itemId) =>
-            round((float) ($purchased[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
+        return self::STATUS_IN_PURCHASE;
+    }
 
-        return $allPurchased ? self::STATUS_IN_PURCHASE : self::STATUS_PARTIAL_PURCHASE;
+    private function applySupplyStatus(string $status): bool
+    {
+        if ($this->status === $status) {
+            return false;
+        }
+
+        $this->forceFill(['status' => $status])->save();
+
+        return true;
     }
 }

@@ -74,7 +74,7 @@ class ElectronicInvoiceController extends Controller
             ->get(['id', 'code', 'billing_name', 'commercial_name', 'unit_id', 'presentation_id', 'brand_id']);
         $quotes = Quote::query()->orderByDesc('id')->limit(300)->get(['id', 'quote_number', 'customer_id']);
         $customerPurchaseOrders = CustomerPurchaseOrder::query()
-            ->whereIn('status', ['partial_entered', 'entered', 'delivered'])
+            ->whereIn('status', ['partial_entered', 'entered', 'attended', 'delivered'])
             ->orderByDesc('id')
             ->limit(300)
             ->get(['id', 'code', 'purchase_order_number', 'quote_id', 'customer_id', 'customer_branch_id', 'siaf_file_number', 'process_type']);
@@ -107,7 +107,7 @@ class ElectronicInvoiceController extends Controller
 
     public function customerPurchaseOrderData(CustomerPurchaseOrder $customerPurchaseOrder)
     {
-        if (! in_array($customerPurchaseOrder->status, ['partial_entered', 'entered', 'delivered'], true)) {
+        if (! in_array($customerPurchaseOrder->status, ['partial_entered', 'entered', 'attended', 'delivered'], true)) {
             return response()->json(['message' => 'La orden seleccionada todavía no está disponible para facturación.'], 422);
         }
 

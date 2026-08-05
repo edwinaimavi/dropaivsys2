@@ -34,12 +34,12 @@ it('does not classify an available order as in purchase', function () {
     expect($order->isInPurchase())->toBeFalse();
 });
 
-it('marks the customer order as partial purchase while at least one item remains pending', function () {
+it('marks the customer order as in purchase when at least one supplier order item exists', function () {
     expect(CustomerPurchaseOrder::supplyStatusFromQuantities(
         [1 => 50, 2 => 60, 3 => 3],
         [1 => 50, 2 => 60, 3 => 0],
         []
-    ))->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_PURCHASE);
+    ))->toBe(CustomerPurchaseOrder::STATUS_IN_PURCHASE);
 });
 
 it('marks the customer order as in purchase only when every item was sent completely', function () {
@@ -50,12 +50,12 @@ it('marks the customer order as in purchase only when every item was sent comple
     ))->toBe(CustomerPurchaseOrder::STATUS_IN_PURCHASE);
 });
 
-it('returns to partial purchase when an active supplier quantity is removed', function () {
+it('remains in purchase while an active supplier quantity exists', function () {
     expect(CustomerPurchaseOrder::supplyStatusFromQuantities(
         [1 => 50, 2 => 3],
         [1 => 50],
         []
-    ))->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_PURCHASE);
+    ))->toBe(CustomerPurchaseOrder::STATUS_IN_PURCHASE);
 });
 
 it('prioritizes warehouse entry progress over purchase progress', function () {
@@ -68,5 +68,5 @@ it('prioritizes warehouse entry progress over purchase progress', function () {
             [1 => 50, 2 => 3],
             [1 => 50, 2 => 3],
             [1 => 50, 2 => 3]
-        ))->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+        ))->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
 });

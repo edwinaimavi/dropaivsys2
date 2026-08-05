@@ -73,7 +73,7 @@ class CustomerOrderLabelingController extends Controller
                 'currency:id,symbol,code',
                 'items:id,customer_purchase_order_id,status',
             ])
-            ->whereIn('status', ['entered', 'partial_entered'])
+            ->whereIn('status', ['entered', 'partial_entered', 'attended'])
             ->orderByDesc('id')
             ->get()
             ->filter(function (CustomerPurchaseOrder $order) {
@@ -186,7 +186,7 @@ class CustomerOrderLabelingController extends Controller
             'customer_purchase_order_id' => [
                 'required',
                 Rule::exists('customer_purchase_orders', 'id')
-                    ->where(fn ($query) => $query->whereIn('status', ['entered', 'partial_entered'])),
+                    ->where(fn ($query) => $query->whereIn('status', ['entered', 'partial_entered', 'attended'])),
             ],
             'invoice_number' => ['nullable', 'string', 'max:50'],
             'guide_number' => ['nullable', 'string', 'max:50'],
@@ -419,7 +419,7 @@ class CustomerOrderLabelingController extends Controller
                 'items.presentation:id,description',
                 'items.brand:id,description',
             ])
-            ->whereIn('status', ['entered', 'partial_entered'])
+            ->whereIn('status', ['entered', 'partial_entered', 'attended'])
             ->whereKey($id);
 
         if ($lock) {

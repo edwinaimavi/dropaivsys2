@@ -31,7 +31,7 @@
             <div class="dropdown-divider"></div>
             <h6 class="dropdown-header">Cierre / anulación</h6>
             @can('admin.customer-purchase-orders.update')
-                @if ($order->status === \App\Models\CustomerPurchaseOrder::STATUS_ENTERED)
+                @if (in_array($order->status, [\App\Models\CustomerPurchaseOrder::STATUS_ENTERED, \App\Models\CustomerPurchaseOrder::STATUS_ATTENDED], true) && !$order->attention_closed_at)
                     <button type="button" class="dropdown-item closeCustomerPurchaseOrderAttention"
                         data-id="{{ $order->id }}" data-code="{{ $order->code }}">
                         <i class="fas fa-clipboard-check text-success" aria-hidden="true"></i> Cerrar atención
