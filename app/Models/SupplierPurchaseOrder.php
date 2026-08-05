@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class SupplierPurchaseOrder extends Model
 {
@@ -170,6 +171,33 @@ class SupplierPurchaseOrder extends Model
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function supplierQuotationDocument(): ?Document
+    {
+        $documents = $this->relationLoaded('documents')
+            ? $this->documents
+            : $this->documents()->with('documentType')->get();
+
+        return $documents
+            ->filter(function (Document $document) {
+                if (strtoupper((string) $document->status) !== 'ACTIVE') {
+                    return false;
+                }
+
+                $code = $this->normalizeDocumentType($document->documentType?->code);
+                $description = $this->normalizeDocumentType($document->documentType?->description);
+
+                return in_array($code, ['spoquote', 'supplierquote', 'cotizacionproveedor', 'cotizaciondelproveedor'], true)
+                    || in_array($description, ['cotizacionproveedor', 'cotizaciondelproveedor'], true);
+            })
+            ->sortByDesc('id')
+            ->first();
+    }
+
+    private function normalizeDocumentType(?string $value): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii(trim((string) $value))));
     }
 
     public function warehouseEntries()

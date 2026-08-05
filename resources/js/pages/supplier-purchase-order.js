@@ -216,27 +216,99 @@ function initSupplierPurchaseOrderTable() {
         columns: [
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'id', name: 'id' },
-            { data: 'code', name: 'code' },
-            { data: 'supplier', name: 'supplier.business_name', orderable: false },
+            {
+                data: 'code',
+                name: 'code',
+                responsivePriority: 1,
+                render: function (data, type) {
+                    return type === 'display'
+                        ? data
+                        : $('<div>').html(data || '').text().trim();
+                }
+            },
+            {
+                data: 'customer_order',
+                name: 'customer_order',
+                orderable: false,
+                render: function (data, type) {
+                    if (type === 'display') {
+                        return data;
+                    }
+
+                    const container = $('<div>').html(data || '');
+                    const labels = container.find('.customer-order-cell').map(function () {
+                        const number = $(this).find('.customer-order-number').text().trim();
+                        const customer = $(this).find('small').text().trim();
+
+                        return [number, customer].filter(Boolean).join(' | ');
+                    }).get();
+
+                    return labels.length
+                        ? labels.join('; ')
+                        : container.text().replace(/\s+/g, ' ').trim();
+                }
+            },
+            {
+                data: 'supplier_name',
+                name: 'supplier.business_name',
+                orderable: false,
+                render: function (data, type, row) {
+                    const supplierName = String(data || '-');
+
+                    if (type !== 'display') {
+                        return supplierName;
+                    }
+
+                    if (row.supplier_has_quotation && row.supplier_quotation_url) {
+                        return `<a href="${escapeSupplierOrderHtml(row.supplier_quotation_url)}"
+                            target="_blank" rel="noopener" class="supplier-provider-quote-link"
+                            title="Ver cotización del proveedor">
+                            <span class="supplier-provider-quote-icon"><i class="far fa-file-pdf" aria-hidden="true"></i></span>
+                            <span>${escapeSupplierOrderHtml(supplierName)}</span>
+                        </a>`;
+                    }
+
+                    return `<span class="supplier-provider-name">${escapeSupplierOrderHtml(supplierName)}</span>`;
+                }
+            },
             { data: 'company', name: 'company.business_name', orderable: false },
             { data: 'currency', name: 'currency.code', orderable: false },
-            { data: 'grand_total', name: 'grand_total' },
+            {
+                data: 'grand_total',
+                name: 'grand_total',
+                render: function (data, type) {
+                    return type === 'display'
+                        ? data
+                        : $('<div>').html(data || '').text().trim();
+                }
+            },
             { data: 'status', name: 'status' },
             { data: 'created_at', name: 'created_at' },
-            { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
+            { data: 'acciones', name: 'acciones', orderable: false, searchable: false, responsivePriority: 2 }
         ],
         responsive: true,
         autoWidth: false,
         language: {
-            url: '/vendor/datatables/js/i18n/es-ES.json'
+            url: '/vendor/datatables/js/i18n/es-ES.json',
+            search: 'Buscar:',
+            searchPlaceholder: 'Buscar orden, proveedor u OC cliente...',
+            lengthMenu: 'Mostrar _MENU_ registros',
+            info: 'Mostrando _START_ a _END_ de _TOTAL_ registros',
+            infoEmpty: 'Mostrando 0 a 0 de 0 registros',
+            zeroRecords: 'No se encontraron órdenes coincidentes',
+            processing: 'Procesando...',
+            paginate: {
+                previous: 'Anterior',
+                next: 'Siguiente'
+            }
         },
         dom: `
-            <'row mb-3'
+            <'row supplier-orders-toolbar align-items-center'
                 <'col-sm-12 col-md-6'l>
                 <'col-sm-12 col-md-6 text-md-end'f>
             >
             <'row'<'col-sm-12'tr>>
-            <'row mt-3'
+            <'row supplier-orders-footer align-items-center'
                 <'col-sm-12 col-md-5'i>
                 <'col-sm-12 col-md-7 d-flex justify-content-center justify-content-md-end'p>
             >
@@ -246,21 +318,34 @@ function initSupplierPurchaseOrderTable() {
             {
                 extend: 'excel',
                 className: 'btn btn-success btn-sm',
-                text: '<i class="fas fa-file-excel"></i> Excel'
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' }
             },
             {
                 extend: 'pdf',
                 className: 'btn btn-danger btn-sm',
-                text: '<i class="fas fa-file-pdf"></i> PDF'
+                text: '<i class="fas fa-file-pdf"></i> PDF',
+                exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' }
             },
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
-                text: '<i class="fas fa-print"></i> Imprimir'
+                text: '<i class="fas fa-print"></i> Imprimir',
+                exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' }
             }
         ],
         drawCallback: function () {
             $('[data-toggle="tooltip"]').tooltip();
+        },
+        initComplete: function () {
+            const searchInput = $('#tableSupplierPurchaseOrder_filter input');
+            searchInput
+                .attr('aria-label', 'Buscar orden, proveedor u OC cliente')
+                .attr('autocomplete', 'off');
+
+            if (!$('#tableSupplierPurchaseOrder_filter .supplier-order-search-icon').length) {
+                searchInput.before('<i class="fas fa-search supplier-order-search-icon" aria-hidden="true"></i>');
+            }
         }
     });
 }
@@ -1630,13 +1715,21 @@ function fillSupplierPurchaseOrderDetail(order) {
                 || customerOrder.customer?.full_name
                 || [customerOrder.customer?.first_name, customerOrder.customer?.last_name].filter(Boolean).join(' ')
                 || 'Sin cliente';
+            const companyName = customerOrder.company?.trade_name || customerOrder.company?.business_name || '-';
+            const customerOrderCurrency = customerOrder.currency?.symbol || customerOrder.currency?.code || '';
+            const customerOrderStatus = supplierCustomerOrderStatusPresentation(customerOrder.status);
 
-            return `<span class="supplier-order-related-badge">
-                <i class="fas fa-clipboard-check mr-1"></i>
-                ${escapeSupplierOrderHtml(customerOrder.purchase_order_number || customerOrder.code || '-')} | ${escapeSupplierOrderHtml(customerName)}
-            </span>`;
+            return `<div class="supplier-order-related-card">
+                <div class="d-flex justify-content-between align-items-start flex-wrap">
+                    <strong><i class="fas fa-clipboard-check mr-1"></i>${escapeSupplierOrderHtml(customerOrder.purchase_order_number || customerOrder.code || '-')}</strong>
+                    <span class="badge ${customerOrderStatus.className}">${customerOrderStatus.label}</span>
+                </div>
+                <small><i class="fas fa-user mr-1"></i>${escapeSupplierOrderHtml(customerName)}</small>
+                <small><i class="fas fa-building mr-1"></i>${escapeSupplierOrderHtml(companyName)}</small>
+                <small><i class="fas fa-coins mr-1"></i>${escapeSupplierOrderHtml(customerOrderCurrency)} ${formatSupplierOrderMoney(customerOrder.grand_total)}</small>
+            </div>`;
         }).join('')
-        : '-');
+        : '<span class="text-muted">Sin OC cliente relacionada.</span>');
     $('#vspo_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
     $('#vspo_payment_condition').text(supplierOrderOptionLabel(order.payment_condition) || '-');
     $('#vspo_delivery_type').text(supplierOrderOptionLabel(order.delivery_type) || '-');
@@ -2059,6 +2152,30 @@ function supplierOrderEntryStatusPresentation(status, enteredQuantity, pendingQu
         className: 'status-pending',
         icon: 'fas fa-clock'
     };
+}
+
+function supplierCustomerOrderStatusPresentation(status) {
+    const statuses = {
+        registered: ['Registrada', 'badge-secondary'],
+        draft: ['Registrada', 'badge-secondary'],
+        sent: ['Enviada', 'badge-info'],
+        approved: ['Aprobada', 'badge-success'],
+        received: ['Recibida', 'badge-success'],
+        in_purchase: ['En compra', 'badge-primary'],
+        en_compra: ['En compra', 'badge-primary'],
+        partial_purchase: ['Compra parcial', 'badge-warning'],
+        entered: ['Ingresada', 'badge-success'],
+        partial_entered: ['Ingreso parcial', 'badge-warning'],
+        attended: ['Atendida', 'badge-success'],
+        not_attended: ['No atendida', 'badge-danger'],
+        cancelled: ['Anulada', 'badge-danger'],
+        completed: ['Completada', 'badge-success'],
+        delivered: ['Entregada', 'badge-success'],
+        invoiced: ['Facturada', 'badge-info']
+    };
+    const presentation = statuses[String(status || '').toLowerCase()] || ['Sin estado', 'badge-light text-dark border'];
+
+    return { label: presentation[0], className: presentation[1] };
 }
 
 function setSupplierOrderValue(selector, value) {

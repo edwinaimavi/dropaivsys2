@@ -369,18 +369,22 @@
         gap: 7px;
     }
 
-    #viewSupplierPurchaseOrderModal .supplier-order-related-badge {
-        display: inline-flex;
-        align-items: center;
-        max-width: 100%;
-        padding: 6px 10px;
-        border: 1px solid #b8e2c5;
-        border-radius: 999px;
+    #viewSupplierPurchaseOrderModal .supplier-order-related-card {
+        flex: 1 1 260px;
+        max-width: 360px;
+        padding: 10px 12px;
+        border: 1px solid #d8eadf;
+        border-radius: 12px;
         color: #14532d;
-        background: #eaf8ef;
+        background: #f4fbf6;
         font-size: 12px;
-        font-weight: 700;
         word-break: break-word;
+    }
+
+    #viewSupplierPurchaseOrderModal .supplier-order-related-card small {
+        display: block;
+        margin-top: 4px;
+        color: #52665a;
     }
 
     #viewSupplierPurchaseOrderModal .supplier-order-view-table-wrap {

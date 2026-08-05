@@ -177,58 +177,82 @@ class SupplierPurchaseOrderController extends Controller
                 'supplier:id,business_name,short_name,ruc',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
+                'customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
+                'customerPurchaseOrder.company:id,business_name,trade_name',
+                'customerPurchaseOrder.currency:id,code,symbol',
+                'customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
+                'customerPurchaseOrders.company:id,business_name,trade_name',
+                'customerPurchaseOrders.currency:id,code,symbol',
                 'documents' => function ($query) {
-                    $query->with('documentType:id,code')
+                    $query->with('documentType:id,code,description')
                         ->where('status', 'ACTIVE')
-                        ->orderBy('id');
+                        ->orderByDesc('id');
                 },
             ])
             ->orderByDesc('id');
 
         return DataTables::of($orders)
             ->addIndexColumn()
-            ->addColumn('supplier', function (SupplierPurchaseOrder $order) {
-                $supplierName = $order->supplier?->business_name
-                    ?? $order->supplier?->short_name
-                    ?? '-';
-                $supplierDocument = $order->documents->first(
-                    fn (Document $document) => in_array(
-                        $document->documentType?->code,
-                        self::SUPPLIER_DOCUMENT_TYPE_CODES,
-                        true
-                    )
-                );
+            ->editColumn('code', function (SupplierPurchaseOrder $order) {
+                $code = e($order->code ?: '-');
+                $pdfUrl = Auth::user()?->can('admin.supplier-purchase-orders.pdf')
+                    ? $this->generatedPdfUrl($order)
+                    : null;
 
-                if (! $supplierDocument) {
-                    return sprintf(
-                        '<span class="supplier-name-text">%s</span>',
-                        e($supplierName)
-                    );
+                if (! $pdfUrl) {
+                    return $code;
                 }
 
-                $documentUrl = route(
-                    'admin.supplier-purchase-orders.documents.view',
-                    [$order, $supplierDocument]
-                );
-
                 return sprintf(
-                    '<div class="supplier-document-wrapper">
-                        <a href="%s" target="_blank" rel="noopener"
-                            class="supplier-name-document-link"
-                            title="Abrir documento adjunto del proveedor">
-                            <i class="fas fa-file-pdf" aria-hidden="true"></i>
-                            <span>%s</span>
-                        </a>
-                        <a href="%s" target="_blank" rel="noopener"
-                            class="supplier-document-download-link"
-                            title="Descargar documento"
-                            aria-label="Descargar documento del proveedor">
-                            <i class="fas fa-download" aria-hidden="true"></i>
-                        </a>
-                    </div>',
-                    e($documentUrl),
-                    e($supplierName),
-                    e($documentUrl)
+                    '<a href="%s" target="_blank" rel="noopener" class="supplier-order-code-link" title="Ver PDF de la orden"><span class="supplier-order-code-icon"><i class="far fa-file-pdf" aria-hidden="true"></i></span><span>%s</span></a>',
+                    e($pdfUrl),
+                    $code
+                );
+            })
+            ->addColumn('customer_order', function (SupplierPurchaseOrder $order) {
+                $customerOrders = $order->customerPurchaseOrders;
+
+                if ($customerOrders->isEmpty() && $order->customerPurchaseOrder) {
+                    $customerOrders = collect([$order->customerPurchaseOrder]);
+                }
+
+                if ($customerOrders->isEmpty()) {
+                    return '<span class="badge badge-light text-muted border">Sin OC cliente</span>';
+                }
+
+                return $customerOrders->unique('id')->map(function (CustomerPurchaseOrder $customerOrder) {
+                    $number = $customerOrder->purchase_order_number ?: $customerOrder->code ?: '-';
+                    $customer = $customerOrder->customer;
+                    $customerName = $customer?->business_name
+                        ?? $customer?->full_name
+                        ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                        ?: 'Sin cliente';
+
+                    return sprintf(
+                        '<div class="customer-order-cell"><span class="customer-order-number">%s</span><small>%s</small></div>',
+                        e($number),
+                        e($customerName)
+                    );
+                })->implode('');
+            })
+            ->addColumn('supplier_name', function (SupplierPurchaseOrder $order) {
+                return $order->supplier?->business_name
+                    ?? $order->supplier?->short_name
+                    ?? '-';
+            })
+            ->addColumn('supplier_has_quotation', function (SupplierPurchaseOrder $order) {
+                return $order->supplierQuotationDocument() !== null;
+            })
+            ->addColumn('supplier_quotation_url', function (SupplierPurchaseOrder $order) {
+                $quotation = $order->supplierQuotationDocument();
+
+                if (! $quotation || ! Auth::user()?->can('admin.supplier-purchase-orders.show')) {
+                    return null;
+                }
+
+                return route(
+                    'admin.supplier-purchase-orders.documents.view',
+                    [$order, $quotation]
                 );
             })
             ->addColumn('company', function (SupplierPurchaseOrder $order) {
@@ -244,7 +268,10 @@ class SupplierPurchaseOrderController extends Controller
             ->editColumn('grand_total', function (SupplierPurchaseOrder $order) {
                 $symbol = $order->currency?->symbol ?? '';
 
-                return trim($symbol . ' ' . number_format((float) $order->grand_total, 2));
+                return sprintf(
+                    '<span class="supplier-order-total">%s</span>',
+                    e(trim($symbol . ' ' . number_format((float) $order->grand_total, 2)))
+                );
             })
             ->editColumn('status', function (SupplierPurchaseOrder $order) {
                 $statuses = $this->statusPresentation();
@@ -271,23 +298,54 @@ class SupplierPurchaseOrderController extends Controller
                 return $order->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-';
             })
             ->addColumn('acciones', function (SupplierPurchaseOrder $order) {
-                $pdfDocument = $order->documents
-                    ->first(fn (Document $document) => $document->observation === 'PDF_GENERATED_SUPPLIER_PURCHASE_ORDER'
-                        && $document->mime_type === 'application/pdf'
-                        && $document->file_path
-                        && Storage::disk('public')->exists($document->file_path));
-                $pdfUrl = $pdfDocument
-                    ? Storage::disk('public')->url($pdfDocument->file_path)
-                        . '?v=' . $pdfDocument->updated_at?->timestamp
-                    : null;
+                $pdfUrl = $this->generatedPdfUrl($order);
 
                 return view(
                     'admin.supplier-purchase-orders.partials.acciones',
                     compact('order', 'pdfUrl')
                 )->render();
             })
-            ->rawColumns(['supplier', 'status', 'acciones'])
+            ->filterColumn('customer_order', function ($query, $keyword) {
+                $query->where(function ($customerOrderQuery) use ($keyword) {
+                    $customerOrderQuery
+                        ->whereHas('customerPurchaseOrder', function ($orderQuery) use ($keyword) {
+                            $this->applyCustomerOrderSearch($orderQuery, $keyword);
+                        })
+                        ->orWhereHas('customerPurchaseOrders', function ($orderQuery) use ($keyword) {
+                            $this->applyCustomerOrderSearch($orderQuery, $keyword);
+                        });
+                });
+            })
+            ->rawColumns(['code', 'customer_order', 'grand_total', 'status', 'acciones'])
             ->make(true);
+    }
+
+    private function generatedPdfUrl(SupplierPurchaseOrder $order): ?string
+    {
+        $pdfDocument = $order->documents
+            ->first(fn (Document $document) => $document->observation === 'PDF_GENERATED_SUPPLIER_PURCHASE_ORDER'
+                && $document->mime_type === 'application/pdf'
+                && $document->file_path
+                && Storage::disk('public')->exists($document->file_path));
+
+        return $pdfDocument
+            ? Storage::disk('public')->url($pdfDocument->file_path)
+                . '?v=' . $pdfDocument->updated_at?->timestamp
+            : null;
+    }
+
+    private function applyCustomerOrderSearch($query, string $keyword): void
+    {
+        $query->where(function ($searchQuery) use ($keyword) {
+            $searchQuery->where('purchase_order_number', 'like', "%{$keyword}%")
+                ->orWhere('code', 'like', "%{$keyword}%")
+                ->orWhereHas('customer', function ($customerQuery) use ($keyword) {
+                    $customerQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('full_name', 'like', "%{$keyword}%")
+                        ->orWhere('first_name', 'like', "%{$keyword}%")
+                        ->orWhere('last_name', 'like', "%{$keyword}%");
+                });
+        });
     }
 
     public function generateCode(Request $request)

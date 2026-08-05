@@ -38,23 +38,26 @@
 @stop
 
 @section('content_body')
-    <div class="card border-0 shadow-lg rounded-xl">
-        <div class="card-header bg-white border-0 pt-4 pb-2">
-            <h5 class="mb-1 font-weight-bold text-dark">
-                <i class="fas fa-list text-success"></i>
-                Lista de &Oacute;rdenes de Compra
-            </h5>
-            <small class="text-muted">Compras registradas para proveedores</small>
+    <div class="card border-0 shadow-lg rounded-xl supplier-orders-list-card">
+        <div class="card-header border-0 supplier-orders-list-header">
+            <div class="d-flex align-items-center">
+                <span class="supplier-orders-list-icon mr-3"><i class="fas fa-list"></i></span>
+                <div>
+                    <h5 class="mb-1 font-weight-bold text-dark">Lista de &Oacute;rdenes de Compra</h5>
+                    <small class="text-muted">Compras registradas para proveedores</small>
+                </div>
+            </div>
         </div>
 
-        <div class="card-body pt-2">
-            <div class="table-responsive">
-                <table id="tableSupplierPurchaseOrder" class="table table-hover align-middle text-center w-100">
-                    <thead class="bg-light">
+        <div class="card-body supplier-orders-list-body">
+            <div class="table-responsive supplier-orders-table-wrap">
+                <table id="tableSupplierPurchaseOrder" class="table align-middle text-center w-100 supplier-orders-table">
+                    <thead>
                         <tr>
                             <th>#</th>
                             <th>ID</th>
                             <th>C&Oacute;DIGO</th>
+                            <th>OC CLIENTE</th>
                             <th>PROVEEDOR</th>
                             <th>EMPRESA</th>
                             <th>MONEDA</th>
@@ -84,90 +87,471 @@
             border-radius: 18px;
         }
 
+        .supplier-orders-list-card {
+            overflow: visible;
+            border: 1px solid #e7efeb !important;
+            background: #fff;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, .075) !important;
+        }
+
+        .supplier-orders-list-header {
+            padding: 20px 22px 17px;
+            border-bottom: 1px solid #e8f0ec !important;
+            border-radius: 18px 18px 0 0 !important;
+            background: linear-gradient(115deg, #fff 0%, #f8fbfa 60%, #eef9f4 100%);
+        }
+
+        .supplier-orders-list-icon {
+            display: inline-grid;
+            flex: 0 0 40px;
+            width: 40px;
+            height: 40px;
+            place-items: center;
+            border: 1px solid #cce9dd;
+            border-radius: 12px;
+            background: #eaf8f1;
+            color: #16805e;
+            box-shadow: 0 5px 13px rgba(22, 128, 94, .1);
+        }
+
+        .supplier-orders-list-body {
+            padding: 18px 20px 20px;
+        }
+
+        .supplier-orders-table-wrap {
+            border: 1px solid #e6eeea;
+            border-radius: 13px;
+            background: #fff;
+        }
+
+        #tableSupplierPurchaseOrder {
+            margin-bottom: 0 !important;
+            border-collapse: separate !important;
+            border-spacing: 0;
+        }
+
         #tableSupplierPurchaseOrder thead th {
-            padding: 14px 10px;
+            padding: 13px 10px;
             border: 0 !important;
-            color: #555;
-            font-size: 12px;
-            font-weight: 700;
+            border-bottom: 1px solid #dbe9e2 !important;
+            color: #496158;
+            background: #f0f7f4;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .45px;
+            text-transform: uppercase;
             white-space: nowrap;
         }
 
+        #tableSupplierPurchaseOrder thead th:first-child {
+            border-radius: 11px 0 0;
+        }
+
+        #tableSupplierPurchaseOrder thead th:last-child {
+            border-radius: 0 11px 0 0;
+        }
+
         #tableSupplierPurchaseOrder tbody td {
-            padding: 12px 8px;
-            border-top: 1px solid #f1f1f1;
-            font-size: 13px;
+            padding: 11px 9px;
+            border: 0;
+            border-bottom: 1px solid #edf2ef;
+            color: #33443d;
+            background: #fff;
+            font-size: 12px;
             vertical-align: middle !important;
+            transition: background-color .18s ease, box-shadow .18s ease;
         }
 
-        #tableSupplierPurchaseOrder tbody tr:hover {
-            background: #fafafa;
+        #tableSupplierPurchaseOrder tbody tr:last-child td {
+            border-bottom: 0;
         }
 
-        .supplier-document-wrapper {
+        #tableSupplierPurchaseOrder tbody tr:hover td {
+            background: #f3faf7;
+            box-shadow: inset 0 1px rgba(31, 138, 101, .04), inset 0 -1px rgba(31, 138, 101, .04);
+        }
+
+        #tableSupplierPurchaseOrder tbody tr:hover td:first-child {
+            box-shadow: inset 3px 0 #63b795;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(1),
+        #tableSupplierPurchaseOrder tbody td:nth-child(2),
+        #tableSupplierPurchaseOrder tbody td:nth-child(6),
+        #tableSupplierPurchaseOrder tbody td:nth-child(7),
+        #tableSupplierPurchaseOrder tbody td:nth-child(10) {
+            color: #64746d;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(8) {
+            text-align: right !important;
+            color: #203c31;
+            font-size: 13px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge {
+            min-width: 112px !important;
+            padding: 6px 10px !important;
+            border: 1px solid rgba(15, 23, 42, .07);
+            box-shadow: none !important;
+            font-size: 10px !important;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge-primary,
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge-info {
+            border-color: #c8e5ee;
+            background: #e9f6fa;
+            color: #17677d;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge-success {
+            border-color: #c7e7d5;
+            background: #eaf7ef;
+            color: #176b45;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge-warning {
+            border-color: #f0dfaa;
+            background: #fff7dc;
+            color: #856414;
+        }
+
+        #tableSupplierPurchaseOrder tbody td:nth-child(9) .badge-danger {
+            border-color: #efcdd1;
+            background: #fcecee;
+            color: #a43b45;
+        }
+
+        .supplier-order-code-link {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            max-width: 100%;
-            flex-wrap: nowrap;
+            gap: 7px;
+            padding: 5px 8px 5px 6px;
+            border: 1px solid transparent;
+            border-radius: 9px;
+            background: transparent;
+            color: #147553;
+            font-weight: 800;
+            text-decoration: none;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease;
         }
 
-        .supplier-name-document-link {
+        .supplier-order-code-link:hover,
+        .supplier-order-code-link:focus {
+            border-color: #c8e7da;
+            background: #edf9f4;
+            color: #0e6244;
+            text-decoration: none;
+            transform: translateY(-1px);
+        }
+
+        .supplier-order-code-icon {
+            display: inline-grid;
+            width: 23px;
+            height: 23px;
+            place-items: center;
+            border-radius: 7px;
+            background: #dff3ea;
+            color: #16805e;
+            font-size: 11px;
+        }
+
+        .customer-order-cell {
+            min-width: 155px;
+            margin: 2px 0;
+            text-align: left;
+            line-height: 1.2;
+        }
+
+        .customer-order-number {
+            display: inline-block;
+            padding: 3px 8px;
+            border: 1px solid #d8e2ea;
+            border-radius: 999px;
+            background: #f2f7f5;
+            color: #35564a;
+            font-size: 11px;
+            font-weight: 800;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, .04);
+        }
+
+        .customer-order-cell small {
+            display: block;
+            margin-top: 3px;
+            color: #6c757d;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: normal;
+        }
+
+        .supplier-provider-quote-link {
             display: inline-flex;
             min-width: 0;
+            max-width: 220px;
             align-items: center;
-            gap: 5px;
-            padding: 4px 10px;
-            border: 1px solid #bde9ff;
-            border-radius: 999px;
-            background: #e8f7ff;
-            color: #087ea4;
+            gap: 7px;
+            padding: 5px 9px 5px 6px;
+            border: 1px solid #c8e7da;
+            border-radius: 9px;
+            background: #edf9f4;
+            color: #147553;
             font-size: 12px;
-            font-weight: 800;
-            line-height: 1.2;
+            font-weight: 700;
+            line-height: 1.25;
             text-decoration: none;
             text-align: left;
             white-space: normal;
             word-break: break-word;
+            cursor: pointer;
+            transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
         }
 
-        .supplier-name-document-link i.fa-file-pdf {
-            flex: 0 0 auto;
-            color: #ef4444;
-            font-size: 12px;
-        }
-
-        .supplier-name-document-link:hover {
-            background: #dff3ff;
-            color: #075985;
+        .supplier-provider-quote-link:hover,
+        .supplier-provider-quote-link:focus {
+            border-color: #a9d8c5;
+            background: #e3f5ed;
+            color: #0e6244;
+            box-shadow: 0 5px 12px rgba(20, 117, 83, .1);
             text-decoration: none;
+            transform: translateY(-1px);
         }
 
-        .supplier-document-download-link {
-            display: inline-flex;
-            flex: 0 0 26px;
+        .supplier-provider-quote-icon {
+            display: inline-grid;
+            flex: 0 0 23px;
             align-items: center;
             justify-content: center;
-            width: 26px;
-            height: 26px;
-            border: 1px solid #cbd5e1;
-            border-radius: 50%;
-            background: #f1f5f9;
-            color: #475569;
+            width: 23px;
+            height: 23px;
+            border-radius: 7px;
+            background: #d8f0e5;
+            color: #16805e;
             font-size: 11px;
-            text-decoration: none;
         }
 
-        .supplier-document-download-link:hover {
-            background: #e2e8f0;
-            color: #0f172a;
-            text-decoration: none;
-        }
-
-        .supplier-name-text {
+        .supplier-provider-name {
+            display: inline-block;
+            max-width: 210px;
+            padding: 5px 9px;
+            border: 1px solid #e7ecea;
+            border-radius: 9px;
+            background: #fafcfb;
             color: #1f2937;
             font-weight: 700;
             overflow-wrap: anywhere;
+            cursor: default;
+        }
+
+        .supplier-order-total {
+            display: inline-block;
+            min-width: 100px;
+            padding: 6px 10px;
+            border: 1px solid #d8e7e0;
+            border-radius: 9px;
+            background: #f5faf7;
+            color: #203c31;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, .035);
+            text-align: right;
+        }
+
+        #tableSupplierPurchaseOrder .dp-table-actions {
+            justify-content: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
+
+        #tableSupplierPurchaseOrder .dp-action-main,
+        #tableSupplierPurchaseOrder .dp-action-trigger {
+            min-height: 31px;
+            border-radius: 8px;
+            box-shadow: 0 3px 8px rgba(15, 23, 42, .08);
+            font-size: 11px;
+            font-weight: 700;
+            transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
+        }
+
+        #tableSupplierPurchaseOrder .dp-action-main:hover,
+        #tableSupplierPurchaseOrder .dp-action-trigger:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(15, 23, 42, .13);
+        }
+
+        #tableSupplierPurchaseOrder .dp-action-trigger {
+            border-color: #dce5e1 !important;
+            background: #f8faf9;
+            color: #53645d;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dataTables_length,
+        #tableSupplierPurchaseOrder_wrapper .dataTables_filter,
+        #tableSupplierPurchaseOrder_wrapper .dataTables_info {
+            color: #64746d;
+            font-size: 12px;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .supplier-orders-toolbar {
+            margin: 0 0 14px !important;
+            padding: 12px 14px;
+            border: 1px solid #e5ede9;
+            border-radius: 11px;
+            background: #f9fbfa;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .supplier-orders-footer {
+            margin: 14px 0 0 !important;
+            padding-top: 13px;
+            border-top: 1px solid #edf1ef;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dataTables_length select,
+        #tableSupplierPurchaseOrder_wrapper .dataTables_filter input {
+            height: 36px;
+            border: 1px solid #d9e4df;
+            border-radius: 9px;
+            background: #fff;
+            color: #33443d;
+            box-shadow: 0 2px 7px rgba(15, 23, 42, .035);
+            transition: border-color .18s ease, box-shadow .18s ease;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dataTables_filter input {
+            width: min(270px, 70vw);
+            margin-left: 8px;
+            padding: 7px 12px 7px 34px;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dataTables_filter label {
+            position: relative;
+            margin-bottom: 0;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .supplier-order-search-icon {
+            position: absolute;
+            z-index: 2;
+            right: 238px;
+            bottom: 11px;
+            color: #819189;
+            pointer-events: none;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dataTables_filter input:focus,
+        #tableSupplierPurchaseOrder_wrapper .dataTables_length select:focus {
+            border-color: #75bda4;
+            outline: 0;
+            box-shadow: 0 0 0 3px rgba(25, 135, 84, .1);
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .pagination {
+            gap: 4px;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .page-link {
+            min-width: 32px;
+            border: 1px solid #e1e9e5;
+            border-radius: 8px;
+            color: #52645c;
+            text-align: center;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .page-item.active .page-link {
+            border-color: #198754;
+            background: #198754;
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(25, 135, 84, .18);
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dt-buttons {
+            display: inline-flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 7px;
+            padding: 8px;
+            border: 1px solid #e5ebe8;
+            border-radius: 11px;
+            background: #f8faf9;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dt-buttons .btn {
+            min-width: 92px;
+            margin: 0 !important;
+            padding: 7px 13px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            background: #334155;
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, .12);
+            font-size: 11px;
+            font-weight: 700;
+            transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
+        }
+
+        #tableSupplierPurchaseOrder_wrapper .dt-buttons .btn:hover {
+            border-color: #1f2937;
+            background: #1f2937;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 13px rgba(15, 23, 42, .17);
+        }
+
+        @media (max-width: 767.98px) {
+            .supplier-orders-list-body {
+                padding: 13px;
+            }
+
+            #tableSupplierPurchaseOrder_wrapper .dataTables_length,
+            #tableSupplierPurchaseOrder_wrapper .dataTables_filter {
+                margin-bottom: 10px;
+                text-align: left !important;
+            }
+
+            #tableSupplierPurchaseOrder_wrapper .dataTables_filter input {
+                width: 100%;
+                margin: 6px 0 0;
+            }
+
+            #tableSupplierPurchaseOrder_wrapper .supplier-order-search-icon {
+                right: auto;
+                bottom: 11px;
+                left: 12px;
+            }
+
+            #tableSupplierPurchaseOrder tbody td {
+                white-space: normal;
+            }
+
+            #tableSupplierPurchaseOrder .dp-table-actions {
+                justify-content: flex-start;
+            }
+
+            #tableSupplierPurchaseOrder_wrapper .supplier-orders-toolbar {
+                padding: 11px;
+            }
+        }
+
+        #tableSupplierPurchaseOrder tbody tr.child td {
+            padding: 13px 15px;
+            background: #f8fbfa;
+        }
+
+        #tableSupplierPurchaseOrder tbody tr.child ul.dtr-details {
+            width: 100%;
+            margin: 0;
+        }
+
+        #tableSupplierPurchaseOrder tbody tr.child ul.dtr-details>li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e6eeea;
+        }
+
+        #tableSupplierPurchaseOrder tbody tr.child .dtr-title {
+            min-width: 105px;
+            color: #557067;
+            font-size: 10px;
+            letter-spacing: .35px;
+            text-transform: uppercase;
         }
 
         .supplier-doc-section {
