@@ -89,6 +89,8 @@ Route::post('petty-cash/expenses/{expense}/documents/{document}/replace-image', 
     ->name('petty-cash.expenses.documents.replace-image');
 Route::post('petty-cash/{pettyCash}/close', [PettyCashController::class, 'close'])->name('petty-cash.close');
 Route::post('petty-cash/{pettyCash}/replenishments', [PettyCashController::class, 'storeReplenishment'])->name('petty-cash.replenishments.store');
+Route::get('petty-cash/document-issuer/search', [PettyCashExpenseExchangeController::class, 'searchIssuer'])
+    ->name('petty-cash.document-issuer.search');
 Route::get('petty-cash/{pettyCash}/receipt-exchanges/pending', [PettyCashExpenseExchangeController::class, 'pending'])
     ->name('petty-cash.receipt-exchanges.index');
 Route::post('petty-cash/{pettyCash}/receipt-exchanges', [PettyCashExpenseExchangeController::class, 'store'])

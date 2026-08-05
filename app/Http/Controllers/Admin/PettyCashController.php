@@ -240,6 +240,7 @@ class PettyCashController extends Controller
             'replenishments.documents',
             'expenseExchanges' => fn ($query) => $query->where('status', PettyCashExpenseExchange::STATUS_ACTIVE)->latest('exchange_date'),
             'expenseExchanges.items.expense:id,supplier_name,concept',
+            'expenseExchanges.documentIssuer',
             'expenseExchanges.documents',
             'expenseExchanges.creator:id,name,lastname',
         ]);

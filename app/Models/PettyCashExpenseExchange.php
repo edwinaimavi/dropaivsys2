@@ -13,8 +13,8 @@ class PettyCashExpenseExchange extends Model
     public const STATUS_CANCELLED = 'CANCELLED';
 
     protected $fillable = [
-        'petty_cash_box_id', 'exchange_date', 'document_type', 'document_series',
-        'document_correlative', 'total_amount', 'observation', 'status',
+        'petty_cash_box_id', 'document_issuer_id', 'exchange_date', 'document_type', 'document_series',
+        'document_correlative', 'issuer_ruc', 'issuer_business_name', 'total_amount', 'observation', 'status',
         'created_by', 'updated_by',
     ];
 
@@ -28,6 +28,7 @@ class PettyCashExpenseExchange extends Model
     }
 
     public function pettyCash() { return $this->belongsTo(PettyCashBox::class, 'petty_cash_box_id'); }
+    public function documentIssuer() { return $this->belongsTo(DocumentIssuer::class); }
     public function items() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'exchange_id'); }
     public function documents() { return $this->morphMany(Document::class, 'documentable'); }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }

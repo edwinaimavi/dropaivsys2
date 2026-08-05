@@ -24,6 +24,8 @@ $(function () {
     let imageEditorTarget = null;
     let imageEditorObjectUrl = null;
     let pendingExchangeReceipts = [];
+    let receiptIssuerLookup = null;
+    let loadedReceiptIssuerRuc = '';
     const sourceReceipts = {
         opening: { files: [], existing: [], urls: [] },
         replenishment: { files: [], existing: [], urls: [] }
@@ -121,6 +123,74 @@ $(function () {
         $('#pcre_total').text(money(total, currentBox?.currency?.symbol || ''));
         $('#pcre_supplier_warning').toggleClass('d-none', suppliers.size <= 1);
     };
+    const setReceiptIssuerSource = (source = '') => {
+        const labels = { cache: 'Historial', api: 'SUNAT/API', manual: 'Manual' };
+        $('#pcre_issuer_source').text(labels[source] || '').toggleClass('d-none', !labels[source]);
+    };
+    const resetReceiptIssuer = () => {
+        receiptIssuerLookup = null;
+        loadedReceiptIssuerRuc = '';
+        $('#pcre_document_issuer_id').val('');
+        $('#pcre_issuer_business_name').val('').prop('readonly', true).removeClass('is-valid is-invalid');
+        $('#pcre_issuer_status').text('');
+        setReceiptIssuerSource();
+    };
+    const searchReceiptIssuer = () => {
+        const ruc = String($('#pcre_issuer_ruc').val() || '').replace(/\D/g, '').slice(0, 11);
+        $('#pcre_issuer_ruc').val(ruc);
+        if (ruc.length !== 11) {
+            notify('warning', 'Ingrese un RUC válido de 11 dígitos.');
+            return;
+        }
+        if (receiptIssuerLookup || (ruc === loadedReceiptIssuerRuc && $('#pcre_issuer_business_name').val())) return;
+
+        const button = $('#pcre_search_issuer');
+        const searchUrl = window.pettyCashRoutes?.documentIssuerSearch
+            || app.attr('data-document-issuer-search-url');
+        if (!searchUrl) {
+            $('#pcre_issuer_business_name').prop('readonly', false);
+            setReceiptIssuerSource('manual');
+            notify('error', 'No se encontró la ruta para consultar el RUC. Puede ingresar la razón social manualmente.');
+            return;
+        }
+        receiptIssuerLookup = api({ url: searchUrl, method: 'GET', data: { ruc }, dataType: 'json' });
+        button.prop('disabled', true).find('span').text('Buscando...');
+        button.find('i').removeClass('fa-search').addClass('fa-spinner fa-spin');
+        $('#pcre_issuer_ruc').prop('readonly', true);
+        $('#pcre_issuer_status').removeClass('text-success text-danger').addClass('text-muted').text('Consultando información fiscal...');
+        receiptIssuerLookup.done(response => {
+            const issuer = response.data || {};
+            loadedReceiptIssuerRuc = ruc;
+            $('#pcre_document_issuer_id').val(issuer.id || '');
+            $('#pcre_issuer_business_name').val(issuer.business_name || '').prop('readonly', true).addClass('is-valid').removeClass('is-invalid');
+            setReceiptIssuerSource(response.source);
+            const origin = response.source === 'cache' ? 'Datos cargados desde el historial del sistema.' : 'Datos obtenidos desde SUNAT/API y guardados en el historial.';
+            const fiscal = [issuer.status, issuer.condition].filter(Boolean).join(' · ');
+            $('#pcre_issuer_status').removeClass('text-muted text-danger').addClass('text-success').text([origin, fiscal].filter(Boolean).join(' '));
+        }).fail(xhr => {
+            loadedReceiptIssuerRuc = ruc;
+            $('#pcre_document_issuer_id').val('');
+            $('#pcre_issuer_business_name').val('').prop('readonly', false).addClass('is-invalid').removeClass('is-valid').trigger('focus');
+            setReceiptIssuerSource('manual');
+            $('#pcre_issuer_status').removeClass('text-muted text-success').addClass('text-danger').text(errorMessage(xhr));
+        }).always(() => {
+            receiptIssuerLookup = null;
+            button.prop('disabled', false).find('span').text('Buscar');
+            button.find('i').removeClass('fa-spinner fa-spin').addClass('fa-search');
+            $('#pcre_issuer_ruc').prop('readonly', false);
+        });
+    };
+    // Delegados para que funcionen aunque Bootstrap reconstruya o inserte el modal después.
+    $(document).on('click.pettyCashIssuer', '#pcre_search_issuer', function (event) {
+        event.preventDefault();
+        searchReceiptIssuer();
+    });
+    $(document).on('keydown.pettyCashIssuer', '#pcre_issuer_ruc', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            searchReceiptIssuer();
+        }
+    });
 
     const initializeDetailTooltips = () => {
         const tooltips = $('#viewPettyCashModal [data-toggle="tooltip"]');
@@ -1151,7 +1221,8 @@ $(function () {
         $('#pcv_exchange_history').html(exchanges.map(exchange => {
             const exchangeDocs = (exchange.documents || []).map(doc => `<a target="_blank" href="${doc.view_url}" class="petty-document-btn"><i class="fas fa-paperclip"></i></a>`).join('') || '<span class="petty-no-document">Sin archivo</span>';
             const receipts = (exchange.items || []).map(item => `<li>${escapeHtml(item.receipt_type || 'RECIBO')} ${escapeHtml([item.receipt_series, item.receipt_correlative].filter(Boolean).join('-'))} · ${escapeHtml(item.expense?.supplier_name || '')} · ${money(item.amount, symbol)}</li>`).join('');
-            return `<article class="petty-exchange-history-item"><div><small>${date(exchange.exchange_date)}</small><strong>${escapeHtml(exchange.document_type)} ${escapeHtml(exchange.document_full_number)}</strong><span>${money(exchange.total_amount, symbol)}</span></div><ul>${receipts}</ul><div>${exchangeDocs}<small>${escapeHtml(userName(exchange.creator))}</small></div></article>`;
+            const issuer = exchange.issuer_ruc ? `<small>RUC ${escapeHtml(exchange.issuer_ruc)}</small><strong>${escapeHtml(exchange.issuer_business_name || '-')}</strong>` : '<small>Emisor no registrado</small>';
+            return `<article class="petty-exchange-history-item"><div><small>${date(exchange.exchange_date)}</small><strong>${escapeHtml(exchange.document_type)} ${escapeHtml(exchange.document_full_number)}</strong>${issuer}<span>${money(exchange.total_amount, symbol)}</span></div><ul>${receipts}</ul><div>${exchangeDocs}<small>${escapeHtml(userName(exchange.creator))}</small></div></article>`;
         }).join(''));
         $('#pcv_audit_info').html([
             ['Creado por', userName(box.creator), dateTime(box.created_at)],
@@ -1746,6 +1817,7 @@ $(function () {
             }
             receiptExchangeFiles = [];
             $('#pettyCashReceiptExchangeForm')[0].reset();
+            resetReceiptIssuer();
             renderReceiptExchangeFiles();
             $('#pcre_box_id').val(boxId);
             $('#pcre_date').val(new Date().toISOString().slice(0, 10));
@@ -1766,6 +1838,12 @@ $(function () {
     });
 
     $(document).on('change', '.pcre-receipt', updateReceiptExchangeSelection);
+    $('#pcre_issuer_ruc').on('input', function () {
+        const clean = String(this.value || '').replace(/\D/g, '').slice(0, 11);
+        if (this.value !== clean) this.value = clean;
+        if (clean !== loadedReceiptIssuerRuc) resetReceiptIssuer();
+    });
+    $('#pcre_issuer_business_name').on('input', function () { if (!this.readOnly) setReceiptIssuerSource('manual'); });
     $('#pcre_documents').on('change', function () {
         Array.from(this.files).forEach(file => {
             const extension = file.name.split('.').pop().toLowerCase();

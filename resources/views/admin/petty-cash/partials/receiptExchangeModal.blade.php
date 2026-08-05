@@ -3,6 +3,7 @@
         <div class="modal-content">
             <form id="pettyCashReceiptExchangeForm" enctype="multipart/form-data">
                 <input type="hidden" id="pcre_box_id">
+                <input type="hidden" name="document_issuer_id" id="pcre_document_issuer_id">
                 <div class="modal-header petty-detail-header">
                     <div class="d-flex align-items-center">
                         <span class="petty-detail-header-icon"><i class="fas fa-exchange-alt"></i></span>
@@ -19,12 +20,29 @@
                                 <tbody id="pcre_receipts"></tbody>
                             </table>
                         </div>
-                        <div id="pcre_supplier_warning" class="alert alert-warning d-none mt-2 mb-0">Está seleccionando recibos de diferentes proveedores.</div>
+                        <div id="pcre_supplier_warning" class="alert alert-warning d-none mt-2 mb-0" role="status">
+                            <i class="fas fa-info-circle mr-1" aria-hidden="true"></i>
+                            Ha seleccionado recibos de diferentes proveedores. El canje se registrar&aacute; de forma conjunta y cada recibo conservar&aacute; su proveedor original.
+                        </div>
                     </section>
                     <div class="row">
                         <div class="col-lg-8">
                             <section class="petty-detail-card h-100">
-                                <div class="petty-detail-card-title"><div><span><i class="fas fa-file-invoice"></i></span><div><h6>Comprobante real</h6><small>Documento que reemplaza los recibos seleccionados</small></div></div></div>
+                                <div class="petty-detail-card-title"><div><span><i class="fas fa-file-invoice"></i></span><div><h6>Datos del comprobante real</h6><small>Ingrese el RUC de quien emite la factura o boleta que reemplaza los recibos.</small></div></div></div>
+                                <div class="form-row align-items-end">
+                                    <div class="form-group col-md-4">
+                                        <label>RUC emisor *</label>
+                                        <div class="input-group">
+                                            <input type="text" inputmode="numeric" name="issuer_ruc" id="pcre_issuer_ruc" class="form-control" maxlength="11" pattern="[0-9]{11}" required placeholder="11 dígitos">
+                                            <div class="input-group-append"><button type="button" id="pcre_search_issuer" class="btn btn-outline-success"><i class="fas fa-search mr-1"></i><span>Buscar</span></button></div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group col-md-8">
+                                        <label>Razón social emisor * <span id="pcre_issuer_source" class="badge badge-light border d-none ml-1"></span></label>
+                                        <input type="text" name="issuer_business_name" id="pcre_issuer_business_name" class="form-control text-uppercase" maxlength="255" required readonly placeholder="Busque el RUC para completar los datos">
+                                        <small id="pcre_issuer_status" class="form-text text-muted"></small>
+                                    </div>
+                                </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-3"><label>Fecha de canje *</label><input type="date" name="exchange_date" id="pcre_date" class="form-control" required></div>
                                     <div class="form-group col-md-3"><label>Tipo *</label><select name="document_type" class="form-control" required><option value="">Seleccione</option><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option></select></div>

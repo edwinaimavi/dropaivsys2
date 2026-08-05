@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\DocumentType;
+use App\Models\DocumentIssuer;
 use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
@@ -14,14 +15,56 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\DocumentLookupService;
 
 class PettyCashExpenseExchangeController extends Controller
 {
     public function __construct()
     {
         $this->middleware('can:admin.petty-cash.receipt-exchanges.index')->only('pending');
-        $this->middleware('can:admin.petty-cash.receipt-exchanges.store')->only('store');
+        $this->middleware('can:admin.petty-cash.receipt-exchanges.store')->only(['store', 'searchIssuer']);
         $this->middleware('can:admin.petty-cash.receipt-exchanges.show')->only('show');
+    }
+
+    public function searchIssuer(Request $request, DocumentLookupService $documentLookup)
+    {
+        $validated = $request->validate(['ruc' => ['required', 'regex:/^\d{11}$/']]);
+        $ruc = $validated['ruc'];
+
+        $issuer = DocumentIssuer::where('ruc', $ruc)->first();
+        if ($issuer) {
+            return response()->json([
+                'status' => 'success', 'source' => 'cache', 'data' => $issuer,
+                'message' => 'Datos cargados desde historial.',
+            ]);
+        }
+
+        $lookup = $documentLookup->searchRuc($ruc);
+        if (!($lookup['success'] ?? false)) {
+            return response()->json([
+                'status' => ($lookup['code'] ?? '') === 'RUC_NOT_FOUND' ? 'not_found' : 'error',
+                'message' => $lookup['message'] ?? 'No se pudo consultar el RUC. Puede ingresar la razón social manualmente.',
+            ], 422);
+        }
+
+        $issuer = DocumentIssuer::create([
+            'ruc' => $ruc,
+            'business_name' => mb_strtoupper($lookup['business_name']),
+            'trade_name' => $lookup['commercial_name'] ?: null,
+            'address' => $lookup['address'] ?: null,
+            'status' => $lookup['status_text'] ?: null,
+            'condition' => $lookup['condition'] ?: null,
+            'source' => 'api',
+            'api_response' => $lookup['raw'] ?? $lookup['data'] ?? null,
+            'last_lookup_at' => now(),
+            'created_by' => Auth::id(),
+            'updated_by' => Auth::id(),
+        ]);
+
+        return response()->json([
+            'status' => 'success', 'source' => 'api', 'data' => $issuer,
+            'message' => 'Datos consultados correctamente.',
+        ]);
     }
 
     public function pending(PettyCashBox $pettyCash)
@@ -46,6 +89,9 @@ class PettyCashExpenseExchangeController extends Controller
             'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA'])],
             'document_series' => ['required', 'string', 'max:20'],
             'document_correlative' => ['required', 'string', 'max:50'],
+            'issuer_ruc' => ['required', 'regex:/^\d{11}$/'],
+            'issuer_business_name' => ['required', 'string', 'max:255'],
+            'document_issuer_id' => ['nullable', 'integer', 'exists:document_issuers,id'],
             'expense_ids' => ['required', 'array', 'min:1'],
             'expense_ids.*' => ['required', 'integer', 'distinct', 'exists:petty_cash_expenses,id'],
             'observation' => ['nullable', 'string', 'max:1000'],
@@ -54,6 +100,9 @@ class PettyCashExpenseExchangeController extends Controller
         ], [
             'expense_ids.required' => 'Seleccione al menos un recibo para canjear.',
             'expense_ids.min' => 'Seleccione al menos un recibo para canjear.',
+            'issuer_ruc.required' => 'Ingrese el RUC del emisor del comprobante real.',
+            'issuer_ruc.regex' => 'El RUC del emisor debe tener 11 dígitos.',
+            'issuer_business_name.required' => 'Busque o ingrese la razón social del emisor.',
         ]);
 
         $files = (array) $request->file('documents', []);
@@ -91,11 +140,25 @@ class PettyCashExpenseExchangeController extends Controller
                     ]);
                 }
 
+                $issuer = DocumentIssuer::firstOrNew(['ruc' => $validated['issuer_ruc']]);
+                if (!$issuer->exists) {
+                    $issuer->fill([
+                        'business_name' => mb_strtoupper(trim($validated['issuer_business_name'])),
+                        'source' => 'manual',
+                        'created_by' => Auth::id(),
+                    ]);
+                }
+                $issuer->updated_by = Auth::id();
+                $issuer->save();
+
                 $exchange = $box->expenseExchanges()->create([
+                    'document_issuer_id' => $issuer->id,
                     'exchange_date' => $validated['exchange_date'],
                     'document_type' => $validated['document_type'],
                     'document_series' => mb_strtoupper(trim($validated['document_series'])),
                     'document_correlative' => mb_strtoupper(trim($validated['document_correlative'])),
+                    'issuer_ruc' => $validated['issuer_ruc'],
+                    'issuer_business_name' => mb_strtoupper(trim($validated['issuer_business_name'])),
                     'total_amount' => round((float) $expenses->sum('amount'), 2),
                     'observation' => $validated['observation'] ?? null,
                     'status' => PettyCashExpenseExchange::STATUS_ACTIVE,
@@ -156,7 +219,7 @@ class PettyCashExpenseExchangeController extends Controller
 
     public function show(PettyCashExpenseExchange $exchange)
     {
-        $exchange->load(['items.expense', 'documents', 'creator:id,name,lastname']);
+        $exchange->load(['documentIssuer', 'items.expense', 'documents', 'creator:id,name,lastname']);
         $exchange->documents->each(fn (Document $document) => $document->setAttribute(
             'view_url',
             route('admin.petty-cash.documents.view', $document)

@@ -58,6 +58,7 @@
     data-approved-amount-update-url="{{ route('admin.petty-cash.approved-amount.update') }}"
     @endcan
     data-ruc-url="{{ url('admin/document-lookup/ruc') }}"
+    data-document-issuer-search-url="{{ route('admin.petty-cash.document-issuer.search') }}"
     data-expense-document-check-url="{{ route('admin.petty-cash.expenses.check-document') }}"
     data-expense-detail-base-url="{{ url('admin/petty-cash/expenses') }}"
     data-dni-url="{{ route('admin.document-lookup.dni', 'DNI_PLACEHOLDER') }}"
@@ -647,7 +648,8 @@
 <script>
 window.pettyCashRoutes = {
     list: @json(route('admin.petty-cash.list')),
-    base: @json(url('admin/petty-cash'))
+    base: @json(url('admin/petty-cash')),
+    documentIssuerSearch: @json(route('admin.petty-cash.document-issuer.search'))
 };
 </script>
 @vite(['resources/js/pages/petty-cash.js'])
