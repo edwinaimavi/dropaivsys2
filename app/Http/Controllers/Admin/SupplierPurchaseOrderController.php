@@ -178,9 +178,11 @@ class SupplierPurchaseOrderController extends Controller
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
                 'customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
+                'customerPurchaseOrder.customerBranch:id,branch_name',
                 'customerPurchaseOrder.company:id,business_name,trade_name',
                 'customerPurchaseOrder.currency:id,code,symbol',
                 'customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
+                'customerPurchaseOrders.customerBranch:id,branch_name',
                 'customerPurchaseOrders.company:id,business_name,trade_name',
                 'customerPurchaseOrders.currency:id,code,symbol',
                 'documents' => function ($query) {
@@ -189,6 +191,7 @@ class SupplierPurchaseOrderController extends Controller
                         ->orderByDesc('id');
                 },
             ])
+            ->orderByDesc('updated_at')
             ->orderByDesc('id');
 
         return DataTables::of($orders)
@@ -210,11 +213,7 @@ class SupplierPurchaseOrderController extends Controller
                 );
             })
             ->addColumn('customer_order', function (SupplierPurchaseOrder $order) {
-                $customerOrders = $order->customerPurchaseOrders;
-
-                if ($customerOrders->isEmpty() && $order->customerPurchaseOrder) {
-                    $customerOrders = collect([$order->customerPurchaseOrder]);
-                }
+                $customerOrders = $this->customerOrdersForSupplierOrder($order);
 
                 if ($customerOrders->isEmpty()) {
                     return '<span class="badge badge-light text-muted border">Sin OC cliente</span>';
@@ -227,14 +226,44 @@ class SupplierPurchaseOrderController extends Controller
                         ?? $customer?->full_name
                         ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
                         ?: 'Sin cliente';
+                    $branchName = $customerOrder->customerBranch?->branch_name ?: 'Sin sede registrada';
 
                     return sprintf(
-                        '<div class="customer-order-cell"><span class="customer-order-number">%s</span><small>%s</small></div>',
+                        '<div class="customer-order-cell"><span class="customer-order-number">%s</span><small class="customer-order-client">%s</small><small class="customer-order-branch">%s</small></div>',
                         e($number),
-                        e($customerName)
+                        e($customerName),
+                        e($branchName)
                     );
                 })->implode('');
             })
+            ->addColumn('customer_order_group_key', function (SupplierPurchaseOrder $order) {
+                return (string) ($this->customerOrdersForSupplierOrder($order)->first()?->id ?? 'direct-purchases');
+            })
+            ->addColumn('customer_order_number', function (SupplierPurchaseOrder $order) {
+                $customerOrder = $this->customerOrdersForSupplierOrder($order)->first();
+
+                return $customerOrder?->purchase_order_number ?: $customerOrder?->code ?: 'Compras directas / Sin OC Cliente';
+            })
+            ->addColumn('customer_order_client', function (SupplierPurchaseOrder $order) {
+                $customer = $this->customerOrdersForSupplierOrder($order)->first()?->customer;
+
+                return $customer?->business_name
+                    ?? $customer?->full_name
+                    ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                    ?: 'Sin cliente relacionado';
+            })
+            ->addColumn('customer_order_branch', function (SupplierPurchaseOrder $order) {
+                $customerOrder = $this->customerOrdersForSupplierOrder($order)->first();
+
+                return $customerOrder
+                    ? ($customerOrder->customerBranch?->branch_name ?: 'Sin sede registrada')
+                    : 'Sin OC Cliente vinculada';
+            })
+            ->addColumn('grand_total_value', fn (SupplierPurchaseOrder $order) => (float) $order->grand_total)
+            ->addColumn('supplier_id_value', fn (SupplierPurchaseOrder $order) => $order->supplier_id)
+            ->addColumn('status_code', fn (SupplierPurchaseOrder $order) => strtolower((string) $order->status))
+            ->addColumn('group_date', fn (SupplierPurchaseOrder $order) =>
+                $order->updated_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('supplier_name', function (SupplierPurchaseOrder $order) {
                 return $order->supplier?->business_name
                     ?? $order->supplier?->short_name
@@ -316,8 +345,54 @@ class SupplierPurchaseOrderController extends Controller
                         });
                 });
             })
+            ->filterColumn('supplier_name', function ($query, $keyword) {
+                $query->whereHas('supplier', function ($supplierQuery) use ($keyword) {
+                    $supplierQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('short_name', 'like', "%{$keyword}%")
+                        ->orWhere('ruc', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('company', function ($query, $keyword) {
+                $query->whereHas('company', function ($companyQuery) use ($keyword) {
+                    $companyQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('trade_name', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('status', function ($query, $keyword) {
+                $normalized = strtolower(trim($keyword));
+                $aliases = [
+                    'registrada' => self::STATUS_REGISTERED,
+                    'registrado' => self::STATUS_REGISTERED,
+                    'enviada' => self::STATUS_SENT,
+                    'enviado' => self::STATUS_SENT,
+                    'aprobada' => self::STATUS_APPROVED,
+                    'aprobado' => self::STATUS_APPROVED,
+                    'recibida' => self::STATUS_RECEIVED,
+                    'recibido' => self::STATUS_RECEIVED,
+                    'ingreso parcial' => self::STATUS_PARTIAL_ENTERED,
+                    'ingresada' => self::STATUS_ENTERED,
+                    'ingresado' => self::STATUS_ENTERED,
+                    'anulada' => self::STATUS_CANCELLED,
+                    'anulado' => self::STATUS_CANCELLED,
+                    'facturada' => self::STATUS_INVOICED,
+                    'facturado' => self::STATUS_INVOICED,
+                ];
+
+                $query->where('status', 'like', '%' . ($aliases[$normalized] ?? $keyword) . '%');
+            })
             ->rawColumns(['code', 'customer_order', 'grand_total', 'status', 'acciones'])
             ->make(true);
+    }
+
+    private function customerOrdersForSupplierOrder(SupplierPurchaseOrder $order)
+    {
+        $customerOrders = $order->customerPurchaseOrders;
+
+        if ($customerOrders->isEmpty() && $order->customerPurchaseOrder) {
+            $customerOrders = collect([$order->customerPurchaseOrder]);
+        }
+
+        return $customerOrders->unique('id')->sortBy('id')->values();
     }
 
     private function generatedPdfUrl(SupplierPurchaseOrder $order): ?string
@@ -344,6 +419,9 @@ class SupplierPurchaseOrderController extends Controller
                         ->orWhere('full_name', 'like', "%{$keyword}%")
                         ->orWhere('first_name', 'like', "%{$keyword}%")
                         ->orWhere('last_name', 'like', "%{$keyword}%");
+                })
+                ->orWhereHas('customerBranch', function ($branchQuery) use ($keyword) {
+                    $branchQuery->where('branch_name', 'like', "%{$keyword}%");
                 });
         });
     }

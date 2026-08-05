@@ -3,6 +3,7 @@ let supplierOrderDocumentIndex = 0;
 let supplierOrderItemIndex = 0;
 let supplierOrderSourceLoadRequest = null;
 let supplierOrderSourceLoadTimer = null;
+const supplierOrderExpandedGroups = new Set();
 const defaultSupplierOrderImportantNote = `ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTICA@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:
 1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE
 2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE
@@ -23,6 +24,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     initSupplierOrderSelect2($('#supplierPurchaseOrderModal'));
     initSupplierPurchaseOrderTable();
+
+    $(document).on('click', '.supplier-order-group-toggle', function () {
+        toggleSupplierOrderCustomerGroup($(this).closest('.supplier-order-accordion').attr('data-group-key'));
+    });
 
     $(document).on('click', '#btnCreateSupplierPurchaseOrder', function () {
         resetSupplierPurchaseOrderForm();
@@ -238,9 +243,10 @@ function initSupplierPurchaseOrderTable() {
                     const container = $('<div>').html(data || '');
                     const labels = container.find('.customer-order-cell').map(function () {
                         const number = $(this).find('.customer-order-number').text().trim();
-                        const customer = $(this).find('small').text().trim();
+                        const customer = $(this).find('.customer-order-client').text().trim();
+                        const branch = $(this).find('.customer-order-branch').text().trim();
 
-                        return [number, customer].filter(Boolean).join(' | ');
+                        return [number, customer, branch].filter(Boolean).join(' | ');
                     }).get();
 
                     return labels.length
@@ -288,6 +294,7 @@ function initSupplierPurchaseOrderTable() {
         ],
         responsive: true,
         autoWidth: false,
+        order: [],
         language: {
             url: '/vendor/datatables/js/i18n/es-ES.json',
             search: 'Buscar:',
@@ -335,6 +342,7 @@ function initSupplierPurchaseOrderTable() {
             }
         ],
         drawCallback: function () {
+            renderSupplierOrderCustomerGroups(this.api());
             $('[data-toggle="tooltip"]').tooltip();
         },
         initComplete: function () {
@@ -348,6 +356,138 @@ function initSupplierPurchaseOrderTable() {
             }
         }
     });
+}
+
+function renderSupplierOrderCustomerGroups(table) {
+    const rows = table.rows({ page: 'current' });
+    const data = rows.data().toArray();
+    const nodes = rows.nodes().toArray();
+    const groups = {};
+    const groupOrder = [];
+
+    data.forEach(function (order) {
+        const key = String(order.customer_order_group_key || 'direct-purchases');
+        if (!groups[key]) {
+            groupOrder.push(key);
+            groups[key] = {
+                purchases: 0,
+                providers: new Set(),
+                totals: new Map(),
+                number: order.customer_order_number || 'Compras directas / Sin OC Cliente',
+                client: order.customer_order_client || 'Sin cliente relacionado',
+                branch: order.customer_order_branch || 'Sin OC Cliente vinculada',
+                lastDate: order.group_date || order.created_at || '-',
+                statuses: new Set(),
+                items: []
+            };
+        }
+
+        const group = groups[key];
+        const currency = String(order.currency || '-');
+        group.purchases += 1;
+        if (order.supplier_id_value) group.providers.add(String(order.supplier_id_value));
+        group.totals.set(currency, (group.totals.get(currency) || 0) + Number(order.grand_total_value || 0));
+        group.statuses.add(String(order.status_code || '').toLowerCase());
+        group.items.push(order);
+    });
+
+    const colspan = table.columns(':visible').count();
+    const searchActive = String(table.search() || '').trim() !== '';
+    $(nodes).addClass('supplier-order-source-row');
+
+    groupOrder.forEach(function (key) {
+        const group = groups[key];
+        const firstIndex = data.findIndex(order => String(order.customer_order_group_key || 'direct-purchases') === key);
+        const isExpanded = searchActive || supplierOrderExpandedGroups.has(key);
+        const purchaseLabel = group.purchases === 1 ? 'compra' : 'compras';
+        const providerLabel = group.providers.size === 1 ? 'proveedor' : 'proveedores';
+        const groupStatus = supplierOrderGroupStatus(group.statuses);
+        const totals = Array.from(group.totals.entries())
+            .map(([currency, total]) => `${escapeSupplierOrderHtml(currency)} ${formatSupplierOrderMoney(total)}`)
+            .join(' / ');
+        const supplierRows = group.items.map(order => {
+            const supplier = order.supplier_has_quotation && order.supplier_quotation_url
+                ? `<a href="${escapeSupplierOrderHtml(order.supplier_quotation_url)}" target="_blank" rel="noopener" class="supplier-provider-quote-link"><i class="far fa-file-pdf mr-1"></i>${escapeSupplierOrderHtml(order.supplier_name || '-')}</a>`
+                : escapeSupplierOrderHtml(order.supplier_name || '-');
+
+            return `<tr>
+                <td>${order.code || '-'}</td>
+                <td>${supplier}</td>
+                <td>${escapeSupplierOrderHtml(order.company || '-')}</td>
+                <td>${escapeSupplierOrderHtml(order.currency || '-')}</td>
+                <td class="text-right font-weight-bold">${order.grand_total || '-'}</td>
+                <td>${order.status || '-'}</td>
+                <td>${escapeSupplierOrderHtml(order.created_at || '-')}</td>
+                <td class="supplier-order-group-actions">${order.acciones || '-'}</td>
+            </tr>`;
+        }).join('');
+
+        const groupRow = `<tr class="supplier-order-accordion-row"><td colspan="${colspan}">
+            <section class="supplier-order-accordion supplier-order-group--${groupStatus.code}${isExpanded ? ' is-open' : ''}" data-group-key="${escapeSupplierOrderHtml(key)}">
+                <div class="supplier-order-group-header">
+                    <div class="supplier-order-group-identity">
+                        <span class="supplier-order-group-icon"><i class="fas fa-file-invoice"></i></span>
+                        <div><small>OC Cliente</small><strong>${escapeSupplierOrderHtml(group.number)}</strong><span>${escapeSupplierOrderHtml(group.client)}</span></div>
+                    </div>
+                    <div class="supplier-order-group-branch">
+                        <small>Sucursal / Sede</small>
+                        <span><i class="fas fa-map-marker-alt"></i>${escapeSupplierOrderHtml(group.branch)}</span>
+                    </div>
+                    <div class="supplier-order-group-metrics">
+                        <span class="supplier-order-group-status"><i class="${groupStatus.icon}"></i>${groupStatus.label}</span>
+                        <span><i class="fas fa-shopping-cart"></i>${group.purchases} ${purchaseLabel}</span>
+                        <span><i class="fas fa-truck"></i>${group.providers.size} ${providerLabel}</span>
+                        <span class="supplier-order-group-total"><i class="fas fa-coins"></i>${totals}</span>
+                        <span><i class="far fa-calendar-alt"></i>&Uacute;ltimo: ${escapeSupplierOrderHtml(String(group.lastDate).split(' ')[0])}</span>
+                        <button type="button" class="supplier-order-group-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}">
+                            <span>${isExpanded ? 'Ocultar compras' : 'Ver compras'}</span><i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="supplier-order-group-body"${isExpanded ? '' : ' style="display:none"'}>
+                    <div class="supplier-order-group-table-wrap"><table class="supplier-order-group-table">
+                        <thead><tr><th>C&oacute;digo OC proveedor</th><th>Proveedor</th><th>Empresa</th><th>Moneda</th><th>Total</th><th>Estado</th><th>Fecha registro</th><th>Acciones</th></tr></thead>
+                        <tbody>${supplierRows}</tbody>
+                    </table></div>
+                </div>
+            </section>
+        </td></tr>`;
+
+        $(nodes[firstIndex]).before(groupRow);
+    });
+}
+
+function supplierOrderGroupStatus(statuses) {
+    const values = Array.from(statuses).filter(Boolean);
+
+    if (values.length === 1 && values[0] === 'registered') {
+        return { code: 'registered', label: 'Registrado', icon: 'fas fa-clipboard-check' };
+    }
+    if (values.length === 1 && values[0] === 'entered') {
+        return { code: 'entered', label: 'Ingresado', icon: 'fas fa-check-circle' };
+    }
+    if (values.length === 1 && values[0] === 'cancelled') {
+        return { code: 'cancelled', label: 'Cancelado', icon: 'fas fa-ban' };
+    }
+
+    return { code: 'mixed', label: 'Mixto', icon: 'fas fa-adjust' };
+}
+
+function toggleSupplierOrderCustomerGroup(key) {
+    const group = $('.supplier-order-accordion').filter(function () {
+        return $(this).attr('data-group-key') === String(key);
+    }).first();
+    if (!group.length) return;
+
+    const opening = !group.hasClass('is-open');
+    group.toggleClass('is-open', opening);
+    group.find('.supplier-order-group-body').stop(true, true).slideToggle(160);
+    group.find('.supplier-order-group-toggle').attr('aria-expanded', opening ? 'true' : 'false')
+        .find('span').text(opening ? 'Ocultar compras' : 'Ver compras');
+    group.find('.supplier-order-group-toggle i').toggleClass('fa-chevron-up', opening).toggleClass('fa-chevron-down', !opening);
+
+    if (opening) supplierOrderExpandedGroups.add(String(key));
+    else supplierOrderExpandedGroups.delete(String(key));
 }
 
 function initSupplierOrderSelect2(scope) {
