@@ -61,17 +61,18 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="attention_file">CARGO / SUSTENTO</label>
+                        <label for="attention_file">DOCUMENTO DE CIERRE <span class="text-danger">*</span></label>
                         <div id="attentionFileDropzone" class="attention-file-dropzone" tabindex="0">
                             <input type="file" id="attention_file" name="file" class="d-none"
-                                accept=".pdf,.jpg,.jpeg,.png">
+                                accept=".pdf,.jpg,.jpeg,.png" required>
                             <label for="attention_file" class="mb-0 w-100">
                                 <i class="fas fa-cloud-upload-alt"></i>
-                                <strong>Selecciona o arrastra el cargo de atención</strong>
+                                <strong>Selecciona o arrastra el documento de cierre</strong>
                                 <span id="attentionFileName">Ningún archivo seleccionado</span>
                                 <small>PDF o imagen hasta 10 MB</small>
                             </label>
                         </div>
+                        <small class="form-text text-muted">Obligatorio para confirmar el cierre de atención.</small>
                         <span class="invalid-feedback"></span>
                     </div>
                     <div class="form-group mb-0">

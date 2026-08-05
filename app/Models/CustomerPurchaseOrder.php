@@ -27,7 +27,7 @@ class CustomerPurchaseOrder extends Model
             'received' => ['label' => 'Recibida', 'class' => 'cop-status-entered', 'icon' => 'fa-box'],
             'in_purchase', 'en_compra' => ['label' => 'En compra', 'class' => 'cop-status-in-purchase', 'icon' => 'fa-shopping-cart'],
             'partial_purchase' => ['label' => 'Compra parcial', 'class' => 'cop-status-partial-purchase', 'icon' => 'fa-cart-plus'],
-            'entered' => ['label' => 'Ingresada', 'class' => 'cop-status-entered', 'icon' => 'fa-box-open'],
+            'entered' => ['label' => 'Abastecida', 'class' => 'cop-status-entered', 'icon' => 'fa-warehouse'],
             'partial_entered' => ['label' => 'Ingreso parcial', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-box'],
             'attended' => ['label' => 'Atendida', 'class' => 'cop-status-attended', 'icon' => 'fa-check'],
             'not_attended' => ['label' => 'No atendida', 'class' => 'cop-status-not-attended', 'icon' => 'fa-times'],
@@ -252,17 +252,27 @@ class CustomerPurchaseOrder extends Model
         $status = self::supplyStatusFromQuantities(
             $requestedByItem->all(),
             $purchasedByItem->all(),
-            $enteredByItem->all()
+            $enteredByItem->all(),
+            filled($this->attention_document_path)
         );
 
         return $this->applySupplyStatus($status);
     }
 
-    public static function supplyStatusFromQuantities(array $requested, array $purchased, array $entered): string
+    public static function supplyStatusFromQuantities(
+        array $requested,
+        array $purchased,
+        array $entered,
+        bool $hasAttentionClosureDocument = false
+    ): string
     {
         $allEntered = collect($requested)->every(fn ($quantity, $itemId) =>
             round((float) ($entered[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
-        if ($allEntered) return self::STATUS_ATTENDED;
+        if ($allEntered) {
+            return $hasAttentionClosureDocument
+                ? self::STATUS_ATTENDED
+                : self::STATUS_ENTERED;
+        }
 
         if (round((float) collect($entered)->sum(), 2) > 0) return self::STATUS_PARTIAL_ENTERED;
 

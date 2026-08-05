@@ -842,11 +842,12 @@ class CustomerPurchaseOrderController extends Controller
                 'nullable',
                 'string',
             ],
-            'file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ], [
             'result.required' => 'Seleccione el resultado de atención.',
             'closed_at.required' => 'La fecha de cierre es obligatoria.',
             'observation.required' => 'Debe ingresar el motivo por el cual no se pudo atender la orden.',
+            'file.required' => 'Para cerrar la atención debes adjuntar el documento correspondiente.',
             'file.mimes' => 'El sustento debe ser PDF, JPG, JPEG o PNG.',
             'file.max' => 'El sustento no debe superar los 10 MB.',
         ]);
@@ -875,7 +876,7 @@ class CustomerPurchaseOrderController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                if (! in_array($order->status, [self::STATUS_ENTERED, self::STATUS_ATTENDED], true)) {
+                if ($order->status !== self::STATUS_ENTERED) {
                     throw ValidationException::withMessages([
                         'status' => 'Solo se puede cerrar la atención de una orden abastecida.',
                     ]);

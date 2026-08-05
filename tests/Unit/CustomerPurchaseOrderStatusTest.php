@@ -9,7 +9,7 @@ it('presenta los estados de rentabilidad en español sin exponer códigos intern
     ['in_purchase', 'En compra'],
     ['partial_purchase', 'Compra parcial'],
     ['partial_entered', 'Ingreso parcial'],
-    ['entered', 'Ingresada'],
+    ['entered', 'Abastecida'],
     ['attended', 'Atendida'],
     ['cancelled', 'Anulada'],
     ['completed', 'Completada'],
@@ -68,5 +68,16 @@ it('prioritizes warehouse entry progress over purchase progress', function () {
             [1 => 50, 2 => 3],
             [1 => 50, 2 => 3],
             [1 => 50, 2 => 3]
-        ))->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
+        ))->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+});
+
+it('only marks a fully supplied order as attended when it has a closure document', function () {
+    $requested = [1 => 10, 2 => 5];
+    $purchased = [1 => 10, 2 => 5];
+    $entered = [1 => 10, 2 => 5];
+
+    expect(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered))
+        ->toBe(CustomerPurchaseOrder::STATUS_ENTERED)
+        ->and(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered, true))
+        ->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
 });
