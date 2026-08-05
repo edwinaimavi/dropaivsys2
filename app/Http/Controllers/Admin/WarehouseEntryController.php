@@ -148,7 +148,9 @@ class WarehouseEntryController extends Controller
                 'currency:id,code,symbol,description',
                 'supplierPurchaseOrder:id,code,customer_purchase_order_id',
                 'supplierPurchaseOrder.customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
+                'supplierPurchaseOrder.customerPurchaseOrder.customerBranch:id,branch_name',
                 'supplierPurchaseOrder.customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
+                'supplierPurchaseOrder.customerPurchaseOrders.customerBranch:id,branch_name',
                 'warehouse:id,code,name,description',
                 'documents' => function ($query) {
                     $query->where('observation', self::PDF_OBSERVATION)
@@ -178,11 +180,13 @@ class WarehouseEntryController extends Controller
                         ?? $customer?->full_name
                         ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
                         ?: 'Sin cliente';
+                    $branchName = $customerOrder->customerBranch?->branch_name ?: 'Sin sede registrada';
 
                     return sprintf(
-                        '<div class="warehouse-customer-order"><span>%s</span><small>%s</small></div>',
+                        '<div class="warehouse-customer-order"><span>%s</span><small>%s</small><small class="warehouse-customer-order-branch">%s</small></div>',
                         e($number),
-                        e($customerName)
+                        e($customerName),
+                        e($branchName)
                     );
                 })->implode('');
             })
@@ -201,6 +205,10 @@ class WarehouseEntryController extends Controller
                     ?? $customer?->full_name
                     ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
                     ?: 'Sin cliente relacionado';
+            })
+            ->addColumn('customer_order_branch', function (WarehouseEntry $entry) {
+                return $this->customerOrdersForWarehouseEntry($entry)->first()?->customerBranch?->branch_name
+                    ?: 'Sin sede registrada';
             })
             ->addColumn('grand_total_value', fn (WarehouseEntry $entry) => (float) $entry->grand_total)
             ->addColumn('supplier', fn (WarehouseEntry $entry) =>
@@ -329,6 +337,9 @@ class WarehouseEntryController extends Controller
                         ->orWhere('full_name', 'like', "%{$keyword}%")
                         ->orWhere('first_name', 'like', "%{$keyword}%")
                         ->orWhere('last_name', 'like', "%{$keyword}%");
+                })
+                ->orWhereHas('customerBranch', function ($branchQuery) use ($keyword) {
+                    $branchQuery->where('branch_name', 'like', "%{$keyword}%");
                 });
         });
     }

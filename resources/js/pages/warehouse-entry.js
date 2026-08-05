@@ -326,7 +326,11 @@ function initWarehouseEntryTable() {
 
                     const container = $('<div>').html(data || '');
                     const labels = container.find('.warehouse-customer-order').map(function () {
-                        return [$(this).find('span').text().trim(), $(this).find('small').text().trim()]
+                        return [
+                            $(this).find('span').first().text().trim(),
+                            $(this).find('small').not('.warehouse-customer-order-branch').first().text().trim(),
+                            $(this).find('.warehouse-customer-order-branch').text().trim()
+                        ]
                             .filter(Boolean)
                             .join(' - ');
                     }).get();
@@ -390,6 +394,7 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
             currency: entry.currency || '',
             number: entry.customer_order_number || 'Sin OC Cliente',
             client: entry.customer_order_client || 'Sin cliente relacionado',
+            branch: entry.customer_order_branch || 'Sin sede registrada',
             lastEntry: entry.created_at || '-',
             items: []
         };
@@ -432,7 +437,15 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
                     <div class="warehouse-entry-group-header">
                         <div class="warehouse-entry-group-identity">
                             <span class="warehouse-entry-group-icon"><i class="fas fa-file-invoice"></i></span>
-                            <div><small>OC Cliente</small><strong>${escapeWarehouseEntryHtml(group.number)}</strong><span>${escapeWarehouseEntryHtml(group.client)}</span></div>
+                            <div>
+                                <small>OC Cliente</small>
+                                <strong>${escapeWarehouseEntryHtml(group.number)}</strong>
+                                <span>${escapeWarehouseEntryHtml(group.client)}</span>
+                            </div>
+                        </div>
+                        <div class="warehouse-entry-group-branch" title="Sucursal o sede de la OC Cliente">
+                            <small>Sucursal / Sede</small>
+                            <span><i class="fas fa-map-marker-alt"></i>${escapeWarehouseEntryHtml(group.branch)}</span>
                         </div>
                         <div class="warehouse-entry-group-metrics">
                             <span><i class="fas fa-warehouse"></i>${group.entries} ${entryLabel}</span>
