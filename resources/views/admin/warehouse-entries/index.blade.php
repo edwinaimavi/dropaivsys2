@@ -581,6 +581,40 @@
         .warehouse-entry-lot-documents-empty { padding: 18px; border: 1px dashed #d7e1e0; border-radius: 9px; color: #7c8986; background: #fafcfc; text-align: center; font-size: 11px; }
         .warehouse-entry-lot-documents-empty i { display: block; margin-bottom: 5px; font-size: 20px; }
 
+        .vwe-lot-doc-accordion { overflow: hidden; margin-top: 10px; border: 1px solid #dce8e5; border-radius: 12px; background: #fff; box-shadow: 0 4px 12px rgba(37, 90, 75, .045); }
+        .vwe-lot-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 13px; background: linear-gradient(110deg, #f3f9f7, #fbfdfc); transition: background-color .18s ease; }
+        .vwe-lot-doc-accordion.is-open .vwe-lot-doc-header { background: #edf7f3; }
+        .vwe-lot-doc-identity { display: flex; min-width: 0; align-items: center; gap: 10px; text-align: left; }
+        .vwe-lot-doc-icon { display: inline-grid; flex: 0 0 35px; width: 35px; height: 35px; place-items: center; border-radius: 9px; background: #dfeee9; color: #28765e; }
+        .vwe-lot-doc-identity>div { min-width: 0; }
+        .vwe-lot-doc-identity small,
+        .vwe-lot-doc-identity strong { display: block; }
+        .vwe-lot-doc-identity small { color: #748780; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+        .vwe-lot-doc-identity strong { overflow: hidden; max-width: 650px; color: #29473d; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+        .vwe-lot-doc-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .vwe-lot-doc-meta span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #dce8e4; border-radius: 999px; background: #fff; color: #60736c; font-size: 9px; font-weight: 700; }
+        .vwe-lot-doc-meta i { color: #3b876e; font-size: 8px; }
+        .vwe-lot-doc-meta .vwe-lot-doc-count { border-color: #cde5dc; background: #eaf6f1; color: #276b55; }
+        .vwe-lot-doc-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid #4a9079; border-radius: 8px; background: #fff; color: #2b7059; font-size: 9px; font-weight: 800; cursor: pointer; transition: .18s ease; }
+        .vwe-lot-doc-toggle:hover,
+        .vwe-lot-doc-toggle:focus { outline: 0; background: #397f68; color: #fff; box-shadow: 0 3px 8px rgba(57, 127, 104, .18); }
+        .vwe-lot-doc-body { border-top: 1px solid #dce8e5; background: #fff; }
+        .vwe-lot-doc-table { min-width: 760px; }
+        .vwe-lot-doc-table th { padding: 8px 10px; border: 0; border-bottom: 1px solid #dce7e3; background: #f7faf9; color: #60736c; font-size: 9px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+        .vwe-lot-doc-table td { padding: 8px 10px; border-top: 1px solid #edf2f0; color: #495a54; font-size: 10px; vertical-align: middle; }
+        .vwe-lot-doc-type { display: inline-block; padding: 3px 7px; border-radius: 999px; background: #edf6f3; color: #326d59; font-weight: 700; white-space: nowrap; }
+        .vwe-lot-doc-file { display: inline-block; overflow: hidden; max-width: 230px; color: #50635c; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+        .vwe-lot-doc-actions { display: inline-flex; gap: 5px; white-space: nowrap; }
+        .vwe-lot-doc-actions .btn { padding: 4px 7px; font-size: 9px; }
+        .vwe-lot-doc-empty { padding: 17px; color: #7b8984; background: #fbfcfc; font-size: 10px; text-align: center; }
+
+        @media (max-width: 767.98px) {
+            .vwe-lot-doc-header { align-items: stretch; flex-direction: column; }
+            .vwe-lot-doc-identity { align-items: flex-start; }
+            .vwe-lot-doc-identity strong { max-width: calc(100vw - 150px); white-space: normal; }
+            .vwe-lot-doc-toggle { width: 100%; justify-content: center; }
+        }
+
         #warehouseEntryModal .warehouse-entry-review-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
         #warehouseEntryModal .warehouse-entry-review-grid > div { min-height: 58px; padding: 9px 11px; border: 1px solid #e4ecec; border-radius: 9px; background: #fff; }
         #warehouseEntryModal .warehouse-entry-review-grid small, #warehouseEntryModal .warehouse-entry-review-grid strong { display: block; }

@@ -46,3 +46,16 @@ it('aplica los mismos formatos seguros a documentos nuevos por lote', function (
     expect($rules['warehouse_entry_lot_documents.0.file'])
         ->toContain('nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240');
 });
+
+it('ignora metadatos de documentos existentes por lote al editar sin archivos nuevos', function () {
+    $request = Request::create('/', 'PUT', [
+        'warehouse_entry_lot_documents' => [
+            ['id' => 41, 'file' => 'warehouse_entries/8/lots/ficha.pdf', 'original_name' => 'ficha.pdf'],
+        ],
+    ]);
+
+    $rules = warehouseEntryDocumentRules($request);
+
+    expect($rules)->toBeEmpty()
+        ->and($request->input('warehouse_entry_lot_documents'))->toBeEmpty();
+});

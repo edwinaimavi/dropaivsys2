@@ -701,11 +701,11 @@ class WarehouseEntryController extends Controller
             'warehouse_id.required' => 'Debe seleccionar un almacén.',
             'warehouse_id.exists' => 'El almacén seleccionado no existe o no está activo.',
             'warehouse_entry_documents.*.file.file' => 'El comprobante adjunto debe ser un archivo válido.',
-            'warehouse_entry_documents.*.file.mimes' => 'El comprobante adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.',
-            'warehouse_entry_documents.*.file.max' => 'El comprobante adjunto no debe superar 10 MB.',
+            'warehouse_entry_documents.*.file.mimes' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
+            'warehouse_entry_documents.*.file.max' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
             'warehouse_entry_lot_documents.*.file.file' => 'El documento del lote debe ser un archivo válido.',
-            'warehouse_entry_lot_documents.*.file.mimes' => 'El documento del lote debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.',
-            'warehouse_entry_lot_documents.*.file.max' => 'El documento del lote no debe superar 10 MB.',
+            'warehouse_entry_lot_documents.*.file.mimes' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
+            'warehouse_entry_lot_documents.*.file.max' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -1651,7 +1651,7 @@ class WarehouseEntryController extends Controller
         foreach ($documentData as $index => $document) {
             $file = $documentFiles[$index]['file'] ?? null;
 
-            if (! $file) {
+            if (! $file instanceof UploadedFile) {
                 continue;
             }
 
@@ -1725,7 +1725,7 @@ class WarehouseEntryController extends Controller
             $mapKey = ($document['item_index'] ?? '') . ':' . ($document['lot_key'] ?? '');
             $lot = $lotMap[$mapKey] ?? null;
 
-            if (! $file || ! $lot || (int) $lot->warehouseEntryItem->warehouse_entry_id !== (int) $entry->id) {
+            if (! $file instanceof UploadedFile || ! $lot || (int) $lot->warehouseEntryItem->warehouse_entry_id !== (int) $entry->id) {
                 throw ValidationException::withMessages([
                     "warehouse_entry_lot_documents.$index.lot_key" => 'El lote seleccionado no existe en este ingreso.',
                 ]);

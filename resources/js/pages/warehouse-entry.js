@@ -79,6 +79,18 @@ document.addEventListener('DOMContentLoaded', function () {
         toggleWarehouseEntryCustomerOrderGroup($(this).closest('.warehouse-entry-accordion').attr('data-group-key'));
     });
 
+    $(document).on('click', '.vwe-lot-doc-toggle', function () {
+        const button = $(this);
+        const group = button.closest('.vwe-lot-doc-accordion');
+        const opening = !group.hasClass('is-open');
+
+        group.toggleClass('is-open', opening);
+        group.find('.vwe-lot-doc-body').stop(true, true).slideToggle(160);
+        button.attr('aria-expanded', opening ? 'true' : 'false');
+        button.find('.vwe-lot-doc-toggle-label').text(opening ? 'Ocultar documentos' : 'Ver documentos');
+        button.find('.vwe-lot-doc-chevron').toggleClass('fa-chevron-up', opening).toggleClass('fa-chevron-down', !opening);
+    });
+
     $(document).on('click', '#btnCreateWarehouseEntry', function () {
         resetWarehouseEntryForm();
         $('#warehouseEntryModalLabel').text('Nuevo Ingreso de Almacen');
@@ -625,6 +637,13 @@ function saveWarehouseEntry(form) {
         : window.routes.warehouseEntryStore;
     const formData = new FormData(form);
 
+    // Al editar pueden permanecer metadatos de archivos existentes en el formulario.
+    // Se reconstruyen ambas colecciones para enviar únicamente uploads nuevos.
+    Array.from(formData.keys())
+        .filter(key => key.startsWith('warehouse_entry_documents[')
+            || key.startsWith('warehouse_entry_lot_documents['))
+        .forEach(key => formData.delete(key));
+
     if (id) {
         formData.append('_method', 'PUT');
     }
@@ -707,10 +726,16 @@ function showWarehouseEntryValidationErrors(errors) {
         input.closest('.form-group, td').find('.invalid-feedback').first().text(message);
     });
 
+    const hasDocumentError = Object.keys(errors).some(name =>
+        name.startsWith('warehouse_entry_documents.')
+        || name.startsWith('warehouse_entry_lot_documents.'));
+
     Swal.fire({
         icon: 'warning',
-        title: 'Revise los datos ingresados',
-        text: messages[0] || 'Hay campos pendientes o con valores inválidos.'
+        title: hasDocumentError ? 'Revise los documentos adjuntos' : 'Revise los datos ingresados',
+        text: messages[0] || (hasDocumentError
+            ? 'No se pudo guardar el ingreso de almacén. Revise los documentos adjuntos.'
+            : 'Hay campos pendientes o con valores inválidos.')
     });
 }
 
@@ -1726,9 +1751,9 @@ function addWarehouseEntryPendingLotDocument() {
     if (!$('#warehouse_entry_lot_document_item').val()) return Swal.fire('Atención', 'Seleccione el artículo.', 'warning');
     if (!$('#warehouse_entry_lot_document_lot').val() || !context) return Swal.fire('Atención', 'Seleccione el lote.', 'warning');
     if (!type) return Swal.fire('Atención', 'Seleccione el tipo de documento.', 'warning');
-    if (!file) return Swal.fire('Atención', 'Seleccione un archivo para adjuntar al lote.', 'warning');
-    if (!warehouseEntryAllowedDocumentExtensions.includes(getWarehouseEntryFileExtension(file.name))) return Swal.fire('Archivo no permitido', 'Adjunte PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX.', 'warning');
-    if (file.size > warehouseEntryMaxDocumentSize) return Swal.fire('Archivo muy pesado', 'El documento no debe superar 10 MB.', 'warning');
+    if (!file) return Swal.fire('Atención', 'Seleccione un archivo para adjuntar.', 'warning');
+    if (!warehouseEntryAllowedDocumentExtensions.includes(getWarehouseEntryFileExtension(file.name))) return Swal.fire('Archivo no permitido', 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.', 'warning');
+    if (file.size > warehouseEntryMaxDocumentSize) return Swal.fire('Archivo no permitido', 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.', 'warning');
     warehouseEntryPendingLotDocuments.push({ ...context, type, description: $('#warehouse_entry_lot_document_description').val(), file, original_name: file.name });
     $('#warehouse_entry_lot_document_description, #warehouse_entry_lot_document_file').val('');
     $('#warehouse_entry_lot_document_file').siblings('.custom-file-label').text('Seleccionar archivo').removeAttr('title');
@@ -1763,8 +1788,55 @@ function deleteWarehouseEntryLotDocument(documentId) {
 }
 
 function renderWarehouseEntryDetailLotDocuments(items, entryId) {
-    const groups = items.flatMap(item => (item.lots || []).map(lot => ({ item, lot, documents: lot.documents || [] }))).filter(group => group.documents.length);
-    $('#vwe_lot_documents').html(groups.length ? groups.map(group => `<div class="warehouse-entry-lot-document-group"><div class="warehouse-entry-lot-document-group-title"><strong>${escapeWarehouseEntryHtml(group.item.billing_name_snapshot || group.item.article?.billing_name || '-')}</strong><span>Lote ${escapeWarehouseEntryHtml(group.lot.lot_code)} · ${formatWarehouseEntryMoney(group.lot.quantity)}</span></div>${group.documents.map(document => `<div class="warehouse-entry-lot-document-row"><span>${escapeWarehouseEntryHtml(warehouseEntryDocumentTypes[document.document_type]?.label || 'Documento')} · ${escapeWarehouseEntryHtml(document.original_name)}</span><span><a target="_blank" class="btn btn-outline-info btn-sm" href="/storage/${encodeURI(document.file_path)}"><i class="fas fa-eye"></i></a> <a class="btn btn-outline-success btn-sm" href="${window.routes.warehouseEntryShow}/${entryId}/lot-documents/${document.id}/download"><i class="fas fa-download"></i></a></span></div>`).join('')}</div>`).join('') : '<div class="warehouse-entry-lot-documents-empty">No hay documentos específicos por lote.</div>');
+    const groups = items.flatMap(item => (item.lots || []).map(lot => ({
+        item,
+        lot,
+        documents: Array.isArray(lot.documents) ? lot.documents : []
+    })));
+
+    if (!groups.length) {
+        $('#vwe_lot_documents').html('<div class="warehouse-entry-lot-documents-empty"><i class="fas fa-folder-open"></i>No hay lotes registrados para revisar.</div>');
+        return;
+    }
+
+    $('#vwe_lot_documents').html(groups.map(function (group, index) {
+        const articleName = group.item.billing_name_snapshot || group.item.article?.billing_name || '-';
+        const documentCount = group.documents.length;
+        const documentLabel = documentCount === 1 ? 'documento' : 'documentos';
+        const rows = group.documents.map(function (document) {
+            const type = warehouseEntryDocumentTypes[document.document_type]?.label || 'Documento';
+            const viewUrl = `/storage/${encodeURI(document.file_path || '')}`;
+            const downloadUrl = `${window.routes.warehouseEntryShow}/${entryId}/lot-documents/${document.id}/download`;
+
+            return `<tr>
+                <td><span class="vwe-lot-doc-type">${escapeWarehouseEntryHtml(type)}</span></td>
+                <td>${escapeWarehouseEntryHtml(document.description || 'Sin descripción')}</td>
+                <td><span class="vwe-lot-doc-file" title="${escapeWarehouseEntryHtml(document.original_name || '-')}"><i class="far fa-file mr-1"></i>${escapeWarehouseEntryHtml(document.original_name || '-')}</span></td>
+                <td>${escapeWarehouseEntryHtml(formatWarehouseEntryDateTime(document.created_at))}</td>
+                <td class="text-center"><div class="vwe-lot-doc-actions">
+                    <a target="_blank" rel="noopener" class="btn btn-outline-info btn-sm" href="${escapeWarehouseEntryHtml(viewUrl)}"><i class="fas fa-eye mr-1"></i>Ver</a>
+                    <a class="btn btn-outline-success btn-sm" href="${escapeWarehouseEntryHtml(downloadUrl)}"><i class="fas fa-download mr-1"></i>Descargar</a>
+                </div></td>
+            </tr>`;
+        }).join('');
+
+        return `<section class="vwe-lot-doc-accordion" data-group-index="${index}">
+            <div class="vwe-lot-doc-header">
+                <div class="vwe-lot-doc-identity">
+                    <span class="vwe-lot-doc-icon"><i class="fas fa-box-open"></i></span>
+                    <div><small>Artículo</small><strong>${escapeWarehouseEntryHtml(articleName)}</strong>
+                        <div class="vwe-lot-doc-meta"><span><i class="fas fa-tag"></i>Lote ${escapeWarehouseEntryHtml(group.lot.lot_code || 'Sin código')}</span><span>Cantidad ${formatWarehouseEntryMoney(group.lot.quantity)}</span><span class="vwe-lot-doc-count">${documentCount} ${documentLabel}</span></div>
+                    </div>
+                </div>
+                <button type="button" class="vwe-lot-doc-toggle" aria-expanded="false">
+                    <span class="vwe-lot-doc-toggle-label">Ver documentos</span><i class="fas fa-chevron-down vwe-lot-doc-chevron"></i>
+                </button>
+            </div>
+            <div class="vwe-lot-doc-body" style="display:none">
+                ${documentCount ? `<div class="table-responsive"><table class="table table-sm mb-0 vwe-lot-doc-table"><thead><tr><th>Tipo de documento</th><th>Descripción</th><th>Archivo</th><th>Fecha</th><th class="text-center">Acciones</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="vwe-lot-doc-empty"><i class="far fa-folder-open mr-1"></i>Sin documentos adjuntos</div>'}
+            </div>
+        </section>`;
+    }).join(''));
 }
 
 function formatWarehouseEntryUser(user) {
@@ -1878,12 +1950,12 @@ function addWarehouseEntryPendingDocument() {
     const extension = getWarehouseEntryFileExtension(file.name);
 
     if (!warehouseEntryAllowedDocumentExtensions.includes(extension)) {
-        Swal.fire('Archivo no permitido', 'Adjunte PDF, imagen, Word o Excel.', 'warning');
+        Swal.fire('Archivo no permitido', 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.', 'warning');
         return;
     }
 
     if (file.size > warehouseEntryMaxDocumentSize) {
-        Swal.fire('Archivo muy pesado', 'El documento no debe superar 10 MB.', 'warning');
+        Swal.fire('Archivo no permitido', 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.', 'warning');
         return;
     }
 
