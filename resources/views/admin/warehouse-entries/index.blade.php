@@ -47,13 +47,14 @@
 
         <div class="card-body pt-2">
             <div class="table-responsive">
-                <table id="tableWarehouseEntry" class="table table-hover align-middle text-center w-100">
+                <table id="tableWarehouseEntry" class="table table-hover align-middle text-center w-100 warehouse-entry-accordion-table">
                     <thead class="bg-light">
                         <tr>
                             <th>#</th>
                             <th>ID</th>
                             <th>N&deg; INGRESO</th>
                             <th>ORDEN COMPRA</th>
+                            <th>OC CLIENTE</th>
                             <th>PROVEEDOR</th>
                             <th>EMPRESA</th>
                             <th>ALMAC&Eacute;N</th>
@@ -98,6 +99,179 @@
 
         #tableWarehouseEntry tbody tr:hover {
             background: #fafafa;
+        }
+
+        .warehouse-customer-order { min-width: 155px; margin: 2px 0; text-align: left; line-height: 1.2; }
+        .warehouse-customer-order>span,
+        .warehouse-customer-order-empty { display: inline-block; padding: 4px 8px; border: 1px solid #d8e5e1; border-radius: 999px; background: #f2f8f6; color: #31584c; font-size: 11px; font-weight: 800; }
+        .warehouse-customer-order small { display: block; margin-top: 4px; color: #6b7974; font-size: 10px; font-weight: 600; white-space: normal; }
+        .warehouse-customer-order-empty { border-color: #e2e7e5; background: #f7f8f8; color: #87918d; font-weight: 600; }
+        .warehouse-entry-customer-orders { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .warehouse-entry-customer-order-card { padding: 11px 13px; border: 1px solid #d7e8e3; border-radius: 11px; background: #f4faf8; }
+        .warehouse-entry-customer-order-card>span,
+        .warehouse-entry-customer-order-card>strong,
+        .warehouse-entry-customer-order-card>small { display: block; }
+        .warehouse-entry-customer-order-card>span { margin-bottom: 5px; color: #71817b; font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+        .warehouse-entry-customer-order-card>strong { color: #195f49; font-size: 14px; }
+        .warehouse-entry-customer-order-card>small { margin-top: 3px; color: #677772; }
+
+        #tableWarehouseEntry.warehouse-entry-accordion-table>thead,
+        #tableWarehouseEntry tbody .warehouse-entry-source-row {
+            display: none !important;
+        }
+
+        #tableWarehouseEntry tbody .warehouse-entry-accordion-row td {
+            padding: 7px 0;
+            border: 0;
+            background: #fff;
+        }
+
+        .warehouse-entry-accordion {
+            overflow: hidden;
+            border: 1px solid #d8e9e3;
+            border-left: 4px solid #198754;
+            border-radius: 0 12px 12px 0;
+            background: #fff;
+            box-shadow: 0 4px 14px rgba(25, 96, 72, .06);
+        }
+
+        .warehouse-entry-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 11px 14px;
+            background: linear-gradient(110deg, #eff9f5, #f8fcfa);
+            text-align: left;
+            transition: background-color .18s ease;
+        }
+
+        .warehouse-entry-accordion.is-open .warehouse-entry-group-header { background: #eaf7f2; }
+
+        .warehouse-entry-group-identity {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .warehouse-entry-group-icon {
+            display: inline-grid;
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border-radius: 9px;
+            background: #dcefe7;
+            color: #187455;
+        }
+
+        .warehouse-entry-group-identity small,
+        .warehouse-entry-group-identity strong,
+        .warehouse-entry-group-identity>div>span {
+            display: block;
+        }
+
+        .warehouse-entry-group-identity small {
+            color: #648076;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .warehouse-entry-group-identity strong {
+            color: #204d3e;
+            font-size: 13px;
+        }
+
+        .warehouse-entry-group-identity>div>span {
+            max-width: 420px;
+            overflow: hidden;
+            color: #62746d;
+            font-size: 10px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-group-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+
+        .warehouse-entry-group-metrics>span {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 8px;
+            border: 1px solid #dce8e3;
+            border-radius: 999px;
+            background: #fff;
+            color: #60736b;
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-group-metrics i { color: #3b896d; font-size: 9px; }
+        .warehouse-entry-group-metrics .warehouse-entry-group-total { color: #1c654c; font-weight: 800; }
+
+        .warehouse-entry-group-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 10px;
+            border: 1px solid #20805f;
+            border-radius: 8px;
+            background: #fff;
+            color: #176548;
+            font-size: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: color .18s ease, background-color .18s ease, box-shadow .18s ease;
+        }
+
+        .warehouse-entry-group-toggle:hover,
+        .warehouse-entry-group-toggle:focus {
+            outline: 0;
+            background: #198754;
+            color: #fff;
+            box-shadow: 0 3px 9px rgba(25, 135, 84, .2);
+        }
+
+        .warehouse-entry-group-body { padding: 0 13px 13px; border-top: 1px solid #dcebe6; }
+        .warehouse-entry-group-table-wrap { overflow-x: auto; padding-top: 11px; }
+        .warehouse-entry-group-table { width: 100%; min-width: 1050px; border-collapse: separate; border-spacing: 0; }
+        .warehouse-entry-group-table th {
+            padding: 8px 9px;
+            border-bottom: 2px solid #d7e8e2;
+            background: #f5f9f7;
+            color: #516a61;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .warehouse-entry-group-table td {
+            padding: 8px 9px !important;
+            border-bottom: 1px solid #edf2f0 !important;
+            background: #fff !important;
+            color: #495752;
+            font-size: 11px !important;
+            white-space: nowrap;
+        }
+        .warehouse-entry-group-table tbody tr:last-child td { border-bottom: 0 !important; }
+        .warehouse-entry-group-table tbody tr:hover td { background: #f9fbfa !important; }
+        .warehouse-entry-group-actions { min-width: 110px; text-align: center; }
+
+        @media (max-width: 767.98px) {
+            .warehouse-entry-group-header { align-items: flex-start; flex-direction: column; }
+            .warehouse-entry-group-metrics { justify-content: flex-start; }
+            .warehouse-entry-group-identity>div>span { max-width: calc(100vw - 105px); }
+            .warehouse-entry-group-toggle { width: 100%; justify-content: center; }
         }
 
         .warehouse-entry-side-card {

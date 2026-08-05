@@ -112,12 +112,43 @@ class WarehouseEntryController extends Controller
 
     public function list()
     {
+        $relatedCustomerOrders = DB::table('supplier_purchase_order_customer_purchase_order')
+            ->select(
+                'supplier_purchase_order_id',
+                DB::raw('MIN(customer_purchase_order_id) as grouped_customer_purchase_order_id')
+            )
+            ->groupBy('supplier_purchase_order_id');
+
         $entries = WarehouseEntry::query()
+            ->leftJoinSub($relatedCustomerOrders, 'grouped_related_orders', function ($join) {
+                $join->on(
+                    'grouped_related_orders.supplier_purchase_order_id',
+                    '=',
+                    'warehouse_entries.supplier_purchase_order_id'
+                );
+            })
+            ->leftJoin(
+                'supplier_purchase_orders as grouped_supplier_orders',
+                'grouped_supplier_orders.id',
+                '=',
+                'warehouse_entries.supplier_purchase_order_id'
+            )
+            ->leftJoin('customer_purchase_orders as grouped_customer_orders', function ($join) {
+                $join->on(
+                    'grouped_customer_orders.id',
+                    '=',
+                    DB::raw('COALESCE(grouped_related_orders.grouped_customer_purchase_order_id, grouped_supplier_orders.customer_purchase_order_id)')
+                );
+            })
+            ->select('warehouse_entries.*')
+            ->selectRaw("COALESCE(grouped_customer_orders.purchase_order_number, grouped_customer_orders.code, 'Sin OC Cliente') as customer_order_group_sort")
             ->with([
                 'supplier:id,business_name,short_name',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
-                'supplierPurchaseOrder:id,code',
+                'supplierPurchaseOrder:id,code,customer_purchase_order_id',
+                'supplierPurchaseOrder.customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
+                'supplierPurchaseOrder.customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
                 'warehouse:id,code,name,description',
                 'documents' => function ($query) {
                     $query->where('observation', self::PDF_OBSERVATION)
@@ -126,12 +157,52 @@ class WarehouseEntryController extends Controller
                         ->latest('id');
                 },
             ])
-            ->orderByDesc('id');
+            ->orderBy('customer_order_group_sort')
+            ->orderByDesc('warehouse_entries.id');
 
         return DataTables::of($entries)
             ->addIndexColumn()
             ->editColumn('supplier_purchase_order_id', fn (WarehouseEntry $entry) =>
                 $entry->supplierPurchaseOrder?->code ?? $entry->purchase_order_number ?? '-')
+            ->addColumn('customer_order', function (WarehouseEntry $entry) {
+                $customerOrders = $this->customerOrdersForWarehouseEntry($entry);
+
+                if ($customerOrders->isEmpty()) {
+                    return '<span class="warehouse-customer-order-empty">Sin OC cliente</span>';
+                }
+
+                return $customerOrders->map(function (CustomerPurchaseOrder $customerOrder) {
+                    $number = $customerOrder->purchase_order_number ?: $customerOrder->code ?: '-';
+                    $customer = $customerOrder->customer;
+                    $customerName = $customer?->business_name
+                        ?? $customer?->full_name
+                        ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                        ?: 'Sin cliente';
+
+                    return sprintf(
+                        '<div class="warehouse-customer-order"><span>%s</span><small>%s</small></div>',
+                        e($number),
+                        e($customerName)
+                    );
+                })->implode('');
+            })
+            ->addColumn('customer_order_group_key', function (WarehouseEntry $entry) {
+                return (string) ($this->customerOrdersForWarehouseEntry($entry)->first()?->id ?? 'without-customer-order');
+            })
+            ->addColumn('customer_order_number', function (WarehouseEntry $entry) {
+                $customerOrder = $this->customerOrdersForWarehouseEntry($entry)->first();
+
+                return $customerOrder?->purchase_order_number ?: $customerOrder?->code ?: 'Sin OC Cliente';
+            })
+            ->addColumn('customer_order_client', function (WarehouseEntry $entry) {
+                $customer = $this->customerOrdersForWarehouseEntry($entry)->first()?->customer;
+
+                return $customer?->business_name
+                    ?? $customer?->full_name
+                    ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                    ?: 'Sin cliente relacionado';
+            })
+            ->addColumn('grand_total_value', fn (WarehouseEntry $entry) => (float) $entry->grand_total)
             ->addColumn('supplier', fn (WarehouseEntry $entry) =>
                 $entry->supplier?->short_name ?? $entry->supplier?->business_name ?? '-')
             ->addColumn('company', fn (WarehouseEntry $entry) =>
@@ -168,8 +239,98 @@ class WarehouseEntryController extends Controller
 
                 return view('admin.warehouse-entries.partials.acciones', compact('entry', 'pdfUrl'))->render();
             })
-            ->rawColumns(['status', 'acciones'])
+            ->filterColumn('customer_order', function ($query, $keyword) {
+                $query->whereHas('supplierPurchaseOrder', function ($supplierOrderQuery) use ($keyword) {
+                    $supplierOrderQuery->where(function ($relatedOrderQuery) use ($keyword) {
+                        $relatedOrderQuery
+                            ->whereHas('customerPurchaseOrder', function ($customerOrderQuery) use ($keyword) {
+                                $this->applyWarehouseCustomerOrderSearch($customerOrderQuery, $keyword);
+                            })
+                            ->orWhereHas('customerPurchaseOrders', function ($customerOrderQuery) use ($keyword) {
+                                $this->applyWarehouseCustomerOrderSearch($customerOrderQuery, $keyword);
+                            });
+                    });
+                });
+            })
+            ->filterColumn('supplier_purchase_order_id', function ($query, $keyword) {
+                $query->where(function ($purchaseOrderQuery) use ($keyword) {
+                    $purchaseOrderQuery
+                        ->where('warehouse_entries.purchase_order_number', 'like', "%{$keyword}%")
+                        ->orWhereHas('supplierPurchaseOrder', function ($supplierOrderQuery) use ($keyword) {
+                            $supplierOrderQuery->where('code', 'like', "%{$keyword}%");
+                        });
+                });
+            })
+            ->filterColumn('supplier', function ($query, $keyword) {
+                $query->whereHas('supplier', function ($supplierQuery) use ($keyword) {
+                    $supplierQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('short_name', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('company', function ($query, $keyword) {
+                $query->whereHas('company', function ($companyQuery) use ($keyword) {
+                    $companyQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('trade_name', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('warehouse', function ($query, $keyword) {
+                $query->whereHas('warehouse', function ($warehouseQuery) use ($keyword) {
+                    $warehouseQuery->where('name', 'like', "%{$keyword}%")
+                        ->orWhere('code', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('currency', function ($query, $keyword) {
+                $query->whereHas('currency', function ($currencyQuery) use ($keyword) {
+                    $currencyQuery->where('code', 'like', "%{$keyword}%")
+                        ->orWhere('description', 'like', "%{$keyword}%");
+                });
+            })
+            ->filterColumn('status', function ($query, $keyword) {
+                $normalized = strtolower(trim($keyword));
+                $statusAliases = [
+                    'registrado' => self::STATUS_REGISTERED,
+                    'registrada' => self::STATUS_REGISTERED,
+                    'anulado' => self::STATUS_CANCELLED,
+                    'anulada' => self::STATUS_CANCELLED,
+                    'cancelado' => self::STATUS_CANCELLED,
+                    'cancelada' => self::STATUS_CANCELLED,
+                ];
+
+                $query->where('warehouse_entries.status', 'like', '%' . ($statusAliases[$normalized] ?? $keyword) . '%');
+            })
+            ->rawColumns(['customer_order', 'status', 'acciones'])
             ->make(true);
+    }
+
+    private function customerOrdersForWarehouseEntry(WarehouseEntry $entry)
+    {
+        $supplierOrder = $entry->supplierPurchaseOrder;
+
+        if (! $supplierOrder) {
+            return collect();
+        }
+
+        $customerOrders = $supplierOrder->customerPurchaseOrders;
+
+        if ($customerOrders->isEmpty() && $supplierOrder->customerPurchaseOrder) {
+            $customerOrders = collect([$supplierOrder->customerPurchaseOrder]);
+        }
+
+        return $customerOrders->unique('id')->sortBy('id')->values();
+    }
+
+    private function applyWarehouseCustomerOrderSearch($query, string $keyword): void
+    {
+        $query->where(function ($searchQuery) use ($keyword) {
+            $searchQuery->where('purchase_order_number', 'like', "%{$keyword}%")
+                ->orWhere('code', 'like', "%{$keyword}%")
+                ->orWhereHas('customer', function ($customerQuery) use ($keyword) {
+                    $customerQuery->where('business_name', 'like', "%{$keyword}%")
+                        ->orWhere('full_name', 'like', "%{$keyword}%")
+                        ->orWhere('first_name', 'like', "%{$keyword}%")
+                        ->orWhere('last_name', 'like', "%{$keyword}%");
+                });
+        });
     }
 
     public function store(Request $request)
@@ -180,7 +341,12 @@ class WarehouseEntryController extends Controller
     public function show(WarehouseEntry $warehouseEntry)
     {
         $warehouseEntry->load([
-            'supplierPurchaseOrder',
+            'supplierPurchaseOrder.customerPurchaseOrder.customer',
+            'supplierPurchaseOrder.customerPurchaseOrder.company',
+            'supplierPurchaseOrder.customerPurchaseOrder.currency',
+            'supplierPurchaseOrder.customerPurchaseOrders.customer',
+            'supplierPurchaseOrder.customerPurchaseOrders.company',
+            'supplierPurchaseOrder.customerPurchaseOrders.currency',
             'company',
             'supplier',
             'customer',

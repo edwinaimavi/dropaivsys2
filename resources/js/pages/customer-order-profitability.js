@@ -49,6 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#cop_clear').on('click', clearFilters);
     $(document).on('click', '.cop-view', function () { openProfitability($(this).data('id')); });
     $(document).on('click', '.cop-view-order-documents', function () { showProfitabilityOrderDocuments($(this).attr('data-documents') || '[]'); });
+    $(document).on('click', '.cop-summary-tab-link[data-tab-target]', function () { openProfitabilityTab($(this).data('tab-target')); });
+    $(document).on('keydown', '.cop-summary-tab-link[data-tab-target]', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openProfitabilityTab($(this).data('tab-target'));
+        }
+    });
     $('#copRecalculate').on('click', function () { recalculate(this); });
 });
 
@@ -58,6 +65,15 @@ function clearFilters() { $('#cop_company,#cop_customer,#cop_status').val(''); $
 function openProfitability(id) { currentProfitabilityOrderId = id; const mode = $('#cop_mode').val(); $('#copDetailBody').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x text-success"></i><div class="mt-2">Calculando...</div></div>'); $('#copDetailModal').modal('show'); $.get(`${window.customerOrderProfitabilityRoutes.show}/${id}`, { mode }).done(showDetail).fail(showError); }
 function recalculate(button) { if (!currentProfitabilityOrderId) return; const $button = $(button); if ($button.prop('disabled')) return; const original = $button.html(); $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Recalculando...'); $.post(`${window.customerOrderProfitabilityRoutes.recalculate}/${currentProfitabilityOrderId}/recalculate`, { mode: $('#cop_mode').val() }).done(response => { showDetail(response); customerOrderProfitabilityTable.ajax.reload(null, false); }).fail(showError).always(() => $button.prop('disabled', false).html(original)); }
 function showDetail(response) { $('#copDetailBody').html(response.html); const mode = $('#cop_mode').val(); $('#copPdf').attr('href', `${window.customerOrderProfitabilityRoutes.pdf}/${currentProfitabilityOrderId}/pdf?mode=${mode}`); $('#copPrint').attr('href', `${window.customerOrderProfitabilityRoutes.print}/${currentProfitabilityOrderId}/print?mode=${mode}`); }
+function openProfitabilityTab(tabTarget) {
+    const targetId = `#cop_${String(tabTarget || '').replace(/[^a-z]/g, '')}`;
+    const tabLink = $(`#copDetailModal .cop-modal-nav .nav-link[href="${targetId}"]`);
+
+    if (!tabLink.length) return;
+
+    tabLink.tab('show');
+    $('#copDetailModal .cop-tab-content').stop(true).animate({ scrollTop: 0 }, 220);
+}
 function showError() { $('#copDetailBody').html('<div class="alert alert-danger m-4">No se pudo calcular la rentabilidad de esta orden.</div>'); }
 function money(value) { return Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function renderMoney(value, type, row) { if (type !== 'display') return Number(value || 0); return `<span class="cop-money">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`; }

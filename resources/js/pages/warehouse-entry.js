@@ -10,6 +10,7 @@ let warehouseEntryExpenses = [];
 let warehouseEntryActiveLotsRow = null;
 let warehouseEntryDeliveryType = '';
 let warehouseEntrySourceOrderTotal = null;
+const warehouseEntryExpandedGroups = new Set();
 
 const warehouseEntryDocumentTypes = {
     purchase_invoice: { label: 'Factura', badge: 'badge-doc-green' },
@@ -73,6 +74,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     initWarehouseEntrySelect2($('#warehouseEntryModal'));
     initWarehouseEntryTable();
+
+    $(document).on('click', '.warehouse-entry-group-toggle', function () {
+        toggleWarehouseEntryCustomerOrderGroup($(this).closest('.warehouse-entry-accordion').attr('data-group-key'));
+    });
 
     $(document).on('click', '#btnCreateWarehouseEntry', function () {
         resetWarehouseEntryForm();
@@ -309,6 +314,26 @@ function initWarehouseEntryTable() {
             { data: 'id', name: 'id' },
             { data: 'entry_number', name: 'entry_number' },
             { data: 'supplier_purchase_order_id', name: 'supplier_purchase_order_id', orderable: false },
+            {
+                data: 'customer_order',
+                name: 'customer_order',
+                orderable: false,
+                defaultContent: '-',
+                render: function (data, type) {
+                    if (type === 'display') {
+                        return data || '-';
+                    }
+
+                    const container = $('<div>').html(data || '');
+                    const labels = container.find('.warehouse-customer-order').map(function () {
+                        return [$(this).find('span').text().trim(), $(this).find('small').text().trim()]
+                            .filter(Boolean)
+                            .join(' - ');
+                    }).get();
+
+                    return labels.length ? labels.join('; ') : '-';
+                }
+            },
             { data: 'supplier', name: 'supplier.business_name', orderable: false },
             { data: 'company', name: 'company.business_name', orderable: false },
             { data: 'warehouse', name: 'warehouse_id' },
@@ -320,6 +345,7 @@ function initWarehouseEntryTable() {
         ],
         responsive: true,
         autoWidth: false,
+        order: [],
         language: {
             url: '/vendor/datatables/js/i18n/es-ES.json'
         },
@@ -336,11 +362,124 @@ function initWarehouseEntryTable() {
             <'row mt-3'<'col-sm-12 text-center'B>>
         `,
         buttons: [
-            { extend: 'excel', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' },
-            { extend: 'pdf', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' },
-            { extend: 'print', text: '<i class="fas fa-print"></i> Imprimir', className: 'btn btn-secondary btn-sm' }
-        ]
+            { extend: 'excel', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' } },
+            { extend: 'pdf', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' } },
+            { extend: 'print', text: '<i class="fas fa-print"></i> Imprimir', className: 'btn btn-secondary btn-sm', exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' } }
+        ],
+        drawCallback: function () {
+            renderWarehouseEntryCustomerOrderGroups(this.api());
+        }
     });
+}
+
+function renderWarehouseEntryCustomerOrderGroups(table) {
+    const rows = table.rows({ page: 'current' });
+    const data = rows.data().toArray();
+    const nodes = rows.nodes().toArray();
+    const groups = {};
+    const groupOrder = [];
+
+    data.forEach(function (entry) {
+        const key = String(entry.customer_order_group_key || 'without-customer-order');
+        if (!groups[key]) groupOrder.push(key);
+
+        const group = groups[key] || {
+            entries: 0,
+            providers: new Set(),
+            total: 0,
+            currency: entry.currency || '',
+            number: entry.customer_order_number || 'Sin OC Cliente',
+            client: entry.customer_order_client || 'Sin cliente relacionado',
+            lastEntry: entry.created_at || '-',
+            items: []
+        };
+
+        group.entries += 1;
+        group.total += Number(entry.grand_total_value || 0);
+        if (entry.supplier_id) group.providers.add(String(entry.supplier_id));
+        group.items.push(entry);
+        groups[key] = group;
+    });
+
+    const colspan = table.columns(':visible').count();
+    const searchActive = String(table.search() || '').trim() !== '';
+
+    $(nodes).addClass('warehouse-entry-source-row');
+
+    groupOrder.forEach(function (key) {
+        const group = groups[key];
+        const firstEntryIndex = data.findIndex(entry => String(entry.customer_order_group_key || 'without-customer-order') === key);
+        const isExpanded = searchActive || warehouseEntryExpandedGroups.has(key);
+        const entryLabel = group.entries === 1 ? 'ingreso' : 'ingresos';
+        const providerLabel = group.providers.size === 1 ? 'proveedor' : 'proveedores';
+        const lastEntryDate = String(group.lastEntry).split(' ')[0];
+        const detailRows = group.items.map(entry => `<tr>
+            <td>${escapeWarehouseEntryHtml(entry.entry_number || '-')}</td>
+            <td>${escapeWarehouseEntryHtml(entry.supplier_purchase_order_id || '-')}</td>
+            <td>${escapeWarehouseEntryHtml(entry.supplier || '-')}</td>
+            <td>${escapeWarehouseEntryHtml(entry.company || '-')}</td>
+            <td>${escapeWarehouseEntryHtml(entry.warehouse || '-')}</td>
+            <td>${escapeWarehouseEntryHtml(entry.currency || '-')}</td>
+            <td class="text-right font-weight-bold">${escapeWarehouseEntryHtml(entry.grand_total || '-')}</td>
+            <td>${entry.status || '-'}</td>
+            <td>${escapeWarehouseEntryHtml(entry.created_at || '-')}</td>
+            <td class="warehouse-entry-group-actions">${entry.acciones || '-'}</td>
+        </tr>`).join('');
+
+        const groupRow = `<tr class="warehouse-entry-accordion-row">
+            <td colspan="${colspan}">
+                <section class="warehouse-entry-accordion${isExpanded ? ' is-open' : ''}" data-group-key="${escapeWarehouseEntryHtml(key)}">
+                    <div class="warehouse-entry-group-header">
+                        <div class="warehouse-entry-group-identity">
+                            <span class="warehouse-entry-group-icon"><i class="fas fa-file-invoice"></i></span>
+                            <div><small>OC Cliente</small><strong>${escapeWarehouseEntryHtml(group.number)}</strong><span>${escapeWarehouseEntryHtml(group.client)}</span></div>
+                        </div>
+                        <div class="warehouse-entry-group-metrics">
+                            <span><i class="fas fa-warehouse"></i>${group.entries} ${entryLabel}</span>
+                            <span><i class="fas fa-truck"></i>${group.providers.size} ${providerLabel}</span>
+                            <span class="warehouse-entry-group-total"><i class="fas fa-coins"></i>${escapeWarehouseEntryHtml(group.currency)} ${formatWarehouseEntryMoney(group.total)}</span>
+                            <span><i class="far fa-calendar-alt"></i>&Uacute;ltimo: ${escapeWarehouseEntryHtml(lastEntryDate)}</span>
+                            <button type="button" class="warehouse-entry-group-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}">
+                                <span>${isExpanded ? 'Ocultar ingresos' : 'Ver ingresos'}</span>
+                                <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="warehouse-entry-group-body"${isExpanded ? '' : ' style="display:none"'}>
+                        <div class="warehouse-entry-group-table-wrap">
+                            <table class="warehouse-entry-group-table">
+                                <thead><tr><th>N&deg; Ingreso</th><th>OC Proveedor</th><th>Proveedor</th><th>Empresa</th><th>Almac&eacute;n</th><th>Moneda</th><th>Total</th><th>Estado</th><th>F. Registro</th><th>Acciones</th></tr></thead>
+                                <tbody>${detailRows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </td>
+        </tr>`;
+
+        $(nodes[firstEntryIndex]).before(groupRow);
+    });
+}
+
+function toggleWarehouseEntryCustomerOrderGroup(key) {
+    const group = $('.warehouse-entry-accordion').filter(function () {
+        return $(this).attr('data-group-key') === String(key);
+    }).first();
+
+    if (!group.length) return;
+
+    const opening = !group.hasClass('is-open');
+    group.toggleClass('is-open', opening);
+    group.find('.warehouse-entry-group-body').stop(true, true).slideToggle(160);
+    group.find('.warehouse-entry-group-toggle')
+        .attr('aria-expanded', opening ? 'true' : 'false')
+        .find('span').text(opening ? 'Ocultar ingresos' : 'Ver ingresos');
+    group.find('.warehouse-entry-group-toggle i')
+        .toggleClass('fa-chevron-up', opening)
+        .toggleClass('fa-chevron-down', !opening);
+
+    if (opening) warehouseEntryExpandedGroups.add(String(key));
+    else warehouseEntryExpandedGroups.delete(String(key));
 }
 
 function initWarehouseEntrySelect2(context) {
@@ -1433,6 +1572,28 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     $('#vwe_currency_symbol').text(currencySymbol);
     $('#vwe_grand_total').text(formatWarehouseEntryMoney(entry.grand_total || 0));
     $('#vwe_purchase_order').text(entry.supplier_purchase_order?.code || entry.purchase_order_number || '-');
+    const supplierOrder = entry.supplier_purchase_order;
+    const customerOrders = supplierOrder?.customer_purchase_orders?.length
+        ? supplierOrder.customer_purchase_orders
+        : (supplierOrder?.customer_purchase_order ? [supplierOrder.customer_purchase_order] : []);
+    $('#vwe_customer_orders').html(customerOrders.length
+        ? customerOrders.map(function (customerOrder) {
+            const customerName = customerOrder.customer?.business_name
+                || customerOrder.customer?.full_name
+                || [customerOrder.customer?.first_name, customerOrder.customer?.last_name].filter(Boolean).join(' ')
+                || 'Sin cliente';
+            const companyName = customerOrder.company?.trade_name || customerOrder.company?.business_name || '-';
+            const currency = customerOrder.currency?.symbol || customerOrder.currency?.code || '';
+
+            return `<div class="warehouse-entry-customer-order-card">
+                <span>Orden de Compra del Cliente</span>
+                <strong>${escapeWarehouseEntryHtml(customerOrder.purchase_order_number || customerOrder.code || '-')}</strong>
+                <small><i class="fas fa-user mr-1"></i>${escapeWarehouseEntryHtml(customerName)}</small>
+                <small><i class="fas fa-building mr-1"></i>${escapeWarehouseEntryHtml(companyName)}</small>
+                <small><i class="fas fa-coins mr-1"></i>${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(customerOrder.grand_total)}</small>
+            </div>`;
+        }).join('')
+        : '<div class="warehouse-entry-customer-order-card"><span>Orden de Compra del Cliente</span><strong>Sin OC cliente relacionada</strong></div>');
     $('#vwe_detail_company').text(entry.company?.trade_name || entry.company?.business_name || '-');
     $('#vwe_detail_supplier').text(entry.supplier?.short_name || entry.supplier?.business_name || '-');
     $('#vwe_detail_warehouse').text(warehouseName || 'SIN ALMACEN');

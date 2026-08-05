@@ -34,20 +34,20 @@
         <div class="cop-section-heading"><div><span class="cop-eyebrow">Vista ejecutiva</span><h6>Resumen financiero de la orden</h6></div><span class="cop-order-chip"><i class="fas fa-file-signature"></i>{{$order->purchase_order_number ?: $order->code}}</span></div>
         <div class="row cop-metrics-grid">
             @foreach([
-                ['Total venta', $saleTotal, 'sale', 'fa-coins'],
-                ['Total compra', $purchaseTotal, 'purchase', 'fa-shopping-cart'],
-                ['Utilidad bruta', $gross, 'gross', 'fa-chart-bar'],
-                ['Flete / recojo / traslado con comprobante', $freightBase, 'freight', 'fa-truck'],
-                ['Otros gastos / sin comprobante', $otherTotal, 'other', 'fa-receipt'],
-                ['Utilidad operativa', $operating, 'operating', 'fa-wave-square'],
-                ['Impuesto renta', $incomeTax, 'tax', 'fa-percentage'],
-                ['Utilidad neta', $net, $net < 0 ? 'negative' : 'net', 'fa-hand-holding-usd'],
-            ] as [$label, $value, $tone, $icon])
-                <div class="col-6 col-xl-3 mb-3"><div class="cop-metric cop-metric-{{$tone}}"><span class="cop-metric-icon"><i class="fas {{$icon}}"></i></span><div><small>{{$label}}</small><strong>{{$order->currency?->symbol ?: 'S/'}} {{$money($value)}}</strong></div></div></div>
+                ['Total venta', $saleTotal, 'sale', 'fa-coins', 'sale'],
+                ['Total compra', $purchaseTotal, 'purchase', 'fa-shopping-cart', 'purchases'],
+                ['Utilidad bruta', $gross, 'gross', 'fa-chart-bar', 'profit'],
+                ['Flete / recojo / traslado con comprobante', $freightBase, 'freight', 'fa-truck', 'costs'],
+                ['Otros gastos / sin comprobante', $otherTotal, 'other', 'fa-receipt', 'costs'],
+                ['Utilidad operativa', $operating, 'operating', 'fa-wave-square', 'profit'],
+                ['Impuesto renta', $incomeTax, 'tax', 'fa-percentage', 'taxes'],
+                ['Utilidad neta', $net, $net < 0 ? 'negative' : 'net', 'fa-hand-holding-usd', 'profit'],
+            ] as [$label, $value, $tone, $icon, $tabTarget])
+                <div class="col-6 col-xl-3 mb-3"><div class="cop-metric cop-metric-{{$tone}} cop-summary-tab-link" data-tab-target="{{$tabTarget}}" role="button" tabindex="0" title="Ver detalle: {{$label}}" aria-label="Ver detalle de {{$label}}"><span class="cop-metric-icon"><i class="fas {{$icon}}"></i></span><div><small>{{$label}}</small><strong>{{$order->currency?->symbol ?: 'S/'}} {{$money($value)}}</strong></div><span class="cop-summary-link-cue"><i class="fas fa-arrow-right"></i></span></div></div>
             @endforeach
         </div>
 
-        <div class="row justify-content-center"><div class="col-xl-6 mb-4"><div class="cop-profit-hero cop-profit-{{$profitLevel}}"><div><span>Rentabilidad de la orden</span><strong>{{$money($percentage)}}%</strong></div><span class="cop-profit-level"><i class="fas fa-signal"></i>{{$profitLabel}}</span></div></div></div>
+        <div class="row justify-content-center"><div class="col-xl-6 mb-4"><div class="cop-profit-hero cop-profit-{{$profitLevel}} cop-summary-tab-link" data-tab-target="profit" role="button" tabindex="0" title="Ver detalle de rentabilidad" aria-label="Ver detalle de rentabilidad de la orden"><div><span>Rentabilidad de la orden</span><strong>{{$money($percentage)}}%</strong></div><span class="cop-profit-level"><i class="fas fa-signal"></i>{{$profitLabel}}</span><span class="cop-summary-link-cue"><i class="fas fa-arrow-right"></i></span></div></div></div>
 
         <div class="cop-formula-panel">
             <div class="cop-formula-row"><span class="formula-value"><small>Utilidad bruta</small><strong>{{$money($gross)}}</strong></span><i class="fas fa-minus formula-operator"></i><span class="formula-value"><small>Transporte con comprobante</small><strong>{{$money($freightBase)}}</strong></span><i class="fas fa-equals formula-operator"></i><span class="formula-result"><small>Utilidad operativa</small><strong>{{$money($operating)}}</strong></span></div>

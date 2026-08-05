@@ -32,6 +32,7 @@
 
                 <div class="tab-content warehouse-entry-view-tab-content">
                     <div class="tab-pane fade show active" id="vwe_summary_tab"><div class="card border-0 shadow-sm warehouse-entry-card"><div class="card-body"><div class="row warehouse-entry-detail-grid">
+                        <div class="col-12"><div id="vwe_customer_orders" class="warehouse-entry-customer-orders"><div class="warehouse-entry-customer-order-card"><span>Orden de Compra del Cliente</span><strong>Sin OC cliente relacionada</strong></div></div></div>
                         @foreach ([['Orden proveedor','vwe_purchase_order'],['Empresa','vwe_detail_company'],['Proveedor','vwe_detail_supplier'],['Almacén','vwe_detail_warehouse'],['Moneda','vwe_currency'],['Tipo documento','vwe_document_type'],['Serie / N° comprobante','vwe_document_number'],['Fecha documento','vwe_document_date'],['Forma de pago','vwe_payment_method'],['Condición de pago','vwe_payment_condition'],['Cuenta por pagar','vwe_payable'],['Monto','vwe_payable_amount'],['Guía remisión','vwe_guide']] as [$label,$id])
                             <div class="col-sm-6 col-lg-4"><div class="warehouse-entry-detail-field"><small>{{ $label }}</small><strong id="{{ $id }}">-</strong></div></div>
                         @endforeach
