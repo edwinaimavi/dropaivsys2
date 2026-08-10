@@ -566,6 +566,7 @@ function resetWarehouseEntryForm() {
 
     form[0]?.reset();
     $('#warehouse_entry_id').val('');
+    setWarehouseEntrySaving(false);
     $('#warehouse_entry_number').val('');
     clearWarehouseEntryValidation();
     clearWarehouseEntryItemRows();
@@ -612,31 +613,156 @@ function clearWarehouseEntryValidation() {
     $('#warehouseEntryForm .invalid-feedback').text('');
 }
 
+function warehouseEntryFocusField(field) {
+    if (!field?.length) return;
+
+    if (field.hasClass('select2-hidden-accessible')) {
+        field.next('.select2-container').find('.select2-selection').trigger('focus');
+        return;
+    }
+
+    field.filter(':visible').first().trigger('focus');
+}
+
+function showWarehouseEntryClientValidation(tab, message, field = null, title = 'Complete los datos requeridos') {
+    if (field?.length) {
+        field.addClass('is-invalid');
+        field.next('.select2-container').find('.select2-selection').addClass('is-invalid');
+        field.closest('.form-group, td').find('.invalid-feedback').first().text(message);
+    }
+
+    $(`#warehouseEntryModal .warehouse-entry-form-tabs a[href="${tab}"]`).tab('show');
+    Swal.fire({ icon: 'warning', title, text: message })
+        .then(() => warehouseEntryFocusField(field));
+
+    return false;
+}
+
+function validateWarehouseEntryRequiredData() {
+    const requiredFields = [
+        ['#warehouse_entry_warehouse_id', 'Debe seleccionar un almacén.'],
+        ['#warehouse_entry_company_id', 'Debe seleccionar una empresa.'],
+        ['#warehouse_entry_supplier_id', 'Debe seleccionar un proveedor.'],
+        ['#warehouse_entry_currency_id', 'Debe seleccionar una moneda.'],
+        ['#warehouse_entry_document_type', 'Debe seleccionar el tipo de documento.']
+    ];
+
+    for (const [selector, message] of requiredFields) {
+        const field = $(selector);
+        if (!String(field.val() || '').trim()) {
+            return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', message, field);
+        }
+    }
+
+    if ($('#warehouse_entry_generate_account_payable').val() === '1'
+        && !$('#warehouse_entry_expected_payment_date').val()) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_data',
+            'Debe indicar la fecha de pago esperada para generar la cuenta por pagar.',
+            $('#warehouse_entry_expected_payment_date')
+        );
+    }
+
+    return true;
+}
+
+function validateWarehouseEntryItems() {
+    const rows = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row');
+
+    if (!rows.length) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_items',
+            'Debe agregar al menos un artículo al ingreso.',
+            $('#btnAddWarehouseEntryItem'),
+            'Revise los artículos ingresados'
+        );
+    }
+
+    let invalid = null;
+    rows.each(function (index) {
+        const row = $(this);
+        const article = row.find('.item-article-picker');
+        const quantity = row.find('.item-quantity');
+        const unitPrice = row.find('.item-unit-price');
+        const quantityValue = parseWarehouseEntryNumber(quantity.val());
+        const unitPriceRaw = String(unitPrice.val() ?? '').trim();
+        const unitPriceValue = Number.parseFloat(unitPriceRaw);
+
+        if (!row.find('.item-article-id').val()) {
+            invalid = [article, `Seleccione el artículo de la fila ${index + 1}.`];
+        } else if (quantityValue <= 0) {
+            invalid = [quantity, `Ingrese una cantidad válida en la fila ${index + 1}.`];
+        } else if (unitPriceRaw === '' || !Number.isFinite(unitPriceValue) || unitPriceValue < 0) {
+            invalid = [unitPrice, `Ingrese un precio unitario válido en la fila ${index + 1}.`];
+        }
+
+        return !invalid;
+    });
+
+    if (invalid) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_items',
+            invalid[1],
+            invalid[0],
+            'Revise los artículos ingresados'
+        );
+    }
+
+    return true;
+}
+
+function hasWarehouseEntryPendingExpense() {
+    if (!$('#warehouse_entry_expense_amount').length) return false;
+
+    const valueSelectors = [
+        '#warehouse_entry_expense_shipping_agency_id',
+        '#warehouse_entry_expense_provider_name',
+        '#warehouse_entry_expense_amount',
+        '#warehouse_entry_expense_affects_igv',
+        '#warehouse_entry_expense_document_series',
+        '#warehouse_entry_expense_document_number',
+        '#warehouse_entry_expense_document_date',
+        '#warehouse_entry_expense_description'
+    ];
+    const hasValue = valueSelectors.some(selector => String($(selector).val() || '').trim() !== '');
+    const hasFile = Boolean(
+        $('#warehouse_entry_expense_invoice_file')[0]?.files?.length
+        || $('#warehouse_entry_expense_payment_proof_file')[0]?.files?.length
+    );
+
+    return $('#warehouse_entry_expense_edit_index').val() !== '' || hasValue || hasFile;
+}
+
+function validateWarehouseEntryPendingExpense() {
+    if (!hasWarehouseEntryPendingExpense()) return true;
+
+    return showWarehouseEntryClientValidation(
+        '#warehouse_entry_tab_expenses',
+        'Tiene un costo vinculado pendiente. Complete sus datos y pulse Agregar costo o Actualizar costo antes de guardar el ingreso.',
+        $('#btnAddWarehouseEntryExpense'),
+        'Revise el costo vinculado pendiente'
+    );
+}
+
+function setWarehouseEntrySaving(isSaving) {
+    const button = $('#btnSaveWarehouseEntry');
+    const editing = Boolean($('#warehouse_entry_id').val());
+
+    button.prop('disabled', isSaving).html(isSaving
+        ? '<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span> Guardando...'
+        : `<i class="fas fa-save mr-1"></i> ${editing ? 'Actualizar' : 'Guardar'}`);
+}
+
 function saveWarehouseEntry(form) {
+    if ($('#btnSaveWarehouseEntry').prop('disabled')) return;
+
     clearWarehouseEntryValidation();
     syncWarehouseEntryPayableAmount();
 
-    if (!$('#warehouse_entry_warehouse_id').val()) {
-        const warehouse = $('#warehouse_entry_warehouse_id');
-        warehouse.addClass('is-invalid');
-        warehouse.closest('.form-group').find('.invalid-feedback').first().text('Debe seleccionar un almacén.');
-        warehouse.next('.select2-container').find('.select2-selection').addClass('is-invalid');
-        $('#warehouseEntryModal .warehouse-entry-form-tabs a[href="#warehouse_entry_tab_data"]').tab('show');
-        Swal.fire('Atención', 'Debe seleccionar un almacén.', 'warning');
-        return;
-    }
-
-    if (!$('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Agregue al menos un articulo.'
-        });
-        return;
-    }
-
-    if (!validateWarehouseEntryLots()) {
-        return;
-    }
+    if (!validateWarehouseEntryRequiredData()
+        || !validateWarehouseEntryItems()
+        || !validateWarehouseEntryLots()
+        || !validateWarehouseEntryPendingExpense()) return;
 
     const id = $('#warehouse_entry_id').val();
     const url = id
@@ -684,6 +810,8 @@ function saveWarehouseEntry(form) {
         if (expense.payment_proof_file) formData.append(`expenses[${index}][payment_proof_file]`, expense.payment_proof_file);
     });
 
+    setWarehouseEntrySaving(true);
+
     $.ajax({
         url,
         type: 'POST',
@@ -720,23 +848,40 @@ function saveWarehouseEntry(form) {
                 title: 'Error',
                 text: xhr.responseJSON?.message || 'No se pudo guardar el ingreso.'
             });
-        });
+        })
+        .always(() => setWarehouseEntrySaving(false));
 }
 
 function showWarehouseEntryValidationErrors(errors) {
     const messages = [];
+    let firstInvalidInput = null;
 
     Object.keys(errors).forEach(function (name) {
         const message = Array.isArray(errors[name]) ? errors[name][0] : errors[name];
         if (message) messages.push(message);
-        const input = $(`[name="${name}"]`);
+        const parts = name.split('.');
+        const inputName = parts.shift() + parts.map(part => `[${part}]`).join('');
+        const inputs = $(`[name="${inputName}"]`);
+        const visibleInput = inputs.filter(':not([type="hidden"])').first();
+        const input = visibleInput.length ? visibleInput : inputs.first();
         input.addClass('is-invalid');
+        input.next('.select2-container').find('.select2-selection').addClass('is-invalid');
         input.closest('.form-group, td').find('.invalid-feedback').first().text(message);
+        if (!firstInvalidInput && input.length) firstInvalidInput = input;
     });
 
-    const hasDocumentError = Object.keys(errors).some(name =>
+    const errorNames = Object.keys(errors);
+    const hasDocumentError = errorNames.some(name =>
         name.startsWith('warehouse_entry_documents.')
         || name.startsWith('warehouse_entry_lot_documents.'));
+    const firstError = errorNames[0] || '';
+    const errorTab = firstError.startsWith('items.')
+        ? '#warehouse_entry_tab_items'
+        : (firstError.startsWith('expenses.')
+            ? '#warehouse_entry_tab_expenses'
+            : (hasDocumentError ? '#warehouse_entry_tab_documents' : '#warehouse_entry_tab_data'));
+
+    $(`#warehouseEntryModal .warehouse-entry-form-tabs a[href="${errorTab}"]`).tab('show');
 
     Swal.fire({
         icon: 'warning',
@@ -744,7 +889,7 @@ function showWarehouseEntryValidationErrors(errors) {
         text: messages[0] || (hasDocumentError
             ? 'No se pudo guardar el ingreso de almacén. Revise los documentos adjuntos.'
             : 'Hay campos pendientes o con valores inválidos.')
-    });
+    }).then(() => warehouseEntryFocusField(firstInvalidInput));
 }
 
 function applySelectedSupplierOrderHeader() {
@@ -1149,14 +1294,13 @@ function openWarehouseEntryLotsModal(row) {
 }
 
 function addWarehouseEntryLotEditorRow(lot = {}) {
-    const requireExpiration = Number(warehouseEntryActiveLotsRow?.find('.item-has-expiration').val()) === 1;
     $('#warehouseEntryLotsTbody').append(`
         <tr>
             <td class="d-none"><input type="hidden" class="lot-editor-id" value="${lot.id || ''}"><input type="hidden" class="lot-editor-key" value="${escapeWarehouseEntryHtml(lot.client_key || '')}"></td>
             <td class="lot-editor-index align-middle"></td>
             <td><input type="text" class="form-control form-control-sm lot-editor-code text-uppercase" maxlength="100" value="${escapeWarehouseEntryHtml(lot.lot_code || '')}"></td>
             <td><input type="number" class="form-control form-control-sm lot-editor-quantity text-right" min="0.0001" step="0.0001" value="${lot.quantity || ''}"></td>
-            <td><input type="date" class="form-control form-control-sm lot-editor-expiration" ${requireExpiration ? 'required' : ''} value="${formatWarehouseEntryDate(lot.expiration_date)}"></td>
+            <td><input type="date" class="form-control form-control-sm lot-editor-expiration" value="${formatWarehouseEntryDate(lot.expiration_date)}"></td>
             <td><button type="button" class="btn btn-outline-danger btn-sm btnRemoveWarehouseEntryLot"><i class="fas fa-trash-alt"></i></button></td>
         </tr>`);
     refreshWarehouseEntryLotEditor();
@@ -1305,6 +1449,7 @@ function syncWarehouseEntryLotInputs(row, itemIndex) {
 
 function validateWarehouseEntryLots() {
     let message = '';
+    let invalidField = null;
     $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function (index) {
         const row = $(this);
         const lots = row.data('lots') || [];
@@ -1312,13 +1457,25 @@ function validateWarehouseEntryLots() {
         const expected = parseWarehouseEntryNumber(row.find('.item-quantity').val());
         const total = lots.reduce((sum, lot) => sum + parseWarehouseEntryNumber(lot.quantity), 0);
         const name = row.find('.item-billing-name').val() || `#${index + 1}`;
-        if (required && !lots.length) message = `El articulo ${name} debe tener al menos un lote.`;
-        else if (lots.length && Math.abs(total - expected) > 0.0001) message = `La suma de lotes del articulo ${name} es ${formatWarehouseEntryMoney(total)}, pero la cantidad ingresada es ${formatWarehouseEntryMoney(expected)}.`;
+        const invalidLot = lots.find(lot => !String(lot.lot_code || '').trim()
+            || parseWarehouseEntryNumber(lot.quantity) <= 0
+            || (Number(row.find('.item-has-expiration').val()) === 1 && !lot.expiration_date));
+        if (required && !lots.length) message = `El artículo ${name} debe tener al menos un lote.`;
+        else if (invalidLot) message = `Revise el código, la cantidad y la fecha de vencimiento de los lotes del artículo ${name}.`;
+        else if (lots.length && Math.abs(total - expected) > 0.0001) message = `La suma de lotes del artículo ${name} es ${formatWarehouseEntryMoney(total)}, pero la cantidad ingresada es ${formatWarehouseEntryMoney(expected)}.`;
+        if (message) invalidField = row.find('.btnManageWarehouseEntryLots');
         if (message) return false;
         syncWarehouseEntryLotInputs(row, index);
     });
-    if (message) Swal.fire({ icon: 'warning', title: 'Lotes incompletos', text: message });
-    return !message;
+    if (message) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_items',
+            message,
+            invalidField,
+            'Revise los artículos ingresados y los lotes'
+        );
+    }
+    return true;
 }
 
 function calculateWarehouseEntryTotals() {
@@ -1791,6 +1948,7 @@ function loadWarehouseEntryForEdit(id) {
             resetWarehouseEntryForm();
             $('#warehouseEntryModalLabel').text('Editar Ingreso de Almacen');
             $('#warehouse_entry_id').val(entry.id);
+            setWarehouseEntrySaving(false);
             $('#warehouse_entry_number').val(entry.entry_number);
             fillWarehouseEntryForm(entry);
             $('#warehouseEntryModal').modal('show');

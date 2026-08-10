@@ -1,6 +1,6 @@
 <div class="modal fade" id="warehouseEntryModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
-        <form id="warehouseEntryForm" class="modal-content border-0 shadow-lg warehouse-entry-modal">
+        <form id="warehouseEntryForm" class="modal-content border-0 shadow-lg warehouse-entry-modal" novalidate>
             @csrf
             <input type="hidden" id="warehouse_entry_id" name="warehouse_entry_id">
 
@@ -137,7 +137,7 @@
                                     <div class="form-group col-md-3">
                                         <label>MONEDA</label>
                                         <select id="warehouse_entry_currency_id" name="currency_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select" required>
+                                            class="form-control form-control-sm js-warehouse-entry-select">
                                             <option value="">Seleccione</option>
                                             @foreach ($currencies as $currency)
                                                 <option value="{{ $currency->id }}" data-symbol="{{ $currency->symbol ?? $currency->code }}">
@@ -151,7 +151,7 @@
                                     <div class="form-group col-md-4">
                                         <label>EMPRESA</label>
                                         <select id="warehouse_entry_company_id" name="company_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select" required>
+                                            class="form-control form-control-sm js-warehouse-entry-select">
                                             <option value="">Seleccione empresa</option>
                                             @foreach ($companies as $company)
                                                 <option value="{{ $company->id }}">{{ $company->trade_name ?? $company->business_name }}</option>
@@ -164,7 +164,7 @@
                                         <label>PROVEEDOR</label>
                                         <input type="hidden" id="warehouse_entry_supplier_id_hidden" name="supplier_id" disabled>
                                         <select id="warehouse_entry_supplier_id" name="supplier_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select" required>
+                                            class="form-control form-control-sm js-warehouse-entry-select">
                                             <option value="">Seleccione proveedor</option>
                                             @foreach ($suppliers as $supplier)
                                                 <option value="{{ $supplier->id }}" data-ruc="{{ $supplier->ruc }}">
@@ -199,7 +199,7 @@
                                     <div class="form-group col-md-3">
                                         <label>TIPO DOCUMENTO</label>
                                         <select id="warehouse_entry_document_type" name="document_type"
-                                            class="form-control form-control-sm text-uppercase" required>
+                                            class="form-control form-control-sm text-uppercase">
                                             <option value="FACTURA">FACTURA</option>
                                             <option value="BOLETA">BOLETA</option>
                                         </select>
@@ -414,7 +414,7 @@
                                     <select id="warehouse_entry_expense_provider_id" class="d-none"><option value=""></option></select>
                                     <input type="hidden" id="warehouse_entry_expense_provider_ruc">
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
-                                    <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm" required><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
+                                    <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
                                     <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO">Recibo</option><option value="SIN_COMPROBANTE">Sin comprobante</option></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>NÚMERO</label><input id="warehouse_entry_expense_document_number" class="form-control form-control-sm text-uppercase"></div>
@@ -728,7 +728,7 @@
                     <i class="fas fa-times mr-1"></i>
                     Cerrar
                 </button>
-                <button type="submit" class="btn btn-info btn-sm">
+                <button type="submit" id="btnSaveWarehouseEntry" class="btn btn-info btn-sm">
                     <i class="fas fa-save mr-1"></i>
                     Guardar
                 </button>
