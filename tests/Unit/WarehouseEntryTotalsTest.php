@@ -84,3 +84,23 @@ it('conserva seis decimales del precio al cargar una orden de proveedor', functi
     expect($payload['unit_price'])->toBe(0.833551)
         ->and($payload['line_total'])->toBe(5834.86);
 });
+
+it('mantiene el precio exacto de la orden y cuadra el total del ingreso', function () {
+    $orderItem = new SupplierPurchaseOrderItem([
+        'quantity' => 6,
+        'unit_price' => '2491.995',
+    ]);
+    $orderItem->setRelation('article', null);
+
+    $method = new ReflectionMethod(WarehouseEntryController::class, 'sourceItemPayload');
+    $sourceItem = $method->invoke(new WarehouseEntryController(), $orderItem, 6, 6, false);
+    $preparedItems = prepareWarehouseEntryItemsForTest([$sourceItem], false);
+    $totals = calculateWarehouseEntryTotalsForTest($preparedItems);
+
+    expect($sourceItem['unit_price'])->toBe(2491.995)
+        ->and($sourceItem['line_total'])->toBe(14951.97)
+        ->and($preparedItems[0]['unit_price'])->toBe(2491.995)
+        ->and($preparedItems[0]['line_total'])->toBe(14951.97)
+        ->and($totals['grand_total'])->toBe(14951.97)
+        ->and(abs(14951.97 - $totals['grand_total']))->toBeLessThanOrEqual(0.01);
+});

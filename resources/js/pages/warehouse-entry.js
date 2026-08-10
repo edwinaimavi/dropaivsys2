@@ -1359,7 +1359,7 @@ function renderWarehouseEntryOrderAmountDifference(entryTotal) {
     const warning = $('#warehouseEntryOrderAmountWarning');
     if (warehouseEntrySourceOrderTotal === null) return warning.addClass('d-none').empty();
     const difference = Math.round((warehouseEntrySourceOrderTotal - entryTotal + Number.EPSILON) * 100) / 100;
-    if (Math.abs(difference) < 0.01) return warning.addClass('d-none').empty();
+    if (Math.abs(difference) <= 0.01) return warning.addClass('d-none').empty();
     warning.removeClass('d-none').html(`<strong>El monto del ingreso no coincide con el total de la orden de compra a proveedor.</strong><br>Total OC proveedor: S/ ${formatWarehouseEntryMoney(warehouseEntrySourceOrderTotal)} · Monto ingreso: S/ ${formatWarehouseEntryMoney(entryTotal)} · Diferencia: S/ ${formatWarehouseEntryMoney(Math.abs(difference))}`);
 }
 
@@ -2184,7 +2184,10 @@ function formatWarehouseEntryMoney(value) {
 }
 
 function formatWarehouseEntryUnitPrice(value) {
-    return parseWarehouseEntryNumber(value).toFixed(6).replace(/0+$/, '').replace(/\.$/, '') || '0.00';
+    const [integerPart, decimalPart = ''] = parseWarehouseEntryNumber(value).toFixed(6).split('.');
+    const visibleDecimals = decimalPart.replace(/0+$/, '').padEnd(2, '0');
+
+    return `${integerPart}.${visibleDecimals}`;
 }
 
 function formatWarehouseEntryDate(value) {
