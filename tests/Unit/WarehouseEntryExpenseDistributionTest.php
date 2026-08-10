@@ -71,17 +71,36 @@ it('exige importe positivo cuando el costo afecta inventario', function () {
     ]))->toThrow(ValidationException::class, 'Ingrese un importe válido');
 });
 
-it('permite importe cero cuando el gasto es informativo', function () {
-    $expense = prepareWarehouseExpense([
+it('rechaza importe cero incluso cuando el gasto es informativo', function () {
+    expect(fn () => prepareWarehouseExpense([
         'cost_origin' => 'third_party',
         'amount' => 0,
         'affects_inventory_cost' => false,
         'description' => 'TRASLADO ASUMIDO SIN COSTO ADICIONAL',
+    ]))->toThrow(ValidationException::class, 'El importe debe ser mayor a 0');
+});
+
+it('rechaza IGV para recibos y costos sin comprobante', function (string $documentType) {
+    expect(fn () => prepareWarehouseExpense([
+        'cost_origin' => 'third_party',
+        'amount' => 105,
+        'affects_inventory_cost' => true,
+        'affects_igv' => true,
+        'document_type' => $documentType,
+    ]))->toThrow(ValidationException::class, 'no generan IGV para el análisis');
+})->with(['RECIBO', 'SIN_COMPROBANTE']);
+
+it('permite marcar factura o boleta como afecta a IGV', function (string $documentType) {
+    $expense = prepareWarehouseExpense([
+        'cost_origin' => 'third_party',
+        'amount' => 118,
+        'affects_inventory_cost' => true,
+        'affects_igv' => true,
+        'document_type' => $documentType,
     ]);
 
-    expect($expense['amount'])->toBe(0)
-        ->and($expense['affects_inventory_cost'])->toBeFalse();
-});
+    expect($expense['affects_igv'])->toBeTrue();
+})->with(['FACTURA', 'BOLETA']);
 
 it('distribuye exactamente por cantidad incluyendo el ajuste de centavos', function () {
     $items = [new WarehouseEntryItem(['quantity' => 1, 'line_total' => 10]), new WarehouseEntryItem(['quantity' => 2, 'line_total' => 20])];

@@ -12,7 +12,7 @@ class CustomerOrderProfitabilityService
 {
     public const MODE_WITHOUT_IGV = 'without_igv';
     public const MODE_WITH_IGV = 'with_igv';
-    public const IGV_RATE = 18.0;
+    public const IGV_RATE = WarehouseEntryExpense::IGV_RATE;
     public const INCOME_TAX_RATE = 29.5;
 
     public function calculate(CustomerPurchaseOrder $order, string $mode = self::MODE_WITHOUT_IGV): array
@@ -44,8 +44,20 @@ class CustomerOrderProfitabilityService
         $costs = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
             ->whereIn('warehouse_entry_id', $entryIds)->where('status', 'ACTIVE')->get();
 
-        $saleTotal = round((float) $order->items->where('status', '!=', 'deleted')->sum(fn ($item) => (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))), 2);
-        $purchaseTotal = round((float) $supplierItems->sum(fn ($item) => (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))), 2);
+        $activeSaleItems = $order->items->where('status', '!=', 'deleted');
+        $saleTotal = round((float) $activeSaleItems->sum(fn ($item) => (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))), 2);
+        $saleBase = round((float) $activeSaleItems->sum(function ($item) use ($order) {
+            $total = (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
+            return $order->affect_igv ? (float) ($item->subtotal ?: ($total / 1.18)) : $total;
+        }), 2);
+        $saleIgv = round($saleTotal - $saleBase, 2);
+        $purchaseTotal = round((float) $supplierItems->sum(fn ($item) => (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))), 2);
+        $purchaseBase = round((float) $supplierItems->sum(function ($item) {
+            $total = (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
+            if (! $item->order_affect_igv) return $total;
+            return (float) ($item->taxable_base ?? $item->subtotal ?? ($total / 1.18));
+        }), 2);
+        $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
         $withoutReceipt = $costs->reject(fn ($cost) => $this->isValidPaymentDocument($cost));
         $operationalTransportCosts = $costs->filter(fn ($cost) =>
             $this->isTransportCost($cost) && $this->isValidPaymentDocument($cost)
@@ -55,20 +67,25 @@ class CustomerOrderProfitabilityService
         );
         $freight = $operationalTransportCosts;
         $other = $otherOrUnsupportedCosts;
-        $freightTotal = round((float) $freight->sum('amount'), 2);
-        $withoutReceiptTotal = round((float) $withoutReceipt->sum('amount'), 2);
-        $otherTotal = round((float) $other->sum('amount'), 2);
-        $linkedTotal = round($freightTotal + $otherTotal, 2);
-
-        $saleBase = $mode === self::MODE_WITH_IGV && $order->affect_igv ? round($saleTotal / 1.18, 2) : $saleTotal;
-        $saleIgv = round($saleTotal - $saleBase, 2);
-        $purchaseBase = round((float) $supplierItems->sum(fn ($item) => $mode === self::MODE_WITH_IGV && $item->order_affect_igv ? (float) ($item->taxable_base ?: ((float) $item->line_total / 1.18)) : (float) $item->line_total), 2);
-        $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
-        $freightBase = $mode === self::MODE_WITH_IGV ? round((float) $freight->sum(fn ($cost) => $this->costHasIgv($cost) ? (float) $cost->amount / 1.18 : (float) $cost->amount), 2) : $freightTotal;
-        $freightIgv = round($freightTotal - $freightBase, 2);
-        $figures = $this->profitFigures($saleBase, $purchaseBase, $freightBase, $otherTotal);
+        $linkedFigures = $this->linkedCostFigures($freight, $other, $mode);
+        $freightTotal = $linkedFigures['freightTotal'];
+        $freightBase = $linkedFigures['freightBase'];
+        $freightIgv = $linkedFigures['freightIgv'];
+        $freightValue = $linkedFigures['freightValue'];
+        $otherGrossTotal = $linkedFigures['otherGrossTotal'];
+        $otherBase = $linkedFigures['otherBase'];
+        $otherIgv = $linkedFigures['otherIgv'];
+        $otherTotal = $linkedFigures['otherValue'];
+        $linkedGrossTotal = $linkedFigures['linkedGrossTotal'];
+        $linkedBase = $linkedFigures['linkedBase'];
+        $linkedIgv = $linkedFigures['linkedIgv'];
+        $linkedTotal = $linkedFigures['linkedValue'];
+        $withoutReceiptTotal = round((float) $withoutReceipt->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
+        $saleValue = $mode === self::MODE_WITHOUT_IGV ? $saleBase : $saleTotal;
+        $purchaseValue = $mode === self::MODE_WITHOUT_IGV ? $purchaseBase : $purchaseTotal;
+        $figures = $this->profitFigures($saleValue, $purchaseValue, $freightValue, $otherTotal);
         ['gross' => $gross, 'operating' => $operating, 'incomeTax' => $incomeTax, 'net' => $net] = $figures;
-        $denominator = $mode === self::MODE_WITH_IGV ? $purchaseTotal + $freightBase + $otherTotal : $purchaseTotal + $freightTotal + $otherTotal;
+        $denominator = $purchaseValue + $freightValue + $otherTotal;
         $percentage = $denominator > 0 ? round(($net / $denominator) * 100, 2) : 0.0;
 
         $customerItemByArticle = $order->items->where('status', '!=', 'deleted')->keyBy('article_id');
@@ -85,9 +102,10 @@ class CustomerOrderProfitabilityService
         if ($supplierItems->pluck('order_currency_id')->push($order->currency_id)->filter()->unique()->count() > 1) $warnings[] = 'La OC tiene documentos en monedas diferentes. Se requiere tipo de cambio para un cálculo exacto.';
         if ($net < 0) $warnings[] = 'La orden presenta utilidad negativa.';
 
-        return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'freightTotal', 'freightBase', 'freightIgv', 'withoutReceiptTotal', 'otherTotal', 'linkedTotal', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
+        return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
             'igvRate' => self::IGV_RATE, 'incomeTaxRate' => self::INCOME_TAX_RATE,
-            'igvSales' => $saleIgv, 'igvPurchases' => round($purchaseIgv + $freightIgv, 2), 'igvDifference' => round($saleIgv - $purchaseIgv - $freightIgv, 2),
+            'igvSales' => $saleIgv, 'igvPurchases' => $purchaseIgv, 'igvLinkedCosts' => $linkedIgv,
+            'igvDifference' => round($saleIgv - $purchaseIgv - $linkedIgv, 2),
         ];
     }
 
@@ -102,7 +120,7 @@ class CustomerOrderProfitabilityService
 
     private function isValidPaymentDocument($cost): bool
     {
-        return in_array(strtoupper(trim((string) data_get($cost, 'document_type'))), ['FACTURA', 'BOLETA'], true);
+        return WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'));
     }
 
     private function isTransportCost($cost): bool
@@ -122,7 +140,73 @@ class CustomerOrderProfitabilityService
         ], true);
     }
 
-    private function costHasIgv($cost): bool { return in_array(strtoupper((string) $cost->document_type), ['FACTURA'], true); }
+    private function costHasIgv($cost): bool
+    {
+        return filter_var(data_get($cost, 'affects_igv', false), FILTER_VALIDATE_BOOLEAN)
+            && $this->isValidPaymentDocument($cost);
+    }
+
+    private function costTaxBreakdown($cost): array
+    {
+        $storedTotal = data_get($cost, 'total_amount');
+        $total = round((float) (($storedTotal !== null && (float) $storedTotal > 0)
+            ? $storedTotal
+            : data_get($cost, 'amount', 0)), 2);
+        if (! $this->costHasIgv($cost)) {
+            return ['total' => $total, 'base' => $total, 'igv' => 0.0];
+        }
+
+        $rate = (float) data_get($cost, 'igv_rate', self::IGV_RATE);
+        $rate = $rate > 0 ? $rate : self::IGV_RATE;
+        $storedBase = data_get($cost, 'taxable_amount');
+        $base = $storedBase !== null && (float) $storedBase > 0
+            ? round((float) $storedBase, 2)
+            : round($total / (1 + ($rate / 100)), 2);
+        $storedIgv = data_get($cost, 'igv_amount');
+        $igv = $storedIgv !== null
+            ? round((float) $storedIgv, 2)
+            : round($total - $base, 2);
+
+        return ['total' => $total, 'base' => $base, 'igv' => $igv];
+    }
+
+    private function costValueForMode($cost, string $mode): float
+    {
+        $breakdown = $this->costTaxBreakdown($cost);
+
+        return $mode === self::MODE_WITHOUT_IGV ? $breakdown['base'] : $breakdown['total'];
+    }
+
+    private function linkedCostFigures($freight, $other, string $mode): array
+    {
+        $sum = function ($costs, string $field): float {
+            return round((float) $costs->sum(fn ($cost) => $this->costTaxBreakdown($cost)[$field]), 2);
+        };
+
+        $freightTotal = $sum($freight, 'total');
+        $freightBase = $sum($freight, 'base');
+        $freightIgv = $sum($freight, 'igv');
+        $otherGrossTotal = $sum($other, 'total');
+        $otherBase = $sum($other, 'base');
+        $otherIgv = $sum($other, 'igv');
+        $freightValue = $mode === self::MODE_WITHOUT_IGV ? $freightBase : $freightTotal;
+        $otherValue = $mode === self::MODE_WITHOUT_IGV ? $otherBase : $otherGrossTotal;
+
+        return [
+            'freightTotal' => $freightTotal,
+            'freightBase' => $freightBase,
+            'freightIgv' => $freightIgv,
+            'freightValue' => $freightValue,
+            'otherGrossTotal' => $otherGrossTotal,
+            'otherBase' => $otherBase,
+            'otherIgv' => $otherIgv,
+            'otherValue' => $otherValue,
+            'linkedGrossTotal' => round($freightTotal + $otherGrossTotal, 2),
+            'linkedBase' => round($freightBase + $otherBase, 2),
+            'linkedIgv' => round($freightIgv + $otherIgv, 2),
+            'linkedValue' => round($freightValue + $otherValue, 2),
+        ];
+    }
 
     private function profitFigures(float $saleBase, float $purchaseBase, float $freightBase, float $otherTotal): array
     {

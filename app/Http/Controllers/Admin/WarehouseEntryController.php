@@ -687,8 +687,13 @@ class WarehouseEntryController extends Controller
             'expenses.*.document_number' => ['nullable', 'string', 'max:50'],
             'expenses.*.document_date' => ['nullable', 'date'],
             'expenses.*.currency_id' => ['nullable', 'exists:currencies,id'],
-            'expenses.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.amount' => ['required', 'numeric', 'gt:0'],
             'expenses.*.distributed_amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.affects_igv' => ['required', 'boolean'],
+            'expenses.*.igv_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'expenses.*.taxable_amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.igv_amount' => ['nullable', 'numeric', 'min:0'],
+            'expenses.*.total_amount' => ['nullable', 'numeric', 'gt:0'],
             'expenses.*.affects_inventory_cost' => ['required', 'boolean'],
             'expenses.*.distribution_method' => ['nullable', Rule::in(['quantity', 'amount', 'weight', 'manual'])],
             'expenses.*.description' => ['nullable', 'string', 'max:1000'],
@@ -706,6 +711,10 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_lot_documents.*.file.file' => 'El documento del lote debe ser un archivo válido.',
             'warehouse_entry_lot_documents.*.file.mimes' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
             'warehouse_entry_lot_documents.*.file.max' => 'El archivo adjunto debe ser PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX, XLS o XLSX y no debe superar los 10 MB.',
+            'expenses.*.amount.required' => 'Ingrese un importe válido.',
+            'expenses.*.amount.gt' => 'El importe debe ser mayor a 0.',
+            'expenses.*.affects_igv.required' => 'Seleccione si el costo está afecto a IGV.',
+            'expenses.*.affects_igv.boolean' => 'Seleccione si el costo está afecto a IGV.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -1009,7 +1018,7 @@ class WarehouseEntryController extends Controller
                     "expenses.$index.provider_name" => 'Ingrese el responsable o persona que cobró.',
                 ]);
             }
-            $affectsCost = (bool) $data['affects_inventory_cost'];
+            $affectsCost = filter_var($data['affects_inventory_cost'], FILTER_VALIDATE_BOOLEAN);
             $method = $affectsCost ? ($data['distribution_method'] ?? null) : null;
             if ($affectsCost && $items->isEmpty()) {
                 throw ValidationException::withMessages(["expenses.$index.distribution_method" => 'Debe existir al menos un artículo para distribuir el gasto.']);
@@ -1056,6 +1065,10 @@ class WarehouseEntryController extends Controller
                 }
             }
 
+            $taxBreakdown = WarehouseEntryExpense::taxBreakdown(
+                (float) $data['amount'],
+                filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN)
+            );
             $expense = $existingExpense
                 ? $existingExpense
                 : $entry->expenses()->make(['created_by' => Auth::id()]);
@@ -1073,7 +1086,8 @@ class WarehouseEntryController extends Controller
                 'document_number' => $data['document_number'],
                 'document_date' => $data['document_date'] ?? null,
                 'currency_id' => $data['currency_id'] ?? $entry->currency_id,
-                'amount' => round((float) $data['amount'], 2),
+                'amount' => $taxBreakdown['total_amount'],
+                ...$taxBreakdown,
                 'affects_inventory_cost' => $affectsCost,
                 'distribution_method' => $method,
                 'description' => $this->upperOrNull($data['description'] ?? null),
@@ -1139,11 +1153,23 @@ class WarehouseEntryController extends Controller
             return $data;
         }
 
-        if ((bool) ($data['affects_inventory_cost'] ?? false) && (float) ($data['amount'] ?? 0) <= 0) {
+        if ((float) ($data['amount'] ?? 0) <= 0) {
             throw ValidationException::withMessages([
-                "expenses.$index.amount" => 'Ingrese un importe válido.',
+                "expenses.$index.amount" => 'Ingrese un importe válido. El importe debe ser mayor a 0.',
             ]);
         }
+
+        $affectsIgv = filter_var($data['affects_igv'] ?? null, FILTER_VALIDATE_BOOLEAN);
+        $documentType = strtoupper(trim((string) ($data['document_type'] ?? '')));
+        if ($affectsIgv && ! WarehouseEntryExpense::supportsIgv($documentType)) {
+            $message = in_array($documentType, ['RECIBO', 'SIN_COMPROBANTE', ''], true)
+                ? 'Los recibos o costos sin comprobante no generan IGV para el análisis.'
+                : 'Solo una factura o boleta puede registrarse como afecto a IGV.';
+
+            throw ValidationException::withMessages(["expenses.$index.affects_igv" => $message]);
+        }
+
+        $data['affects_igv'] = $affectsIgv;
 
         return $data;
     }
@@ -1177,6 +1203,9 @@ class WarehouseEntryController extends Controller
             FILTER_VALIDATE_BOOLEAN
         );
         $data['affects_inventory_cost'] = $affectsInventoryCost;
+        if (array_key_exists('affects_igv', $data)) {
+            $data['affects_igv'] = filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN);
+        }
         $data['distributed_amount'] = round((float) (
             $data['distributed_amount'] ?? ($affectsInventoryCost ? ($data['amount'] ?? 0) : 0)
         ), 2);
