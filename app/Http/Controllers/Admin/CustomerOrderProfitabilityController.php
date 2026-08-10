@@ -51,7 +51,7 @@ class CustomerOrderProfitabilityController extends Controller
         $rows = $orders->map(function ($order) use ($mode) {
             $data = $this->service->calculate($order, $mode);
             $status = CustomerPurchaseOrder::statusPresentation($order->status);
-            return ['id'=>$order->id,'code'=>$order->code,'purchase_order_number'=>$order->purchase_order_number,'customer'=>$order->customer?->business_name ?: $order->customer?->full_name,'company'=>$order->company?->trade_name ?: $order->company?->business_name,'currency'=>$order->currency?->symbol ?: $order->currency?->code,'sale_total'=>$data['saleValue'],'purchase_total'=>$data['purchaseValue'],'linked_costs_total'=>$data['linkedTotal'],'net_profit'=>$data['net'],'profitability_percentage'=>$data['percentage'],'status_label'=>$status['label'],'status_class'=>$status['class'],'status_icon'=>$status['icon']];
+            return ['id'=>$order->id,'code'=>$order->code,'purchase_order_number'=>$order->purchase_order_number,'customer'=>$order->customer?->business_name ?: $order->customer?->full_name,'company'=>$order->company?->trade_name ?: $order->company?->business_name,'currency'=>'S/','sale_total'=>$data['saleValue'],'purchase_total'=>$data['purchaseValue'],'linked_costs_total'=>$data['linkedTotal'],'net_profit'=>$data['net'],'profitability_percentage'=>$data['percentage'],'status_label'=>$status['label'],'status_class'=>$status['class'],'status_icon'=>$status['icon']];
         });
         return DataTables::of($rows)->addIndexColumn()->make(true);
     }

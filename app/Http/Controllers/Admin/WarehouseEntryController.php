@@ -116,6 +116,7 @@ class WarehouseEntryController extends Controller
 
     public function supplierPurchaseOrderLogisticsStatus(SupplierPurchaseOrder $supplierPurchaseOrder)
     {
+        $supplierPurchaseOrder->loadMissing('currency:id,code', 'paymentCurrency:id,code');
         $statuses = $supplierPurchaseOrder->trackings()
             ->orderByRaw('COALESCE(event_date, created_at) ASC')
             ->orderBy('id')
@@ -125,10 +126,26 @@ class WarehouseEntryController extends Controller
         return response()->json([
             'status' => 'success',
             ...$summary,
+            'financial_blocked' => $supplierPurchaseOrder->hasPendingCashAdvance(),
+            'financial_credit_warning' => $supplierPurchaseOrder->hasCreditAdvanceWarning(),
+            'apply_advance' => (bool) $supplierPurchaseOrder->apply_advance,
+            'advance_status' => $supplierPurchaseOrder->advance_status,
+            'advance_required' => (float) $supplierPurchaseOrder->advance_amount,
+            'advance_paid' => (float) $supplierPurchaseOrder->advance_paid_amount,
+            'advance_balance' => max(
+                round((float) $supplierPurchaseOrder->advance_amount - (float) $supplierPurchaseOrder->advance_paid_amount, 4),
+                0
+            ),
+            'payment_currency' => $supplierPurchaseOrder->paymentCurrency?->code
+                ?? $supplierPurchaseOrder->currency?->code,
             'supplier_purchase_order_id' => $supplierPurchaseOrder->id,
             'supplier_purchase_order_code' => $supplierPurchaseOrder->code,
             'tracking_url' => route('admin.supplier-purchase-orders.index', [
                 'openTracking' => $supplierPurchaseOrder->id,
+                'orderCode' => $supplierPurchaseOrder->code,
+            ]),
+            'order_edit_url' => route('admin.supplier-purchase-orders.index', [
+                'openOrder' => $supplierPurchaseOrder->id,
                 'orderCode' => $supplierPurchaseOrder->code,
             ]),
         ]);
@@ -572,6 +589,12 @@ class WarehouseEntryController extends Controller
             ])
             ->findOrFail($validated['supplier_purchase_order_id']);
 
+        if ($order->hasPendingCashAdvance()) {
+            throw ValidationException::withMessages([
+                'supplier_purchase_order_id' => 'Esta orden requiere completar el anticipo antes de ingresar la mercadería al almacén.',
+            ]);
+        }
+
         $entryId = $validated['warehouse_entry_id'] ?? null;
         $receivedByItem = $this->receivedQuantitiesForOrder($order, $entryId);
 
@@ -777,6 +800,12 @@ class WarehouseEntryController extends Controller
                         ->with('supplier:id,ruc')
                         ->findOrFail($validated['supplier_purchase_order_id'])
                     : null;
+                if ($supplierPurchaseOrder?->hasPendingCashAdvance()
+                    && (! $entry || (int) $entry->supplier_purchase_order_id !== (int) $supplierPurchaseOrder->id)) {
+                    throw ValidationException::withMessages([
+                        'supplier_purchase_order_id' => 'Complete el anticipo pendiente antes de registrar el ingreso de almacén.',
+                    ]);
+                }
                 $supplier = $supplierPurchaseOrder?->supplier
                     ?? Supplier::query()->find($validated['supplier_id'] ?? null);
                 $affectIgv = $supplierPurchaseOrder

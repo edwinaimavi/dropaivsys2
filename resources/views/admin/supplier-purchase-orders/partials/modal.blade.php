@@ -2,7 +2,7 @@
     aria-labelledby="supplierPurchaseOrderModalLabel" aria-hidden="true" data-backdrop="static"
     data-keyboard="false">
 
-    <div class="modal-dialog modal-lg modal-dialog-centered supplier-order-modal-dialog" role="document">
+    <div class="modal-dialog modal-xl modal-dialog-centered supplier-order-modal-dialog" role="document">
         <div class="modal-content border-0 shadow-lg">
 
             <div class="modal-header align-items-center supplier-order-modal-header">
@@ -26,7 +26,7 @@
             </div>
 
             <div class="modal-body p-2">
-                <form id="supplierPurchaseOrderForm" autocomplete="off" class="row">
+                <form id="supplierPurchaseOrderForm" autocomplete="off" class="row" novalidate>
                     @csrf
 
                     <input type="hidden" id="supplier_purchase_order_id" name="supplier_purchase_order_id">
@@ -55,10 +55,10 @@
                                         placeholder="Autom&aacute;tico" readonly>
 
                                     <small class="text-muted d-block">Fecha de registro</small>
-                                    <div class="font-weight-600 mb-2">{{ now()->format('d/m/Y') }}</div>
+                                    <div class="font-weight-600 mb-2" id="supplierOrderSideDate">{{ now()->format('d/m/Y') }}</div>
 
                                     <small class="text-muted d-block">Estado inicial</small>
-                                    <span class="badge badge-primary px-2 py-1 mb-2">Registrado</span>
+                                    <span class="badge badge-primary px-2 py-1 mb-2" id="supplierOrderSideStatus">Registrado</span>
 
                                     <small class="text-muted d-block">Proveedor</small>
                                     <div class="font-weight-600 mb-2 text-break" id="supplierOrderSideSupplier">
@@ -69,6 +69,12 @@
                                     <div class="supplier-order-side-total mt-1">
                                         <span class="supplier-order-currency-symbol">S/</span>
                                         <span id="supplierOrderSideGrandTotal">0.00</span>
+                                    </div>
+
+                                    <div class="supplier-order-side-finance mt-3">
+                                        <div><span>Moneda</span><strong id="supplierOrderSideCurrency">PEN</strong></div>
+                                        <div><span>Anticipo</span><strong id="supplierOrderSideAdvance">No aplica</strong></div>
+                                        <div><span>Estado financiero</span><strong id="supplierOrderSideFinancialStatus">Sin anticipo</strong></div>
                                     </div>
                                 </div>
 
@@ -82,7 +88,29 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-9 mb-2">
+                    <div class="col-lg-9 mb-2 supplier-order-tabs-column">
+                        <div class="supplier-order-tabs-shell d-none" id="supplierOrderTabsShell">
+                            <nav class="supplier-order-form-tabs" aria-label="Secciones de la orden a proveedor">
+                                <div class="nav nav-pills flex-nowrap" role="tablist">
+                                    <a class="nav-link active" data-toggle="pill" href="#supplier_order_tab_data" role="tab" data-section="data"><i class="fas fa-clipboard-list"></i><span>Datos de la orden</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_finance" role="tab" data-section="finance"><i class="fas fa-coins"></i><span>Condiciones financieras</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_logistics" role="tab" data-section="logistics"><i class="fas fa-shipping-fast"></i><span>Env&iacute;o / log&iacute;stica</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_documents" role="tab" data-section="documents"><i class="fas fa-folder-open"></i><span>Documentaci&oacute;n</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_items" role="tab" data-section="items"><i class="fas fa-boxes"></i><span>Art&iacute;culos y servicios</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_pdf" role="tab" data-section="pdf"><i class="fas fa-file-pdf"></i><span>Datos para PDF</span><b class="supplier-order-tab-error d-none">!</b></a>
+                                    <a class="nav-link" data-toggle="pill" href="#supplier_order_tab_summary" role="tab" data-section="summary"><i class="fas fa-chart-pie"></i><span>Resumen</span></a>
+                                </div>
+                            </nav>
+                            <div class="tab-content supplier-order-form-tab-content">
+                                <div class="tab-pane fade show active" id="supplier_order_tab_data" role="tabpanel"><div class="card supplier-order-tab-card"><div class="card-header"><h6><i class="fas fa-clipboard-list"></i> Datos esenciales de la compra</h6><small>Empresa, proveedor y condiciones principales de la orden.</small></div><div class="card-body"><div class="form-row supplier-order-data-grid"></div></div></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_finance" role="tabpanel"><div class="supplier-order-finance-container"></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_logistics" role="tabpanel"><div class="card supplier-order-tab-card"><div class="card-header"><h6><i class="fas fa-shipping-fast"></i> Env&iacute;o y log&iacute;stica</h6><small>Entrega, destino y datos de agencia cuando corresponda.</small></div><div class="card-body"><div class="form-row supplier-order-logistics-grid"></div><div class="supplier-order-agency-container"></div></div></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_documents" role="tabpanel"><div class="supplier-order-documents-container"></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_items" role="tabpanel"><div class="supplier-order-items-container"></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_pdf" role="tabpanel"><div class="supplier-order-pdf-container"></div></div>
+                                <div class="tab-pane fade" id="supplier_order_tab_summary" role="tabpanel"><div id="supplierOrderFormSummary"></div></div>
+                            </div>
+                        </div>
                         <div class="card border-0 shadow-sm">
                             <div class="card-header bg-white border-0 py-2 px-3">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
@@ -96,18 +124,6 @@
                                         </small>
                                     </div>
 
-                                    <div class="mt-2 mt-md-0">
-                                        <button type="button" class="btn btn-light border btn-sm mr-2"
-                                            data-dismiss="modal">
-                                            <i class="fas fa-times mr-1"></i>
-                                            Cancelar
-                                        </button>
-                                        <button type="submit" id="btnSaveSupplierPurchaseOrder"
-                                            class="btn btn-success btn-sm">
-                                            <i class="fas fa-save mr-1"></i>
-                                            Guardar
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
 
@@ -371,6 +387,102 @@
                                         <input type="text" id="supplier_order_shipping_address"
                                             name="shipping_address" class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
+                                    </div>
+                                </div>
+
+                                <div class="card border-0 shadow-sm mb-3 supplier-order-financial-card">
+                                    <div class="card-header border-0 d-flex align-items-center justify-content-between">
+                                        <div><h6 class="mb-0"><i class="fas fa-coins mr-1"></i> Condiciones financieras</h6><small>Conversi&oacute;n a soles y control trazable del anticipo</small></div>
+                                        <span id="supplierOrderAdvanceStatusBadge" class="badge badge-light">Sin anticipo</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="form-row align-items-end">
+                                            <div class="form-group col-md-3">
+                                                <label>MONEDA DE LA COMPRA</label>
+                                                <input id="supplier_order_purchase_currency_label" class="form-control form-control-sm" readonly value="PEN | SOL">
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>MONEDA DE PAGO <span class="text-danger">*</span></label>
+                                                <select id="supplier_order_payment_currency_id" name="payment_currency_id" class="form-control form-control-sm js-supplier-order-select" required>
+                                                    <option value="">Seleccione moneda</option>
+                                                    @foreach ($currencies as $currency)
+                                                        <option value="{{ $currency->id }}" data-code="{{ $currency->code }}" data-symbol="{{ $currency->symbol }}">
+                                                            {{ $currency->code }} | {{ $currency->description }}
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <div class="custom-control custom-switch mb-2">
+                                                    <input type="hidden" name="apply_exchange_rate" value="0">
+                                                    <input type="checkbox" class="custom-control-input" id="supplier_order_apply_exchange_rate" name="apply_exchange_rate" value="1">
+                                                    <label class="custom-control-label" for="supplier_order_apply_exchange_rate">Aplicar tipo de cambio</label>
+                                                </div>
+                                            </div>
+                                            <div class="form-group col-md-3" id="supplierOrderExchangeRateGroup">
+                                                <label>TIPO DE CAMBIO</label>
+                                                <input type="number" step="0.000001" min="0.000001" id="supplier_order_exchange_rate" name="exchange_rate" class="form-control form-control-sm text-right" placeholder="3.7500">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                        </div>
+                                        <div class="supplier-order-financial-summary mb-3">
+                                            <div><small>Total compra</small><strong id="supplierOrderFinancialPurchaseTotal">PEN 0.00</strong></div>
+                                            <div><small>Tipo de cambio</small><strong id="supplierOrderFinancialRate">No aplica</strong></div>
+                                            <div><small>Total moneda de pago</small><strong id="supplierOrderFinancialPaymentTotal">PEN 0.00</strong></div>
+                                            <div class="is-pen"><small>Total normalizado</small><strong id="supplierOrderFinancialPenTotal">S/ 0.00</strong></div>
+                                        </div>
+
+                                        <div class="form-row align-items-end">
+                                            <div class="form-group col-md-3">
+                                                <div class="custom-control custom-switch mb-2">
+                                                    <input type="hidden" name="apply_advance" value="0">
+                                                    <input type="checkbox" class="custom-control-input" id="supplier_order_apply_advance" name="apply_advance" value="1">
+                                                    <label class="custom-control-label" for="supplier_order_apply_advance">Aplicar anticipo</label>
+                                                </div>
+                                            </div>
+                                            <div class="form-group col-md-3 supplier-order-advance-field">
+                                                <label>TIPO DE ANTICIPO</label>
+                                                <select id="supplier_order_advance_type" name="advance_type" class="form-control form-control-sm">
+                                                    <option value="">Seleccione</option>
+                                                    <option value="fixed_amount">Monto fijo</option>
+                                                    <option value="percentage">Porcentaje</option>
+                                                </select>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-3 supplier-order-advance-field" id="supplierOrderAdvancePercentageGroup">
+                                                <label>PORCENTAJE</label>
+                                                <div class="input-group input-group-sm"><input type="number" step="0.0001" min="0.0001" max="100" id="supplier_order_advance_percentage" name="advance_percentage" class="form-control text-right"><div class="input-group-append"><span class="input-group-text">%</span></div></div>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-md-3 supplier-order-advance-field" id="supplierOrderAdvanceAmountGroup">
+                                                <label>MONTO FIJO</label>
+                                                <input type="number" step="0.01" min="0.01" id="supplier_order_advance_amount" name="advance_amount" class="form-control form-control-sm text-right">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                        </div>
+                                        <div class="supplier-order-advance-summary supplier-order-advance-field mb-3">
+                                            <div><small>Anticipo requerido</small><strong id="supplierOrderAdvanceRequired">0.00</strong></div>
+                                            <div><small>Pagado</small><strong id="supplierOrderAdvancePaid">0.00</strong></div>
+                                            <div><small>Saldo pendiente</small><strong id="supplierOrderAdvanceBalance">0.00</strong></div>
+                                            <div><small>Equivalente requerido</small><strong id="supplierOrderAdvancePen">S/ 0.00</strong></div>
+                                        </div>
+
+                                        <div id="supplierOrderAdvancePaymentsSection" class="supplier-order-advance-field">
+                                            <div class="d-flex justify-content-between align-items-center mb-2"><div><strong class="d-block">Pagos de anticipo</strong><small class="text-muted">Cada registro conserva fecha, cuenta, moneda, usuario y constancia.</small></div></div>
+                                            <div id="supplierOrderExistingAdvancePayments" class="mb-2"></div>
+                                            <div class="supplier-order-new-advance-payment">
+                                                <small class="d-block font-weight-bold mb-2 text-uppercase">Registrar nuevo pago al guardar</small>
+                                                <div class="form-row">
+                                                    <div class="form-group col-md-2"><label>MONTO</label><input type="number" step="0.01" min="0.01" name="advance_payments[0][amount]" id="supplier_order_new_advance_amount" class="form-control form-control-sm text-right"><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-2"><label>FECHA</label><input type="date" name="advance_payments[0][payment_date]" id="supplier_order_new_advance_date" class="form-control form-control-sm"><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-2"><label>MEDIO DE PAGO</label><select name="advance_payments[0][payment_method]" id="supplier_order_new_advance_method" class="form-control form-control-sm"><option value="">Seleccione</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="deposito_cuenta">Dep&oacute;sito en cuenta</option></select><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-2"><label>N&deg; OPERACI&Oacute;N</label><input type="text" name="advance_payments[0][operation_number]" class="form-control form-control-sm text-uppercase" maxlength="100"></div>
+                                                    <div class="form-group col-md-4"><label>CONSTANCIA</label><div class="custom-file custom-file-sm"><input type="file" name="advance_payments[0][proof]" id="supplier_order_new_advance_proof" class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp"><label class="custom-file-label" for="supplier_order_new_advance_proof">Seleccionar archivo</label></div><small class="text-muted">PDF, JPG, JPEG, PNG o WEBP. M&aacute;x. 10 MB.</small><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-12"><label>OBSERVACI&Oacute;N</label><input type="text" name="advance_payments[0][observation]" class="form-control form-control-sm text-uppercase" maxlength="1000"><small id="supplierOrderAdvanceAccountHelp" class="text-muted">Se usar&aacute; la cuenta bancaria seleccionada en esta orden.</small></div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -743,6 +855,13 @@
                         </tr>
                     </template>
                 </form>
+            </div>
+            <div class="modal-footer supplier-order-modal-footer">
+                <div class="supplier-order-footer-hint"><i class="fas fa-info-circle"></i><span>Revise las secciones marcadas antes de guardar.</span></div>
+                <div class="d-flex supplier-order-footer-actions">
+                    <button type="button" class="btn btn-light border btn-sm" data-dismiss="modal"><i class="fas fa-times mr-1"></i>Cancelar</button>
+                    <button type="submit" form="supplierPurchaseOrderForm" id="btnSaveSupplierPurchaseOrder" class="btn btn-success btn-sm"><i class="fas fa-save mr-1"></i>Guardar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1135,6 +1254,313 @@
         font-weight: 800;
     }
 
+    #supplierPurchaseOrderModal .modal-body {
+        max-height: calc(100vh - 148px);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tabs-column {
+        min-width: 0;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tabs-shell {
+        overflow: hidden;
+        border: 1px solid #dce9e3;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(25, 78, 58, .07);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tabs {
+        overflow-x: auto;
+        padding: 8px 9px 0;
+        border-bottom: 1px solid #e2ece7;
+        background: #f7fbf9;
+        scrollbar-width: thin;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tabs .nav {
+        width: max-content;
+        min-width: 100%;
+        gap: 4px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tabs .nav-link {
+        position: relative;
+        display: inline-flex;
+        min-height: 43px;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 11px;
+        border: 1px solid transparent;
+        border-radius: 9px 9px 0 0;
+        color: #60736b;
+        font-size: 11px;
+        font-weight: 750;
+        white-space: nowrap;
+        transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tabs .nav-link i {
+        font-size: 12px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tabs .nav-link.active {
+        border-color: #cbe4d8 #cbe4d8 #fff;
+        background: #fff;
+        color: #147553;
+        box-shadow: 0 -2px 8px rgba(20, 117, 83, .06);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-error {
+        display: inline-grid;
+        width: 17px;
+        height: 17px;
+        place-items: center;
+        border-radius: 50%;
+        background: #dc3545;
+        color: #fff;
+        font-size: 9px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-form-tab-content {
+        min-height: 480px;
+        padding: 12px;
+        background: #f8fbfa;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card,
+    #supplierPurchaseOrderModal .supplier-order-form-tab-content > .tab-pane > div > .card {
+        margin: 0;
+        border: 1px solid #e0ebe6;
+        border-radius: 12px;
+        box-shadow: 0 4px 14px rgba(23, 76, 56, .055);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card > .card-header {
+        padding: 12px 15px;
+        border: 0;
+        border-bottom: 1px solid #e7efeb;
+        background: #fff;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card > .card-header h6 {
+        margin: 0 0 2px;
+        color: #28473b;
+        font-size: 13px;
+        font-weight: 800;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card > .card-header h6 i {
+        margin-right: 6px;
+        color: #198754;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card > .card-header small {
+        color: #7b8c85;
+        font-size: 10px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-tab-card > .card-body {
+        padding: 15px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-financial-card,
+    #supplierPurchaseOrderModal .supplier-order-documents-card,
+    #supplierPurchaseOrderModal .supplier-order-items-full,
+    #supplierPurchaseOrderModal .supplier-order-pdf-container > .card {
+        margin-bottom: 0 !important;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-items-container .supplier-order-table-scroll {
+        max-height: calc(100vh - 390px);
+        min-height: 245px;
+        overflow: auto;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-side-finance {
+        display: grid;
+        gap: 7px;
+        padding: 10px;
+        border: 1px solid #dcebe4;
+        border-radius: 10px;
+        background: #f7fbf9;
+        text-align: left;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-side-finance > div {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-side-finance span {
+        color: #789087;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-side-finance strong {
+        color: #214f3d;
+        font-size: 10px;
+        text-align: right;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        margin-bottom: 13px;
+        padding: 14px 16px;
+        border: 1px solid #d9e9e2;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #fff, #f0faf5);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-heading span:first-child {
+        color: #198754;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-heading h6 {
+        margin: 2px 0;
+        color: #25483a;
+        font-weight: 800;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-heading small {
+        color: #71837c;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-code {
+        padding: 6px 10px;
+        border: 1px solid #c7e5d8;
+        border-radius: 999px;
+        background: #e9f8f1;
+        color: #147553;
+        font-size: 10px !important;
+        letter-spacing: 0 !important;
+        text-transform: none !important;
+        white-space: nowrap;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card {
+        display: flex;
+        min-width: 0;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 11px;
+        border: 1px solid #e0ebe6;
+        border-radius: 11px;
+        background: #fff;
+        box-shadow: 0 3px 10px rgba(25, 78, 58, .045);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card > span {
+        display: inline-grid;
+        flex: 0 0 30px;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border-radius: 9px;
+        background: #e9f7f1;
+        color: #198754;
+        font-size: 12px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card div {
+        min-width: 0;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card small,
+    #supplierPurchaseOrderModal .supplier-order-summary-card strong {
+        display: block;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card small {
+        margin-bottom: 3px;
+        color: #81928b;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-card strong {
+        overflow: hidden;
+        color: #29483c;
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-alerts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-summary-alerts .alert {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        padding: 9px 11px;
+        border-radius: 9px;
+        font-size: 10px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-modal-footer {
+        display: flex;
+        min-height: 62px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 15px;
+        border-top: 1px solid #dce9e3;
+        background: rgba(255, 255, 255, .98);
+        box-shadow: 0 -7px 20px rgba(30, 73, 57, .07);
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-footer-hint {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: #71857c;
+        font-size: 10px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-footer-hint i {
+        color: #198754;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-footer-actions {
+        gap: 8px;
+    }
+
+    #supplierPurchaseOrderModal .supplier-order-modal-footer .btn {
+        min-width: 112px;
+        padding: 7px 14px;
+        border-radius: 9px;
+        font-weight: 750;
+    }
+
+    @media (max-width: 1199px) {
+        #supplierPurchaseOrderModal .supplier-order-summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
     @media (max-width: 991px) {
         #supplierPurchaseOrderModal .supplier-order-modal-dialog {
             max-width: 98%;
@@ -1148,6 +1574,18 @@
 
         #supplierPurchaseOrderModal .supplier-order-total-line>span {
             text-align: left;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-form-tab-content {
+            min-height: 420px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-summary-alerts {
+            grid-template-columns: 1fr;
         }
     }
 
@@ -1163,7 +1601,7 @@
         }
 
         #supplierPurchaseOrderModal .modal-body {
-            max-height: calc(100vh - 60px);
+            max-height: calc(100vh - 124px);
             padding: .5rem !important;
         }
 
@@ -1177,6 +1615,42 @@
 
         #supplierPurchaseOrderModal #supplierOrderItemsTable {
             min-width: 1260px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-form-tabs .nav-link {
+            min-height: 39px;
+            padding: 7px 9px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-form-tabs .nav-link span {
+            font-size: 10px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-form-tab-content {
+            min-height: 0;
+            padding: 8px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-summary-heading {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-modal-footer {
+            padding: 8px;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-footer-hint {
+            display: none;
+        }
+
+        #supplierPurchaseOrderModal .supplier-order-footer-actions,
+        #supplierPurchaseOrderModal .supplier-order-footer-actions .btn {
+            flex: 1;
         }
     }
 </style>

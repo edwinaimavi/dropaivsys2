@@ -795,13 +795,21 @@ function handleWarehouseEntrySupplierOrderSelection() {
                 return;
             }
 
-            if (response.is_complete) {
-                warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
-                acceptWarehouseEntrySupplierOrder(orderId);
+            if (response.financial_blocked) {
+                showWarehouseEntryBlockedAdvanceAlert(response, orderId);
                 return;
             }
-
-            showWarehouseEntryIncompleteLogisticsAlert(response, orderId);
+            if (response.financial_credit_warning) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Anticipo pendiente en una compra a crédito',
+                    text: 'La orden tiene anticipo pendiente, pero está marcada como crédito. Se permitirá el ingreso a almacén.',
+                    confirmButtonText: 'Entendido, continuar',
+                    confirmButtonColor: '#1684a7'
+                }).then(result => result.isConfirmed && continueWarehouseEntrySelectionValidation(response, orderId));
+                return;
+            }
+            continueWarehouseEntrySelectionValidation(response, orderId);
         })
         .fail(function (xhr) {
             if (xhr.statusText === 'abort'
@@ -830,6 +838,39 @@ function handleWarehouseEntrySupplierOrderSelection() {
         .always(function () {
             warehouseEntryLogisticsStatusRequest = null;
         });
+}
+
+function continueWarehouseEntrySelectionValidation(response, orderId) {
+    if (String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== String(orderId)) return;
+    if (response.is_complete) {
+        warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
+        acceptWarehouseEntrySupplierOrder(orderId);
+        return;
+    }
+    showWarehouseEntryIncompleteLogisticsAlert(response, orderId);
+}
+
+function showWarehouseEntryBlockedAdvanceAlert(response, orderId) {
+    const currency = escapeWarehouseEntryHtml(response.payment_currency || '');
+    const balance = formatWarehouseEntryMoney(response.advance_balance || 0);
+    Swal.fire({
+        icon: 'error',
+        title: 'Anticipo pendiente',
+        html: `<p>Esta orden de compra requiere anticipo y todavía no se encuentra pagado completamente. Para ingresar la mercadería al almacén debe completar el anticipo, pagar el total correspondiente o cambiar la condición de pago a crédito si corresponde.</p><div class="alert alert-warning mb-0"><strong>Saldo pendiente:</strong> ${currency} ${balance}</div>`,
+        showCancelButton: true,
+        allowOutsideClick: false,
+        confirmButtonText: 'Ir a la orden',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#1684a7',
+        cancelButtonColor: '#6c757d'
+    }).then(function (result) {
+        if (String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== String(orderId)) return;
+        if (result.isConfirmed) {
+            window.location.assign(response.order_edit_url);
+        } else {
+            cancelWarehouseEntrySupplierOrderSelection();
+        }
+    });
 }
 
 function showWarehouseEntryIncompleteLogisticsAlert(response, orderId) {

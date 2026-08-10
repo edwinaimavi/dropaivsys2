@@ -568,6 +568,11 @@ Route::get(
     [SupplierPurchaseOrderController::class, 'viewDocument']
 )->name('supplier-purchase-orders.documents.view');
 
+Route::get(
+    'supplier-purchase-orders/{supplierPurchaseOrder}/advance-payments/{advancePayment}/proof',
+    [SupplierPurchaseOrderController::class, 'viewAdvancePaymentProof']
+)->name('supplier-purchase-orders.advance-payments.proof');
+
 Route::delete(
     'supplier-purchase-orders/{supplierPurchaseOrder}/documents/{document}',
     [SupplierPurchaseOrderController::class, 'destroyDocument']

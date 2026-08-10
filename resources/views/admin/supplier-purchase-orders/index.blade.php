@@ -999,6 +999,25 @@
             min-width: 240px;
         }
 
+        .supplier-order-financial-card { border: 1px solid #dbece5 !important; overflow: hidden; }
+        .supplier-order-financial-card .card-header { padding: 11px 14px; background: linear-gradient(110deg,#eaf8f2,#f8fcfa); color: #235847; }
+        .supplier-order-financial-card .card-header h6 { font-size: 13px; font-weight: 800; }
+        .supplier-order-financial-card .card-header small { color: #6b8179; font-size: 9px; }
+        .supplier-order-financial-summary,.supplier-order-advance-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+        .supplier-order-financial-summary>div,.supplier-order-advance-summary>div { padding: 9px 11px; border: 1px solid #e1ebe7; border-radius: 9px; background: #fbfdfc; }
+        .supplier-order-financial-summary small,.supplier-order-financial-summary strong,.supplier-order-advance-summary small,.supplier-order-advance-summary strong { display: block; }
+        .supplier-order-financial-summary small,.supplier-order-advance-summary small { color: #788a83; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+        .supplier-order-financial-summary strong,.supplier-order-advance-summary strong { margin-top: 2px; color: #294f43; font-size: 12px; }
+        .supplier-order-financial-summary .is-pen { border-color: #bce2d2; background: #edf9f4; }
+        .supplier-order-new-advance-payment { padding: 10px 11px 2px; border: 1px dashed #b9d8cc; border-radius: 10px; background: #f8fcfa; }
+        .supplier-order-advance-payments-table { margin-bottom: 0; font-size: 10px; }
+        .supplier-order-financial-chip { display: block; margin-top: 3px; color: #24725a; font-size: 9px; font-weight: 800; }
+        .supplier-order-advance-chip { display: inline-block; margin-top: 3px; padding: 2px 6px; border-radius: 999px; background: #eef4f2; color: #667a73; font-size: 8px; font-weight: 800; }
+
+        @media (max-width: 767.98px) {
+            .supplier-order-financial-summary,.supplier-order-advance-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+        }
+
         .breadcrumb {
             margin-bottom: 0;
         }

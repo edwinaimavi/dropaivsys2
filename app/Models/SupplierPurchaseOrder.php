@@ -11,6 +11,11 @@ class SupplierPurchaseOrder extends Model
 {
     use SoftDeletes;
 
+    public const ADVANCE_NOT_REQUIRED = 'not_required';
+    public const ADVANCE_PENDING = 'pending';
+    public const ADVANCE_PARTIAL = 'partial';
+    public const ADVANCE_PAID = 'paid';
+
     public const DELIVERY_TYPE_AGENCY = 'agencia';
     public const DELIVERY_TYPE_WAREHOUSE_PICKUP = 'recojo_almacen';
     public const DELIVERY_TYPE_SUPPLIER_CARRIER = 'transportista_proveedor';
@@ -44,6 +49,9 @@ class SupplierPurchaseOrder extends Model
         'supplier_id',
         'supplier_account_id',
         'currency_id',
+        'payment_currency_id',
+        'apply_exchange_rate',
+        'exchange_rate',
         'customer_purchase_order_id',
         'quote_id',
         'market_study_id',
@@ -73,6 +81,18 @@ class SupplierPurchaseOrder extends Model
         'subtotal',
         'igv',
         'grand_total',
+        'total_purchase_currency',
+        'total_payment_currency',
+        'total_pen',
+        'apply_advance',
+        'advance_type',
+        'advance_percentage',
+        'advance_amount',
+        'advance_amount_pen',
+        'advance_paid_amount',
+        'advance_paid_amount_pen',
+        'advance_status',
+        'payment_status',
         'status',
         'created_by',
         'updated_by',
@@ -83,6 +103,17 @@ class SupplierPurchaseOrder extends Model
         'subtotal' => 'decimal:2',
         'igv' => 'decimal:2',
         'grand_total' => 'decimal:2',
+        'apply_exchange_rate' => 'boolean',
+        'apply_advance' => 'boolean',
+        'exchange_rate' => 'decimal:6',
+        'total_purchase_currency' => 'decimal:4',
+        'total_payment_currency' => 'decimal:4',
+        'total_pen' => 'decimal:4',
+        'advance_percentage' => 'decimal:4',
+        'advance_amount' => 'decimal:4',
+        'advance_amount_pen' => 'decimal:4',
+        'advance_paid_amount' => 'decimal:4',
+        'advance_paid_amount_pen' => 'decimal:4',
     ];
 
     public function company()
@@ -103,6 +134,31 @@ class SupplierPurchaseOrder extends Model
     public function currency()
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    public function paymentCurrency()
+    {
+        return $this->belongsTo(Currency::class, 'payment_currency_id');
+    }
+
+    public function advancePayments()
+    {
+        return $this->hasMany(SupplierPurchaseOrderAdvancePayment::class)
+            ->where('status', 'ACTIVE');
+    }
+
+    public function hasPendingCashAdvance(): bool
+    {
+        return (bool) $this->apply_advance
+            && $this->advance_status !== self::ADVANCE_PAID
+            && ! str_starts_with(strtolower((string) $this->payment_condition), 'credito');
+    }
+
+    public function hasCreditAdvanceWarning(): bool
+    {
+        return (bool) $this->apply_advance
+            && $this->advance_status !== self::ADVANCE_PAID
+            && str_starts_with(strtolower((string) $this->payment_condition), 'credito');
     }
 
     public function customerPurchaseOrder()

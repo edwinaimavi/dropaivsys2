@@ -4,6 +4,8 @@ let supplierOrderItemIndex = 0;
 let supplierOrderSourceLoadRequest = null;
 let supplierOrderSourceLoadTimer = null;
 const supplierOrderExpandedGroups = new Set();
+let supplierOrderEditDeepLinkHandled = false;
+let supplierOrderEditDeepLinkSearchApplied = false;
 const defaultSupplierOrderImportantNote = `ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTICA@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:
 1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE
 2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE
@@ -22,8 +24,11 @@ document.addEventListener('DOMContentLoaded', function () {
         show: false
     });
 
+    initializeSupplierOrderTabbedLayout();
     initSupplierOrderSelect2($('#supplierPurchaseOrderModal'));
     initSupplierPurchaseOrderTable();
+    $(document).on('supplier-orders:groups-rendered', openSupplierOrderEditFromQuery);
+    openSupplierOrderEditFromQuery();
 
     $(document).on('click', '.supplier-order-group-toggle', function () {
         toggleSupplierOrderCustomerGroup($(this).closest('.supplier-order-accordion').attr('data-group-key'));
@@ -47,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '#btnAddSupplierOrderDocument', addSupplierOrderDocumentRow);
     $(document).on('click', '.btnRemoveSupplierOrderDocument', function () {
         $(this).closest('.supplier-order-document-row').remove();
+        updateSupplierOrderFormSummary();
     });
     $(document).on('change', '.supplier-document-file', function () {
         const fileName = this.files?.length
@@ -91,6 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshSupplierOrderItemIndexes();
         calculateSupplierOrderTotals();
         showEmptySupplierOrderItemsRow();
+        updateSupplierOrderFormSummary();
     });
 
     $(document).on('change', '#supplier_order_supplier_id', function () {
@@ -120,6 +127,12 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
+    $(document).on('change input', '#supplier_order_payment_currency_id,#supplier_order_apply_exchange_rate,#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount', updateSupplierOrderFinancialSummary);
+    $(document).on('change input', '#supplierPurchaseOrderForm', updateSupplierOrderFormSummary);
+    $(document).on('shown.bs.tab', '#supplierPurchaseOrderModal .supplier-order-form-tabs a[data-toggle="pill"]', updateSupplierOrderFormSummary);
+    $(document).on('change', '#supplier_order_new_advance_proof', function () {
+        $(this).siblings('.custom-file-label').text(this.files?.[0]?.name || 'Seleccionar archivo');
+    });
 
     $(document).on('change', '#supplier_order_company_id', applySupplierOrderCompanyDefaults);
 
@@ -212,6 +225,125 @@ document.addEventListener('DOMContentLoaded', function () {
         deleteSupplierPurchaseOrder($(this).data('id'));
     });
 });
+
+function initializeSupplierOrderTabbedLayout() {
+    const shell = $('#supplierOrderTabsShell');
+    if (!shell.length || shell.data('initialized')) return;
+
+    const column = shell.closest('.supplier-order-tabs-column');
+    const legacyCard = column.children('.card').first();
+    const dataGrid = shell.find('.supplier-order-data-grid');
+    const logisticsGrid = shell.find('.supplier-order-logistics-grid');
+
+    [
+        '#supplier_order_company_id',
+        '#supplier_order_customer_purchase_order_ids',
+        '#supplier_order_currency_id',
+        '#supplier_order_supplier_id',
+        '#supplier_order_supplier_account_id',
+        '#supplier_order_payment_condition',
+        '#supplier_order_payment_method',
+        '#supplier_order_document_type',
+        '#supplier_order_affect_igv',
+        '#supplier_order_observations'
+    ].forEach(selector => {
+        const group = $(selector).closest('.form-group');
+        if (selector === '#supplier_order_observations') group.removeClass('col-md-4').addClass('col-md-12');
+        group.appendTo(dataGrid);
+    });
+
+    [
+        '#supplier_order_transport_type',
+        '#supplier_order_delivery_type',
+        '#supplier_order_shipping_address',
+        '#supplier_order_destination_ubigeo_id',
+        '#supplier_order_destination_text'
+    ].forEach(selector => $(selector).closest('.form-group').appendTo(logisticsGrid));
+
+    $('#supplierOrderShippingAgencySection').appendTo(shell.find('.supplier-order-agency-container'));
+    $('.supplier-order-financial-card').appendTo(shell.find('.supplier-order-finance-container'));
+    $('#supplier_order_request_department').closest('.card').appendTo(shell.find('.supplier-order-pdf-container'));
+
+    const documentsCard = $('.supplier-order-documents-card').first();
+    const documentsWrapper = documentsCard.parent();
+    documentsCard.appendTo(shell.find('.supplier-order-documents-container'));
+    if (documentsWrapper.hasClass('col-12')) documentsWrapper.remove();
+
+    const itemsCard = $('.supplier-order-items-full').first();
+    const itemsWrapper = itemsCard.parent();
+    itemsCard.appendTo(shell.find('.supplier-order-items-container'));
+    if (itemsWrapper.hasClass('col-12')) itemsWrapper.remove();
+
+    legacyCard.remove();
+    shell.data('initialized', true).removeClass('d-none');
+    updateSupplierOrderFormSummary();
+}
+
+function showSupplierOrderTab(section) {
+    const tab = $(`#supplierPurchaseOrderModal .supplier-order-form-tabs [data-section="${section}"]`);
+    if (tab.length) tab.tab('show');
+}
+
+function supplierOrderModalStatusPresentation(status) {
+    return {
+        registered: ['Registrado', 'badge-primary'],
+        draft: ['Registrado', 'badge-primary'],
+        sent: ['Enviado', 'badge-info'],
+        approved: ['Aprobado', 'badge-success'],
+        received: ['Ingresado', 'badge-success'],
+        partial_entered: ['Ingreso parcial', 'badge-warning text-dark'],
+        entered: ['Ingresado', 'badge-success'],
+        cancelled: ['Cancelado', 'badge-danger'],
+        invoiced: ['Facturado', 'badge-info']
+    }[String(status || 'registered').toLowerCase()] || [String(status || 'Registrado'), 'badge-secondary'];
+}
+
+function updateSupplierOrderFormSummary() {
+    const summary = $('#supplierOrderFormSummary');
+    if (!summary.length) return;
+
+    const selectedText = selector => {
+        const selected = $(`${selector} option:selected`);
+        if (!selected.length || !selected.val()) return '-';
+        const values = selected.map(function () { return $(this).text().trim(); }).get();
+        return values.length > 1 ? `${values[0]} y ${values.length - 1} m\u00e1s` : values[0];
+    };
+    const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
+    const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
+    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
+    const applyAdvance = $('#supplier_order_apply_advance').is(':checked');
+    const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
+    const totalPurchase = parseFloat($('#supplier_order_grand_total').val()) || 0;
+    const totalPen = String($('#supplierOrderFinancialPenTotal').text() || 'S/ 0.00');
+    const advanceStatus = $('#supplierOrderAdvanceStatusBadge').text().trim() || 'Sin anticipo';
+    const itemCount = $('#supplierOrderItemsTbody tr.supplier-order-item-row').length;
+    const documentCount = $('#supplierOrderExistingDocuments .supplier-doc-existing, #supplierOrderDocumentsContainer .supplier-doc-row').length;
+    const customerCount = ($('#supplier_order_customer_purchase_order_ids').val() || []).length;
+    const cards = [
+        ['Proveedor', selectedText('#supplier_order_supplier_id'), 'fa-building'],
+        ['Empresa', selectedText('#supplier_order_company_id'), 'fa-landmark'],
+        ['OC cliente relacionada', selectedText('#supplier_order_customer_purchase_order_ids'), 'fa-link'],
+        ['Moneda compra', purchase.code || '-', 'fa-money-bill-wave'],
+        ['Moneda pago', payment.code || '-', 'fa-wallet'],
+        ['Tipo de cambio', applyRate ? (rate > 0 ? rate.toFixed(4) : 'Pendiente') : 'No aplica', 'fa-exchange-alt'],
+        ['Total compra', `${purchase.code} ${formatSupplierOrderMoney(totalPurchase)}`, 'fa-shopping-cart'],
+        ['Total normalizado', totalPen, 'fa-coins'],
+        ['Condici\u00f3n de pago', selectedText('#supplier_order_payment_condition'), 'fa-calendar-check'],
+        ['Anticipo', applyAdvance ? advanceStatus : 'No aplica', 'fa-hand-holding-usd'],
+        ['Total art\u00edculos', String(itemCount), 'fa-boxes'],
+        ['Total documentos', String(documentCount), 'fa-folder-open']
+    ];
+    const alerts = [];
+    if (applyAdvance && advanceStatus !== 'Pagado') alerts.push(['warning', 'fa-exclamation-triangle', 'Esta orden requiere anticipo pendiente.']);
+    if (applyRate) alerts.push(['info', 'fa-exchange-alt', 'Esta orden usa tipo de cambio.']);
+    if (customerCount > 0) alerts.push(['success', 'fa-link', 'Esta orden est\u00e1 relacionada a una OC del cliente.']);
+
+    summary.html(`<div class="supplier-order-summary-heading"><div><span>Vista ejecutiva</span><h6>Resumen de la orden</h6><small>Compruebe los datos principales antes de guardar.</small></div><span class="supplier-order-summary-code">${escapeSupplierOrderHtml($('#supplier_order_code').val() || 'C\u00f3digo autom\u00e1tico')}</span></div><div class="supplier-order-summary-grid">${cards.map(([label, value, icon]) => `<div class="supplier-order-summary-card"><span><i class="fas ${icon}"></i></span><div><small>${label}</small><strong>${escapeSupplierOrderHtml(value)}</strong></div></div>`).join('')}</div><div class="supplier-order-summary-alerts">${alerts.length ? alerts.map(([tone, icon, text]) => `<div class="alert alert-${tone}"><i class="fas ${icon}"></i>${text}</div>`).join('') : '<div class="alert alert-light border"><i class="fas fa-check-circle text-success"></i>Sin alertas financieras adicionales.</div>'}</div>`);
+
+    $('#supplierOrderSideCurrency').text(purchase.code || '-');
+    $('#supplierOrderSideAdvance').text(applyAdvance ? $('#supplierOrderAdvanceRequired').text() : 'No aplica');
+    $('#supplierOrderSideFinancialStatus').text(applyAdvance ? advanceStatus : (applyRate ? 'ConversiÃ³n activa' : 'Sin anticipo'));
+}
 
 function initSupplierPurchaseOrderTable() {
     tableSupplierPurchaseOrder = $('#tableSupplierPurchaseOrder').DataTable({
@@ -411,7 +543,7 @@ function renderSupplierOrderCustomerGroups(table) {
                 : escapeSupplierOrderHtml(order.supplier_name || '-');
 
             return `<tr>
-                <td>${order.code || '-'}</td>
+                <td>${order.code || '-'}<span class="supplier-order-financial-chip">${escapeSupplierOrderHtml(order.financial_summary || '-')}</span><span class="supplier-order-advance-chip">${escapeSupplierOrderHtml(order.advance_summary || 'Sin anticipo')}</span></td>
                 <td>${supplier}</td>
                 <td>${escapeSupplierOrderHtml(order.company || '-')}</td>
                 <td>${escapeSupplierOrderHtml(order.currency || '-')}</td>
@@ -492,6 +624,37 @@ function toggleSupplierOrderCustomerGroup(key) {
     else supplierOrderExpandedGroups.delete(String(key));
 }
 
+function openSupplierOrderEditFromQuery() {
+    if (supplierOrderEditDeepLinkHandled) return;
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('openOrder');
+    if (!orderId) return;
+
+    const editButton = $('.editSupplierPurchaseOrder').filter(function () {
+        return String($(this).data('id')) === String(orderId);
+    }).first();
+    if (!editButton.length) {
+        if (supplierOrderEditDeepLinkSearchApplied || !$.fn.DataTable.isDataTable('#tableSupplierPurchaseOrder')) return;
+        supplierOrderEditDeepLinkSearchApplied = true;
+        $('#tableSupplierPurchaseOrder').DataTable().search(params.get('orderCode') || orderId).draw();
+        return;
+    }
+
+    supplierOrderEditDeepLinkHandled = true;
+    const accordion = editButton.closest('.supplier-order-accordion');
+    if (accordion.length && !accordion.hasClass('is-open')) accordion.find('.supplier-order-group-toggle').first().trigger('click');
+    const row = editButton.closest('tr');
+    row.addClass('supplier-order-deep-link-highlight');
+    row[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => row.removeClass('supplier-order-deep-link-highlight'), 3200);
+    setTimeout(() => loadSupplierPurchaseOrderForEdit(orderId), 300);
+
+    params.delete('openOrder');
+    params.delete('orderCode');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+}
+
 function initSupplierOrderSelect2(scope) {
     if (!$.fn.select2) {
         return;
@@ -555,6 +718,8 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_purchase_order_id').val('');
     $('#supplier_order_code').val('');
     $('#supplierPurchaseOrderModalLabel').text('Registrar Orden de Compra a Proveedor');
+    $('#supplierOrderSideDate').text(new Intl.DateTimeFormat('es-PE').format(new Date()));
+    $('#supplierOrderSideStatus').attr('class', 'badge badge-primary px-2 py-1 mb-2').text('Registrado');
     $('#btnSaveSupplierPurchaseOrder')
         .prop('disabled', false)
         .html('<i class="fas fa-save mr-1"></i> Guardar');
@@ -591,6 +756,13 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_shipping_contact_email').val('');
     $('#supplier_order_shipping_reference').val('');
     $('#supplier_order_payment_method').val('').trigger('change.select2');
+    $('#supplier_order_payment_currency_id').val('').trigger('change.select2');
+    $('#supplier_order_apply_exchange_rate,#supplier_order_apply_advance').prop('checked', false);
+    $('#supplier_order_exchange_rate,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount').val('');
+    $('#supplier_order_advance_type,#supplier_order_new_advance_method').val('');
+    $('#supplier_order_new_advance_date').val(new Date().toISOString().slice(0, 10));
+    $('#supplier_order_new_advance_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
+    $('#supplierOrderExistingAdvancePayments').empty().data('paid-amount', 0);
     $('#supplier_order_document_type').val('').trigger('change.select2');
     $('#supplier_order_request_department').val('COMPRAS');
     $('#supplier_order_authorized_by_name').val('IVAN CUBAS BINCES');
@@ -602,10 +774,13 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplierOrderDocumentsContainer, #supplierOrderExistingDocuments').empty();
 
     setDefaultSupplierOrderCurrency();
+    syncSupplierOrderPaymentCurrency();
     $('#supplierOrderSideSupplier').text('Seleccione proveedor');
     toggleSupplierOrderShippingAgencySection();
     calculateSupplierOrderTotals();
     syncPurchaseInstructions(true);
+    showSupplierOrderTab('data');
+    updateSupplierOrderFormSummary();
 }
 
 function clearQuickSupplierForOrderErrors() {
@@ -839,11 +1014,13 @@ function saveSupplierPurchaseOrder(formElement) {
     syncPurchaseInstructions(true);
 
     if (!$('#supplier_order_supplier_account_id').val()) {
+        showSupplierOrderTab('data');
         Swal.fire({ icon: 'warning', title: 'Debe seleccionar o registrar una cuenta bancaria del proveedor.' });
         return;
     }
 
     if ($('#supplierOrderItemsTbody tr.supplier-order-item-row').length === 0) {
+        showSupplierOrderTab('items');
         Swal.fire({
             icon: 'warning',
             title: 'Agregue al menos un item',
@@ -855,6 +1032,13 @@ function saveSupplierPurchaseOrder(formElement) {
     const priceViolation = findSupplierOrderPriceViolation();
     if (priceViolation) {
         showSupplierOrderPriceViolation(priceViolation);
+        return;
+    }
+
+    const financialError = validateSupplierOrderFinancialTerms();
+    if (financialError) {
+        showSupplierOrderTab('finance');
+        Swal.fire({ icon: 'warning', title: 'Revise las condiciones financieras', text: financialError });
         return;
     }
 
@@ -965,6 +1149,7 @@ function addSupplierOrderDocumentRow() {
             </div>
         </div>
     `);
+    updateSupplierOrderFormSummary();
 }
 
 function renderExistingSupplierOrderDocuments(documents) {
@@ -972,6 +1157,7 @@ function renderExistingSupplierOrderDocuments(documents) {
 
     if (!documents?.length) {
         container.empty();
+        updateSupplierOrderFormSummary();
         return;
     }
 
@@ -995,6 +1181,10 @@ function renderExistingSupplierOrderDocuments(documents) {
                     class="supplier-doc-action is-open" title="Abrir documento">
                     <i class="fas fa-external-link-alt"></i>
                 </a>
+                <a href="${escapeSupplierOrderHtml(document.view_url)}" download="${escapeSupplierOrderHtml(document.original_name || 'documento')}"
+                    class="supplier-doc-action is-open" title="Descargar documento">
+                    <i class="fas fa-download"></i>
+                </a>
                 <button type="button" class="supplier-doc-action is-delete btnDeleteExistingSupplierOrderDocument"
                     data-url="${escapeSupplierOrderHtml(document.delete_url)}" title="Eliminar documento">
                     <i class="fas fa-trash"></i>
@@ -1002,6 +1192,7 @@ function renderExistingSupplierOrderDocuments(documents) {
             </div>
         </div>
     `}).join(''));
+    updateSupplierOrderFormSummary();
 }
 
 function deleteExistingSupplierOrderDocument() {
@@ -1026,6 +1217,7 @@ function deleteExistingSupplierOrderDocument() {
                 const container = button.closest('#supplierOrderExistingDocuments');
                 button.closest('.supplier-doc-existing').remove();
                 if (!container.children('.supplier-doc-existing').length) container.empty();
+                updateSupplierOrderFormSummary();
                 Swal.fire('Correcto', response.message || 'Documento eliminado.', 'success');
             },
             error: xhr => Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el documento.', 'error')
@@ -1554,6 +1746,7 @@ function addSupplierOrderItemRow(data = {}) {
     supplierOrderItemIndex++;
     refreshSupplierOrderItemIndexes();
     calculateSupplierOrderTotals();
+    updateSupplierOrderFormSummary();
 }
 
 function supplierOrderCurrencyLabel() {
@@ -1586,6 +1779,7 @@ function findSupplierOrderPriceViolation() {
 function showSupplierOrderPriceViolation(violation) {
     const message = `El precio de compra del artículo ${violation.article} no puede ser mayor al precio de la Orden de Compra del Cliente. Precio cliente: ${supplierOrderCurrencyLabel()} ${formatSupplierOrderMoney(violation.maxPrice)}.`;
     violation.input.addClass('is-invalid').trigger('focus');
+    showSupplierOrderTab('items');
     violation.input.closest('td').find('.invalid-feedback').text(message);
     Swal.fire({ icon: 'warning', title: 'Precio no permitido', text: message });
 }
@@ -1689,6 +1883,7 @@ function calculateSupplierOrderTotals() {
     setSupplierOrderValue('#supplier_order_igv', formatSupplierOrderMoney(igv));
     setSupplierOrderValue('#supplier_order_grand_total', formatSupplierOrderMoney(grandTotal));
     $('#supplierOrderSideGrandTotal').text(formatSupplierOrderMoney(grandTotal));
+    updateSupplierOrderFinancialSummary();
 }
 
 function loadSupplierPurchaseOrderForEdit(id) {
@@ -1715,10 +1910,22 @@ function fillSupplierPurchaseOrderForm(order) {
 
     $('#supplier_purchase_order_id').val(order.id || '');
     $('#supplier_order_code').val(order.code || '');
+    const modalStatus = supplierOrderModalStatusPresentation(order.status);
+    $('#supplierOrderSideStatus').attr('class', `badge ${modalStatus[1]} px-2 py-1 mb-2`).text(modalStatus[0]);
+    const createdDate = String(order.created_at || '').slice(0, 10).split('-').reverse().join('/');
+    $('#supplierOrderSideDate').text(createdDate || new Intl.DateTimeFormat('es-PE').format(new Date()));
     $('#supplier_order_company_id').val(order.company_id || '').trigger('change.select2');
     $('#supplier_order_supplier_id').val(order.supplier_id || '').trigger('change.select2');
     const supplierAccountsRequest = loadSupplierAccounts(order.supplier_id, order.supplier_account_id, { suppressInstructionSync: true });
     $('#supplier_order_currency_id').val(order.currency_id || '').trigger('change');
+    $('#supplier_order_payment_currency_id').val(order.payment_currency_id || order.currency_id || '').trigger('change.select2');
+    $('#supplier_order_apply_exchange_rate').prop('checked', Boolean(order.apply_exchange_rate));
+    $('#supplier_order_exchange_rate').val(order.exchange_rate || '');
+    $('#supplier_order_apply_advance').prop('checked', Boolean(order.apply_advance));
+    $('#supplier_order_advance_type').val(order.advance_type || '');
+    $('#supplier_order_advance_percentage').val(order.advance_percentage || '');
+    $('#supplier_order_advance_amount').val(order.advance_type === 'fixed_amount' ? (order.advance_amount || '') : '');
+    renderSupplierOrderAdvancePayments(order.advance_payments || []);
     const relatedCustomerOrders = (order.customer_purchase_orders || []).length
         ? order.customer_purchase_orders
         : (order.customer_purchase_order ? [order.customer_purchase_order] : []);
@@ -1791,6 +1998,7 @@ function fillSupplierPurchaseOrderForm(order) {
     (order.items || []).forEach(addSupplierOrderItemRow);
     showEmptySupplierOrderItemsRow();
     calculateSupplierOrderTotals();
+    updateSupplierOrderFinancialSummary();
 
     if (supplierAccountsRequest && typeof supplierAccountsRequest.always === 'function') {
         supplierAccountsRequest.always(function () {
@@ -2012,16 +2220,31 @@ function clearSupplierPurchaseOrderErrors() {
     $('#supplierPurchaseOrderForm .select2-selection').removeClass('border-danger');
     $('#supplierPurchaseOrderForm .invalid-feedback').text('');
     $('#supplierPurchaseOrderErrors').addClass('d-none').empty();
+    $('#supplierPurchaseOrderModal .supplier-order-tab-error').addClass('d-none');
+}
+
+function supplierOrderSectionForField(field) {
+    if (/^(financial_terms|payment_currency_id|apply_exchange_rate|exchange_rate|apply_advance|advance_|advance_payments)/.test(field)) return 'finance';
+    if (/^(transport_type|delivery_type|shipping_|destination_)/.test(field)) return 'logistics';
+    if (/^supplier_documents/.test(field)) return 'documents';
+    if (/^items/.test(field)) return 'items';
+    if (/^(request_department|authorized_by_|delivery_text|purchase_instructions|important_note)/.test(field)) return 'pdf';
+    return 'data';
 }
 
 function showSupplierPurchaseOrderErrors(errors) {
     const errorMessages = [];
+    let firstInvalidPane = null;
 
     Object.entries(errors).forEach(function ([field, fieldMessages]) {
         const normalizedField = field.replace(/\.\d+$/, '');
-        let input = $(`[name="${normalizedField}"]`);
+        const bracketField = field.replace(/\.([^.]+)/g, '[$1]');
+        let input = $(`[name="${bracketField}"]`);
         const message = fieldMessages[0];
 
+        if (!input.length) {
+            input = $(`[name="${normalizedField}"]`);
+        }
         if (!input.length) {
             input = $(`[name="${normalizedField}[]"]`);
         }
@@ -2036,6 +2259,14 @@ function showSupplierPurchaseOrderErrors(errors) {
             input.closest('.form-group, td').find('.invalid-feedback').first().text(message);
         }
 
+        const pane = input.length ? input.closest('.tab-pane') : $();
+        const section = pane.length
+            ? $(`#supplierPurchaseOrderModal .supplier-order-form-tabs a[href="#${pane.attr('id')}"]`).data('section')
+            : supplierOrderSectionForField(field);
+        const tab = $(`#supplierPurchaseOrderModal .supplier-order-form-tabs a[data-section="${section}"]`);
+        tab.find('.supplier-order-tab-error').removeClass('d-none');
+        if (!firstInvalidPane && tab.attr('href')) firstInvalidPane = tab.attr('href').slice(1);
+
         errorMessages.push(message);
     });
 
@@ -2044,6 +2275,10 @@ function showSupplierPurchaseOrderErrors(errors) {
         .html(`<ul class="mb-0 pl-3">${errorMessages.map(
             message => `<li>${escapeSupplierOrderHtml(message)}</li>`
         ).join('')}</ul>`);
+
+    if (firstInvalidPane) {
+        $(`#supplierPurchaseOrderModal .supplier-order-form-tabs a[href="#${firstInvalidPane}"]`).tab('show');
+    }
 }
 
 function updateSupplierOrderCurrency() {
@@ -2053,6 +2288,108 @@ function updateSupplierOrderCurrency() {
 
     $('.supplier-order-currency-code').text(code);
     $('.supplier-order-currency-symbol').text(symbol);
+    $('#supplier_order_purchase_currency_label').val(selected.text().trim() || '-');
+    syncSupplierOrderPaymentCurrency();
+    updateSupplierOrderFinancialSummary();
+}
+
+function syncSupplierOrderPaymentCurrency() {
+    const paymentCurrency = $('#supplier_order_payment_currency_id');
+    if (!paymentCurrency.val()) {
+        paymentCurrency.val($('#supplier_order_currency_id').val() || '').trigger('change.select2');
+    }
+}
+
+function supplierOrderFinancialCurrency(selector) {
+    const option = $(`${selector} option:selected`);
+    return {
+        id: option.val() || '',
+        code: String(option.data('code') || 'PEN').toUpperCase(),
+        symbol: option.data('symbol') || (String(option.data('code')).toUpperCase() === 'PEN' ? 'S/' : option.data('code'))
+    };
+}
+
+function updateSupplierOrderFinancialSummary() {
+    if (!$('#supplier_order_payment_currency_id').length) return;
+    const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
+    const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
+    const totalPurchase = parseFloat($('#supplier_order_grand_total').val()) || 0;
+    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
+    const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
+    const needsRate = purchase.code !== payment.code || purchase.code !== 'PEN' || payment.code !== 'PEN';
+    $('#supplier_order_apply_exchange_rate').prop('checked', applyRate || needsRate);
+    $('#supplierOrderExchangeRateGroup').toggleClass('d-none', !(applyRate || needsRate));
+    $('#supplier_order_exchange_rate').prop('disabled', !(applyRate || needsRate));
+
+    let totalPayment = totalPurchase;
+    if (purchase.code !== payment.code && rate > 0) {
+        totalPayment = payment.code === 'PEN' ? totalPurchase * rate : totalPurchase / rate;
+    }
+    const totalPen = payment.code === 'PEN' ? totalPayment : (rate > 0 ? totalPayment * rate : 0);
+    $('#supplierOrderFinancialPurchaseTotal').text(`${purchase.code} ${formatSupplierOrderMoney(totalPurchase)}`);
+    $('#supplierOrderFinancialRate').text((applyRate || needsRate) && rate > 0 ? rate.toFixed(4) : 'Pendiente');
+    $('#supplierOrderFinancialPaymentTotal').text(`${payment.code} ${formatSupplierOrderMoney(totalPayment)}`);
+    $('#supplierOrderFinancialPenTotal').text(`S/ ${formatSupplierOrderMoney(totalPen)}`);
+
+    const applyAdvance = $('#supplier_order_apply_advance').is(':checked');
+    const advanceType = $('#supplier_order_advance_type').val();
+    const percentage = parseFloat($('#supplier_order_advance_percentage').val()) || 0;
+    const fixedAmount = parseFloat($('#supplier_order_advance_amount').val()) || 0;
+    const storedPaid = parseFloat($('#supplierOrderExistingAdvancePayments').data('paid-amount')) || 0;
+    const newPaid = parseFloat($('#supplier_order_new_advance_amount').val()) || 0;
+    const paid = storedPaid + newPaid;
+    const required = !applyAdvance ? 0 : (advanceType === 'percentage' ? totalPayment * percentage / 100 : fixedAmount);
+    const balance = Math.max(required - paid, 0);
+    const status = !applyAdvance ? 'Sin anticipo' : (paid <= 0 ? 'Pendiente' : (paid + 0.0001 < required ? 'Parcial' : 'Pagado'));
+
+    $('.supplier-order-advance-field').toggleClass('d-none', !applyAdvance);
+    $('#supplierOrderAdvancePercentageGroup').toggleClass('d-none', advanceType !== 'percentage');
+    $('#supplierOrderAdvanceAmountGroup').toggleClass('d-none', advanceType !== 'fixed_amount');
+    $('#supplierOrderAdvanceRequired').text(`${payment.code} ${formatSupplierOrderMoney(required)}`);
+    $('#supplierOrderAdvancePaid').text(`${payment.code} ${formatSupplierOrderMoney(paid)}`);
+    $('#supplierOrderAdvanceBalance').text(`${payment.code} ${formatSupplierOrderMoney(balance)}`);
+    $('#supplierOrderAdvancePen').text(`S/ ${formatSupplierOrderMoney(payment.code === 'PEN' ? required : required * rate)}`);
+    $('#supplierOrderAdvanceStatusBadge')
+        .removeClass('badge-light badge-warning badge-info badge-success')
+        .addClass(status === 'Pagado' ? 'badge-success' : (status === 'Parcial' ? 'badge-info' : (applyAdvance ? 'badge-warning' : 'badge-light')))
+        .text(status);
+    updateSupplierOrderFormSummary();
+}
+
+function validateSupplierOrderFinancialTerms() {
+    const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
+    const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
+    if (!payment.id) return 'Seleccione la moneda en la que se pagará al proveedor.';
+    const needsRate = purchase.code !== payment.code || purchase.code !== 'PEN' || payment.code !== 'PEN';
+    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
+    const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
+    if (needsRate && !applyRate) return 'Active el tipo de cambio para normalizar la operación en soles.';
+    if (applyRate && rate <= 0) return 'Ingrese un tipo de cambio mayor a cero.';
+    if (purchase.code !== payment.code && purchase.code !== 'PEN' && payment.code !== 'PEN') return 'Una de las monedas debe ser PEN.';
+
+    if ($('#supplier_order_apply_advance').is(':checked')) {
+        const type = $('#supplier_order_advance_type').val();
+        if (!type) return 'Seleccione el tipo de anticipo.';
+        const percentage = parseFloat($('#supplier_order_advance_percentage').val()) || 0;
+        const amount = parseFloat($('#supplier_order_advance_amount').val()) || 0;
+        if (type === 'percentage' && (percentage <= 0 || percentage > 100)) return 'El porcentaje del anticipo debe ser mayor a 0 y menor o igual a 100.';
+        if (type === 'fixed_amount' && amount <= 0) return 'Ingrese un monto fijo de anticipo mayor a cero.';
+    }
+
+    return null;
+}
+
+function renderSupplierOrderAdvancePayments(payments) {
+    const container = $('#supplierOrderExistingAdvancePayments');
+    const rows = payments || [];
+    const paidAmount = rows.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    container.data('paid-amount', paidAmount);
+    if (!rows.length) {
+        container.html('<div class="text-muted small py-2">Aún no hay pagos de anticipo registrados.</div>');
+        return;
+    }
+
+    container.html(`<div class="table-responsive"><table class="table table-sm supplier-order-advance-payments-table"><thead><tr><th>Fecha</th><th>Cuenta</th><th>Medio</th><th>Operación</th><th class="text-right">Monto</th><th class="text-right">Soles</th><th>Usuario</th><th>Constancia</th></tr></thead><tbody>${rows.map(payment => `<tr><td>${escapeSupplierOrderHtml(String(payment.payment_date || '').slice(0,10))}</td><td>${escapeSupplierOrderHtml(payment.supplier_account?.bank?.short_name || payment.supplier_account?.bank?.description || '-')}</td><td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td><td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td><td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td><td class="text-right">S/ ${formatSupplierOrderMoney(payment.amount_pen)}</td><td>${escapeSupplierOrderHtml(payment.creator?.name || '-')}</td><td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye"></i> Ver</a>` : '-'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
 function setDefaultSupplierOrderCurrency() {

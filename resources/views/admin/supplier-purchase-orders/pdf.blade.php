@@ -121,6 +121,16 @@
         $bankLabel,
         $account?->account_number ?: $account?->cci,
     ])->filter()->join(' - ') ?: '-';
+    $purchaseCurrencyCode = $order->currency?->code ?: '-';
+    $paymentCurrencyCode = $order->paymentCurrency?->code ?: $purchaseCurrencyCode;
+    $paymentCurrencySymbol = $order->paymentCurrency?->symbol ?: $currencySymbol;
+    $advanceStatusLabel = [
+        'not_required' => 'Sin anticipo',
+        'pending' => 'Pendiente',
+        'partial' => 'Parcial',
+        'paid' => 'Pagado',
+    ][$order->advance_status] ?? ucfirst((string) $order->advance_status);
+    $advanceBalance = max((float) $order->advance_amount - (float) $order->advance_paid_amount, 0);
     $importantNote = $order->important_note ?: "ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: {$billingEmail}, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:\n1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE\n2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE\n3. REGISTRO SANITARIO DEL BIEN ADQUIRIDO - VIGENTE";
     $importantNote = preg_replace(
         '/(AL\s+CORREO\s*:\s*)[^,\s]+/iu',
@@ -443,6 +453,27 @@
             <td width="18%"><span class="label-text">Departamento</span><span class="value">{{ $departmentText }}</span></td>
         </tr>
     </table>
+
+    @if ($order->apply_exchange_rate || $order->apply_advance)
+        <div class="section-title" style="margin-top:5px;">Condiciones financieras</div>
+        <table class="summary">
+            <tr>
+                <td width="18%"><span class="label-text">Moneda compra</span><span class="value">{{ $purchaseCurrencyCode }}</span></td>
+                <td width="18%"><span class="label-text">Moneda pago</span><span class="value">{{ $paymentCurrencyCode }}</span></td>
+                <td width="18%"><span class="label-text">Tipo de cambio</span><span class="value">{{ $order->apply_exchange_rate ? number_format((float) $order->exchange_rate, 4) : 'No aplica' }}</span></td>
+                <td width="23%"><span class="label-text">Total moneda pago</span><span class="value">{{ $paymentCurrencySymbol }} {{ number_format((float) $order->total_payment_currency, 2) }}</span></td>
+                <td width="23%"><span class="label-text">Total equivalente PEN</span><span class="value">S/ {{ number_format((float) $order->total_pen, 2) }}</span></td>
+            </tr>
+            @if ($order->apply_advance)
+                <tr>
+                    <td colspan="2"><span class="label-text">Anticipo requerido</span><span class="value">{{ $paymentCurrencySymbol }} {{ number_format((float) $order->advance_amount, 2) }}{{ $order->advance_type === 'percentage' ? ' (' . number_format((float) $order->advance_percentage, 2) . '%)' : '' }}</span></td>
+                    <td><span class="label-text">Anticipo pagado</span><span class="value">{{ $paymentCurrencySymbol }} {{ number_format((float) $order->advance_paid_amount, 2) }}</span></td>
+                    <td><span class="label-text">Saldo pendiente</span><span class="value">{{ $paymentCurrencySymbol }} {{ number_format($advanceBalance, 2) }}</span></td>
+                    <td><span class="label-text">Estado anticipo</span><span class="value">{{ $advanceStatusLabel }}</span></td>
+                </tr>
+            @endif
+        </table>
+    @endif
 
     <div class="section-title" style="margin-top:5px;">Detalle de articulos</div>
     <table class="items">

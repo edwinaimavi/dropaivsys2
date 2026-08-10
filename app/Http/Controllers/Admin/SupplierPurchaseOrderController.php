@@ -17,10 +17,12 @@ use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierAccount;
 use App\Models\SupplierPurchaseOrder;
+use App\Models\SupplierPurchaseOrderAdvancePayment;
 use App\Models\SupplierPurchaseOrderItem;
 use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Ubigeo;
 use App\Models\Unit;
+use App\Services\SupplierPurchaseOrderFinancialService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -63,7 +65,9 @@ class SupplierPurchaseOrderController extends Controller
         $this->middleware('can:admin.supplier-purchase-orders.store')->only(['store']);
         $this->middleware('can:admin.supplier-purchase-orders.update')->only(['update', 'destroyDocument']);
         $this->middleware('can:admin.supplier-purchase-orders.destroy')->only(['destroy']);
-        $this->middleware('can:admin.supplier-purchase-orders.show')->only(['show', 'viewDocument']);
+        $this->middleware('can:admin.supplier-purchase-orders.show')->only([
+            'show', 'viewDocument', 'viewAdvancePaymentProof',
+        ]);
     }
 
     public function index()
@@ -177,6 +181,7 @@ class SupplierPurchaseOrderController extends Controller
                 'supplier:id,business_name,short_name,ruc',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
+                'paymentCurrency:id,code,symbol,description',
                 'customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
                 'customerPurchaseOrder.customerBranch:id,branch_name',
                 'customerPurchaseOrder.company:id,business_name,trade_name',
@@ -260,6 +265,24 @@ class SupplierPurchaseOrderController extends Controller
                     : 'Sin OC Cliente vinculada';
             })
             ->addColumn('grand_total_value', fn (SupplierPurchaseOrder $order) => (float) $order->grand_total)
+            ->addColumn('financial_summary', function (SupplierPurchaseOrder $order) {
+                $purchase = $order->currency?->code ?? '-';
+                $payment = $order->paymentCurrency?->code ?? $purchase;
+                $rate = $order->apply_exchange_rate && $order->exchange_rate
+                    ? ' | TC ' . number_format((float) $order->exchange_rate, 4)
+                    : '';
+
+                return "{$purchase} → {$payment}{$rate}";
+            })
+            ->addColumn('advance_summary', function (SupplierPurchaseOrder $order) {
+                if (! $order->apply_advance) return 'Sin anticipo';
+
+                return 'Anticipo: ' . match ($order->advance_status) {
+                    SupplierPurchaseOrder::ADVANCE_PAID => 'Pagado',
+                    SupplierPurchaseOrder::ADVANCE_PARTIAL => 'Parcial',
+                    default => 'Pendiente',
+                };
+            })
             ->addColumn('supplier_id_value', fn (SupplierPurchaseOrder $order) => $order->supplier_id)
             ->addColumn('status_code', fn (SupplierPurchaseOrder $order) => strtolower((string) $order->status))
             ->addColumn('group_date', fn (SupplierPurchaseOrder $order) =>
@@ -524,6 +547,7 @@ class SupplierPurchaseOrderController extends Controller
             'supplierAccount.bank',
             'supplierAccount.currency',
             'currency',
+            'paymentCurrency',
             'customerPurchaseOrder.customer',
             'customerPurchaseOrder.currency',
             'customerPurchaseOrders.customer',
@@ -544,6 +568,9 @@ class SupplierPurchaseOrderController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
+            'advancePayments.currency',
+            'advancePayments.supplierAccount.bank',
+            'advancePayments.creator:id,name',
         ]);
         $this->appendEntryProgress($supplierPurchaseOrder);
         $supplierPurchaseOrder->setAttribute(
@@ -568,6 +595,11 @@ class SupplierPurchaseOrderController extends Controller
                 })
                 ->values()
         );
+        $supplierPurchaseOrder->advancePayments->each(function (SupplierPurchaseOrderAdvancePayment $payment) use ($supplierPurchaseOrder) {
+            $payment->setAttribute('proof_url', $payment->proof_path
+                ? route('admin.supplier-purchase-orders.advance-payments.proof', [$supplierPurchaseOrder, $payment])
+                : null);
+        });
 
         return response()->json([
             'status' => 'success',
@@ -597,6 +629,29 @@ class SupplierPurchaseOrderController extends Controller
         return Storage::disk('public')->response($document->file_path, $responseName, [
             'Content-Type' => $document->mime_type ?: 'application/octet-stream',
         ]);
+    }
+
+    public function viewAdvancePaymentProof(
+        SupplierPurchaseOrder $supplierPurchaseOrder,
+        SupplierPurchaseOrderAdvancePayment $advancePayment
+    ) {
+        abort_unless(
+            (int) $advancePayment->supplier_purchase_order_id === (int) $supplierPurchaseOrder->id
+                && $advancePayment->proof_path,
+            404
+        );
+        abort_unless(Storage::disk('public')->exists($advancePayment->proof_path), 404);
+        $fileName = str_replace(
+            ["\r", "\n", '"'],
+            '',
+            basename($advancePayment->proof_original_name ?: $advancePayment->proof_path)
+        );
+
+        return Storage::disk('public')->response(
+            $advancePayment->proof_path,
+            $fileName,
+            ['Content-Type' => $advancePayment->proof_mime_type ?: 'application/octet-stream']
+        );
     }
 
     public function destroyDocument(SupplierPurchaseOrder $supplierPurchaseOrder, Document $document)
@@ -663,6 +718,13 @@ class SupplierPurchaseOrderController extends Controller
                     ->whereNull('deleted_at'),
             ],
             'currency_id' => ['required', 'exists:currencies,id'],
+            'payment_currency_id' => ['required', 'exists:currencies,id'],
+            'apply_exchange_rate' => ['nullable', 'boolean'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'apply_advance' => ['nullable', 'boolean'],
+            'advance_type' => ['nullable', Rule::in(['fixed_amount', 'percentage'])],
+            'advance_percentage' => ['nullable', 'numeric', 'gt:0', 'lte:100'],
+            'advance_amount' => ['nullable', 'numeric', 'gt:0'],
             'customer_purchase_order_ids' => ['required', 'array', 'min:1'],
             'customer_purchase_order_ids.*' => [
                 'distinct',
@@ -738,12 +800,29 @@ class SupplierPurchaseOrderController extends Controller
             ],
             'supplier_documents.*.observation' => ['nullable', 'string', 'max:500'],
             'supplier_documents.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'advance_payments' => ['nullable', 'array'],
+            'advance_payments.*.amount' => ['nullable', 'numeric', 'gt:0'],
+            'advance_payments.*.payment_date' => ['nullable', 'required_with:advance_payments.*.amount', 'date'],
+            'advance_payments.*.payment_method' => [
+                'nullable',
+                'required_with:advance_payments.*.amount',
+                Rule::in($this->paymentMethodOptions()),
+            ],
+            'advance_payments.*.operation_number' => ['nullable', 'string', 'max:100'],
+            'advance_payments.*.observation' => ['nullable', 'string', 'max:1000'],
+            'advance_payments.*.proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
             'company_id.required' => 'La empresa es obligatoria.',
             'supplier_id.required' => 'El proveedor es obligatorio.',
             'supplier_account_id.required' => 'Debe seleccionar o registrar una cuenta bancaria del proveedor.',
             'supplier_account_id.exists' => 'La cuenta bancaria debe pertenecer al proveedor y estar activa.',
             'currency_id.required' => 'La moneda es obligatoria.',
+            'payment_currency_id.required' => 'La moneda de pago es obligatoria.',
+            'exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
+            'advance_type.in' => 'Seleccione Monto fijo o Porcentaje como tipo de anticipo.',
+            'advance_percentage.gt' => 'El porcentaje del anticipo debe ser mayor a cero.',
+            'advance_percentage.lte' => 'El porcentaje del anticipo no puede superar el 100%.',
+            'advance_amount.gt' => 'El monto del anticipo debe ser mayor a cero.',
             'customer_purchase_order_ids.required' => 'Debe seleccionar al menos una orden de cliente.',
             'customer_purchase_order_ids.min' => 'Debe seleccionar al menos una orden de cliente.',
             'delivery_type.required' => 'El tipo de entrega es obligatorio.',
@@ -762,6 +841,11 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.unit_price.min' => 'El precio debe ser mayor o igual a cero.',
             'supplier_documents.*.file.mimes' => 'Solo se permiten archivos PDF, JPG, JPEG o PNG.',
             'supplier_documents.*.file.max' => 'El archivo no debe superar los 10 MB.',
+            'advance_payments.*.amount.gt' => 'El pago del anticipo debe ser mayor a cero.',
+            'advance_payments.*.payment_date.required_with' => 'Ingrese la fecha del pago del anticipo.',
+            'advance_payments.*.payment_method.required_with' => 'Seleccione el medio de pago del anticipo.',
+            'advance_payments.*.proof.mimes' => 'La constancia del anticipo debe ser PDF, JPG, JPEG, PNG o WEBP.',
+            'advance_payments.*.proof.max' => 'La constancia del anticipo no debe superar los 10 MB.',
         ]);
 
         if (! empty($validated['shipping_agency_contact_id'])) {
@@ -821,6 +905,65 @@ class SupplierPurchaseOrderController extends Controller
                 );
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
+                $purchaseCurrency = Currency::query()->findOrFail($validated['currency_id']);
+                $paymentCurrency = Currency::query()->findOrFail($validated['payment_currency_id']);
+                $existingAdvancePayments = $order
+                    ? $order->advancePayments()->get()
+                    : collect();
+                $newAdvancePayments = collect($validated['advance_payments'] ?? [])
+                    ->filter(fn ($payment) => (float) ($payment['amount'] ?? 0) > 0)
+                    ->values();
+
+                if ($existingAdvancePayments->isNotEmpty()
+                    && (int) $order->payment_currency_id !== (int) $paymentCurrency->id) {
+                    throw ValidationException::withMessages([
+                        'payment_currency_id' => 'No puede cambiar la moneda de pago porque la orden ya tiene anticipos registrados.',
+                    ]);
+                }
+                if ($existingAdvancePayments->isNotEmpty()
+                    && (int) $order->currency_id !== (int) $purchaseCurrency->id) {
+                    throw ValidationException::withMessages([
+                        'currency_id' => 'No puede cambiar la moneda de compra porque la orden ya tiene anticipos registrados.',
+                    ]);
+                }
+                if ($existingAdvancePayments->isNotEmpty() && ! (bool) ($validated['apply_advance'] ?? false)) {
+                    throw ValidationException::withMessages([
+                        'apply_advance' => 'No puede desactivar el anticipo porque existen pagos registrados.',
+                    ]);
+                }
+
+                $financialService = app(SupplierPurchaseOrderFinancialService::class);
+                $exchangeRate = isset($validated['exchange_rate']) ? (float) $validated['exchange_rate'] : null;
+                $newPaidAmount = round((float) $newAdvancePayments->sum('amount'), 4);
+                try {
+                    $newPaidAmountPen = round((float) $newAdvancePayments->sum(
+                        fn ($payment) => $financialService->amountInPen(
+                            (float) $payment['amount'],
+                            $paymentCurrency->code,
+                            $exchangeRate
+                        )
+                    ), 4);
+                    $paidAmount = round((float) $existingAdvancePayments->sum('amount') + $newPaidAmount, 4);
+                    $paidAmountPen = round((float) $existingAdvancePayments->sum('amount_pen') + $newPaidAmountPen, 4);
+                    $financialData = $financialService->calculate(
+                        $totals['grand_total'],
+                        $purchaseCurrency->code,
+                        $paymentCurrency->code,
+                        (bool) ($validated['apply_exchange_rate'] ?? false),
+                        $exchangeRate,
+                        (bool) ($validated['apply_advance'] ?? false),
+                        $validated['advance_type'] ?? null,
+                        isset($validated['advance_percentage']) ? (float) $validated['advance_percentage'] : null,
+                        isset($validated['advance_amount']) ? (float) $validated['advance_amount'] : null,
+                        $paidAmount,
+                        $paidAmountPen,
+                        $validated['payment_condition'] ?? null
+                    );
+                } catch (\InvalidArgumentException $exception) {
+                    throw ValidationException::withMessages([
+                        'financial_terms' => $exception->getMessage(),
+                    ]);
+                }
                 $isAgencyDelivery = $this->deliveryRequiresShippingAgency($validated['delivery_type'] ?? null);
                 $supplierAccount = SupplierAccount::query()
                     ->with('bank')
@@ -839,6 +982,7 @@ class SupplierPurchaseOrderController extends Controller
                     'supplier_id' => $validated['supplier_id'],
                     'supplier_account_id' => $validated['supplier_account_id'] ?? null,
                     'currency_id' => $validated['currency_id'],
+                    'payment_currency_id' => $validated['payment_currency_id'],
                     'customer_purchase_order_id' => $customerOrderIds[0] ?? null,
                     'quote_id' => $validated['quote_id'] ?? null,
                     'market_study_id' => $validated['market_study_id'] ?? null,
@@ -876,6 +1020,7 @@ class SupplierPurchaseOrderController extends Controller
                     'subtotal' => $totals['subtotal'],
                     'igv' => $totals['igv'],
                     'grand_total' => $totals['grand_total'],
+                    ...$financialData,
                     'status' => $order
                         ? ($validated['status'] ?? (
                             $order->status === 'draft'
@@ -917,10 +1062,20 @@ class SupplierPurchaseOrderController extends Controller
                     $order->items()->create($item);
                 }
 
+                $uploadedDocumentPaths = array_merge(
+                    $uploadedDocumentPaths,
+                    $this->storeAdvancePayments(
+                        $order,
+                        $newAdvancePayments,
+                        $paymentCurrency,
+                        $exchangeRate
+                    )
+                );
+
                 $order->customerPurchaseOrders()->sync($customerOrderIds);
-                $uploadedDocumentPaths = $this->storeSupplierOrderDocuments(
-                    $order,
-                    $validated['supplier_documents'] ?? []
+                $uploadedDocumentPaths = array_merge(
+                    $uploadedDocumentPaths,
+                    $this->storeSupplierOrderDocuments($order, $validated['supplier_documents'] ?? [])
                 );
                 $order->refreshEntryStatus();
                 $this->refreshCustomerPurchaseOrderStatuses(
@@ -937,6 +1092,9 @@ class SupplierPurchaseOrderController extends Controller
                         'supplierAccount.bank',
                         'supplierAccount.currency',
                         'currency',
+                        'paymentCurrency',
+                        'advancePayments.currency',
+                        'advancePayments.supplierAccount.bank',
                         'destinationUbigeo',
                         'shippingAgency',
                         'shippingAgencyBranch',
@@ -1633,6 +1791,55 @@ class SupplierPurchaseOrderController extends Controller
                 . '?v=' . now()->format('YmdHisv'),
             'document' => $document,
         ];
+    }
+
+    private function storeAdvancePayments(
+        SupplierPurchaseOrder $order,
+        $payments,
+        Currency $paymentCurrency,
+        ?float $exchangeRate
+    ): array {
+        $storedPaths = [];
+        $financialService = app(SupplierPurchaseOrderFinancialService::class);
+
+        foreach ($payments as $paymentData) {
+            $file = $paymentData['proof'] ?? null;
+            $storedPath = null;
+            if ($file && $file->isValid()) {
+                $storedPath = $file->store(
+                    "supplier-purchase-orders/{$order->id}/advance-payments",
+                    'public'
+                );
+                $storedPaths[] = $storedPath;
+            }
+
+            $order->advancePayments()->create([
+                'supplier_account_id' => $order->supplier_account_id,
+                'currency_id' => $paymentCurrency->id,
+                'payment_date' => $paymentData['payment_date'],
+                'amount' => round((float) $paymentData['amount'], 4),
+                'amount_pen' => $financialService->amountInPen(
+                    (float) $paymentData['amount'],
+                    $paymentCurrency->code,
+                    $exchangeRate
+                ),
+                'exchange_rate' => strtoupper((string) $paymentCurrency->code) === 'PEN'
+                    ? null
+                    : $exchangeRate,
+                'payment_method' => $paymentData['payment_method'],
+                'operation_number' => $this->upperOrNull($paymentData['operation_number'] ?? null),
+                'proof_path' => $storedPath,
+                'proof_original_name' => $file?->getClientOriginalName(),
+                'proof_mime_type' => $file?->getMimeType(),
+                'proof_size' => $file?->getSize(),
+                'observation' => $this->upperOrNull($paymentData['observation'] ?? null),
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+
+        return $storedPaths;
     }
 
     private function storeSupplierOrderDocuments(SupplierPurchaseOrder $order, array $documents): array

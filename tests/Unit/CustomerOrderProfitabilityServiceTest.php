@@ -123,3 +123,29 @@ it('mantiene recibos y gastos sin comprobante por su importe completo', function
     expect($figures['otherValue'])->toBe(1605.0)
         ->and($figures['otherIgv'])->toBe(0.0);
 });
+
+it('usa total pen como fuente principal para convertir compras extranjeras', function () {
+    $item = (object) [
+        'order_grand_total' => 1000,
+        'order_total_pen' => 3750,
+        'order_total_payment_currency' => 3750,
+        'purchase_currency_code' => 'USD',
+        'payment_currency_code' => 'PEN',
+        'order_exchange_rate' => 3.80,
+    ];
+
+    expect(invokeProfitabilityMethod('supplierPurchasePenFactor', $item))->toBe(3.75);
+});
+
+it('no trata una compra extranjera sin conversión como si fueran soles', function () {
+    $item = (object) [
+        'order_grand_total' => 1000,
+        'order_total_pen' => null,
+        'order_total_payment_currency' => 0,
+        'purchase_currency_code' => 'USD',
+        'payment_currency_code' => 'USD',
+        'order_exchange_rate' => null,
+    ];
+
+    expect(invokeProfitabilityMethod('supplierPurchasePenFactor', $item))->toBe(0.0);
+});

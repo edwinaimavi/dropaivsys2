@@ -27,13 +27,45 @@ class CustomerOrderProfitabilityService
         $supplierItems = DB::table('supplier_purchase_order_items as items')
             ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'items.supplier_purchase_order_id')
             ->leftJoin('suppliers', 'suppliers.id', '=', 'orders.supplier_id')
+            ->leftJoin('currencies as purchase_currencies', 'purchase_currencies.id', '=', 'orders.currency_id')
+            ->leftJoin('currencies as payment_currencies', 'payment_currencies.id', '=', 'orders.payment_currency_id')
             ->where(function ($query) use ($itemIds, $directSupplierOrderIds) {
                 $query->whereIn('items.customer_purchase_order_item_id', $itemIds)
                     ->orWhereIn('items.supplier_purchase_order_id', $directSupplierOrderIds);
             })
             ->whereNull('orders.deleted_at')->where('orders.status', '!=', 'cancelled')->where('items.status', '!=', 'deleted')
-            ->select('items.*', 'orders.code as order_code', 'orders.affect_igv as order_affect_igv', 'orders.currency_id as order_currency_id', 'orders.status as order_status', 'orders.created_at as order_date', 'suppliers.business_name as supplier_name')
+            ->select(
+                'items.*',
+                'orders.code as order_code',
+                'orders.affect_igv as order_affect_igv',
+                'orders.currency_id as order_currency_id',
+                'orders.payment_currency_id as order_payment_currency_id',
+                'orders.apply_exchange_rate as order_apply_exchange_rate',
+                'orders.exchange_rate as order_exchange_rate',
+                'orders.grand_total as order_grand_total',
+                'orders.total_payment_currency as order_total_payment_currency',
+                'orders.total_pen as order_total_pen',
+                'orders.status as order_status',
+                'orders.created_at as order_date',
+                'suppliers.business_name as supplier_name',
+                'purchase_currencies.code as purchase_currency_code',
+                'purchase_currencies.symbol as purchase_currency_symbol',
+                'payment_currencies.code as payment_currency_code',
+                'payment_currencies.symbol as payment_currency_symbol'
+            )
             ->get();
+        $supplierItems->each(function ($item) {
+            $factor = $this->supplierPurchasePenFactor($item);
+            $nativeTotal = (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
+            $nativeBase = ! $item->order_affect_igv
+                ? $nativeTotal
+                : (float) ($item->taxable_base ?? $item->subtotal ?? ($nativeTotal / 1.18));
+
+            $item->pen_conversion_factor = $factor;
+            $item->line_total_pen = round($nativeTotal * $factor, 2);
+            $item->taxable_base_pen = round($nativeBase * $factor, 2);
+            $item->unit_price_pen = round((float) $item->unit_price * $factor, 4);
+        });
         $supplierOrderIds = $supplierItems->pluck('supplier_purchase_order_id')->unique();
         $entryIds = DB::table('warehouse_entries as entries')
             ->leftJoin('warehouse_entry_items as items', 'items.warehouse_entry_id', '=', 'entries.id')
@@ -52,12 +84,8 @@ class CustomerOrderProfitabilityService
             return $order->affect_igv ? (float) ($item->subtotal ?: ($total / 1.18)) : $total;
         }), 2);
         $saleIgv = round($saleTotal - $saleBase, 2);
-        $purchaseTotal = round((float) $supplierItems->sum(fn ($item) => (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))), 2);
-        $purchaseBase = round((float) $supplierItems->sum(function ($item) {
-            $total = (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
-            if (! $item->order_affect_igv) return $total;
-            return (float) ($item->taxable_base ?? $item->subtotal ?? ($total / 1.18));
-        }), 2);
+        $purchaseTotal = round((float) $supplierItems->sum('line_total_pen'), 2);
+        $purchaseBase = round((float) $supplierItems->sum('taxable_base_pen'), 2);
         $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
         $withoutReceipt = $costs->reject(fn ($cost) => $this->isValidPaymentDocument($cost));
         $operationalTransportCosts = $costs->filter(fn ($cost) =>
@@ -100,7 +128,12 @@ class CustomerOrderProfitabilityService
         $enteredByCustomerItem = $supplierItems->groupBy('customer_purchase_order_item_id')->map(fn ($rows) => $rows->sum(fn ($row) => (float) ($enteredBySupplierItem[$row->id] ?? 0)));
         $warnings = [];
         if ($supplierItems->isEmpty()) $warnings[] = 'Esta OC aún no tiene compras a proveedor vinculadas.';
-        if ($supplierItems->pluck('order_currency_id')->push($order->currency_id)->filter()->unique()->count() > 1) $warnings[] = 'La OC tiene documentos en monedas diferentes. Se requiere tipo de cambio para un cálculo exacto.';
+        $ordersWithoutPenConversion = $supplierItems
+            ->filter(fn ($item) => strtoupper((string) $item->purchase_currency_code) !== 'PEN' && (float) $item->pen_conversion_factor <= 0)
+            ->pluck('order_code')->filter()->unique()->values();
+        if ($ordersWithoutPenConversion->isNotEmpty()) {
+            $warnings[] = 'No se incluyeron en el total las compras extranjeras sin conversión a soles: '.$ordersWithoutPenConversion->implode(', ').'.';
+        }
         if ($net < 0) $warnings[] = 'La orden presenta utilidad negativa.';
 
         return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
@@ -113,9 +146,10 @@ class CustomerOrderProfitabilityService
     public function saveSnapshot(array $data): CustomerOrderProfitabilityAnalysis
     {
         $userId = Auth::id();
+        $penCurrencyId = DB::table('currencies')->whereRaw('UPPER(code) = ?', ['PEN'])->value('id');
         return CustomerOrderProfitabilityAnalysis::updateOrCreate(
             ['customer_purchase_order_id' => $data['order']->id, 'calculation_mode' => $data['mode']],
-            ['currency_id' => $data['order']->currency_id, 'igv_rate' => $data['igvRate'], 'income_tax_rate' => $data['incomeTaxRate'], 'sale_total' => $data['saleTotal'], 'sale_base' => $data['saleBase'], 'sale_igv' => $data['saleIgv'], 'purchase_total' => $data['purchaseTotal'], 'purchase_base' => $data['purchaseBase'], 'purchase_igv' => $data['purchaseIgv'], 'freight_total' => $data['freightTotal'], 'freight_base' => $data['freightBase'], 'freight_igv' => $data['freightIgv'], 'expenses_without_receipt_total' => $data['withoutReceiptTotal'], 'other_expenses_total' => $data['otherTotal'], 'linked_costs_total' => $data['linkedTotal'], 'gross_profit' => $data['gross'], 'operating_profit' => $data['operating'], 'estimated_income_tax' => $data['incomeTax'], 'net_profit' => $data['net'], 'profitability_percentage' => $data['percentage'], 'igv_sales' => $data['igvSales'], 'igv_purchases' => $data['igvPurchases'], 'igv_difference' => $data['igvDifference'], 'warnings' => $data['warnings'], 'calculated_by' => $userId, 'calculated_at' => now(), 'created_by' => $userId, 'updated_by' => $userId, 'status' => 'ACTIVE']
+            ['currency_id' => $penCurrencyId ?: $data['order']->currency_id, 'igv_rate' => $data['igvRate'], 'income_tax_rate' => $data['incomeTaxRate'], 'sale_total' => $data['saleTotal'], 'sale_base' => $data['saleBase'], 'sale_igv' => $data['saleIgv'], 'purchase_total' => $data['purchaseTotal'], 'purchase_base' => $data['purchaseBase'], 'purchase_igv' => $data['purchaseIgv'], 'freight_total' => $data['freightTotal'], 'freight_base' => $data['freightBase'], 'freight_igv' => $data['freightIgv'], 'expenses_without_receipt_total' => $data['withoutReceiptTotal'], 'other_expenses_total' => $data['otherTotal'], 'linked_costs_total' => $data['linkedTotal'], 'gross_profit' => $data['gross'], 'operating_profit' => $data['operating'], 'estimated_income_tax' => $data['incomeTax'], 'net_profit' => $data['net'], 'profitability_percentage' => $data['percentage'], 'igv_sales' => $data['igvSales'], 'igv_purchases' => $data['igvPurchases'], 'igv_difference' => $data['igvDifference'], 'warnings' => $data['warnings'], 'calculated_by' => $userId, 'calculated_at' => now(), 'created_by' => $userId, 'updated_by' => $userId, 'status' => 'ACTIVE']
         );
     }
 
@@ -228,5 +262,29 @@ class CustomerOrderProfitabilityService
         $net = round($operating - $incomeTax - $otherTotal, 2);
 
         return compact('gross', 'operating', 'incomeTax', 'net');
+    }
+
+    private function supplierPurchasePenFactor(object $item): float
+    {
+        $purchaseTotal = (float) data_get($item, 'order_grand_total', 0);
+        $totalPen = (float) data_get($item, 'order_total_pen', 0);
+        if ($purchaseTotal > 0 && $totalPen > 0) {
+            return $totalPen / $purchaseTotal;
+        }
+
+        if (strtoupper((string) data_get($item, 'purchase_currency_code')) === 'PEN') {
+            return 1.0;
+        }
+
+        $paymentTotal = (float) data_get($item, 'order_total_payment_currency', 0);
+        if ($purchaseTotal > 0
+            && strtoupper((string) data_get($item, 'payment_currency_code')) === 'PEN'
+            && $paymentTotal > 0) {
+            return $paymentTotal / $purchaseTotal;
+        }
+
+        $exchangeRate = (float) data_get($item, 'order_exchange_rate', 0);
+
+        return $exchangeRate > 0 ? $exchangeRate : 0.0;
     }
 }
