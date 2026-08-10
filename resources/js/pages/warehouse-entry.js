@@ -7,6 +7,7 @@ let warehouseEntryExistingDocuments = [];
 let warehouseEntryPendingLotDocuments = [];
 let warehouseEntryExistingLotDocuments = [];
 let warehouseEntryExpenses = [];
+let warehouseEntryExpenseEditorRemovedDocuments = { invoice: false, payment_proof: false };
 let warehouseEntryActiveLotsRow = null;
 let warehouseEntryDeliveryType = '';
 let warehouseEntrySourceOrderTotal = null;
@@ -171,8 +172,8 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_expense_cost_origin', applyWarehouseEntryExpenseOriginRules);
     $(document).on('change', '#warehouse_entry_expense_affects_cost', toggleWarehouseEntryExpenseDistribution);
     $(document).on('change', '#warehouse_entry_expense_distribution_method', renderWarehouseEntryExpenseManualDistribution);
-    $(document).on('change', '#warehouse_entry_expense_file', handleWarehouseEntryExpenseFileChange);
-    $(document).on('click', '#btnRemoveWarehouseEntryExpenseFile', clearWarehouseEntryExpenseFile);
+    $(document).on('change', '.warehouse-entry-expense-file-input[data-expense-document-type]', handleWarehouseEntryExpenseFileChange);
+    $(document).on('click', '.btnRemoveWarehouseEntryExpenseDocument', function () { clearWarehouseEntryExpenseFile($(this).data('expense-document-type')); });
     $(document).on('click', '#btnAddWarehouseEntryExpense', addWarehouseEntryExpense);
     $(document).on('click', '.btnEditWarehouseEntryExpense', function () { editWarehouseEntryExpense(Number($(this).data('index'))); });
     $(document).on('click', '.btnRemoveWarehouseEntryExpense', function () { removeWarehouseEntryExpense(Number($(this).data('index'))); });
@@ -666,14 +667,15 @@ function saveWarehouseEntry(form) {
     });
     warehouseEntryExpenses.forEach(function (expense, index) {
         Object.entries(expense).forEach(function ([field, value]) {
-            if (['file', 'documents', 'distributions'].includes(field) || value === null || value === undefined) return;
+            if (['file', 'invoice_file', 'payment_proof_file', 'documents', 'distributions'].includes(field) || value === null || value === undefined) return;
             formData.append(`expenses[${index}][${field}]`, typeof value === 'boolean' ? (value ? '1' : '0') : value);
         });
         (expense.distributions || []).forEach(function (distribution, distributionIndex) {
             formData.append(`expenses[${index}][distributions][${distributionIndex}][item_index]`, distribution.item_index);
             formData.append(`expenses[${index}][distributions][${distributionIndex}][distributed_amount]`, distribution.distributed_amount);
         });
-        if (expense.file) formData.append(`expenses[${index}][file]`, expense.file);
+        if (expense.invoice_file) formData.append(`expenses[${index}][invoice_file]`, expense.invoice_file);
+        if (expense.payment_proof_file) formData.append(`expenses[${index}][payment_proof_file]`, expense.payment_proof_file);
     });
 
     $.ajax({
@@ -1384,8 +1386,9 @@ function renderWarehouseEntryExpenseManualDistribution() {
 }
 
 function resetWarehouseEntryExpenseEditor() {
+    warehouseEntryExpenseEditorRemovedDocuments = { invoice: false, payment_proof: false };
     $('#warehouse_entry_expense_edit_index').val('');
-    $('#warehouse_entry_expense_provider_id,#warehouse_entry_expense_provider_name,#warehouse_entry_expense_document_series,#warehouse_entry_expense_document_number,#warehouse_entry_expense_document_date,#warehouse_entry_expense_description,#warehouse_entry_expense_file,#warehouse_entry_expense_shipping_agency_id').val('');
+    $('#warehouse_entry_expense_provider_id,#warehouse_entry_expense_provider_name,#warehouse_entry_expense_document_series,#warehouse_entry_expense_document_number,#warehouse_entry_expense_document_date,#warehouse_entry_expense_description,#warehouse_entry_expense_invoice_file,#warehouse_entry_expense_payment_proof_file,#warehouse_entry_expense_shipping_agency_id').val('');
     $('#warehouse_entry_expense_provider_ruc,#warehouse_entry_expense_amount').val('');
     $('#warehouse_entry_expense_affects_cost').val('1');
     $('#warehouse_entry_expense_category').val('freight_transport');
@@ -1398,7 +1401,8 @@ function resetWarehouseEntryExpenseEditor() {
     toggleWarehouseEntryExpenseDocumentFields();
     $('#warehouseEntryExpenseManualDistribution').addClass('d-none').empty();
     $('#btnAddWarehouseEntryExpense').html('<i class="fas fa-plus mr-1"></i>Agregar costo');
-    renderWarehouseEntryExpenseFileSelection(null);
+    renderWarehouseEntryExpenseFileSelection('invoice', null);
+    renderWarehouseEntryExpenseFileSelection('payment_proof', null);
 }
 
 function formatWarehouseEntryFileSize(bytes) {
@@ -1408,40 +1412,71 @@ function formatWarehouseEntryFileSize(bytes) {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function handleWarehouseEntryExpenseFileChange() {
-    const file = this.files?.[0] || null;
-    if (!file) return renderWarehouseEntryExpenseFileSelection(null);
-    const extension = getWarehouseEntryFileExtension(file.name);
-    const editIndex = $('#warehouse_entry_expense_edit_index').val();
-    const previousFile = editIndex === '' ? null : warehouseEntryExpenses[Number(editIndex)]?.file || null;
-    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(extension)) {
-        $('#warehouse_entry_expense_file').val('');
-        renderWarehouseEntryExpenseFileSelection(previousFile);
-        return Swal.fire('Archivo no permitido', 'Seleccione un archivo PDF, JPG, JPEG o PNG.', 'warning');
-    }
-    if (file.size > warehouseEntryMaxDocumentSize) {
-        $('#warehouse_entry_expense_file').val('');
-        renderWarehouseEntryExpenseFileSelection(previousFile);
-        return Swal.fire('Archivo muy pesado', 'El comprobante no debe superar los 10 MB.', 'warning');
-    }
-    renderWarehouseEntryExpenseFileSelection(file);
+function warehouseEntryExpenseDocumentConfig(type) {
+    return type === 'payment_proof'
+        ? { input: '#warehouse_entry_expense_payment_proof_file', picker: '#warehouseEntryExpensePaymentProofFilePicker', name: '#warehouseEntryExpensePaymentProofFileName', size: '#warehouseEntryExpensePaymentProofFileSize', icon: '#warehouseEntryExpensePaymentProofFileTypeIcon', view: '#warehouseEntryExpensePaymentProofView', fileField: 'payment_proof_file', removeField: 'remove_payment_proof_document', label: 'constancia de pago' }
+        : { input: '#warehouse_entry_expense_invoice_file', picker: '#warehouseEntryExpenseInvoiceFilePicker', name: '#warehouseEntryExpenseInvoiceFileName', size: '#warehouseEntryExpenseInvoiceFileSize', icon: '#warehouseEntryExpenseInvoiceFileTypeIcon', view: '#warehouseEntryExpenseInvoiceView', fileField: 'invoice_file', removeField: 'remove_invoice_document', label: 'factura' };
 }
 
-function renderWarehouseEntryExpenseFileSelection(file) {
-    const picker = $('#warehouseEntryExpenseFilePicker');
+function normalizeWarehouseEntryExpenseDocumentType(type) {
+    return String(type || '').toLowerCase() === 'payment_proof' ? 'payment_proof' : 'invoice';
+}
+
+function warehouseEntryExpenseStoredDocument(expense, type) {
+    const config = warehouseEntryExpenseDocumentConfig(type);
+    if (expense?.[config.removeField]) return null;
+    return [...(expense?.documents || [])]
+        .filter(document => normalizeWarehouseEntryExpenseDocumentType(document.document_type) === type)
+        .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null;
+}
+
+function handleWarehouseEntryExpenseFileChange() {
+    const type = $(this).data('expense-document-type');
+    const config = warehouseEntryExpenseDocumentConfig(type);
+    const file = this.files?.[0] || null;
+    if (!file) return renderWarehouseEntryExpenseFileSelection(type, null);
+    const extension = getWarehouseEntryFileExtension(file.name);
+    const editIndex = $('#warehouse_entry_expense_edit_index').val();
+    const editingExpense = editIndex === '' ? null : warehouseEntryExpenses[Number(editIndex)];
+    const previousFile = editingExpense?.[config.fileField] || warehouseEntryExpenseStoredDocument(editingExpense, type);
+    if (!['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(extension)) {
+        $(config.input).val('');
+        renderWarehouseEntryExpenseFileSelection(type, previousFile);
+        const message = type === 'payment_proof'
+            ? 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.'
+            : 'El archivo de la factura debe ser PDF, JPG, JPEG, PNG o WEBP.';
+        return Swal.fire('Archivo no permitido', message, 'warning');
+    }
+    if (file.size > warehouseEntryMaxDocumentSize) {
+        $(config.input).val('');
+        renderWarehouseEntryExpenseFileSelection(type, previousFile);
+        return Swal.fire('Archivo muy pesado', `El archivo de la ${config.label} no debe superar los 10 MB.`, 'warning');
+    }
+    warehouseEntryExpenseEditorRemovedDocuments[type] = false;
+    renderWarehouseEntryExpenseFileSelection(type, file);
+}
+
+function renderWarehouseEntryExpenseFileSelection(type, file) {
+    const config = warehouseEntryExpenseDocumentConfig(type);
+    const picker = $(config.picker);
     picker.toggleClass('has-file', Boolean(file));
     picker.find('.warehouse-entry-expense-file-empty').toggleClass('d-none', Boolean(file));
     picker.find('.warehouse-entry-expense-file-selected').toggleClass('d-none', !file);
-    $('#warehouseEntryExpenseFileName').text(file?.name || '').attr('title', file?.name || '');
-    $('#warehouseEntryExpenseFileSize').text(file ? `${formatWarehouseEntryFileSize(file.size)} · Listo para adjuntar` : '');
-    $('#warehouseEntryExpenseFileTypeIcon').attr('class', `fas ${getWarehouseEntryFileExtension(file?.name) === 'pdf' ? 'fa-file-pdf' : 'fa-file-image'}`);
+    const name = file?.name || file?.original_name || '';
+    const size = file?.size ?? file?.file_size;
+    const isPending = typeof File !== 'undefined' && file instanceof File;
+    $(config.name).text(name).attr('title', name);
+    $(config.size).text(file ? `${formatWarehouseEntryFileSize(size)} · ${isPending ? 'Listo para adjuntar' : 'Documento guardado'}` : '');
+    $(config.icon).attr('class', `fas ${getWarehouseEntryFileExtension(name) === 'pdf' ? 'fa-file-pdf' : 'fa-file-image'}`);
+    $(config.view).attr('href', file?.view_url || '#').toggleClass('d-none', !file?.view_url);
 }
 
-function clearWarehouseEntryExpenseFile() {
-    $('#warehouse_entry_expense_file').val('');
+function clearWarehouseEntryExpenseFile(type) {
+    const config = warehouseEntryExpenseDocumentConfig(type);
+    $(config.input).val('');
     const editIndex = $('#warehouse_entry_expense_edit_index').val();
-    if (editIndex !== '' && warehouseEntryExpenses[Number(editIndex)]) warehouseEntryExpenses[Number(editIndex)].file = null;
-    renderWarehouseEntryExpenseFileSelection(null);
+    warehouseEntryExpenseEditorRemovedDocuments[type] = true;
+    renderWarehouseEntryExpenseFileSelection(type, null);
 }
 
 function addWarehouseEntryExpense() {
@@ -1452,26 +1487,35 @@ function addWarehouseEntryExpense() {
     const affectsIgvSelection = $('#warehouse_entry_expense_affects_igv').val();
     const affects = true;
     const method = $('#warehouse_entry_expense_distribution_method').val();
-    const file = $('#warehouse_entry_expense_file')[0]?.files?.[0] || null;
+    const invoiceInputFile = $('#warehouse_entry_expense_invoice_file')[0]?.files?.[0] || null;
+    const paymentProofInputFile = $('#warehouse_entry_expense_payment_proof_file')[0]?.files?.[0] || null;
     if (type === 'agency_freight' && !$('#warehouse_entry_expense_shipping_agency_id').val()) return Swal.fire('Agencia requerida', 'Seleccione la agencia de envío.', 'warning');
     if (type !== 'agency_freight' && !$('#warehouse_entry_expense_provider_name').val().trim()) return Swal.fire('Responsable requerido', 'Ingrese el responsable o persona que cobró.', 'warning');
     if (amount <= 0) return Swal.fire('Importe requerido', 'Ingrese un importe válido.', 'warning');
     if (affectsIgvSelection === '') return Swal.fire('Afecto IGV requerido', 'Seleccione si el costo está afecto a IGV.', 'warning');
     if (!$('#warehouse_entry_expense_document_date').val()) return Swal.fire('Fecha requerida', 'Seleccione una fecha válida.', 'warning');
-    if (file && (!['pdf', 'jpg', 'jpeg', 'png'].includes(getWarehouseEntryFileExtension(file.name)) || file.size > warehouseEntryMaxDocumentSize)) return Swal.fire('Archivo no permitido', 'Adjunte PDF, JPG, JPEG o PNG de hasta 10 MB.', 'warning');
+    for (const [documentFile, documentLabel] of [[invoiceInputFile, 'factura'], [paymentProofInputFile, 'constancia de pago']]) {
+        if (documentFile && (!['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(getWarehouseEntryFileExtension(documentFile.name)) || documentFile.size > warehouseEntryMaxDocumentSize)) {
+            return Swal.fire('Archivo no permitido', `El archivo de la ${documentLabel} debe ser PDF, JPG, JPEG, PNG o WEBP y no superar los 10 MB.`, 'warning');
+        }
+    }
     if (affects && !method) return Swal.fire('Atención', 'Seleccione el método de distribución.', 'warning');
     if (method === 'weight') return Swal.fire('Peso no disponible', 'Los artículos de este ingreso no tienen peso registrado. Seleccione otro método.', 'warning');
     if (affects && !$('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length) return Swal.fire('Atención', 'Debe agregar al menos un artículo antes de distribuir el gasto.', 'warning');
     const description = $('#warehouse_entry_expense_description').val().trim();
     const editIndex = $('#warehouse_entry_expense_edit_index').val();
     const previous = editIndex === '' ? {} : warehouseEntryExpenses[Number(editIndex)];
+    const invoiceFile = warehouseEntryExpenseEditorRemovedDocuments.invoice ? null : (invoiceInputFile || previous?.invoice_file || null);
+    const paymentProofFile = warehouseEntryExpenseEditorRemovedDocuments.payment_proof ? null : (paymentProofInputFile || previous?.payment_proof_file || null);
     const documentType = $('#warehouse_entry_expense_document_type').val().trim();
     const affectsIgv = affectsIgvSelection === '1';
+    if (invoiceFile && !['FACTURA', 'BOLETA'].includes(documentType)) return Swal.fire('Tipo de documento requerido', 'Seleccione Factura o Boleta como tipo de documento para adjuntar el comprobante tributario.', 'warning');
     if (affectsIgv && !['FACTURA', 'BOLETA'].includes(documentType)) return Swal.fire('IGV no permitido', 'Solo una factura o boleta puede registrarse como afecto a IGV.', 'warning');
     const taxBreakdown = calculateWarehouseEntryExpenseTax(amount, affectsIgv);
-    const hasStoredFile = Boolean(previous?.file || (previous?.documents || []).length);
+    const hasStoredInvoice = !warehouseEntryExpenseEditorRemovedDocuments.invoice
+        && Boolean(warehouseEntryExpenseStoredDocument(previous, 'invoice'));
     if (documentType !== 'SIN_COMPROBANTE' && (!$('#warehouse_entry_expense_document_series').val().trim() || !$('#warehouse_entry_expense_document_number').val().trim())) return Swal.fire('Comprobante incompleto', 'Ingrese la serie y el número del comprobante.', 'warning');
-    if ((documentType === 'SIN_COMPROBANTE' || (!file && !hasStoredFile)) && !description) return Swal.fire('Observación requerida', 'Ingrese una observación cuando no adjunta comprobante.', 'warning');
+    if ((documentType === 'SIN_COMPROBANTE' || (!invoiceFile && !hasStoredInvoice)) && !description) return Swal.fire('Observación requerida', 'Ingrese una observación cuando no adjunta factura o comprobante tributario.', 'warning');
     const distributions = method === 'manual' ? $('.warehouse-entry-expense-manual-amount').map(function () { return { item_index: Number($(this).data('item-index')), distributed_amount: parseWarehouseEntryNumber($(this).val()) }; }).get() : [];
     if (method === 'manual' && Math.abs(distributions.reduce((sum, item) => sum + item.distributed_amount, 0) - amount) > 0.009) return Swal.fire('Distribución inválida', 'La distribución del gasto debe coincidir con el importe total.', 'warning');
     const documentKey = [$('#warehouse_entry_expense_document_type').val(), $('#warehouse_entry_expense_document_series').val(), $('#warehouse_entry_expense_document_number').val()].map(value => value.trim().toUpperCase()).join('|');
@@ -1486,7 +1530,11 @@ function addWarehouseEntryExpense() {
         provider_ruc: $('#warehouse_entry_expense_provider_ruc').val().trim(),
         document_type: $('#warehouse_entry_expense_document_type').val().trim(), document_series: $('#warehouse_entry_expense_document_series').val().trim(), document_number: $('#warehouse_entry_expense_document_number').val().trim(), document_date: $('#warehouse_entry_expense_document_date').val(),
         currency_id: $('#warehouse_entry_currency_id').val() || '', amount, ...taxBreakdown, affects_inventory_cost: affects, distribution_method: affects ? method : '', description, distributions,
-        file: file || previous?.file || null, documents: previous?.documents || []
+        invoice_file: invoiceFile,
+        payment_proof_file: paymentProofFile,
+        remove_invoice_document: invoiceFile ? false : warehouseEntryExpenseEditorRemovedDocuments.invoice,
+        remove_payment_proof_document: paymentProofFile ? false : warehouseEntryExpenseEditorRemovedDocuments.payment_proof,
+        documents: previous?.documents || []
     };
     if (editIndex === '') warehouseEntryExpenses.push(expense); else warehouseEntryExpenses[Number(editIndex)] = expense;
     resetWarehouseEntryExpenseEditor(); renderWarehouseEntryExpenses(); updateWarehouseEntryReview();
@@ -1494,6 +1542,10 @@ function addWarehouseEntryExpense() {
 
 function editWarehouseEntryExpense(index) {
     const expense = warehouseEntryExpenses[index]; if (!expense) return;
+    warehouseEntryExpenseEditorRemovedDocuments = {
+        invoice: Boolean(expense.remove_invoice_document),
+        payment_proof: Boolean(expense.remove_payment_proof_document)
+    };
     const category = expense.expense_category || (['flete', 'transporte', 'movilidad'].includes(expense.expense_type) ? 'freight_transport' : 'other_expense');
     $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); applyWarehouseEntryExpenseOriginRules();
     $('#warehouse_entry_expense_shipping_agency_id').val(expense.shipping_agency_id || '');
@@ -1501,7 +1553,8 @@ function editWarehouseEntryExpense(index) {
     toggleWarehouseEntryExpenseDocumentFields();
     toggleWarehouseEntryExpenseDistribution(); $('#warehouse_entry_expense_distribution_method').val(expense.distribution_method || ''); renderWarehouseEntryExpenseManualDistribution();
     (expense.distributions || []).forEach(item => $(`.warehouse-entry-expense-manual-amount[data-item-index="${item.item_index}"]`).val(item.distributed_amount));
-    renderWarehouseEntryExpenseFileSelection(expense.file || null);
+    renderWarehouseEntryExpenseFileSelection('invoice', expense.invoice_file || warehouseEntryExpenseStoredDocument(expense, 'invoice'));
+    renderWarehouseEntryExpenseFileSelection('payment_proof', expense.payment_proof_file || warehouseEntryExpenseStoredDocument(expense, 'payment_proof'));
     $('#btnAddWarehouseEntryExpense').html('<i class="fas fa-save mr-1"></i>Actualizar costo');
 }
 
@@ -1511,13 +1564,30 @@ function removeWarehouseEntryExpense(index) {
     warehouseEntryExpenses.splice(index, 1); renderWarehouseEntryExpenses(); updateWarehouseEntryReview();
 }
 
+function renderWarehouseEntryExpenseDocumentLinks(expense) {
+    const line = (type, label, missingLabel) => {
+        const config = warehouseEntryExpenseDocumentConfig(type);
+        const pendingFile = expense?.[config.fileField];
+        const storedDocument = warehouseEntryExpenseStoredDocument(expense, type);
+        if (pendingFile) {
+            return `<span title="${escapeWarehouseEntryHtml(pendingFile.name)}"><strong>${label}:</strong> <span class="badge badge-info">Listo</span></span>`;
+        }
+        if (storedDocument?.view_url) {
+            return `<span><strong>${label}:</strong> <a href="${storedDocument.view_url}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye mr-1"></i>Ver</a></span>`;
+        }
+        return `<span class="text-muted"><strong>${label}:</strong> ${missingLabel}</span>`;
+    };
+
+    return `<div class="warehouse-entry-expense-document-links">${line('invoice', 'Factura', 'Sin factura')}${line('payment_proof', 'Pago', 'Sin constancia')}</div>`;
+}
+
 function renderWarehouseEntryExpenses() {
     $('#warehouseEntryExpensesBody').html(warehouseEntryExpenses.length ? warehouseEntryExpenses.map((expense, index) => {
         const type = renderWarehouseEntrySimpleExpenseLabel(expense.expense_type);
         const document = expense.document_type === 'SIN_COMPROBANTE' || !expense.document_type ? 'Sin comprobante' : [expense.document_type, [expense.document_series, expense.document_number].filter(Boolean).join('-')].filter(Boolean).join(' ');
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
         const igvBadge = expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>';
-        return `<tr><td><span class="badge badge-${expense.expense_category === 'freight_transport' ? 'info' : 'secondary'}">${type}</span></td><td>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${igvBadge}</td><td>${escapeWarehouseEntryHtml(expense.description || '-')}</td><td>${expense.file ? `<span class="badge badge-info">${escapeWarehouseEntryHtml(expense.file.name)}</span>` : ((expense.documents || []).map(documentItem => `<a href="${documentItem.view_url}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-paperclip"></i></a>`).join('') || '-')}</td><td class="text-nowrap"><button type="button" class="btn btn-outline-info btn-xs btnEditWarehouseEntryExpense" data-index="${index}"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryExpense" data-index="${index}"><i class="fas fa-ban"></i></button></td></tr>`;
+        return `<tr><td><span class="badge badge-${expense.expense_category === 'freight_transport' ? 'info' : 'secondary'}">${type}</span></td><td>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${igvBadge}</td><td>${escapeWarehouseEntryHtml(expense.description || '-')}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td><td class="text-nowrap"><button type="button" class="btn btn-outline-info btn-xs btnEditWarehouseEntryExpense" data-index="${index}"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryExpense" data-index="${index}"><i class="fas fa-ban"></i></button></td></tr>`;
     }).join('') : '<tr><td colspan="8" class="text-center text-muted py-3">No hay costos vinculados.</td></tr>');
     const freight = warehouseEntryExpenses.filter(expense => expense.expense_category === 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const other = warehouseEntryExpenses.filter(expense => expense.expense_category !== 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
@@ -1682,7 +1752,7 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     const expenses = entry.expenses || [];
     $('#vwe_expenses').html(expenses.length ? expenses.map(expense => {
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
-        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${warehouseEntryExpenseOriginLabels[expense.cost_origin] || 'Tercero / agencia externa'}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml([expense.document_type, expense.document_series, expense.document_number].filter(Boolean).join(' ') || 'Sin comprobante')}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-light">No</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${(expense.documents || []).map(document => `<a href="${document.view_url}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-external-link-alt mr-1"></i>Ver</a>`).join('') || '-'}</td></tr>`;
+        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${warehouseEntryExpenseOriginLabels[expense.cost_origin] || 'Tercero / agencia externa'}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml([expense.document_type, expense.document_series, expense.document_number].filter(Boolean).join(' ') || 'Sin comprobante')}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-light">No</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td></tr>`;
     }).join('') : '<tr><td colspan="10" class="text-center text-muted py-3">Sin costos vinculados.</td></tr>');
     const freightExpenses = expenses.filter(expense => expense.expense_category === 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const otherExpenses = expenses.filter(expense => expense.expense_category !== 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);

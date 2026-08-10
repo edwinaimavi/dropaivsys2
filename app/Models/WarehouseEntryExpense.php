@@ -48,4 +48,6 @@ class WarehouseEntryExpense extends Model
     public function currency() { return $this->belongsTo(Currency::class); }
     public function distributions() { return $this->hasMany(WarehouseEntryExpenseDistribution::class); }
     public function documents() { return $this->hasMany(WarehouseEntryExpenseDocument::class)->where('status', 'ACTIVE'); }
+    public function invoiceDocuments() { return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_INVOICE); }
+    public function paymentProofDocuments() { return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF); }
 }

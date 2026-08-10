@@ -421,29 +421,54 @@
                                     <div class="form-group col-md-2"><label>FECHA *</label><input type="date" id="warehouse_entry_expense_document_date" class="form-control form-control-sm"></div>
                                     <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="1">Sí</option></select>
                                     <select id="warehouse_entry_expense_distribution_method" class="d-none"><option value="quantity">Por cantidad</option></select>
-                                    <div class="form-group col-lg-6"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria cuando no se adjunta comprobante"><small class="text-muted">Si no cuenta con comprobante adjunto, describa el motivo y responsable.</small></div>
-                                    <div class="form-group col-lg-6">
-                                        <label>COMPROBANTE ADJUNTO</label>
-                                        <div id="warehouseEntryExpenseFilePicker" class="warehouse-entry-expense-file-picker">
-                                            <input type="file" id="warehouse_entry_expense_file" class="warehouse-entry-expense-file-input" accept=".pdf,.jpg,.jpeg,.png" tabindex="-1">
-                                            <label for="warehouse_entry_expense_file" class="warehouse-entry-expense-file-empty mb-0">
-                                                <span class="warehouse-entry-expense-file-icon"><i class="fas fa-paperclip"></i></span>
-                                                <span><strong>Seleccionar comprobante</strong><small>PDF, JPG, JPEG o PNG &middot; m&aacute;x. 10 MB</small></span>
-                                                <i class="fas fa-chevron-right warehouse-entry-expense-file-arrow"></i>
-                                            </label>
-                                            <div class="warehouse-entry-expense-file-selected d-none">
-                                                <span class="warehouse-entry-expense-file-icon"><i id="warehouseEntryExpenseFileTypeIcon" class="fas fa-file-alt"></i></span>
-                                                <span class="warehouse-entry-expense-file-info"><strong id="warehouseEntryExpenseFileName"></strong><small id="warehouseEntryExpenseFileSize"></small></span>
-                                                <label for="warehouse_entry_expense_file" class="btn btn-outline-info btn-sm mb-0"><i class="fas fa-sync-alt mr-1"></i>Cambiar</label>
-                                                <button type="button" id="btnRemoveWarehouseEntryExpenseFile" class="btn btn-light btn-sm"><i class="fas fa-times mr-1"></i>Quitar</button>
+                                    <div class="form-group col-12"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria cuando no se adjunta factura"><small class="text-muted">Si no cuenta con factura o comprobante tributario, describa el motivo y responsable.</small></div>
+                                    <div class="col-lg-6 mb-2">
+                                        <div class="warehouse-entry-expense-document-card is-invoice">
+                                            <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-file-invoice-dollar"></i></span><div><strong>Factura / comprobante tributario</strong><small>Este documento define la clasificación del costo en rentabilidad.</small></div></div>
+                                            <div id="warehouseEntryExpenseInvoiceFilePicker" class="warehouse-entry-expense-file-picker">
+                                                <input type="file" id="warehouse_entry_expense_invoice_file" class="warehouse-entry-expense-file-input" data-expense-document-type="invoice" accept=".pdf,.jpg,.jpeg,.png,.webp" tabindex="-1">
+                                                <label for="warehouse_entry_expense_invoice_file" class="warehouse-entry-expense-file-empty mb-0">
+                                                    <span class="warehouse-entry-expense-file-icon"><i class="fas fa-file-invoice"></i></span>
+                                                    <span><strong>Seleccionar factura</strong><small>PDF, JPG, JPEG, PNG o WEBP &middot; m&aacute;x. 10 MB</small></span>
+                                                    <i class="fas fa-chevron-right warehouse-entry-expense-file-arrow"></i>
+                                                </label>
+                                                <div class="warehouse-entry-expense-file-selected d-none">
+                                                    <span class="warehouse-entry-expense-file-icon"><i id="warehouseEntryExpenseInvoiceFileTypeIcon" class="fas fa-file-alt"></i></span>
+                                                    <span class="warehouse-entry-expense-file-info"><strong id="warehouseEntryExpenseInvoiceFileName"></strong><small id="warehouseEntryExpenseInvoiceFileSize"></small></span>
+                                                    <a id="warehouseEntryExpenseInvoiceView" href="#" target="_blank" class="btn btn-outline-secondary btn-sm d-none"><i class="fas fa-eye mr-1"></i>Ver</a>
+                                                    <label for="warehouse_entry_expense_invoice_file" class="btn btn-outline-info btn-sm mb-0"><i class="fas fa-sync-alt mr-1"></i>Cambiar</label>
+                                                    <button type="button" class="btn btn-light btn-sm btnRemoveWarehouseEntryExpenseDocument" data-expense-document-type="invoice"><i class="fas fa-times mr-1"></i>Quitar</button>
+                                                </div>
                                             </div>
+                                            <small class="warehouse-entry-expense-document-help">Factura, boleta u otro comprobante tributario. Este documento afecta la clasificación del costo en rentabilidad.</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 mb-2">
+                                        <div class="warehouse-entry-expense-document-card is-payment">
+                                            <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-wallet"></i></span><div><strong>Constancia de pago</strong><small>Sustento del pago realizado; no reemplaza a la factura.</small></div></div>
+                                            <div id="warehouseEntryExpensePaymentProofFilePicker" class="warehouse-entry-expense-file-picker">
+                                                <input type="file" id="warehouse_entry_expense_payment_proof_file" class="warehouse-entry-expense-file-input" data-expense-document-type="payment_proof" accept=".pdf,.jpg,.jpeg,.png,.webp" tabindex="-1">
+                                                <label for="warehouse_entry_expense_payment_proof_file" class="warehouse-entry-expense-file-empty mb-0">
+                                                    <span class="warehouse-entry-expense-file-icon"><i class="fas fa-receipt"></i></span>
+                                                    <span><strong>Seleccionar constancia</strong><small>PDF, JPG, JPEG, PNG o WEBP &middot; m&aacute;x. 10 MB</small></span>
+                                                    <i class="fas fa-chevron-right warehouse-entry-expense-file-arrow"></i>
+                                                </label>
+                                                <div class="warehouse-entry-expense-file-selected d-none">
+                                                    <span class="warehouse-entry-expense-file-icon"><i id="warehouseEntryExpensePaymentProofFileTypeIcon" class="fas fa-file-alt"></i></span>
+                                                    <span class="warehouse-entry-expense-file-info"><strong id="warehouseEntryExpensePaymentProofFileName"></strong><small id="warehouseEntryExpensePaymentProofFileSize"></small></span>
+                                                    <a id="warehouseEntryExpensePaymentProofView" href="#" target="_blank" class="btn btn-outline-secondary btn-sm d-none"><i class="fas fa-eye mr-1"></i>Ver</a>
+                                                    <label for="warehouse_entry_expense_payment_proof_file" class="btn btn-outline-info btn-sm mb-0"><i class="fas fa-sync-alt mr-1"></i>Cambiar</label>
+                                                    <button type="button" class="btn btn-light btn-sm btnRemoveWarehouseEntryExpenseDocument" data-expense-document-type="payment_proof"><i class="fas fa-times mr-1"></i>Quitar</button>
+                                                </div>
+                                            </div>
+                                            <small class="warehouse-entry-expense-document-help">Voucher, transferencia, Yape, Plin, depósito u otra constancia del pago realizado. No reemplaza a la factura.</small>
                                         </div>
                                     </div>
                                 </div>
                                 <div id="warehouseEntryExpenseManualDistribution" class="d-none mb-3"></div>
                                 <div class="warehouse-entry-expense-action"><small><i class="fas fa-info-circle mr-1"></i>El costo se incorporar&aacute; a la lista antes de guardar el ingreso.</small><button type="button" id="btnAddWarehouseEntryExpense" class="btn btn-info btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo</button></div>
                                 </div>
-                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Observación</th><th>Adjunto</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
+                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
                             </div>
                         </div>
                         @endcanany

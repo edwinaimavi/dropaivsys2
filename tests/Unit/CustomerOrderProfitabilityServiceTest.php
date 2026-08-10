@@ -9,11 +9,49 @@ function invokeProfitabilityMethod(string $method, mixed ...$arguments): mixed
 }
 
 it('solo reconoce factura y boleta como comprobantes válidos', function (string $documentType, bool $expected) {
-    expect(invokeProfitabilityMethod('isValidPaymentDocument', (object) ['document_type' => $documentType]))->toBe($expected);
+    expect(invokeProfitabilityMethod('isValidPaymentDocument', (object) [
+        'document_type' => $documentType,
+        'documents' => [(object) ['document_type' => 'invoice', 'file_path' => 'factura.pdf', 'status' => 'ACTIVE']],
+    ]))->toBe($expected);
 })->with([
     ['FACTURA', true], ['Factura', true], ['boleta', true], ['RECIBO', false],
     ['VOUCHER', false], ['SIN_COMPROBANTE', false], ['', false],
 ]);
+
+it('no considera la constancia de pago como comprobante tributario', function () {
+    $cost = (object) [
+        'document_type' => 'FACTURA',
+        'documents' => [(object) ['document_type' => 'payment_proof', 'file_path' => 'voucher.webp', 'status' => 'ACTIVE']],
+    ];
+
+    expect(invokeProfitabilityMethod('isValidPaymentDocument', $cost))->toBeFalse();
+});
+
+it('considera formal el costo cuando se adjunta luego la factura', function () {
+    $cost = (object) [
+        'document_type' => 'BOLETA',
+        'documents' => [
+            (object) ['document_type' => 'payment_proof', 'file_path' => 'pago.png', 'status' => 'ACTIVE'],
+            (object) ['document_type' => 'invoice', 'file_path' => 'boleta.pdf', 'status' => 'ACTIVE'],
+        ],
+    ];
+
+    expect(invokeProfitabilityMethod('isValidPaymentDocument', $cost))->toBeTrue();
+});
+
+it('mantiene el costo completo cuando solo tiene constancia de pago', function () {
+    $cost = (object) [
+        'document_type' => 'FACTURA',
+        'affects_igv' => true,
+        'amount' => 118.00,
+        'total_amount' => 118.00,
+        'taxable_amount' => 100.00,
+        'igv_amount' => 18.00,
+        'documents' => [(object) ['document_type' => 'payment_proof', 'file_path' => 'pago.png', 'status' => 'ACTIVE']],
+    ];
+
+    expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(118.0);
+});
 
 it('reconoce tipos actuales e históricos de transporte', function (array $cost, bool $expected) {
     expect(invokeProfitabilityMethod('isTransportCost', (object) $cost))->toBe($expected);
@@ -65,6 +103,7 @@ it('usa la base de un flete afecto en modo sin IGV y su total en modo con IGV', 
         'total_amount' => 247.40,
         'taxable_amount' => 209.66,
         'igv_amount' => 37.74,
+        'documents' => [(object) ['document_type' => 'invoice', 'file_path' => 'factura.pdf', 'status' => 'ACTIVE']],
     ];
 
     $withoutIgv = invokeProfitabilityMethod('linkedCostFigures', collect([$cost]), collect(), 'without_igv');

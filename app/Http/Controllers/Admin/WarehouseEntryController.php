@@ -700,7 +700,12 @@ class WarehouseEntryController extends Controller
             'expenses.*.distributions' => ['nullable', 'array'],
             'expenses.*.distributions.*.item_index' => ['required', 'integer', 'min:0'],
             'expenses.*.distributions.*.distributed_amount' => ['required', 'numeric', 'min:0'],
-            'expenses.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'expenses.*.invoice_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'expenses.*.payment_proof_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'expenses.*.remove_invoice_document' => ['nullable', 'boolean'],
+            'expenses.*.remove_payment_proof_document' => ['nullable', 'boolean'],
+            // Compatibilidad temporal con formularios anteriores: se trata como factura.
+            'expenses.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'expense_management' => ['nullable', 'boolean'],
         ] + $documentRules, [
             'warehouse_id.required' => 'Debe seleccionar un almacén.',
@@ -715,6 +720,10 @@ class WarehouseEntryController extends Controller
             'expenses.*.amount.gt' => 'El importe debe ser mayor a 0.',
             'expenses.*.affects_igv.required' => 'Seleccione si el costo está afecto a IGV.',
             'expenses.*.affects_igv.boolean' => 'Seleccione si el costo está afecto a IGV.',
+            'expenses.*.invoice_file.mimes' => 'El archivo de la factura debe ser PDF, JPG, JPEG, PNG o WEBP.',
+            'expenses.*.invoice_file.max' => 'El archivo de la factura no debe superar los 10 MB.',
+            'expenses.*.payment_proof_file.mimes' => 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.',
+            'expenses.*.payment_proof_file.max' => 'El archivo de la constancia de pago no debe superar los 10 MB.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -989,8 +998,22 @@ class WarehouseEntryController extends Controller
             $existingExpense = ! empty($data['id'])
                 ? $entry->expenses()->with('documents')->whereKey($data['id'])->firstOrFail()
                 : null;
-            $hasAttachedReceipt = isset($expenseFiles[$index]['file'])
-                || (bool) $existingExpense?->documents?->isNotEmpty();
+            $invoiceFile = $expenseFiles[$index]['invoice_file']
+                ?? $expenseFiles[$index]['file']
+                ?? null;
+            $paymentProofFile = $expenseFiles[$index]['payment_proof_file'] ?? null;
+            $removeInvoice = filter_var($data['remove_invoice_document'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $removePaymentProof = filter_var($data['remove_payment_proof_document'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $hasStoredInvoice = (bool) $existingExpense?->documents?->contains(
+                fn (WarehouseEntryExpenseDocument $document) => WarehouseEntryExpenseDocument::normalizeType($document->document_type)
+                    === WarehouseEntryExpenseDocument::TYPE_INVOICE
+            );
+            $hasInvoiceDocument = (bool) $invoiceFile || ($hasStoredInvoice && ! $removeInvoice);
+            if ($invoiceFile && ! WarehouseEntryExpense::supportsIgv($data['document_type'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "expenses.$index.invoice_file" => 'Seleccione Factura o Boleta como tipo de documento para adjuntar el comprobante tributario.',
+                ]);
+            }
             if (! $existingExpense && empty($data['document_date'])) {
                 throw ValidationException::withMessages(["expenses.$index.document_date" => 'Seleccione una fecha válida.']);
             }
@@ -1002,9 +1025,9 @@ class WarehouseEntryController extends Controller
                 && (blank($data['document_series'] ?? null) || blank($data['document_number'] ?? null))) {
                 throw ValidationException::withMessages(["expenses.$index.document_number" => 'Ingrese la serie y el número del comprobante.']);
             }
-            if ((($data['document_type'] ?? null) === 'SIN_COMPROBANTE' || ! $hasAttachedReceipt)
+            if ((($data['document_type'] ?? null) === 'SIN_COMPROBANTE' || ! $hasInvoiceDocument)
                 && blank($data['description'] ?? null)) {
-                throw ValidationException::withMessages(["expenses.$index.description" => 'Ingrese una observación cuando no adjunta comprobante.']);
+                throw ValidationException::withMessages(["expenses.$index.description" => 'Ingrese una observación cuando no adjunta factura o comprobante tributario.']);
             }
             if (($data['expense_type'] ?? null) === 'agency_freight'
                 && empty($data['shipping_agency_id'])) {
@@ -1107,23 +1130,33 @@ class WarehouseEntryController extends Controller
                 ]);
             }
 
-            $file = $expenseFiles[$index]['file'] ?? null;
-            if ($file) {
-                $path = $file->store("warehouse_entries/{$entry->id}/expenses/{$expense->id}", 'public');
-                $expense->documents()->create([
-                    'document_type' => $data['document_type'],
-                    'description' => $data['description'] ?? null,
-                    'file_path' => $path,
-                    'original_name' => $file->getClientOriginalName(),
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                    'created_by' => Auth::id(),
-                    'updated_by' => Auth::id(),
-                ]);
-            }
+            $this->syncExpenseDocument(
+                $entry,
+                $expense,
+                WarehouseEntryExpenseDocument::TYPE_INVOICE,
+                $invoiceFile,
+                $removeInvoice,
+                'Factura / comprobante tributario'
+            );
+            $this->syncExpenseDocument(
+                $entry,
+                $expense,
+                WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF,
+                $paymentProofFile,
+                $removePaymentProof,
+                'Constancia de pago'
+            );
         }
 
-        $entry->expenses()->whereNotIn('id', $retainedExpenseIds)->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+        $removedExpenseIds = $entry->expenses()->whereNotIn('id', $retainedExpenseIds)->pluck('id');
+        if ($removedExpenseIds->isNotEmpty()) {
+            WarehouseEntryExpenseDocument::query()
+                ->whereIn('warehouse_entry_expense_id', $removedExpenseIds)
+                ->where('status', 'ACTIVE')
+                ->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+            WarehouseEntryExpense::query()->whereIn('id', $removedExpenseIds)
+                ->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+        }
         $costs = DB::table('warehouse_entry_expense_distributions as distributions')
             ->join('warehouse_entry_expenses as expenses', 'expenses.id', '=', 'distributions.warehouse_entry_expense_id')
             ->where('expenses.warehouse_entry_id', $entry->id)->where('expenses.status', 'ACTIVE')
@@ -1137,6 +1170,49 @@ class WarehouseEntryController extends Controller
                 'real_unit_cost' => round((float) $item->unit_price + ($additional / (float) $item->quantity), 6),
             ]);
         }
+    }
+
+    private function syncExpenseDocument(
+        WarehouseEntry $entry,
+        WarehouseEntryExpense $expense,
+        string $documentType,
+        ?UploadedFile $file,
+        bool $remove,
+        string $description
+    ): void {
+        $activeDocuments = WarehouseEntryExpenseDocument::query()
+            ->where('warehouse_entry_expense_id', $expense->id)
+            ->where('status', 'ACTIVE')
+            ->when(
+                $documentType === WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF,
+                fn ($query) => $query->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF),
+                fn ($query) => $query->where(function ($innerQuery) {
+                    $innerQuery->whereNull('document_type')
+                        ->orWhere('document_type', '!=', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF);
+                })
+            );
+
+        if ($remove || $file) {
+            $activeDocuments->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
+        }
+
+        if (! $file) return;
+
+        $path = $file->store(
+            "warehouse_entries/{$entry->id}/expenses/{$expense->id}/{$documentType}",
+            'public'
+        );
+        $expense->documents()->create([
+            'document_type' => $documentType,
+            'description' => $description,
+            'file_path' => $path,
+            'original_name' => $file->getClientOriginalName(),
+            'mime_type' => $file->getMimeType(),
+            'file_size' => $file->getSize(),
+            'status' => 'ACTIVE',
+            'created_by' => Auth::id(),
+            'updated_by' => Auth::id(),
+        ]);
     }
 
     private function prepareLinkedExpense(array $data, int $index): array

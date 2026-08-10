@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CustomerOrderProfitabilityAnalysis;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\WarehouseEntryExpense;
+use App\Models\WarehouseEntryExpenseDocument;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -120,7 +121,18 @@ class CustomerOrderProfitabilityService
 
     private function isValidPaymentDocument($cost): bool
     {
-        return WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'));
+        if (! WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'))) {
+            return false;
+        }
+
+        return collect(data_get($cost, 'documents', []))->contains(function ($document) {
+            $status = strtoupper((string) data_get($document, 'status', 'ACTIVE'));
+
+            return $status === 'ACTIVE'
+                && filled(data_get($document, 'file_path'))
+                && WarehouseEntryExpenseDocument::normalizeType(data_get($document, 'document_type'))
+                    === WarehouseEntryExpenseDocument::TYPE_INVOICE;
+        });
     }
 
     private function isTransportCost($cost): bool

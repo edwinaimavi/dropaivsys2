@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\WarehouseEntryExpense;
+use App\Models\WarehouseEntryExpenseDocument;
 
 it('desglosa un importe afecto a IGV incluido en el total', function () {
     expect(WarehouseEntryExpense::taxBreakdown(118.00, true))->toBe([
@@ -29,4 +30,13 @@ it('solo admite factura y boleta para registrar IGV', function (string $type, bo
     ['boleta', true],
     ['RECIBO', false],
     ['SIN_COMPROBANTE', false],
+]);
+
+it('clasifica adjuntos históricos como factura y conserva la constancia de pago', function (mixed $type, string $expected) {
+    expect(WarehouseEntryExpenseDocument::normalizeType($type))->toBe($expected);
+})->with([
+    [null, 'invoice'],
+    ['FACTURA', 'invoice'],
+    ['invoice', 'invoice'],
+    ['payment_proof', 'payment_proof'],
 ]);
