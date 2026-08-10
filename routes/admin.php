@@ -552,6 +552,10 @@ Route::get(
 
 Route::get('supplier-purchase-orders/{supplierPurchaseOrder}/trackings', [SupplierPurchaseOrderTrackingController::class, 'list'])
     ->name('supplier-purchase-orders.trackings.list');
+Route::get(
+    'supplier-purchase-orders/{supplierPurchaseOrder}/logistics-status',
+    [WarehouseEntryController::class, 'supplierPurchaseOrderLogisticsStatus']
+)->name('warehouse-entries.supplier-order-logistics-status');
 Route::post('supplier-purchase-orders/{supplierPurchaseOrder}/trackings', [SupplierPurchaseOrderTrackingController::class, 'store'])
     ->name('supplier-purchase-orders.trackings.store');
 Route::put('supplier-purchase-order-trackings/{tracking}', [SupplierPurchaseOrderTrackingController::class, 'update'])

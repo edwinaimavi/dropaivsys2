@@ -2,6 +2,9 @@ let tableWarehouseEntry;
 let warehouseEntryItemIndex = 0;
 let warehouseEntrySourceLoadRequest = null;
 let warehouseEntrySourceLoadTimer = null;
+let warehouseEntryLogisticsStatusRequest = null;
+let warehouseEntryLogisticsSelectionSequence = 0;
+let warehouseEntryAcknowledgedLogisticsOrders = new Set();
 let warehouseEntryPendingDocuments = [];
 let warehouseEntryExistingDocuments = [];
 let warehouseEntryPendingLotDocuments = [];
@@ -143,8 +146,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#warehouse_entry_supplier_purchase_order_id', function () {
-        applySelectedSupplierOrderHeader();
-        scheduleWarehouseEntrySourceAutoLoad();
+        handleWarehouseEntrySupplierOrderSelection();
     });
 
     $(document).on('change', '#warehouse_entry_supplier_id', function () {
@@ -570,6 +572,10 @@ function resetWarehouseEntryForm() {
     showEmptyWarehouseEntryItemsRow();
     warehouseEntryItemIndex = 0;
     warehouseEntryExpenses = [];
+    warehouseEntryAcknowledgedLogisticsOrders = new Set();
+    warehouseEntryLogisticsSelectionSequence += 1;
+    warehouseEntryLogisticsStatusRequest?.abort();
+    warehouseEntryLogisticsStatusRequest = null;
     warehouseEntrySourceOrderTotal = null;
     $('#warehouseEntryOrderAmountWarning').addClass('d-none').empty();
     resetWarehouseEntryExpenseEditor();
@@ -761,6 +767,139 @@ function applySelectedSupplierOrderHeader() {
     setWarehouseEntrySupplier(option.data('supplier-id') || '');
     $('#warehouse_entry_currency_id').val(option.data('currency-id') || '').trigger('change.select2').trigger('change');
     updateWarehouseEntryDeliveryCostContext(option.data('delivery-type') || '');
+}
+
+function handleWarehouseEntrySupplierOrderSelection() {
+    const orderId = String($('#warehouse_entry_supplier_purchase_order_id').val() || '');
+    const selectionSequence = ++warehouseEntryLogisticsSelectionSequence;
+
+    warehouseEntryLogisticsStatusRequest?.abort();
+    warehouseEntryLogisticsStatusRequest = null;
+
+    if (!orderId) {
+        applySelectedSupplierOrderHeader();
+        return;
+    }
+
+    if (warehouseEntryAcknowledgedLogisticsOrders.has(orderId)) {
+        acceptWarehouseEntrySupplierOrder(orderId);
+        return;
+    }
+
+    warehouseEntryLogisticsStatusRequest = $.get(
+        `${window.routes.supplierPurchaseOrderLogisticsStatus}/${orderId}/logistics-status`
+    )
+        .done(function (response) {
+            if (selectionSequence !== warehouseEntryLogisticsSelectionSequence
+                || String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== orderId) {
+                return;
+            }
+
+            if (response.is_complete) {
+                warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
+                acceptWarehouseEntrySupplierOrder(orderId);
+                return;
+            }
+
+            showWarehouseEntryIncompleteLogisticsAlert(response, orderId);
+        })
+        .fail(function (xhr) {
+            if (xhr.statusText === 'abort'
+                || selectionSequence !== warehouseEntryLogisticsSelectionSequence) {
+                return;
+            }
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'No se pudo consultar el seguimiento',
+                text: 'Puedes continuar con el ingreso o cancelar la selección de la orden.',
+                showCancelButton: true,
+                confirmButtonText: 'Continuar con ingreso',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#198754',
+                cancelButtonColor: '#6c757d'
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
+                    acceptWarehouseEntrySupplierOrder(orderId);
+                } else {
+                    cancelWarehouseEntrySupplierOrderSelection();
+                }
+            });
+        })
+        .always(function () {
+            warehouseEntryLogisticsStatusRequest = null;
+        });
+}
+
+function showWarehouseEntryIncompleteLogisticsAlert(response, orderId) {
+    const pendingSteps = (response.missing_steps || []).length
+        ? `<div class="text-left mt-3"><strong class="d-block mb-2">Etapas pendientes:</strong><ul class="mb-0 pl-4">${response.missing_steps.map(step => `<li>${escapeWarehouseEntryHtml(step)}</li>`).join('')}</ul></div>`
+        : '';
+    const currentStatus = escapeWarehouseEntryHtml(response.current_status || 'Sin seguimiento');
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Seguimiento logístico incompleto',
+        html: `<p class="mb-2">La orden de compra seleccionada aún tiene etapas logísticas pendientes. Puedes continuar con el ingreso a almacén, pero se recomienda completar el seguimiento para mantener la trazabilidad correcta.</p><div class="alert alert-light border text-left mb-0"><strong>Estado actual:</strong> ${currentStatus}${pendingSteps}</div>`,
+        showDenyButton: true,
+        showCancelButton: true,
+        allowOutsideClick: false,
+        confirmButtonText: 'Continuar con ingreso',
+        denyButtonText: 'Completar seguimiento',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#198754',
+        denyButtonColor: '#1684a7',
+        cancelButtonColor: '#6c757d',
+        width: 650
+    }).then(function (result) {
+        if (String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== orderId) {
+            return;
+        }
+
+        if (result.isConfirmed) {
+            warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
+            acceptWarehouseEntrySupplierOrder(orderId);
+            return;
+        }
+
+        if (result.isDenied) {
+            window.location.assign(response.tracking_url);
+            return;
+        }
+
+        cancelWarehouseEntrySupplierOrderSelection();
+    });
+}
+
+function acceptWarehouseEntrySupplierOrder(orderId) {
+    if (String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== String(orderId)) {
+        return;
+    }
+
+    applySelectedSupplierOrderHeader();
+    scheduleWarehouseEntrySourceAutoLoad();
+}
+
+function cancelWarehouseEntrySupplierOrderSelection() {
+    warehouseEntryLogisticsSelectionSequence += 1;
+    warehouseEntryLogisticsStatusRequest?.abort();
+    warehouseEntryLogisticsStatusRequest = null;
+    clearTimeout(warehouseEntrySourceLoadTimer);
+    warehouseEntrySourceLoadRequest?.abort();
+    warehouseEntrySourceLoadRequest = null;
+
+    $('#warehouse_entry_supplier_purchase_order_id').val('').trigger('change.select2');
+    $('#warehouse_entry_purchase_order_number').val('');
+    $('#warehouse_entry_company_id,#warehouse_entry_currency_id').val('').trigger('change.select2');
+    setWarehouseEntrySupplier('', '');
+    setWarehouseEntrySupplierLocked(false);
+    warehouseEntrySourceOrderTotal = null;
+    updateWarehouseEntryDeliveryCostContext('');
+    clearWarehouseEntryItemRows();
+    showEmptyWarehouseEntryItemsRow();
+    calculateWarehouseEntryTotals();
+    updateWarehouseEntryReview();
 }
 
 function scheduleWarehouseEntrySourceAutoLoad() {

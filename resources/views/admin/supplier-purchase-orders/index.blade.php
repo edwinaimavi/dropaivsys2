@@ -175,6 +175,15 @@
             box-shadow: inset 3px 0 #63b795;
         }
 
+        .supplier-order-deep-link-highlight td {
+            animation: supplier-order-deep-link-pulse 1s ease-in-out 3;
+        }
+
+        @keyframes supplier-order-deep-link-pulse {
+            0%, 100% { background: #fff; }
+            50% { background: #dff6eb; box-shadow: inset 3px 0 #198754; }
+        }
+
         #tableSupplierPurchaseOrder tbody td:nth-child(1),
         #tableSupplierPurchaseOrder tbody td:nth-child(2),
         #tableSupplierPurchaseOrder tbody td:nth-child(6),

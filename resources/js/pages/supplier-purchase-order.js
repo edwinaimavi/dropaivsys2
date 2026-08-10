@@ -455,6 +455,8 @@ function renderSupplierOrderCustomerGroups(table) {
 
         $(nodes[firstIndex]).before(groupRow);
     });
+
+    $(document).trigger('supplier-orders:groups-rendered');
 }
 
 function supplierOrderGroupStatus(statuses) {

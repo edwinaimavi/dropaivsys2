@@ -1434,7 +1434,8 @@
             warehouseEntryDelete: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryShow: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryGenerateNumber: "{{ route('admin.warehouse-entries.generateNumber') }}",
-            warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}"
+            warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}",
+            supplierPurchaseOrderLogisticsStatus: "{{ url('admin/supplier-purchase-orders') }}"
         });
     </script>
 

@@ -1,5 +1,7 @@
 let spoTrackingOrderId = null;
 const spoMainFlow = ['registered','sent_to_supplier','supplier_confirmed','preparing','delivered_to_carrier','in_transit','arrived_destination','received_office','received_warehouse'];
+let spoTrackingDeepLinkHandled = false;
+let spoTrackingDeepLinkSearchApplied = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     $(document).on('click', '.trackingSupplierPurchaseOrder', function () {
@@ -19,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $(document).on('click', '.spo-delete-event', function () {
         deleteSpoTracking($(this).data('id'));
     });
+    $(document).on('supplier-orders:groups-rendered', openSpoTrackingFromQuery);
     $('#supplierPurchaseOrderTrackingModal').on('hidden.bs.modal', resetSpoTrackingForm);
     $('#quickShippingAgencyTrackingModal').on('hidden.bs.modal', function () {
         if ($('#supplierPurchaseOrderTrackingModal').hasClass('show')) {
@@ -27,7 +30,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     initSpoTrackingAgencySelect();
+    openSpoTrackingFromQuery();
 });
+
+function openSpoTrackingFromQuery() {
+    if (spoTrackingDeepLinkHandled) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('openTracking');
+    if (!orderId) return;
+
+    const trackingButton = $('.trackingSupplierPurchaseOrder').filter(function () {
+        return String($(this).data('id')) === String(orderId);
+    }).first();
+
+    if (!trackingButton.length) {
+        if (spoTrackingDeepLinkSearchApplied || !$.fn.DataTable.isDataTable('#tableSupplierPurchaseOrder')) return;
+        const searchValue = params.get('orderCode') || orderId;
+        spoTrackingDeepLinkSearchApplied = true;
+        $('#tableSupplierPurchaseOrder').DataTable().search(searchValue).draw();
+        return;
+    }
+
+    spoTrackingDeepLinkHandled = true;
+    const accordion = trackingButton.closest('.supplier-order-accordion');
+    if (accordion.length && !accordion.hasClass('is-open')) {
+        accordion.find('.supplier-order-group-toggle').first().trigger('click');
+    }
+
+    const orderRow = trackingButton.closest('tr');
+    orderRow.addClass('supplier-order-deep-link-highlight');
+    orderRow[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => orderRow.removeClass('supplier-order-deep-link-highlight'), 3200);
+    setTimeout(() => openSpoTracking(orderId), 300);
+
+    params.delete('openTracking');
+    params.delete('orderCode');
+    const cleanQuery = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash}`);
+}
 
 function openSpoTracking(orderId) {
     spoTrackingOrderId = orderId;

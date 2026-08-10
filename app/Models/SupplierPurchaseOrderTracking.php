@@ -9,6 +9,20 @@ class SupplierPurchaseOrderTracking extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_RECEIVED_WAREHOUSE = 'received_warehouse';
+
+    public const MAIN_FLOW = [
+        'registered',
+        'sent_to_supplier',
+        'supplier_confirmed',
+        'preparing',
+        'delivered_to_carrier',
+        'in_transit',
+        'arrived_destination',
+        'received_office',
+        self::STATUS_RECEIVED_WAREHOUSE,
+    ];
+
     public const STATUSES = [
         'registered' => 'Orden registrada',
         'sent_to_supplier' => 'Enviada al proveedor',
@@ -33,6 +47,44 @@ class SupplierPurchaseOrderTracking extends Model
         'event_date' => 'datetime',
         'estimated_date' => 'date',
     ];
+
+    public static function logisticsSummary(iterable $statuses): array
+    {
+        $statusCodes = collect($statuses)
+            ->map(fn ($status) => strtolower(trim((string) $status)))
+            ->filter()
+            ->values();
+        $isComplete = $statusCodes->contains(self::STATUS_RECEIVED_WAREHOUSE);
+        $currentStatusCode = $statusCodes->last();
+        $currentMainStatus = $statusCodes->reverse()->first(
+            fn (string $status) => in_array($status, self::MAIN_FLOW, true)
+        );
+        $currentMainIndex = $currentMainStatus === null
+            ? -1
+            : array_search($currentMainStatus, self::MAIN_FLOW, true);
+        $missingCodes = $isComplete
+            ? []
+            : array_slice(self::MAIN_FLOW, ((int) $currentMainIndex) + 1);
+
+        return [
+            'is_complete' => $isComplete,
+            'current_status_code' => $currentStatusCode,
+            'current_status' => $currentStatusCode
+                ? self::plainStatusLabel($currentStatusCode)
+                : 'Sin seguimiento',
+            'missing_step_codes' => $missingCodes,
+            'missing_steps' => array_map(self::plainStatusLabel(...), $missingCodes),
+        ];
+    }
+
+    public static function plainStatusLabel(string $status): string
+    {
+        return html_entity_decode(
+            self::STATUSES[$status] ?? $status,
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+    }
 
     public function supplierPurchaseOrder()
     {

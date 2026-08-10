@@ -158,6 +158,22 @@ class SupplierPurchaseOrder extends Model
         return $this->hasMany(SupplierPurchaseOrderTracking::class);
     }
 
+    public function registerWarehouseReceiptTracking(string $entryNumber, ?int $userId): SupplierPurchaseOrderTracking
+    {
+        return $this->trackings()->firstOrCreate(
+            ['status' => SupplierPurchaseOrderTracking::STATUS_RECEIVED_WAREHOUSE],
+            [
+                'title' => SupplierPurchaseOrderTracking::plainStatusLabel(
+                    SupplierPurchaseOrderTracking::STATUS_RECEIVED_WAREHOUSE
+                ),
+                'description' => "Etapa registrada automáticamente al guardar el ingreso de almacén {$entryNumber}.",
+                'event_date' => now(),
+                'created_by' => $userId,
+                'updated_by' => $userId,
+            ]
+        );
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

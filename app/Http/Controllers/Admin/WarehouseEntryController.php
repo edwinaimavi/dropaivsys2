@@ -16,6 +16,7 @@ use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
 use App\Models\SupplierPurchaseOrderItem;
+use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
@@ -44,7 +45,10 @@ class WarehouseEntryController extends Controller
     {
         $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
         $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
-        $this->middleware('can:admin.warehouse-entries.load-items')->only(['loadSupplierPurchaseOrderItems']);
+        $this->middleware('can:admin.warehouse-entries.load-items')->only([
+            'loadSupplierPurchaseOrderItems',
+            'supplierPurchaseOrderLogisticsStatus',
+        ]);
         $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
         $this->middleware('can:admin.warehouse-entries.update')->only(['update', 'destroyDocument']);
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
@@ -108,6 +112,26 @@ class WarehouseEntryController extends Controller
             'warehouses',
             'shippingAgencies'
         ));
+    }
+
+    public function supplierPurchaseOrderLogisticsStatus(SupplierPurchaseOrder $supplierPurchaseOrder)
+    {
+        $statuses = $supplierPurchaseOrder->trackings()
+            ->orderByRaw('COALESCE(event_date, created_at) ASC')
+            ->orderBy('id')
+            ->pluck('status');
+        $summary = SupplierPurchaseOrderTracking::logisticsSummary($statuses);
+
+        return response()->json([
+            'status' => 'success',
+            ...$summary,
+            'supplier_purchase_order_id' => $supplierPurchaseOrder->id,
+            'supplier_purchase_order_code' => $supplierPurchaseOrder->code,
+            'tracking_url' => route('admin.supplier-purchase-orders.index', [
+                'openTracking' => $supplierPurchaseOrder->id,
+                'orderCode' => $supplierPurchaseOrder->code,
+            ]),
+        ]);
     }
 
     public function list()
@@ -875,6 +899,13 @@ class WarehouseEntryController extends Controller
                     app(WarehouseKardexService::class)->rebuildEntryMovements($freshEntry);
                 } else {
                     app(WarehouseKardexService::class)->registerEntryFromWarehouseEntry($freshEntry);
+                }
+
+                if ($supplierPurchaseOrder && $entry->status === self::STATUS_REGISTERED) {
+                    $supplierPurchaseOrder->registerWarehouseReceiptTracking(
+                        $entry->entry_number,
+                        Auth::id()
+                    );
                 }
 
                 collect([
