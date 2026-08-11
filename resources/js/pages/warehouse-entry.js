@@ -1552,8 +1552,8 @@ function updateWarehouseEntryReview() {
     const alertHtml = alerts.length
         ? `<div class="warehouse-entry-review-alert"><i class="fas fa-exclamation-triangle"></i><div><strong>Revisión pendiente</strong><ul>${alerts.map(alert => `<li>${escapeWarehouseEntryHtml(alert)}</li>`).join('')}</ul></div></div>`
         : '<div class="warehouse-entry-review-ok"><i class="fas fa-check-circle"></i><div><strong>Ingreso listo para guardar</strong><small>No se detectaron inconsistencias en artículos o lotes.</small></div></div>';
-    const freightTotal = warehouseEntryExpenses.filter(expense => expense.expense_category === 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
-    const otherExpenseTotal = warehouseEntryExpenses.filter(expense => expense.expense_category !== 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+    const freightTotal = warehouseEntryExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+    const otherExpenseTotal = warehouseEntryExpenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const informativeTotal = warehouseEntryExpenses.filter(expense => !expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const inventoryTotal = warehouseEntryExpenses.filter(expense => expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
 
@@ -1651,8 +1651,40 @@ function warehouseEntryExpenseMapping(type) {
     return null;
 }
 
+function normalizeWarehouseEntryExpenseDocumentValue(documentType) {
+    const normalized = String(documentType || '').trim().toUpperCase().replace(/[ -]+/g, '_');
+    if (normalized === 'RECIBO') return 'RECIBO_INTERNO';
+    if (['RECIBO_POR_HONORARIOS', 'RECIBO_HONORARIO'].includes(normalized)) return 'RECIBO_HONORARIOS';
+    return normalized;
+}
+
+function isWarehouseEntryOfficialExpenseDocument(documentType) {
+    return ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'].includes(normalizeWarehouseEntryExpenseDocumentValue(documentType));
+}
+
+function warehouseEntryExpenseDocumentLabel(documentType) {
+    return {
+        FACTURA: 'Factura',
+        BOLETA: 'Boleta',
+        RECIBO_HONORARIOS: 'Recibo por honorarios',
+        RECIBO_INTERNO: 'Recibo interno',
+        SIN_COMPROBANTE: 'Sin comprobante'
+    }[normalizeWarehouseEntryExpenseDocumentValue(documentType)] || 'Sin comprobante';
+}
+
+function isWarehouseEntryOfficialTransportExpense(expense) {
+    return expense.expense_category === 'freight_transport'
+        && isWarehouseEntryOfficialExpenseDocument(expense.document_type);
+}
+
+function warehouseEntryExpenseClassification(expense) {
+    return isWarehouseEntryOfficialExpenseDocument(expense.document_type)
+        ? 'Con comprobante oficial'
+        : 'Otros gastos / sin comprobante';
+}
+
 function toggleWarehouseEntryExpenseDocumentFields() {
-    const documentType = $('#warehouse_entry_expense_document_type').val();
+    const documentType = normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val());
     const withoutDocument = documentType === 'SIN_COMPROBANTE';
     const supportsIgv = ['FACTURA', 'BOLETA'].includes(documentType);
     $('#warehouse_entry_expense_document_series, #warehouse_entry_expense_document_number').prop('disabled', withoutDocument);
@@ -1661,7 +1693,7 @@ function toggleWarehouseEntryExpenseDocumentFields() {
     if (!supportsIgv) $('#warehouse_entry_expense_affects_igv').val('0');
     $('#warehouseEntryExpenseIgvHelp').text(supportsIgv
         ? 'Indique si el importe incluye IGV.'
-        : 'Los recibos o costos sin comprobante no generan IGV para el análisis.');
+        : 'Este documento no genera IGV aprovechable para el análisis.');
 }
 
 function calculateWarehouseEntryExpenseTax(amount, affectsIgv) {
@@ -1752,7 +1784,7 @@ function formatWarehouseEntryFileSize(bytes) {
 function warehouseEntryExpenseDocumentConfig(type) {
     return type === 'payment_proof'
         ? { input: '#warehouse_entry_expense_payment_proof_file', picker: '#warehouseEntryExpensePaymentProofFilePicker', name: '#warehouseEntryExpensePaymentProofFileName', size: '#warehouseEntryExpensePaymentProofFileSize', icon: '#warehouseEntryExpensePaymentProofFileTypeIcon', view: '#warehouseEntryExpensePaymentProofView', fileField: 'payment_proof_file', removeField: 'remove_payment_proof_document', label: 'constancia de pago' }
-        : { input: '#warehouse_entry_expense_invoice_file', picker: '#warehouseEntryExpenseInvoiceFilePicker', name: '#warehouseEntryExpenseInvoiceFileName', size: '#warehouseEntryExpenseInvoiceFileSize', icon: '#warehouseEntryExpenseInvoiceFileTypeIcon', view: '#warehouseEntryExpenseInvoiceView', fileField: 'invoice_file', removeField: 'remove_invoice_document', label: 'factura' };
+        : { input: '#warehouse_entry_expense_invoice_file', picker: '#warehouseEntryExpenseInvoiceFilePicker', name: '#warehouseEntryExpenseInvoiceFileName', size: '#warehouseEntryExpenseInvoiceFileSize', icon: '#warehouseEntryExpenseInvoiceFileTypeIcon', view: '#warehouseEntryExpenseInvoiceView', fileField: 'invoice_file', removeField: 'remove_invoice_document', label: 'comprobante oficial' };
 }
 
 function normalizeWarehouseEntryExpenseDocumentType(type) {
@@ -1844,15 +1876,15 @@ function addWarehouseEntryExpense() {
     const previous = editIndex === '' ? {} : warehouseEntryExpenses[Number(editIndex)];
     const invoiceFile = warehouseEntryExpenseEditorRemovedDocuments.invoice ? null : (invoiceInputFile || previous?.invoice_file || null);
     const paymentProofFile = warehouseEntryExpenseEditorRemovedDocuments.payment_proof ? null : (paymentProofInputFile || previous?.payment_proof_file || null);
-    const documentType = $('#warehouse_entry_expense_document_type').val().trim();
+    const documentType = normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val());
     const affectsIgv = affectsIgvSelection === '1';
-    if (invoiceFile && !['FACTURA', 'BOLETA'].includes(documentType)) return Swal.fire('Tipo de documento requerido', 'Seleccione Factura o Boleta como tipo de documento para adjuntar el comprobante tributario.', 'warning');
+    if (invoiceFile && !isWarehouseEntryOfficialExpenseDocument(documentType)) return Swal.fire('Tipo de documento requerido', 'Seleccione Factura, Boleta o Recibo por honorarios para adjuntar el comprobante oficial.', 'warning');
     if (affectsIgv && !['FACTURA', 'BOLETA'].includes(documentType)) return Swal.fire('IGV no permitido', 'Solo una factura o boleta puede registrarse como afecto a IGV.', 'warning');
     const taxBreakdown = calculateWarehouseEntryExpenseTax(amount, affectsIgv);
     const hasStoredInvoice = !warehouseEntryExpenseEditorRemovedDocuments.invoice
         && Boolean(warehouseEntryExpenseStoredDocument(previous, 'invoice'));
-    if (documentType !== 'SIN_COMPROBANTE' && (!$('#warehouse_entry_expense_document_series').val().trim() || !$('#warehouse_entry_expense_document_number').val().trim())) return Swal.fire('Comprobante incompleto', 'Ingrese la serie y el número del comprobante.', 'warning');
-    if ((documentType === 'SIN_COMPROBANTE' || (!invoiceFile && !hasStoredInvoice)) && !description) return Swal.fire('Observación requerida', 'Ingrese una observación cuando no adjunta factura o comprobante tributario.', 'warning');
+    if (isWarehouseEntryOfficialExpenseDocument(documentType) && (!$('#warehouse_entry_expense_document_series').val().trim() || !$('#warehouse_entry_expense_document_number').val().trim())) return Swal.fire('Comprobante incompleto', 'Ingrese la serie y el número del comprobante.', 'warning');
+    if ((!isWarehouseEntryOfficialExpenseDocument(documentType) || (!invoiceFile && !hasStoredInvoice)) && !description) return Swal.fire('Observación requerida', 'Ingrese una observación cuando no adjunta un comprobante oficial.', 'warning');
     const distributions = method === 'manual' ? $('.warehouse-entry-expense-manual-amount').map(function () { return { item_index: Number($(this).data('item-index')), distributed_amount: parseWarehouseEntryNumber($(this).val()) }; }).get() : [];
     if (method === 'manual' && Math.abs(distributions.reduce((sum, item) => sum + item.distributed_amount, 0) - amount) > 0.009) return Swal.fire('Distribución inválida', 'La distribución del gasto debe coincidir con el importe total.', 'warning');
     const documentKey = [$('#warehouse_entry_expense_document_type').val(), $('#warehouse_entry_expense_document_series').val(), $('#warehouse_entry_expense_document_number').val()].map(value => value.trim().toUpperCase()).join('|');
@@ -1865,7 +1897,7 @@ function addWarehouseEntryExpense() {
         provider_id: '',
         provider_name: type === 'agency_freight' ? $('#warehouse_entry_expense_shipping_agency_id option:selected').text().trim() : $('#warehouse_entry_expense_provider_name').val().trim(),
         provider_ruc: $('#warehouse_entry_expense_provider_ruc').val().trim(),
-        document_type: $('#warehouse_entry_expense_document_type').val().trim(), document_series: $('#warehouse_entry_expense_document_series').val().trim(), document_number: $('#warehouse_entry_expense_document_number').val().trim(), document_date: $('#warehouse_entry_expense_document_date').val(),
+        document_type: documentType, document_series: $('#warehouse_entry_expense_document_series').val().trim(), document_number: $('#warehouse_entry_expense_document_number').val().trim(), document_date: $('#warehouse_entry_expense_document_date').val(),
         currency_id: $('#warehouse_entry_currency_id').val() || '', amount, ...taxBreakdown, affects_inventory_cost: affects, distribution_method: affects ? method : '', description, distributions,
         invoice_file: invoiceFile,
         payment_proof_file: paymentProofFile,
@@ -1879,6 +1911,7 @@ function addWarehouseEntryExpense() {
 
 function editWarehouseEntryExpense(index) {
     const expense = warehouseEntryExpenses[index]; if (!expense) return;
+    expense.document_type = normalizeWarehouseEntryExpenseDocumentValue(expense.document_type) || 'SIN_COMPROBANTE';
     warehouseEntryExpenseEditorRemovedDocuments = {
         invoice: Boolean(expense.remove_invoice_document),
         payment_proof: Boolean(expense.remove_payment_proof_document)
@@ -1886,7 +1919,7 @@ function editWarehouseEntryExpense(index) {
     const category = expense.expense_category || (['flete', 'transporte', 'movilidad'].includes(expense.expense_type) ? 'freight_transport' : 'other_expense');
     $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); applyWarehouseEntryExpenseOriginRules();
     $('#warehouse_entry_expense_shipping_agency_id').val(expense.shipping_agency_id || '');
-    $('#warehouse_entry_expense_document_type').val(expense.document_type || 'SIN_COMPROBANTE');
+    $('#warehouse_entry_expense_document_type').val(expense.document_type);
     toggleWarehouseEntryExpenseDocumentFields();
     toggleWarehouseEntryExpenseDistribution(); $('#warehouse_entry_expense_distribution_method').val(expense.distribution_method || ''); renderWarehouseEntryExpenseManualDistribution();
     (expense.distributions || []).forEach(item => $(`.warehouse-entry-expense-manual-amount[data-item-index="${item.item_index}"]`).val(item.distributed_amount));
@@ -1915,19 +1948,21 @@ function renderWarehouseEntryExpenseDocumentLinks(expense) {
         return `<span class="text-muted"><strong>${label}:</strong> ${missingLabel}</span>`;
     };
 
-    return `<div class="warehouse-entry-expense-document-links">${line('invoice', 'Factura', 'Sin factura')}${line('payment_proof', 'Pago', 'Sin constancia')}</div>`;
+    return `<div class="warehouse-entry-expense-document-links">${line('invoice', 'Comprobante', 'Sin adjunto')}${line('payment_proof', 'Pago', 'Sin constancia')}</div>`;
 }
 
 function renderWarehouseEntryExpenses() {
     $('#warehouseEntryExpensesBody').html(warehouseEntryExpenses.length ? warehouseEntryExpenses.map((expense, index) => {
         const type = renderWarehouseEntrySimpleExpenseLabel(expense.expense_type);
-        const document = expense.document_type === 'SIN_COMPROBANTE' || !expense.document_type ? 'Sin comprobante' : [expense.document_type, [expense.document_series, expense.document_number].filter(Boolean).join('-')].filter(Boolean).join(' ');
+        const document = [warehouseEntryExpenseDocumentLabel(expense.document_type), [expense.document_series, expense.document_number].filter(Boolean).join('-')].filter(Boolean).join(' ');
+        const officialDocument = isWarehouseEntryOfficialExpenseDocument(expense.document_type);
+        const classification = warehouseEntryExpenseClassification(expense);
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
         const igvBadge = expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>';
-        return `<tr><td><span class="badge badge-${expense.expense_category === 'freight_transport' ? 'info' : 'secondary'}">${type}</span></td><td>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${igvBadge}</td><td>${escapeWarehouseEntryHtml(expense.description || '-')}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td><td class="text-nowrap"><button type="button" class="btn btn-outline-info btn-xs btnEditWarehouseEntryExpense" data-index="${index}"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryExpense" data-index="${index}"><i class="fas fa-ban"></i></button></td></tr>`;
-    }).join('') : '<tr><td colspan="8" class="text-center text-muted py-3">No hay costos vinculados.</td></tr>');
-    const freight = warehouseEntryExpenses.filter(expense => expense.expense_category === 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
-    const other = warehouseEntryExpenses.filter(expense => expense.expense_category !== 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+        return `<tr><td><span class="badge badge-${expense.expense_category === 'freight_transport' ? 'info' : 'secondary'}">${type}</span></td><td>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${igvBadge}</td><td><span class="badge badge-${officialDocument ? 'success' : 'warning'}">${classification}</span></td><td>${escapeWarehouseEntryHtml(expense.description || '-')}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td><td class="text-nowrap"><button type="button" class="btn btn-outline-info btn-xs btnEditWarehouseEntryExpense" data-index="${index}"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryExpense" data-index="${index}"><i class="fas fa-ban"></i></button></td></tr>`;
+    }).join('') : '<tr><td colspan="9" class="text-center text-muted py-3">No hay costos vinculados.</td></tr>');
+    const freight = warehouseEntryExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+    const other = warehouseEntryExpenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const inventory = warehouseEntryExpenses.filter(expense => expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const informative = warehouseEntryExpenses.filter(expense => !expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     $('#warehouseEntryFreightTotal').text(formatWarehouseEntryMoney(freight)); $('#warehouseEntryOtherExpenseTotal').text(formatWarehouseEntryMoney(other)); $('#warehouseEntryExpenseInventoryTotal').text(formatWarehouseEntryMoney(inventory)); $('#warehouseEntryExpenseInformativeTotal').text(formatWarehouseEntryMoney(informative));
@@ -1986,6 +2021,7 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_observations').val(entry.observations || '');
     warehouseEntryExpenses = (entry.expenses || []).map(expense => ({
         ...expense,
+        document_type: normalizeWarehouseEntryExpenseDocumentValue(expense.document_type) || 'SIN_COMPROBANTE',
         affects_igv: Boolean(expense.affects_igv),
         affects_inventory_cost: Boolean(expense.affects_inventory_cost),
         distributions: (expense.distributions || []).map(distribution => ({
@@ -2089,17 +2125,20 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     const expenseMethods = { quantity:'Por cantidad', amount:'Por valor', weight:'Por peso', manual:'Manual' };
     const expenses = entry.expenses || [];
     $('#vwe_expenses').html(expenses.length ? expenses.map(expense => {
+        const officialDocument = isWarehouseEntryOfficialExpenseDocument(expense.document_type);
+        const document = [warehouseEntryExpenseDocumentLabel(expense.document_type), expense.document_series, expense.document_number].filter(Boolean).join(' ');
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
-        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${warehouseEntryExpenseOriginLabels[expense.cost_origin] || 'Tercero / agencia externa'}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml([expense.document_type, expense.document_series, expense.document_number].filter(Boolean).join(' ') || 'Sin comprobante')}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-light">No</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td></tr>`;
-    }).join('') : '<tr><td colspan="10" class="text-center text-muted py-3">Sin costos vinculados.</td></tr>');
-    const freightExpenses = expenses.filter(expense => expense.expense_category === 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
-    const otherExpenses = expenses.filter(expense => expense.expense_category !== 'freight_transport').reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${warehouseEntryExpenseOriginLabels[expense.cost_origin] || 'Tercero / agencia externa'}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td><span class="badge badge-${officialDocument ? 'success' : 'warning'}">${warehouseEntryExpenseClassification(expense)}</span></td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-light">No</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td></tr>`;
+    }).join('') : '<tr><td colspan="11" class="text-center text-muted py-3">Sin costos vinculados.</td></tr>');
+    const freightExpenses = expenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+    const otherExpenses = expenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const informativeExpenses = expenses.filter(expense => !expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const inventoryExpenses = expenses.filter(expense => expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     $('#vwe_expenses_informative').text(formatWarehouseEntryMoney(informativeExpenses));
     $('#vwe_expenses_inventory').text(formatWarehouseEntryMoney(inventoryExpenses));
     $('#vwe_expenses_freight').text(formatWarehouseEntryMoney(freightExpenses));
     $('#vwe_expenses_other').text(formatWarehouseEntryMoney(otherExpenses));
+    $('#vwe_expenses_linked').text(formatWarehouseEntryMoney(freightExpenses + otherExpenses));
     $('#vwe_real_total').text(formatWarehouseEntryMoney(parseWarehouseEntryNumber(entry.grand_total) + inventoryExpenses));
     $('#vwe_created_by').text(formatWarehouseEntryUser(entry.creator));
     $('#vwe_created_at').text(formatWarehouseEntryDateTime(entry.created_at));

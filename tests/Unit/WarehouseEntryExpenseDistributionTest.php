@@ -87,8 +87,8 @@ it('rechaza IGV para recibos y costos sin comprobante', function (string $docume
         'affects_inventory_cost' => true,
         'affects_igv' => true,
         'document_type' => $documentType,
-    ]))->toThrow(ValidationException::class, 'no generan IGV para el análisis');
-})->with(['RECIBO', 'SIN_COMPROBANTE']);
+    ]))->toThrow(ValidationException::class, 'no generan IGV aprovechable para el análisis');
+})->with(['RECIBO_HONORARIOS', 'RECIBO_INTERNO', 'RECIBO', 'SIN_COMPROBANTE']);
 
 it('permite marcar factura o boleta como afecta a IGV', function (string $documentType) {
     $expense = prepareWarehouseExpense([

@@ -10,6 +10,18 @@ class WarehouseEntryExpense extends Model
 
     public const IGV_DOCUMENT_TYPES = ['FACTURA', 'BOLETA'];
 
+    public const OFFICIAL_DOCUMENT_TYPES = ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'];
+
+    public const UNOFFICIAL_DOCUMENT_TYPES = ['RECIBO_INTERNO', 'SIN_COMPROBANTE'];
+
+    public const DOCUMENT_TYPES = [
+        'FACTURA' => 'Factura',
+        'BOLETA' => 'Boleta',
+        'RECIBO_HONORARIOS' => 'Recibo por honorarios',
+        'RECIBO_INTERNO' => 'Recibo interno',
+        'SIN_COMPROBANTE' => 'Sin comprobante',
+    ];
+
     protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'created_by', 'updated_by'];
     protected $casts = [
         'document_date' => 'date',
@@ -24,7 +36,42 @@ class WarehouseEntryExpense extends Model
 
     public static function supportsIgv(?string $documentType): bool
     {
-        return in_array(strtoupper(trim((string) $documentType)), self::IGV_DOCUMENT_TYPES, true);
+        return in_array(self::normalizeDocumentType($documentType), self::IGV_DOCUMENT_TYPES, true);
+    }
+
+    public static function isOfficialDocument(?string $documentType): bool
+    {
+        return in_array(self::normalizeDocumentType($documentType), self::OFFICIAL_DOCUMENT_TYPES, true);
+    }
+
+    public static function normalizeDocumentType(?string $documentType): string
+    {
+        $normalized = strtoupper(trim((string) $documentType));
+        $normalized = str_replace([' ', '-'], '_', $normalized);
+
+        return match ($normalized) {
+            '' => 'SIN_COMPROBANTE',
+            'RECIBO', 'RECIBO_INTERNO' => 'RECIBO_INTERNO',
+            'RECIBO_POR_HONORARIOS', 'RECIBO_HONORARIO', 'RECIBO_HONORARIOS' => 'RECIBO_HONORARIOS',
+            default => $normalized,
+        };
+    }
+
+    public static function documentTypeLabel(?string $documentType): string
+    {
+        $normalized = self::normalizeDocumentType($documentType);
+
+        return self::DOCUMENT_TYPES[$normalized] ?? ($normalized ?: self::DOCUMENT_TYPES['SIN_COMPROBANTE']);
+    }
+
+    public function getDocumentTypeAttribute(?string $value): string
+    {
+        return self::normalizeDocumentType($value);
+    }
+
+    public function setDocumentTypeAttribute(?string $value): void
+    {
+        $this->attributes['document_type'] = self::normalizeDocumentType($value);
     }
 
     public static function taxBreakdown(float $total, bool $affectsIgv, float $rate = self::IGV_RATE): array

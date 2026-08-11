@@ -8,23 +8,23 @@ function invokeProfitabilityMethod(string $method, mixed ...$arguments): mixed
         ->invoke(new CustomerOrderProfitabilityService(), ...$arguments);
 }
 
-it('solo reconoce factura y boleta como comprobantes válidos', function (string $documentType, bool $expected) {
-    expect(invokeProfitabilityMethod('isValidPaymentDocument', (object) [
+it('clasifica los documentos oficiales por su tipo', function (string $documentType, bool $expected) {
+    expect(invokeProfitabilityMethod('hasOfficialDocument', (object) [
         'document_type' => $documentType,
-        'documents' => [(object) ['document_type' => 'invoice', 'file_path' => 'factura.pdf', 'status' => 'ACTIVE']],
     ]))->toBe($expected);
 })->with([
-    ['FACTURA', true], ['Factura', true], ['boleta', true], ['RECIBO', false],
+    ['FACTURA', true], ['Factura', true], ['boleta', true], ['RECIBO_HONORARIOS', true],
+    ['RECIBO_INTERNO', false], ['RECIBO', false],
     ['VOUCHER', false], ['SIN_COMPROBANTE', false], ['', false],
 ]);
 
-it('no considera la constancia de pago como comprobante tributario', function () {
+it('la clasificación oficial no depende de la constancia de pago adjunta', function () {
     $cost = (object) [
         'document_type' => 'FACTURA',
         'documents' => [(object) ['document_type' => 'payment_proof', 'file_path' => 'voucher.webp', 'status' => 'ACTIVE']],
     ];
 
-    expect(invokeProfitabilityMethod('isValidPaymentDocument', $cost))->toBeFalse();
+    expect(invokeProfitabilityMethod('hasOfficialDocument', $cost))->toBeTrue();
 });
 
 it('considera formal el costo cuando se adjunta luego la factura', function () {
@@ -36,10 +36,10 @@ it('considera formal el costo cuando se adjunta luego la factura', function () {
         ],
     ];
 
-    expect(invokeProfitabilityMethod('isValidPaymentDocument', $cost))->toBeTrue();
+    expect(invokeProfitabilityMethod('hasOfficialDocument', $cost))->toBeTrue();
 });
 
-it('mantiene el costo completo cuando solo tiene constancia de pago', function () {
+it('reconoce el IGV de factura según el tipo y el campo afecto IGV', function () {
     $cost = (object) [
         'document_type' => 'FACTURA',
         'affects_igv' => true,
@@ -50,7 +50,7 @@ it('mantiene el costo completo cuando solo tiene constancia de pago', function (
         'documents' => [(object) ['document_type' => 'payment_proof', 'file_path' => 'pago.png', 'status' => 'ACTIVE']],
     ];
 
-    expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(118.0);
+    expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(100.0);
 });
 
 it('reconoce tipos actuales e históricos de transporte', function (array $cost, bool $expected) {
@@ -61,6 +61,41 @@ it('reconoce tipos actuales e históricos de transporte', function (array $cost,
     [['expense_type' => 'pickup_transfer'], true],
     [['category' => 'otros_gastos', 'expense_type' => 'other'], false],
 ]);
+
+it('clasifica los cinco casos obligatorios de costos vinculados', function () {
+    $costs = collect([
+        (object) ['id' => 1, 'expense_type' => 'agency_freight', 'expense_category' => 'freight_transport', 'document_type' => 'FACTURA', 'amount' => 100.00],
+        (object) ['id' => 2, 'expense_type' => 'pickup_transfer', 'expense_category' => 'freight_transport', 'document_type' => 'RECIBO_INTERNO', 'amount' => 105.00],
+        (object) ['id' => 3, 'expense_type' => 'pickup_transfer', 'expense_category' => 'freight_transport', 'document_type' => 'SIN_COMPROBANTE', 'amount' => 50.00],
+        (object) ['id' => 4, 'expense_type' => 'other', 'expense_category' => 'other_expense', 'document_type' => 'FACTURA', 'amount' => 1500.00],
+    ]);
+
+    $classified = invokeProfitabilityMethod('classifyLinkedCosts', $costs);
+
+    expect($classified['freight']->pluck('id')->all())->toBe([1])
+        ->and((float) $classified['freight']->sum('amount'))->toBe(100.0)
+        ->and($classified['other']->pluck('id')->all())->toBe([2, 3, 4])
+        ->and((float) $classified['other']->sum('amount'))->toBe(1655.0);
+});
+
+it('reclasifica un recojo regularizado de recibo interno a factura', function () {
+    $cost = (object) [
+        'id' => 1,
+        'expense_type' => 'pickup_transfer',
+        'expense_category' => 'freight_transport',
+        'document_type' => 'RECIBO_INTERNO',
+        'amount' => 105.00,
+    ];
+
+    $initial = invokeProfitabilityMethod('classifyLinkedCosts', collect([$cost]));
+    $cost->document_type = 'FACTURA';
+    $regularized = invokeProfitabilityMethod('classifyLinkedCosts', collect([$cost]));
+
+    expect((float) $initial['other']->sum('amount'))->toBe(105.0)
+        ->and($initial['freight'])->toBeEmpty()
+        ->and((float) $regularized['freight']->sum('amount'))->toBe(105.0)
+        ->and($regularized['other'])->toBeEmpty();
+});
 
 it('reproduce la fórmula gerencial con transporte válido y otros gastos sin comprobante', function () {
     $figures = invokeProfitabilityMethod('profitFigures', 43335.00, 31193.37, 142.40, 1605.00);

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\CustomerOrderProfitabilityAnalysis;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\WarehouseEntryExpense;
-use App\Models\WarehouseEntryExpenseDocument;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -87,13 +86,8 @@ class CustomerOrderProfitabilityService
         $purchaseTotal = round((float) $supplierItems->sum('line_total_pen'), 2);
         $purchaseBase = round((float) $supplierItems->sum('taxable_base_pen'), 2);
         $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
-        $withoutReceipt = $costs->reject(fn ($cost) => $this->isValidPaymentDocument($cost));
-        $operationalTransportCosts = $costs->filter(fn ($cost) =>
-            $this->isTransportCost($cost) && $this->isValidPaymentDocument($cost)
-        );
-        $otherOrUnsupportedCosts = $costs->reject(fn ($cost) =>
-            $this->isTransportCost($cost) && $this->isValidPaymentDocument($cost)
-        );
+        $withoutReceipt = $costs->reject(fn ($cost) => $this->hasOfficialDocument($cost));
+        ['freight' => $operationalTransportCosts, 'other' => $otherOrUnsupportedCosts] = $this->classifyLinkedCosts($costs);
         $freight = $operationalTransportCosts;
         $other = $otherOrUnsupportedCosts;
         $linkedFigures = $this->linkedCostFigures($freight, $other, $mode);
@@ -153,20 +147,23 @@ class CustomerOrderProfitabilityService
         );
     }
 
-    private function isValidPaymentDocument($cost): bool
+    private function hasOfficialDocument($cost): bool
     {
-        if (! WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'))) {
-            return false;
-        }
+        return WarehouseEntryExpense::isOfficialDocument(data_get($cost, 'document_type'));
+    }
 
-        return collect(data_get($cost, 'documents', []))->contains(function ($document) {
-            $status = strtoupper((string) data_get($document, 'status', 'ACTIVE'));
+    private function classifyLinkedCosts($costs): array
+    {
+        $freight = collect($costs)->filter(fn ($cost) =>
+            $this->isTransportCost($cost) && $this->hasOfficialDocument($cost)
+        )->values();
 
-            return $status === 'ACTIVE'
-                && filled(data_get($document, 'file_path'))
-                && WarehouseEntryExpenseDocument::normalizeType(data_get($document, 'document_type'))
-                    === WarehouseEntryExpenseDocument::TYPE_INVOICE;
-        });
+        return [
+            'freight' => $freight,
+            'other' => collect($costs)->reject(fn ($cost) =>
+                $this->isTransportCost($cost) && $this->hasOfficialDocument($cost)
+            )->values(),
+        ];
     }
 
     private function isTransportCost($cost): bool
@@ -189,7 +186,7 @@ class CustomerOrderProfitabilityService
     private function costHasIgv($cost): bool
     {
         return filter_var(data_get($cost, 'affects_igv', false), FILTER_VALIDATE_BOOLEAN)
-            && $this->isValidPaymentDocument($cost);
+            && WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'));
     }
 
     private function costTaxBreakdown($cost): array

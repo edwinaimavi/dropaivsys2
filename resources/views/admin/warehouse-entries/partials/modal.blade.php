@@ -415,21 +415,21 @@
                                     <input type="hidden" id="warehouse_entry_expense_provider_ruc">
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
                                     <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
-                                    <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO">Recibo</option><option value="SIN_COMPROBANTE">Sin comprobante</option></select></div>
+                                    <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><optgroup label="DOCUMENTOS OFICIALES"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option></optgroup><optgroup label="DOCUMENTOS NO OFICIALES"><option value="RECIBO_INTERNO">Recibo interno</option><option value="SIN_COMPROBANTE">Sin comprobante</option></optgroup></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>NÚMERO</label><input id="warehouse_entry_expense_document_number" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>FECHA *</label><input type="date" id="warehouse_entry_expense_document_date" class="form-control form-control-sm"></div>
                                     <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="1">Sí</option></select>
                                     <select id="warehouse_entry_expense_distribution_method" class="d-none"><option value="quantity">Por cantidad</option></select>
-                                    <div class="form-group col-12"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria cuando no se adjunta factura"><small class="text-muted">Si no cuenta con factura o comprobante tributario, describa el motivo y responsable.</small></div>
+                                    <div class="form-group col-12"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria sin comprobante oficial adjunto"><small class="text-muted">Si no cuenta con un comprobante oficial adjunto, describa el motivo y responsable.</small></div>
                                     <div class="col-lg-6 mb-2">
                                         <div class="warehouse-entry-expense-document-card is-invoice">
-                                            <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-file-invoice-dollar"></i></span><div><strong>Factura / comprobante tributario</strong><small>Este documento define la clasificación del costo en rentabilidad.</small></div></div>
+                                            <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-file-invoice-dollar"></i></span><div><strong>Comprobante oficial</strong><small>Factura, boleta o recibo por honorarios.</small></div></div>
                                             <div id="warehouseEntryExpenseInvoiceFilePicker" class="warehouse-entry-expense-file-picker">
                                                 <input type="file" id="warehouse_entry_expense_invoice_file" class="warehouse-entry-expense-file-input" data-expense-document-type="invoice" accept=".pdf,.jpg,.jpeg,.png,.webp" tabindex="-1">
                                                 <label for="warehouse_entry_expense_invoice_file" class="warehouse-entry-expense-file-empty mb-0">
                                                     <span class="warehouse-entry-expense-file-icon"><i class="fas fa-file-invoice"></i></span>
-                                                    <span><strong>Seleccionar factura</strong><small>PDF, JPG, JPEG, PNG o WEBP &middot; m&aacute;x. 10 MB</small></span>
+                                                    <span><strong>Seleccionar comprobante</strong><small>PDF, JPG, JPEG, PNG o WEBP &middot; m&aacute;x. 10 MB</small></span>
                                                     <i class="fas fa-chevron-right warehouse-entry-expense-file-arrow"></i>
                                                 </label>
                                                 <div class="warehouse-entry-expense-file-selected d-none">
@@ -440,7 +440,7 @@
                                                     <button type="button" class="btn btn-light btn-sm btnRemoveWarehouseEntryExpenseDocument" data-expense-document-type="invoice"><i class="fas fa-times mr-1"></i>Quitar</button>
                                                 </div>
                                             </div>
-                                            <small class="warehouse-entry-expense-document-help">Factura, boleta u otro comprobante tributario. Este documento afecta la clasificación del costo en rentabilidad.</small>
+                                            <small class="warehouse-entry-expense-document-help">El tipo seleccionado define la clasificación del costo; el adjunto conserva su sustento.</small>
                                         </div>
                                     </div>
                                     <div class="col-lg-6 mb-2">
@@ -468,7 +468,7 @@
                                 <div id="warehouseEntryExpenseManualDistribution" class="d-none mb-3"></div>
                                 <div class="warehouse-entry-expense-action"><small><i class="fas fa-info-circle mr-1"></i>El costo se incorporar&aacute; a la lista antes de guardar el ingreso.</small><button type="button" id="btnAddWarehouseEntryExpense" class="btn btn-info btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo</button></div>
                                 </div>
-                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
+                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo de costo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Clasificación</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
                             </div>
                         </div>
                         @endcanany

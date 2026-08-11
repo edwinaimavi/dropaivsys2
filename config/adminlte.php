@@ -478,7 +478,7 @@ return [
             'submenu' => [
 
                 [
-                    'text' => 'Ingresos de Almacén',
+                    'text' => 'Ingresos de Almacén - Compras',
                     'icon' => 'fas fa-warehouse',
                     'icon_color' => 'info',
                     'url' => 'admin/warehouse-entries',

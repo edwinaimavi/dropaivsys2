@@ -729,7 +729,7 @@ class WarehouseEntryController extends Controller
             'expenses.*.provider_id' => ['nullable', 'exists:suppliers,id'],
             'expenses.*.provider_ruc' => ['nullable', 'string', 'max:20'],
             'expenses.*.provider_name' => ['nullable', 'string', 'max:255'],
-            'expenses.*.document_type' => ['nullable', 'string', 'max:50'],
+            'expenses.*.document_type' => ['required', 'string', Rule::in(array_keys(WarehouseEntryExpense::DOCUMENT_TYPES))],
             'expenses.*.document_series' => ['nullable', 'string', 'max:20'],
             'expenses.*.document_number' => ['nullable', 'string', 'max:50'],
             'expenses.*.document_date' => ['nullable', 'date'],
@@ -1069,9 +1069,9 @@ class WarehouseEntryController extends Controller
                     === WarehouseEntryExpenseDocument::TYPE_INVOICE
             );
             $hasInvoiceDocument = (bool) $invoiceFile || ($hasStoredInvoice && ! $removeInvoice);
-            if ($invoiceFile && ! WarehouseEntryExpense::supportsIgv($data['document_type'] ?? null)) {
+            if ($invoiceFile && ! WarehouseEntryExpense::isOfficialDocument($data['document_type'] ?? null)) {
                 throw ValidationException::withMessages([
-                    "expenses.$index.invoice_file" => 'Seleccione Factura o Boleta como tipo de documento para adjuntar el comprobante tributario.',
+                    "expenses.$index.invoice_file" => 'Seleccione Factura, Boleta o Recibo por honorarios para adjuntar el comprobante oficial.',
                 ]);
             }
             if (! $existingExpense && empty($data['document_date'])) {
@@ -1080,12 +1080,11 @@ class WarehouseEntryController extends Controller
             if (! $existingExpense && blank($data['document_type'] ?? null)) {
                 throw ValidationException::withMessages(["expenses.$index.document_type" => 'Seleccione el tipo de documento.']);
             }
-            if (($data['document_type'] ?? null) !== 'SIN_COMPROBANTE'
-                && (! $existingExpense || filled($data['document_type'] ?? null))
+            if (WarehouseEntryExpense::isOfficialDocument($data['document_type'] ?? null)
                 && (blank($data['document_series'] ?? null) || blank($data['document_number'] ?? null))) {
                 throw ValidationException::withMessages(["expenses.$index.document_number" => 'Ingrese la serie y el número del comprobante.']);
             }
-            if ((($data['document_type'] ?? null) === 'SIN_COMPROBANTE' || ! $hasInvoiceDocument)
+            if ((! WarehouseEntryExpense::isOfficialDocument($data['document_type'] ?? null) || ! $hasInvoiceDocument)
                 && blank($data['description'] ?? null)) {
                 throw ValidationException::withMessages(["expenses.$index.description" => 'Ingrese una observación cuando no adjunta factura o comprobante tributario.']);
             }
@@ -1296,10 +1295,11 @@ class WarehouseEntryController extends Controller
         }
 
         $affectsIgv = filter_var($data['affects_igv'] ?? null, FILTER_VALIDATE_BOOLEAN);
-        $documentType = strtoupper(trim((string) ($data['document_type'] ?? '')));
+        $documentType = WarehouseEntryExpense::normalizeDocumentType($data['document_type'] ?? null);
+        $data['document_type'] = $documentType;
         if ($affectsIgv && ! WarehouseEntryExpense::supportsIgv($documentType)) {
-            $message = in_array($documentType, ['RECIBO', 'SIN_COMPROBANTE', ''], true)
-                ? 'Los recibos o costos sin comprobante no generan IGV para el análisis.'
+            $message = in_array($documentType, ['RECIBO_HONORARIOS', 'RECIBO_INTERNO', 'SIN_COMPROBANTE', ''], true)
+                ? 'Los recibos o costos sin comprobante no generan IGV aprovechable para el análisis.'
                 : 'Solo una factura o boleta puede registrarse como afecto a IGV.';
 
             throw ValidationException::withMessages(["expenses.$index.affects_igv" => $message]);
@@ -1312,6 +1312,7 @@ class WarehouseEntryController extends Controller
 
     private function normalizeLinkedExpenseFields(array $data): array
     {
+        $data['document_type'] = WarehouseEntryExpense::normalizeDocumentType($data['document_type'] ?? null);
         $requestedType = strtolower(trim((string) ($data['expense_type'] ?? $data['cost_type'] ?? $data['type'] ?? '')));
         $simpleType = match ($requestedType) {
             'agency_freight', 'flete_agencia', 'transport_agency', 'courier', 'shipping' => 'agency_freight',
