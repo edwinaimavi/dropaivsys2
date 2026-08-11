@@ -1,15 +1,20 @@
 <?php
 
+use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\DocumentIssuer;
 use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
+use App\Models\Supplier;
 use App\Models\User;
+use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryExpense;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -28,6 +33,7 @@ beforeEach(function () {
         'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.approve',
         'admin.petty-cash.receipt-exchanges.index', 'admin.petty-cash.receipt-exchanges.store',
         'admin.petty-cash.receipt-exchanges.show',
+        'admin.warehouse-entries.expenses.store', 'admin.warehouse-entries.expenses.update',
     ] as $permission) {
         Permission::findOrCreate($permission, 'web');
     }
@@ -56,13 +62,30 @@ function createReceiptExpense(float $amount, string $correlative): PettyCashExpe
         'document_type' => 'RECIBO',
         'document_series' => 'R',
         'document_correlative' => $correlative,
-        'supplier_name' => 'PROVEEDOR ' . $correlative,
-        'concept' => 'SERVICIO ' . $correlative,
+        'supplier_name' => 'PROVEEDOR '.$correlative,
+        'concept' => 'SERVICIO '.$correlative,
         'amount' => $amount,
     ])->assertCreated();
 
     return PettyCashExpense::latest('id')->firstOrFail();
 }
+
+it('dispone de todas las columnas seguras para integrar caja chica con almacén', function () {
+    foreach ([
+        'source_type',
+        'petty_cash_expense_id',
+        'petty_cash_replenishment_id',
+        'document_classification',
+        'official_document_type',
+        'internal_document_type',
+        'exchanged_document_id',
+        'exchanged_at',
+        'payment_proof_path',
+        'official_document_path',
+    ] as $column) {
+        expect(Schema::hasColumn('warehouse_entry_expenses', $column))->toBeTrue();
+    }
+});
 
 it('canjea conjuntamente recibos de diferentes proveedores y conserva su trazabilidad', function () {
     Storage::fake('public');
@@ -123,6 +146,207 @@ it('canjea conjuntamente recibos de diferentes proveedores y conserva su trazabi
         ->assertJsonPath('data.items.1.expense.supplier_name', 'PROVEEDOR 000262')
         ->assertJsonPath('data.items.0.concept', 'SERVICIO 000261')
         ->assertJsonPath('data.items.1.concept', 'SERVICIO 000262');
+});
+
+it('vincula una sola vez el recibo a almacén y sincroniza el comprobante oficial sin duplicar el costo', function () {
+    Storage::fake('public');
+    $receipt = createReceiptExpense(85.50, '000280');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+
+    $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
+        'company_id' => $this->company->id,
+        'currency_id' => $this->currency->id,
+    ]))->assertOk()->assertJsonPath('data.0.id', $receipt->id);
+
+    $supplier = Supplier::create([
+        'ruc' => '20601234001',
+        'business_name' => 'PROVEEDOR DE ALMACÉN S.A.C.',
+        'short_name' => 'PROVEEDOR ALMACÉN',
+        'supplier_type' => 'BIENES',
+        'payment_condition' => 'CONTADO',
+        'status' => 'ACTIVE',
+    ]);
+    $entry = WarehouseEntry::create([
+        'entry_number' => 'ING-TEST-0001',
+        'company_id' => $this->company->id,
+        'supplier_id' => $supplier->id,
+        'currency_id' => $this->currency->id,
+        'subtotal' => 0,
+        'igv' => 0,
+        'grand_total' => 0,
+        'status' => 'registered',
+    ]);
+    $syncExpenses = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $syncExpenses->invoke(app(WarehouseEntryController::class), $entry, [[
+        'source_type' => WarehouseEntryExpense::SOURCE_MANUAL,
+        'expense_type' => 'other',
+        'expense_category' => 'other_expense',
+        'cost_origin' => 'third_party',
+        'provider_name' => 'RESPONSABLE MANUAL',
+        'document_type' => 'SIN_COMPROBANTE',
+        'document_date' => '2026-07-02',
+        'amount' => 15,
+        'affects_igv' => false,
+        'affects_inventory_cost' => false,
+        'description' => 'COSTO MANUAL DE PRUEBA',
+    ], [
+        'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+        'petty_cash_expense_id' => $receipt->id,
+        'expense_type' => 'pickup_transfer',
+        'expense_category' => 'freight_transport',
+        'cost_origin' => 'third_party',
+        'document_type' => 'RECIBO_INTERNO',
+        'document_date' => '2026-07-02',
+        'amount' => 85.50,
+        'affects_igv' => false,
+        'affects_inventory_cost' => false,
+        'description' => 'SERVICIO DE TRASLADO',
+    ]], [], []);
+
+    $manualCost = WarehouseEntryExpense::where('warehouse_entry_id', $entry->id)
+        ->where('source_type', WarehouseEntryExpense::SOURCE_MANUAL)->firstOrFail();
+    $linkedCost = WarehouseEntryExpense::where('petty_cash_expense_id', $receipt->id)->firstOrFail();
+    expect($manualCost->document_classification)->toBe('non_official')
+        ->and($manualCost->internal_document_type)->toBe('sin_comprobante');
+    expect($linkedCost->document_classification)->toBe('non_official')
+        ->and($linkedCost->internal_document_type)->toBe('recibo_interno')
+        ->and($linkedCost->official_document_type)->toBeNull();
+
+    $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
+        'company_id' => $this->company->id,
+        'currency_id' => $this->currency->id,
+    ]))->assertOk()->assertJsonCount(0, 'data');
+
+    $linkedCost->update(['status' => 'INACTIVE']);
+    $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
+        'company_id' => $this->company->id,
+        'currency_id' => $this->currency->id,
+    ]))->assertOk()->assertJsonCount(0, 'data');
+    $linkedCost->update(['status' => 'ACTIVE']);
+
+    $this->post(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'exchange_date' => '2026-07-30',
+        'document_type' => 'FACTURA',
+        'document_series' => 'F002',
+        'document_correlative' => '000280',
+        'issuer_ruc' => '20601234001',
+        'issuer_business_name' => 'PROVEEDOR DE ALMACÉN S.A.C.',
+        'expense_ids' => [$receipt->id],
+        'documents' => [UploadedFile::fake()->create('factura-canje.pdf', 80, 'application/pdf')],
+    ], ['Accept' => 'application/json'])->assertCreated();
+
+    $linkedCost->refresh();
+    expect($linkedCost->id)->not->toBeNull()
+        ->and($linkedCost->document_type)->toBe('FACTURA')
+        ->and($linkedCost->document_classification)->toBe('official')
+        ->and($linkedCost->official_document_type)->toBe('factura')
+        ->and($linkedCost->internal_document_type)->toBeNull()
+        ->and($linkedCost->exchanged_document_id)->not->toBeNull()
+        ->and($linkedCost->exchanged_at)->not->toBeNull()
+        ->and($linkedCost->official_document_path)->toContain('petty-cash/receipt-exchanges/')
+        ->and((float) $linkedCost->amount)->toBe(85.5)
+        ->and((float) $linkedCost->total_amount)->toBe(85.5)
+        ->and(WarehouseEntryExpense::isOfficialDocument($linkedCost->document_type))->toBeTrue()
+        ->and(WarehouseEntryExpense::where('petty_cash_expense_id', $receipt->id)->count())->toBe(1)
+        ->and($linkedCost->documents()->where('source_context', 'petty_cash_exchange')->count())->toBe(1);
+
+    $this->getJson(route('admin.petty-cash.show', $this->boxId))
+        ->assertOk()
+        ->assertJsonPath('data.expenses.0.warehouse_entry_expense.warehouse_entry.entry_number', 'ING-TEST-0001');
+});
+
+it('jala un costo no oficial de almacén a caja chica y lo reclasifica al canjearlo', function () {
+    $supplier = Supplier::create([
+        'ruc' => '20601234002',
+        'business_name' => 'TRANSPORTES DE ORIGEN S.A.C.',
+        'short_name' => 'TRANSPORTES ORIGEN',
+        'supplier_type' => 'SERVICIOS',
+        'payment_condition' => 'CONTADO',
+        'status' => 'ACTIVE',
+    ]);
+    $entry = WarehouseEntry::create([
+        'entry_number' => 'ING-TEST-0002',
+        'company_id' => $this->company->id,
+        'supplier_id' => $supplier->id,
+        'currency_id' => $this->currency->id,
+        'subtotal' => 0,
+        'igv' => 0,
+        'grand_total' => 0,
+        'status' => 'registered',
+    ]);
+    $warehouseCost = WarehouseEntryExpense::create([
+        'warehouse_entry_id' => $entry->id,
+        'source_type' => WarehouseEntryExpense::SOURCE_MANUAL,
+        'expense_category' => 'freight_transport',
+        'cost_origin' => 'third_party',
+        'expense_type' => 'pickup_transfer',
+        'provider_id' => $supplier->id,
+        'provider_ruc' => $supplier->ruc,
+        'provider_name' => $supplier->business_name,
+        'document_type' => 'RECIBO_INTERNO',
+        ...WarehouseEntryExpense::documentMetadata('RECIBO_INTERNO'),
+        'document_series' => 'G',
+        'document_number' => '123',
+        'document_date' => '2026-07-03',
+        'currency_id' => $this->currency->id,
+        'amount' => 45,
+        'affects_igv' => false,
+        'igv_rate' => 0,
+        'taxable_amount' => 45,
+        'igv_amount' => 0,
+        'total_amount' => 45,
+        'affects_inventory_cost' => false,
+        'description' => 'RECOJO DE MERCADERÍA',
+        'status' => 'ACTIVE',
+    ]);
+
+    $this->getJson(route('admin.petty-cash.warehouse-expenses.available', $this->boxId))
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $warehouseCost->id)
+        ->assertJsonPath('data.0.warehouse_entry.entry_number', 'ING-TEST-0002')
+        ->assertJsonPath('data.0.document_label', 'Recibo interno');
+
+    $response = $this->postJson(route('admin.petty-cash.warehouse-expenses.pull', $this->boxId), [
+        'warehouse_entry_expense_ids' => [$warehouseCost->id],
+    ])->assertCreated()->assertJsonPath('created_count', 1);
+
+    $pettyExpense = PettyCashExpense::findOrFail($response->json('expense_ids.0'));
+    $warehouseCost->refresh();
+    expect($pettyExpense->document_type)->toBe('RECIBO')
+        ->and($pettyExpense->approval_status)->toBe(PettyCashExpense::APPROVAL_PENDING)
+        ->and($pettyExpense->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PENDING)
+        ->and($pettyExpense->observation)->toContain('INGRESO DE ALMACÉN ING-TEST-0002')
+        ->and((float) $pettyExpense->amount)->toBe(45.0)
+        ->and($warehouseCost->source_type)->toBe(WarehouseEntryExpense::SOURCE_PETTY_CASH)
+        ->and($warehouseCost->petty_cash_expense_id)->toBe($pettyExpense->id)
+        ->and($warehouseCost->document_classification)->toBe('non_official')
+        ->and(WarehouseEntryExpense::whereKey($warehouseCost->id)->exists())->toBeTrue();
+
+    $this->getJson(route('admin.petty-cash.warehouse-expenses.available', $this->boxId))
+        ->assertOk()->assertJsonCount(0, 'data');
+    $this->postJson(route('admin.petty-cash.warehouse-expenses.pull', $this->boxId), [
+        'warehouse_entry_expense_ids' => [$warehouseCost->id],
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'Este costo ya fue registrado en Caja Chica o no está disponible.');
+
+    $this->postJson(route('admin.petty-cash.expenses.approve', $pettyExpense))->assertOk();
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'exchange_date' => '2026-07-30',
+        'document_type' => 'FACTURA',
+        'document_series' => 'F003',
+        'document_correlative' => '000045',
+        'issuer_ruc' => $supplier->ruc,
+        'issuer_business_name' => $supplier->business_name,
+        'expense_ids' => [$pettyExpense->id],
+    ])->assertCreated();
+
+    $warehouseCost->refresh();
+    expect($warehouseCost->document_type)->toBe('FACTURA')
+        ->and($warehouseCost->document_classification)->toBe('official')
+        ->and($warehouseCost->official_document_type)->toBe('factura')
+        ->and($warehouseCost->internal_document_type)->toBeNull()
+        ->and((float) $warehouseCost->amount)->toBe(45.0)
+        ->and(WarehouseEntryExpense::where('petty_cash_expense_id', $pettyExpense->id)->count())->toBe(1);
 });
 
 it('no lista ni permite canjear recibos pendientes de aprobación', function () {

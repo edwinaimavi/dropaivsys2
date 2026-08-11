@@ -73,6 +73,7 @@
 
     @include('admin.warehouse-entries.partials.modal')
     @include('admin.warehouse-entries.partials.viewModal')
+    @include('admin.warehouse-entries.partials.pettyCashExpenseModal')
 @stop
 
 @push('css')
@@ -422,11 +423,13 @@
         }
 
         #warehouseEntryLotsModal,
-        .warehouse-entry-lots-modal {
+        .warehouse-entry-lots-modal,
+        #warehouseEntryPettyCashModal {
             z-index: 2080 !important;
         }
 
-        .warehouse-entry-backdrop-lots {
+        .warehouse-entry-backdrop-lots,
+        .warehouse-entry-backdrop-petty-cash {
             z-index: 2070 !important;
         }
 
@@ -435,7 +438,10 @@
         #warehouseEntryModal .modal-content,
         #warehouseEntryLotsModal.show,
         #warehouseEntryLotsModal .modal-dialog,
-        #warehouseEntryLotsModal .modal-content {
+        #warehouseEntryLotsModal .modal-content,
+        #warehouseEntryPettyCashModal.show,
+        #warehouseEntryPettyCashModal .modal-dialog,
+        #warehouseEntryPettyCashModal .modal-content {
             pointer-events: auto;
         }
 
@@ -558,6 +564,18 @@
         #warehouseEntryModal #warehouse_entry_tab_data .card-body { padding: 12px 14px 6px; }
         #warehouseEntryModal #warehouse_entry_tab_data .row { margin-right: -5px; margin-left: -5px; }
         #warehouseEntryModal #warehouse_entry_tab_data .form-group { margin-bottom: 9px; padding-right: 5px; padding-left: 5px; }
+
+        .warehouse-entry-petty-cash-modal .modal-content { border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 65px rgba(28,55,47,.22); }
+        .warehouse-entry-petty-cash-modal .modal-header { padding: 15px 18px; border-bottom: 1px solid #e3ece8; }
+        .warehouse-entry-petty-cash-icon { width: 42px; height: 42px; margin-right: 11px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: #dff3ec; color: #168064; font-size: 18px; }
+        .warehouse-entry-petty-cash-filters { background: #f5f9f7; border-radius: 12px; }
+        .warehouse-entry-petty-cash-filters label { margin-bottom: 4px; color: #687a73; font-size: 10px; font-weight: 800; letter-spacing: .045em; }
+        .warehouse-entry-petty-cash-table { border: 1px solid #e1eae6; border-radius: 11px; }
+        .warehouse-entry-petty-cash-table thead th { border: 0; background: #eef5f2; color: #5f716a; font-size: 10px; text-transform: uppercase; white-space: nowrap; }
+        .warehouse-entry-petty-cash-table tbody td { vertical-align: middle; font-size: 12px; }
+        .warehouse-entry-source-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+        .warehouse-entry-source-badge.is-petty-cash { background: #e2f3ec; color: #167154; }
+        .warehouse-entry-source-badge.is-manual { background: #eef1f3; color: #66747a; }
 
         @media (min-width: 1200px) {
             #warehouseEntryModal #warehouse_entry_tab_data .form-group:not(.col-md-12) {
@@ -1435,6 +1453,7 @@
             warehouseEntryShow: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryGenerateNumber: "{{ route('admin.warehouse-entries.generateNumber') }}",
             warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}",
+            warehouseEntryAvailablePettyCashExpenses: "{{ route('admin.warehouse-entries.petty-cash-expenses.available') }}",
             supplierPurchaseOrderLogisticsStatus: "{{ url('admin/supplier-purchase-orders') }}"
         });
     </script>

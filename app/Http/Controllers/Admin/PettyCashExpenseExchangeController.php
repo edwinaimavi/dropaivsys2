@@ -16,10 +16,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use App\Services\DocumentLookupService;
+use App\Services\PettyCashWarehouseExpenseService;
 
 class PettyCashExpenseExchangeController extends Controller
 {
-    public function __construct()
+    public function __construct(private PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService)
     {
         $this->middleware('can:admin.petty-cash.receipt-exchanges.index')->only('pending');
         $this->middleware('can:admin.petty-cash.receipt-exchanges.store')->only(['store', 'searchIssuer']);
@@ -86,7 +87,7 @@ class PettyCashExpenseExchangeController extends Controller
     {
         $validated = $request->validate([
             'exchange_date' => ['required', 'date'],
-            'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA'])],
+            'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'])],
             'document_series' => ['required', 'string', 'max:20'],
             'document_correlative' => ['required', 'string', 'max:50'],
             'issuer_ruc' => ['required', 'regex:/^\d{11}$/'],
@@ -203,6 +204,10 @@ class PettyCashExpenseExchangeController extends Controller
                         'updated_by' => Auth::id(),
                     ]);
                 }
+
+                $expenses->each(function (PettyCashExpense $expense) {
+                    $this->pettyCashWarehouseExpenseService->syncAfterExchange($expense->fresh());
+                });
 
                 return $exchange;
             });

@@ -72,6 +72,10 @@ Route::get('petty-cash/approved-amount/configuration', [PettyCashApprovedAmountC
 Route::put('petty-cash/approved-amount', [PettyCashApprovedAmountController::class, 'update'])
     ->name('petty-cash.approved-amount.update');
 Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
+Route::get('petty-cash/{pettyCash}/warehouse-expenses/available', [PettyCashController::class, 'availableWarehouseExpenses'])
+    ->name('petty-cash.warehouse-expenses.available');
+Route::post('petty-cash/{pettyCash}/warehouse-expenses/pull', [PettyCashController::class, 'pullWarehouseExpenses'])
+    ->name('petty-cash.warehouse-expenses.pull');
 Route::get('petty-cash/expenses/check-document', [PettyCashController::class, 'checkExpenseDocument'])
     ->name('petty-cash.expenses.check-document');
 Route::get('petty-cash/expenses/{expense}/detail', [PettyCashController::class, 'expenseDetail'])
@@ -584,6 +588,10 @@ Route::resource(
 )->except(['create']);
 
 // RUTAS PARA INGRESOS DE ALMACEN
+Route::get(
+    'warehouse-entries/petty-cash-expenses/available',
+    [WarehouseEntryController::class, 'availablePettyCashExpenses']
+)->name('warehouse-entries.petty-cash-expenses.available');
 Route::get(
     'warehouse-entries/list',
     [WarehouseEntryController::class, 'list']

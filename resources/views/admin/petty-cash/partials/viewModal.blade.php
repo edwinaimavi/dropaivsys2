@@ -58,7 +58,7 @@
                                     <span id="pcv_expenses_count" class="petty-section-count">0 movimientos</span>
                                 </div>
                             </div>
-                            <div class="table-responsive petty-tab-table"><table class="table petty-detail-table"><thead><tr><th>#</th><th>Fecha</th><th>Comprobante</th><th>Proveedor</th><th>Concepto</th><th class="text-right">Importe</th><th>Aprobación</th><th>Canje</th><th>Documento</th><th></th></tr></thead><tbody id="pcv_expenses"></tbody></table></div>
+                            <div class="table-responsive petty-tab-table"><table class="table petty-detail-table"><thead><tr><th>#</th><th>Fecha</th><th>Comprobante</th><th>Proveedor</th><th>Concepto</th><th class="text-right">Importe</th><th>Aprobación</th><th>Canje</th><th>Vínculo almacén</th><th>Documento</th><th></th></tr></thead><tbody id="pcv_expenses"></tbody></table></div>
                         </section>
                     </div>
 

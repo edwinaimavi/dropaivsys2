@@ -12,6 +12,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\Presentation;
+use App\Models\PettyCashExpense;
 use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
@@ -24,6 +25,7 @@ use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemLotDocument;
 use App\Services\WarehouseKardexService;
+use App\Services\PettyCashWarehouseExpenseService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -41,8 +43,12 @@ class WarehouseEntryController extends Controller
     private const STATUS_CANCELLED = 'cancelled';
     private const PDF_OBSERVATION = 'PDF_GENERATED_WAREHOUSE_ENTRY';
 
-    public function __construct()
+    private PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService;
+
+    public function __construct(?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null)
     {
+        $this->pettyCashWarehouseExpenseService = $pettyCashWarehouseExpenseService
+            ?? app(PettyCashWarehouseExpenseService::class);
         $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
         $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
         $this->middleware('can:admin.warehouse-entries.load-items')->only([
@@ -112,6 +118,84 @@ class WarehouseEntryController extends Controller
             'warehouses',
             'shippingAgencies'
         ));
+    }
+
+    public function availablePettyCashExpenses(Request $request)
+    {
+        abort_unless(Auth::user()?->can('admin.warehouse-entries.expenses.store')
+            || Auth::user()?->can('admin.warehouse-entries.expenses.update'), 403);
+        abort_unless(
+            WarehouseEntryExpense::integrationColumnsAvailable(),
+            503,
+            'La integración con Caja Chica requiere ejecutar las migraciones pendientes.'
+        );
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'provider' => ['nullable', 'string', 'max:150'],
+            'receipt_number' => ['nullable', 'string', 'max:100'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'amount' => ['nullable', 'numeric', 'gt:0'],
+            'exchange_status' => ['nullable', Rule::in([
+                PettyCashExpense::EXCHANGE_PENDING,
+                PettyCashExpense::EXCHANGE_COMPLETED,
+                'all',
+            ])],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
+            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+        ]);
+
+        $expenses = PettyCashExpense::query()
+            ->where('status', 'ACTIVE')
+            ->where('document_type', 'RECIBO')
+            ->approved()
+            ->whereDoesntHave('warehouseEntryExpenses')
+            ->with([
+                'pettyCashBox:id,code,company_id,currency_id',
+                'pettyCashBox.currency:id,code,symbol',
+                'exchange:id,document_type,document_series,document_correlative,exchange_date,status',
+                'exchange.documents',
+            ])
+            ->withCount(['documents' => fn ($query) => $query->where('status', 'ACTIVE')])
+            ->when($validated['company_id'] ?? null, fn ($query, $companyId) => $query
+                ->whereHas('pettyCashBox', fn ($boxQuery) => $boxQuery->where('company_id', $companyId)))
+            ->when($validated['currency_id'] ?? null, fn ($query, $currencyId) => $query
+                ->whereHas('pettyCashBox', fn ($boxQuery) => $boxQuery->where('currency_id', $currencyId)))
+            ->when(($validated['exchange_status'] ?? PettyCashExpense::EXCHANGE_PENDING) !== 'all',
+                fn ($query) => $query->where('exchange_status', $validated['exchange_status'] ?? PettyCashExpense::EXCHANGE_PENDING))
+            ->when($validated['date_from'] ?? null, fn ($query, $date) => $query->whereDate('expense_date', '>=', $date))
+            ->when($validated['date_to'] ?? null, fn ($query, $date) => $query->whereDate('expense_date', '<=', $date))
+            ->when($validated['amount'] ?? null, fn ($query, $amount) => $query->where('amount', round((float) $amount, 2)))
+            ->when($validated['provider'] ?? null, function ($query, $provider) {
+                $term = '%'.trim($provider).'%';
+                $query->where(fn ($inner) => $inner
+                    ->where('supplier_name', 'like', $term)
+                    ->orWhere('supplier_ruc', 'like', $term));
+            })
+            ->when($validated['receipt_number'] ?? null, function ($query, $number) {
+                $term = '%'.trim($number).'%';
+                $query->where(fn ($inner) => $inner
+                    ->where('document_series', 'like', $term)
+                    ->orWhere('document_correlative', 'like', $term)
+                    ->orWhere('document_number', 'like', $term));
+            })
+            ->when($validated['search'] ?? null, function ($query, $search) {
+                $term = '%'.trim($search).'%';
+                $query->where(fn ($inner) => $inner
+                    ->where('supplier_name', 'like', $term)
+                    ->orWhere('supplier_ruc', 'like', $term)
+                    ->orWhere('concept', 'like', $term)
+                    ->orWhere('document_series', 'like', $term)
+                    ->orWhere('document_correlative', 'like', $term)
+                    ->orWhere('document_number', 'like', $term));
+            })
+            ->orderByDesc('expense_date')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        return response()->json(['data' => $expenses]);
     }
 
     public function supplierPurchaseOrderLogisticsStatus(SupplierPurchaseOrder $supplierPurchaseOrder)
@@ -415,6 +499,8 @@ class WarehouseEntryController extends Controller
             'expenses.provider:id,business_name,short_name,ruc',
             'expenses.shippingAgency:id,business_name,trade_name,ruc',
             'expenses.currency:id,code,symbol',
+            'expenses.pettyCashExpense.pettyCashBox:id,code,company_id,currency_id',
+            'expenses.pettyCashExpense.exchange:id,document_type,document_series,document_correlative,exchange_date,status',
             'expenses.distributions.item:id,warehouse_entry_id,billing_name_snapshot,quantity,unit_price',
             'expenses.documents',
             'documents' => function ($query) {
@@ -722,6 +808,15 @@ class WarehouseEntryController extends Controller
             'warehouse_entry_lot_documents.*.description' => ['nullable', 'string', 'max:255'],
             'expenses' => ['nullable', 'array'],
             'expenses.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_expenses,id'],
+            'expenses.*.source_type' => ['nullable', Rule::in([
+                WarehouseEntryExpense::SOURCE_MANUAL,
+                WarehouseEntryExpense::SOURCE_PETTY_CASH,
+            ])],
+            'expenses.*.petty_cash_expense_id' => [
+                'nullable',
+                'integer',
+                'exists:petty_cash_expenses,id',
+            ],
             'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
             'expenses.*.cost_origin' => ['required', Rule::in(['included_in_purchase_price', 'same_purchase_document', 'third_party', 'internal_without_document'])],
             'expenses.*.expense_type' => ['required', Rule::in(['agency_freight', 'pickup_transfer', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse', 'supplier_warehouse_pickup', 'transfer_to_agency', 'transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
@@ -1054,10 +1149,68 @@ class WarehouseEntryController extends Controller
         abort_if($removesExistingExpenses && ! Auth::user()?->can('admin.warehouse-entries.expenses.destroy'), 403, 'No tiene permiso para anular gastos vinculados.');
 
         foreach ($expenses as $index => $data) {
-            $data = $this->prepareLinkedExpense($data, $index);
             $existingExpense = ! empty($data['id'])
                 ? $entry->expenses()->with('documents')->whereKey($data['id'])->firstOrFail()
                 : null;
+            $sourceType = ($data['source_type'] ?? WarehouseEntryExpense::SOURCE_MANUAL) === WarehouseEntryExpense::SOURCE_PETTY_CASH
+                ? WarehouseEntryExpense::SOURCE_PETTY_CASH
+                : WarehouseEntryExpense::SOURCE_MANUAL;
+            if ($existingExpense?->source_type === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
+                $sourceType = WarehouseEntryExpense::SOURCE_PETTY_CASH;
+                $data['petty_cash_expense_id'] = $existingExpense->petty_cash_expense_id;
+            }
+            $pettyCashExpense = null;
+
+            if ($sourceType === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
+                if (! WarehouseEntryExpense::integrationColumnsAvailable()) {
+                    throw ValidationException::withMessages([
+                        "expenses.$index.source_type" => 'Ejecute las migraciones pendientes antes de vincular gastos de Caja Chica.',
+                    ]);
+                }
+                if (empty($data['petty_cash_expense_id'])) {
+                    throw ValidationException::withMessages([
+                        "expenses.$index.petty_cash_expense_id" => 'Seleccione un gasto válido de Caja Chica.',
+                    ]);
+                }
+
+                $pettyCashExpense = PettyCashExpense::query()
+                    ->with(['pettyCashBox', 'documents', 'exchange.documents'])
+                    ->lockForUpdate()
+                    ->findOrFail($data['petty_cash_expense_id']);
+
+                if ($pettyCashExpense->status !== 'ACTIVE'
+                    || $pettyCashExpense->approval_status !== PettyCashExpense::APPROVAL_APPROVED
+                    || strtoupper((string) $pettyCashExpense->document_type) !== 'RECIBO') {
+                    throw ValidationException::withMessages([
+                        "expenses.$index.petty_cash_expense_id" => 'El gasto de Caja Chica debe estar activo, aprobado y registrado como recibo.',
+                    ]);
+                }
+                if ((int) $pettyCashExpense->pettyCashBox?->company_id !== (int) $entry->company_id
+                    || (int) $pettyCashExpense->pettyCashBox?->currency_id !== (int) $entry->currency_id) {
+                    throw ValidationException::withMessages([
+                        "expenses.$index.petty_cash_expense_id" => 'El gasto de Caja Chica debe pertenecer a la misma empresa y moneda del ingreso.',
+                    ]);
+                }
+                $alreadyLinked = $pettyCashExpense->warehouseEntryExpenses()
+                    ->when($existingExpense, fn ($query) => $query->where('id', '!=', $existingExpense->id))
+                    ->exists();
+                if ($alreadyLinked) {
+                    throw ValidationException::withMessages([
+                        "expenses.$index.petty_cash_expense_id" => 'Este gasto de Caja Chica ya está vinculado a otro ingreso de almacén.',
+                    ]);
+                }
+
+                $data = $this->pettyCashWarehouseExpenseService->applyPettyCashData($data, $pettyCashExpense);
+            } else {
+                $data['source_type'] = WarehouseEntryExpense::SOURCE_MANUAL;
+                $data['petty_cash_expense_id'] = null;
+                $data['petty_cash_replenishment_id'] = null;
+                $data['exchanged_document_id'] = null;
+                $data['exchanged_at'] = null;
+                $data = array_merge($data, WarehouseEntryExpense::documentMetadata($data['document_type'] ?? null));
+            }
+
+            $data = $this->prepareLinkedExpense($data, $index);
             $invoiceFile = $expenseFiles[$index]['invoice_file']
                 ?? $expenseFiles[$index]['file']
                 ?? null;
@@ -1089,6 +1242,7 @@ class WarehouseEntryController extends Controller
                 throw ValidationException::withMessages(["expenses.$index.description" => 'Ingrese una observación cuando no adjunta factura o comprobante tributario.']);
             }
             if (($data['expense_type'] ?? null) === 'agency_freight'
+                && $sourceType !== WarehouseEntryExpense::SOURCE_PETTY_CASH
                 && empty($data['shipping_agency_id'])) {
                 throw ValidationException::withMessages([
                     "expenses.$index.shipping_agency_id" => 'Seleccione la agencia de envío.',
@@ -1115,7 +1269,8 @@ class WarehouseEntryController extends Controller
             foreach (['provider_ruc', 'document_type', 'document_series', 'document_number'] as $field) {
                 $data[$field] = $this->upperOrNull($data[$field] ?? null);
             }
-            if (($data['expense_type'] ?? null) === 'agency_freight') {
+            if (($data['expense_type'] ?? null) === 'agency_freight'
+                && $sourceType !== WarehouseEntryExpense::SOURCE_PETTY_CASH) {
                 $agency = ShippingAgency::query()->findOrFail($data['shipping_agency_id']);
                 $data['provider_name'] = $agency->trade_name ?: $agency->business_name;
                 $data['provider_ruc'] = $this->upperOrNull($agency->ruc);
@@ -1123,7 +1278,8 @@ class WarehouseEntryController extends Controller
             if (! $data['provider_ruc'] && ! empty($data['provider_id'])) {
                 $data['provider_ruc'] = $this->upperOrNull(Supplier::query()->whereKey($data['provider_id'])->value('ruc'));
             }
-            if ($data['document_type'] && $data['document_series'] && $data['document_number']) {
+            if ($sourceType === WarehouseEntryExpense::SOURCE_MANUAL
+                && $data['document_type'] && $data['document_series'] && $data['document_number']) {
                 $duplicate = WarehouseEntryExpense::query()
                     ->where('status', 'ACTIVE')
                     ->where('document_type', $data['document_type'])
@@ -1154,12 +1310,15 @@ class WarehouseEntryController extends Controller
             $expense = $existingExpense
                 ? $existingExpense
                 : $entry->expenses()->make(['created_by' => Auth::id()]);
-            $expense->fill([
+            $expenseData = [
                 'supplier_purchase_order_id' => $entry->supplier_purchase_order_id,
                 'expense_category' => $data['expense_category'],
                 'cost_origin' => $data['cost_origin'],
                 'expense_type' => $data['expense_type'],
-                'shipping_agency_id' => $data['expense_type'] === 'agency_freight' ? ($data['shipping_agency_id'] ?? null) : null,
+                'shipping_agency_id' => $data['expense_type'] === 'agency_freight'
+                    && $sourceType === WarehouseEntryExpense::SOURCE_MANUAL
+                        ? ($data['shipping_agency_id'] ?? null)
+                        : null,
                 'provider_id' => $data['provider_id'] ?? null,
                 'provider_ruc' => $data['provider_ruc'],
                 'provider_name' => $this->upperOrNull($data['provider_name'] ?? null),
@@ -1175,7 +1334,22 @@ class WarehouseEntryController extends Controller
                 'description' => $this->upperOrNull($data['description'] ?? null),
                 'status' => 'ACTIVE',
                 'updated_by' => Auth::id(),
-            ])->save();
+            ];
+            if (WarehouseEntryExpense::integrationColumnsAvailable()) {
+                $expenseData = array_merge($expenseData, [
+                    'source_type' => $sourceType,
+                    'petty_cash_expense_id' => $pettyCashExpense?->id,
+                    'petty_cash_replenishment_id' => $data['petty_cash_replenishment_id'] ?? null,
+                    'document_classification' => $data['document_classification'],
+                    'official_document_type' => $data['official_document_type'],
+                    'internal_document_type' => $data['internal_document_type'],
+                    'exchanged_document_id' => $data['exchanged_document_id'] ?? null,
+                    'exchanged_at' => $data['exchanged_at'] ?? null,
+                    'payment_proof_path' => $data['payment_proof_path'] ?? null,
+                    'official_document_path' => $data['official_document_path'] ?? null,
+                ]);
+            }
+            $expense->fill($expenseData)->save();
             $retainedExpenseIds[] = $expense->id;
 
             $allocations = $affectsCost
@@ -1205,6 +1379,22 @@ class WarehouseEntryController extends Controller
                 $removePaymentProof,
                 'Constancia de pago'
             );
+            if ($pettyCashExpense) {
+                $this->pettyCashWarehouseExpenseService->syncDocuments($expense, $pettyCashExpense);
+            }
+            if (WarehouseEntryExpense::integrationColumnsAvailable()) {
+                $expense->unsetRelation('documents')->load('documents');
+                $invoiceDocument = $expense->documents
+                    ->firstWhere('document_type', WarehouseEntryExpenseDocument::TYPE_INVOICE);
+                $paymentDocument = $expense->documents
+                    ->firstWhere('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF);
+                $expense->update([
+                    'payment_proof_path' => $paymentDocument?->file_path,
+                    'official_document_path' => WarehouseEntryExpense::isOfficialDocument($expense->document_type)
+                        ? $invoiceDocument?->file_path
+                        : null,
+                ]);
+            }
         }
 
         $removedExpenseIds = $entry->expenses()->whereNotIn('id', $retainedExpenseIds)->pluck('id');
@@ -1312,6 +1502,12 @@ class WarehouseEntryController extends Controller
 
     private function normalizeLinkedExpenseFields(array $data): array
     {
+        $data['source_type'] = ($data['source_type'] ?? null) === WarehouseEntryExpense::SOURCE_PETTY_CASH
+            ? WarehouseEntryExpense::SOURCE_PETTY_CASH
+            : WarehouseEntryExpense::SOURCE_MANUAL;
+        $data['petty_cash_expense_id'] = $data['source_type'] === WarehouseEntryExpense::SOURCE_PETTY_CASH
+            ? ($data['petty_cash_expense_id'] ?? null)
+            : null;
         $data['document_type'] = WarehouseEntryExpense::normalizeDocumentType($data['document_type'] ?? null);
         $requestedType = strtolower(trim((string) ($data['expense_type'] ?? $data['cost_type'] ?? $data['type'] ?? '')));
         $simpleType = match ($requestedType) {

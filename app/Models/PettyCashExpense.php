@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class PettyCashExpense extends Model
 {
@@ -57,6 +58,24 @@ class PettyCashExpense extends Model
     public function rejectedBy() { return $this->belongsTo(User::class, 'rejected_by_user_id'); }
     public function exchange() { return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id'); }
     public function exchangeItems() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id'); }
+    public function warehouseEntryExpenses()
+    {
+        if (! Schema::hasTable('warehouse_entry_expenses')
+            || ! Schema::hasColumn('warehouse_entry_expenses', 'petty_cash_expense_id')) {
+            return $this->hasMany(WarehouseEntryExpense::class, 'id', 'id')->whereRaw('1 = 0');
+        }
+
+        return $this->hasMany(WarehouseEntryExpense::class);
+    }
+    public function warehouseEntryExpense()
+    {
+        if (! Schema::hasTable('warehouse_entry_expenses')
+            || ! Schema::hasColumn('warehouse_entry_expenses', 'petty_cash_expense_id')) {
+            return $this->hasOne(WarehouseEntryExpense::class, 'id', 'id')->whereRaw('1 = 0');
+        }
+
+        return $this->hasOne(WarehouseEntryExpense::class)->latestOfMany();
+    }
     public function observations() { return $this->hasMany(PettyCashExpenseObservation::class)->latest('observed_at'); }
     public function events() { return $this->hasMany(PettyCashExpenseEvent::class)->latest(); }
     public function currentObservation()

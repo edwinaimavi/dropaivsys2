@@ -41,6 +41,11 @@
                                 <div class="petty-expense-section-title">
                                     <span><i class="fas fa-file-invoice"></i></span>
                                     <div><h6>Datos del comprobante</h6><small>Identificación del documento que sustenta el gasto</small></div>
+                                    @can('admin.petty-cash.expenses.store')
+                                    <button type="button" id="btnPullWarehouseExpenses" class="btn btn-sm btn-outline-info ml-auto">
+                                        <i class="fas fa-warehouse mr-1"></i> Jalar de Almacén
+                                    </button>
+                                    @endcan
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-3"><label>Fecha *</label><input type="date" name="expense_date" id="pce_expense_date" class="form-control" required></div>

@@ -46,6 +46,16 @@ it('clasifica documentos oficiales y normaliza recibos históricos', function (s
     ['SIN_COMPROBANTE', 'SIN_COMPROBANTE', false],
 ]);
 
+it('genera los metadatos persistentes para cada clase documental', function (string $type, array $expected) {
+    expect(WarehouseEntryExpense::documentMetadata($type))->toBe($expected);
+})->with([
+    ['FACTURA', ['document_classification' => 'official', 'official_document_type' => 'factura', 'internal_document_type' => null]],
+    ['BOLETA', ['document_classification' => 'official', 'official_document_type' => 'boleta', 'internal_document_type' => null]],
+    ['RECIBO_HONORARIOS', ['document_classification' => 'official', 'official_document_type' => 'recibo_por_honorarios', 'internal_document_type' => null]],
+    ['RECIBO_INTERNO', ['document_classification' => 'non_official', 'official_document_type' => null, 'internal_document_type' => 'recibo_interno']],
+    ['SIN_COMPROBANTE', ['document_classification' => 'non_official', 'official_document_type' => null, 'internal_document_type' => 'sin_comprobante']],
+]);
+
 it('clasifica adjuntos históricos como factura y conserva la constancia de pago', function (mixed $type, string $expected) {
     expect(WarehouseEntryExpenseDocument::normalizeType($type))->toBe($expected);
 })->with([

@@ -109,6 +109,9 @@
 
 @include('admin.petty-cash.partials.modal')
 @include('admin.petty-cash.partials.expenseModal')
+@can('admin.petty-cash.expenses.store')
+@include('admin.petty-cash.partials.warehouseExpenseModal')
+@endcan
 @include('admin.petty-cash.partials.replenishmentModal')
 @include('admin.petty-cash.partials.closeModal')
 @include('admin.petty-cash.partials.viewModal')

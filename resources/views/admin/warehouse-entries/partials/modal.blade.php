@@ -403,7 +403,7 @@
                                     <div class="col-12 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-coins"></i><span>Total vinculado<strong id="warehouseEntryExpenseLinkedTotal">0.00</strong></span></div></div>
                                 </div>
                                 <div class="warehouse-entry-expense-form">
-                                <h6 class="font-weight-bold mb-3"><i class="fas fa-plus-circle text-info mr-1"></i>Registrar costo vinculado</h6>
+                                <div class="d-flex align-items-center justify-content-between flex-wrap mb-3"><h6 class="font-weight-bold mb-2 mb-md-0"><i class="fas fa-plus-circle text-info mr-1"></i>Registrar costo vinculado</h6><div class="btn-group btn-group-sm"><button type="button" id="btnFocusManualWarehouseEntryExpense" class="btn btn-outline-secondary"><i class="fas fa-plus mr-1"></i>Agregar costo manual</button><button type="button" id="btnPullPettyCashExpenses" class="btn btn-outline-info"><i class="fas fa-cash-register mr-1"></i>Jalar de Caja Chica</button></div></div>
                                 <div class="row">
                                     <input type="hidden" id="warehouse_entry_expense_edit_index">
                                     <select id="warehouse_entry_expense_category" class="d-none"><option value="freight_transport">Transporte</option><option value="other_expense">Otros</option></select>
@@ -468,7 +468,7 @@
                                 <div id="warehouseEntryExpenseManualDistribution" class="d-none mb-3"></div>
                                 <div class="warehouse-entry-expense-action"><small><i class="fas fa-info-circle mr-1"></i>El costo se incorporar&aacute; a la lista antes de guardar el ingreso.</small><button type="button" id="btnAddWarehouseEntryExpense" class="btn btn-info btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo</button></div>
                                 </div>
-                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo de costo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Clasificación</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
+                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo de costo</th><th>Agencia / Responsable</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Clasificación</th><th>Origen</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
                             </div>
                         </div>
                         @endcanany

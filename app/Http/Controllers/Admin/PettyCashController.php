@@ -9,12 +9,13 @@ use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Document;
 use App\Models\DocumentType;
-use App\Models\PettyCashBox;
 use App\Models\PettyCashApprovedAmount;
+use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
 use App\Models\PettyCashExpenseObservation;
 use App\Models\PettyCashReplenishment;
+use App\Models\WarehouseEntryExpense;
 use App\Services\DocumentLookupException;
 use App\Services\DocumentLookupService;
 use App\Services\PettyCashCalculator;
@@ -22,13 +23,13 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Http\UploadedFile;
 use Yajra\DataTables\Facades\DataTables;
 
 class PettyCashController extends Controller
@@ -42,7 +43,9 @@ class PettyCashController extends Controller
         $this->middleware('can:admin.petty-cash.show')->only(['show', 'expenseDetail']);
         $this->middleware('can:admin.petty-cash.update')->only('update');
         $this->middleware('can:admin.petty-cash.destroy')->only('destroy');
-        $this->middleware('can:admin.petty-cash.expenses.store')->only('storeExpense');
+        $this->middleware('can:admin.petty-cash.expenses.store')->only([
+            'storeExpense', 'availableWarehouseExpenses', 'pullWarehouseExpenses',
+        ]);
         $this->middleware('can:admin.petty-cash.expenses.update')->only([
             'destroyExpenseDocument',
         ]);
@@ -86,7 +89,7 @@ class PettyCashController extends Controller
             403
         );
 
-        if (!preg_match('/^\d{11}$/', $ruc)) {
+        if (! preg_match('/^\d{11}$/', $ruc)) {
             return response()->json([
                 'status' => false,
                 'message' => 'El RUC debe tener 11 dígitos.',
@@ -232,6 +235,8 @@ class PettyCashController extends Controller
             'expenses.observations.observer:id,name,lastname',
             'expenses.observations.resolver:id,name,lastname',
             'expenses.exchange:id,document_type,document_series,document_correlative,total_amount',
+            'expenses.warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
+            'expenses.warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
             'replenishments' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('replenishment_date'),
             'replenishments.bank',
             'replenishments.sourceCompany',
@@ -333,7 +338,7 @@ class PettyCashController extends Controller
                     $account->bank?->short_name ?: $account->bank?->description,
                     $account->currency?->code,
                     $account->account_number,
-                ])) . ($account->cci ? " | CCI: {$account->cci}" : ''),
+                ])).($account->cci ? " | CCI: {$account->cci}" : ''),
             ]);
 
         return response()->json(['data' => $accounts]);
@@ -372,18 +377,18 @@ class PettyCashController extends Controller
         $storedPaths = [];
         try {
             DB::transaction(function () use ($pettyCash, $validated, $approvedAmount, $approvedAmountSnapshot, $files, &$storedPaths) {
-            $locked = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
-            $locked->update([
-                ...collect($validated)->except(['fund_source_receipts', 'opening_amount'])->all(),
-                'approved_amount_id' => $approvedAmount?->id,
-                'approved_amount_snapshot' => $approvedAmountSnapshot,
-                'opening_amount' => $validated['opening_amount'],
-                'updated_by' => Auth::id(),
-            ]);
-            foreach ($files as $file) {
-                $storedPaths[] = $this->storeDocument($locked, $file, 'PETTY_CASH_OPENING_FUND_RECEIPT');
-            }
-            $this->recalculateTotals($locked);
+                $locked = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
+                $locked->update([
+                    ...collect($validated)->except(['fund_source_receipts', 'opening_amount'])->all(),
+                    'approved_amount_id' => $approvedAmount?->id,
+                    'approved_amount_snapshot' => $approvedAmountSnapshot,
+                    'opening_amount' => $validated['opening_amount'],
+                    'updated_by' => Auth::id(),
+                ]);
+                foreach ($files as $file) {
+                    $storedPaths[] = $this->storeDocument($locked, $file, 'PETTY_CASH_OPENING_FUND_RECEIPT');
+                }
+                $this->recalculateTotals($locked);
             });
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(array_filter($storedPaths));
@@ -410,6 +415,206 @@ class PettyCashController extends Controller
     public function storeExpense(Request $request, PettyCashBox $pettyCash)
     {
         return $this->saveExpense($request, $pettyCash);
+    }
+
+    public function availableWarehouseExpenses(Request $request, PettyCashBox $pettyCash)
+    {
+        abort_unless(
+            $pettyCash->canManageExpenses(),
+            422,
+            'Debe aperturar una caja chica activa para registrar estos gastos.'
+        );
+        abort_unless(
+            WarehouseEntryExpense::integrationColumnsAvailable(),
+            503,
+            'La integración con Almacén requiere ejecutar las migraciones pendientes.'
+        );
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:10', 'max:50'],
+        ]);
+
+        $query = $this->availableWarehouseExpensesQuery($pettyCash)
+            ->with([
+                'warehouseEntry:id,entry_number,supplier_purchase_order_id,customer_id,company_id,currency_id',
+                'warehouseEntry.customer:id,business_name,full_name,first_name,last_name',
+                'warehouseEntry.supplierPurchaseOrder:id,code,customer_purchase_order_id',
+                'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,code,purchase_order_number,customer_id',
+                'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
+                'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,code,purchase_order_number,customer_id',
+                'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
+            ])
+            ->when($validated['date_from'] ?? null, function ($query, $date) {
+                $query->where(fn ($inner) => $inner
+                    ->whereDate('document_date', '>=', $date)
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('document_date')
+                        ->whereDate('created_at', '>=', $date)));
+            })
+            ->when($validated['date_to'] ?? null, function ($query, $date) {
+                $query->where(fn ($inner) => $inner
+                    ->whereDate('document_date', '<=', $date)
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('document_date')
+                        ->whereDate('created_at', '<=', $date)));
+            })
+            ->when($validated['search'] ?? null, function ($query, $search) {
+                $term = '%'.trim($search).'%';
+                $query->where(fn ($inner) => $inner
+                    ->where('provider_name', 'like', $term)
+                    ->orWhere('provider_ruc', 'like', $term)
+                    ->orWhere('description', 'like', $term)
+                    ->orWhere('document_series', 'like', $term)
+                    ->orWhere('document_number', 'like', $term)
+                    ->orWhereHas('warehouseEntry', fn ($entryQuery) => $entryQuery
+                        ->where('entry_number', 'like', $term)
+                        ->orWhereHas('supplierPurchaseOrder', fn ($orderQuery) => $orderQuery
+                            ->where('code', 'like', $term))));
+            })
+            ->orderByDesc('document_date')
+            ->orderByDesc('id');
+
+        $expenses = $query->paginate($validated['per_page'] ?? 20);
+        $expenses->getCollection()->each(function (WarehouseEntryExpense $expense) {
+            $expense->setAttribute('expense_type_label', WarehouseEntryExpense::expenseTypeLabel($expense->expense_type));
+            $expense->setAttribute('document_label', WarehouseEntryExpense::documentTypeLabel($expense->document_type));
+        });
+
+        return response()->json([
+            'data' => $expenses->items(),
+            'meta' => [
+                'current_page' => $expenses->currentPage(),
+                'last_page' => $expenses->lastPage(),
+                'per_page' => $expenses->perPage(),
+                'total' => $expenses->total(),
+                'currency_symbol' => $pettyCash->currency?->symbol ?: $pettyCash->currency?->code,
+            ],
+        ]);
+    }
+
+    public function pullWarehouseExpenses(Request $request, PettyCashBox $pettyCash)
+    {
+        abort_unless(
+            $pettyCash->canManageExpenses(),
+            422,
+            'Debe aperturar una caja chica activa para registrar estos gastos.'
+        );
+        abort_unless(
+            WarehouseEntryExpense::integrationColumnsAvailable(),
+            503,
+            'La integración con Almacén requiere ejecutar las migraciones pendientes.'
+        );
+
+        $validated = $request->validate([
+            'warehouse_entry_expense_ids' => ['required', 'array', 'min:1'],
+            'warehouse_entry_expense_ids.*' => [
+                'required', 'integer', 'distinct', 'exists:warehouse_entry_expenses,id',
+            ],
+        ], [
+            'warehouse_entry_expense_ids.required' => 'Seleccione al menos un costo de almacén.',
+            'warehouse_entry_expense_ids.min' => 'Seleccione al menos un costo de almacén.',
+        ]);
+
+        $createdExpenses = DB::transaction(function () use ($pettyCash, $validated) {
+            $box = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
+            abort_unless(
+                $box->canManageExpenses(),
+                422,
+                'Debe aperturar una caja chica activa para registrar estos gastos.'
+            );
+
+            $ids = array_map('intval', $validated['warehouse_entry_expense_ids']);
+            $warehouseExpenses = $this->availableWarehouseExpensesQuery($box)
+                ->with([
+                    'warehouseEntry:id,entry_number,supplier_purchase_order_id,customer_id,company_id,currency_id',
+                    'warehouseEntry.supplierPurchaseOrder:id,code,customer_purchase_order_id',
+                    'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,code,purchase_order_number',
+                    'warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,code,purchase_order_number',
+                ])
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get();
+
+            if ($warehouseExpenses->count() !== count($ids)) {
+                throw ValidationException::withMessages([
+                    'warehouse_entry_expense_ids' => 'Este costo ya fue registrado en Caja Chica o no está disponible.',
+                ]);
+            }
+
+            $nextItemNumber = ((int) $box->expenses()->withTrashed()->max('item_number')) + 1;
+            $created = collect();
+
+            foreach ($warehouseExpenses as $warehouseExpense) {
+                $entry = $warehouseExpense->warehouseEntry;
+                $amount = round((float) ($warehouseExpense->total_amount ?: $warehouseExpense->amount), 2);
+                $documentSeries = $this->normalizeDocumentPart($warehouseExpense->document_series);
+                $documentCorrelative = $this->normalizeDocumentPart($warehouseExpense->document_number);
+                $trace = $this->warehouseExpenseTrace($warehouseExpense);
+                $this->assertExpenseDocumentIsUnique([
+                    'document_type' => 'RECIBO',
+                    'document_series' => $documentSeries,
+                    'document_correlative' => $documentCorrelative,
+                    'supplier_ruc' => $warehouseExpense->provider_ruc,
+                ]);
+                $pettyExpense = $box->expenses()->create([
+                    'item_number' => $nextItemNumber++,
+                    'expense_date' => $this->warehouseExpenseDateForBox($box, $warehouseExpense),
+                    'document_type' => 'RECIBO',
+                    'document_series' => $documentSeries,
+                    'document_correlative' => $documentCorrelative,
+                    'document_number' => $this->buildDocumentNumber($documentSeries, $documentCorrelative),
+                    'supplier_id' => $warehouseExpense->provider_id,
+                    'supplier_ruc' => $warehouseExpense->provider_ruc,
+                    'supplier_name' => mb_strtoupper($warehouseExpense->provider_name ?: 'RESPONSABLE DE ALMACÉN'),
+                    'concept' => mb_strtoupper($warehouseExpense->description
+                        ?: WarehouseEntryExpense::expenseTypeLabel($warehouseExpense->expense_type)),
+                    'amount' => $amount,
+                    'observation' => mb_strtoupper($trace),
+                    'status' => 'ACTIVE',
+                    'approval_status' => PettyCashExpense::APPROVAL_PENDING,
+                    'exchange_status' => PettyCashExpense::EXCHANGE_PENDING,
+                    'approved_at' => null,
+                    'approved_by_user_id' => null,
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+
+                $warehouseExpense->update([
+                    'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+                    'petty_cash_expense_id' => $pettyExpense->id,
+                    ...WarehouseEntryExpense::documentMetadata($warehouseExpense->document_type),
+                    'updated_by' => Auth::id(),
+                ]);
+                $pettyExpense->events()->create([
+                    'event' => 'gasto_generado_desde_almacen',
+                    'description' => 'Gasto generado desde un costo vinculado de Almacén.',
+                    'metadata' => [
+                        'warehouse_entry_expense_id' => $warehouseExpense->id,
+                        'warehouse_entry_id' => $entry?->id,
+                        'warehouse_entry_number' => $entry?->entry_number,
+                    ],
+                    'created_by' => Auth::id(),
+                ]);
+                $created->push($pettyExpense);
+            }
+
+            $this->recalculateTotals($box);
+
+            return $created;
+        });
+
+        return response()->json([
+            'message' => $createdExpenses->count() === 1
+                ? 'Costo de almacén registrado correctamente en Caja Chica.'
+                : 'Costos de almacén registrados correctamente en Caja Chica.',
+            'created_count' => $createdExpenses->count(),
+            'expense_ids' => $createdExpenses->pluck('id')->values(),
+            'counts' => $this->expenseApprovalCounts(),
+        ], 201);
     }
 
     public function updateExpense(Request $request, PettyCashExpense $expense)
@@ -726,7 +931,7 @@ class PettyCashController extends Controller
 
         /** @var UploadedFile $image */
         $image = $validated['image'];
-        $newPath = $image->store('petty-cash/' . class_basename($expense) . '/' . $expense->id, 'public');
+        $newPath = $image->store('petty-cash/'.class_basename($expense).'/'.$expense->id, 'public');
         $oldPath = $document->file_path;
         $oldName = $document->stored_name;
 
@@ -756,7 +961,9 @@ class PettyCashController extends Controller
             throw $exception;
         }
 
-        if ($oldPath && $oldPath !== $newPath) Storage::disk('public')->delete($oldPath);
+        if ($oldPath && $oldPath !== $newPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
         $document->refresh()->setAttribute('view_url', route('admin.petty-cash.documents.view', $document));
 
         return response()->json(['message' => 'Comprobante actualizado correctamente.', 'document' => $document]);
@@ -810,39 +1017,39 @@ class PettyCashController extends Controller
         $storedPaths = [];
         try {
             $totals = DB::transaction(function () use ($pettyCash, $validated, $files, &$storedPaths) {
-            $box = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
-            abort_unless($box->status === PettyCashBox::STATUS_OPEN, 422, 'Solo puede reponer una caja abierta.');
-            abort_if((float) $box->reimbursement_amount <= 0, 422, 'No existe monto pendiente de reposición.');
+                $box = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
+                abort_unless($box->status === PettyCashBox::STATUS_OPEN, 422, 'Solo puede reponer una caja abierta.');
+                abort_if((float) $box->reimbursement_amount <= 0, 422, 'No existe monto pendiente de reposición.');
 
-            $spent = round((float) $box->expenses()
-                ->where('status', 'ACTIVE')
-                ->approved()
-                ->sum('amount'), 2);
-            $paid = round((float) $box->replenishments()->where('status', 'ACTIVE')->sum('amount'), 2);
-            $pending = max(0, round($spent - $paid, 2));
-            abort_if($pending <= 0, 422, 'No hay monto pendiente de reposición.');
+                $spent = round((float) $box->expenses()
+                    ->where('status', 'ACTIVE')
+                    ->approved()
+                    ->sum('amount'), 2);
+                $paid = round((float) $box->replenishments()->where('status', 'ACTIVE')->sum('amount'), 2);
+                $pending = max(0, round($spent - $paid, 2));
+                abort_if($pending <= 0, 422, 'No hay monto pendiente de reposición.');
 
-            $lastId = PettyCashReplenishment::withTrashed()->lockForUpdate()->max('id') ?? 0;
-            $replenishment = $box->replenishments()->create([
-                ...collect($validated)->except(['document', 'fund_source_receipts'])->all(),
-                'code' => sprintf('RCC-%06d', $lastId + 1),
-                'status' => 'ACTIVE',
-                'created_by' => Auth::id(),
-                'updated_by' => Auth::id(),
-            ]);
-            foreach ($files as $file) {
-                $storedPaths[] = $this->storeDocument($replenishment, $file, 'CAJA_REP');
-            }
+                $lastId = PettyCashReplenishment::withTrashed()->lockForUpdate()->max('id') ?? 0;
+                $replenishment = $box->replenishments()->create([
+                    ...collect($validated)->except(['document', 'fund_source_receipts'])->all(),
+                    'code' => sprintf('RCC-%06d', $lastId + 1),
+                    'status' => 'ACTIVE',
+                    'created_by' => Auth::id(),
+                    'updated_by' => Auth::id(),
+                ]);
+                foreach ($files as $file) {
+                    $storedPaths[] = $this->storeDocument($replenishment, $file, 'CAJA_REP');
+                }
 
-            $this->recalculateTotals($box);
-            $box->refresh();
+                $this->recalculateTotals($box);
+                $box->refresh();
 
-            return [
-                'total_spent' => (float) $box->total_expenses,
-                'total_replenished' => round($paid + (float) $validated['amount'], 2),
-                'current_balance' => (float) $box->cash_balance,
-                'pending_replenishment' => (float) $box->reimbursement_amount,
-            ];
+                return [
+                    'total_spent' => (float) $box->total_expenses,
+                    'total_replenished' => round($paid + (float) $validated['amount'], 2),
+                    'current_balance' => (float) $box->cash_balance,
+                    'pending_replenishment' => (float) $box->reimbursement_amount,
+                ];
             });
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(array_filter($storedPaths));
@@ -899,7 +1106,7 @@ class PettyCashController extends Controller
 
         return Pdf::loadView('admin.petty-cash.pdf', ['box' => $pettyCash])
             ->setPaper('a4', 'landscape')
-            ->stream($pettyCash->code . '.pdf');
+            ->stream($pettyCash->code.'.pdf');
     }
 
     public function excel(PettyCashBox $pettyCash)
@@ -909,7 +1116,7 @@ class PettyCashController extends Controller
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $pettyCash->code . '.xls"',
+            'Content-Disposition' => 'attachment; filename="'.$pettyCash->code.'.xls"',
         ]);
     }
 
@@ -922,8 +1129,8 @@ class PettyCashController extends Controller
             'expense_date' => [
                 'required',
                 'date',
-                'after_or_equal:' . $box->start_date->toDateString(),
-                ...($box->end_date ? ['before_or_equal:' . $box->end_date->toDateString()] : []),
+                'after_or_equal:'.$box->start_date->toDateString(),
+                ...($box->end_date ? ['before_or_equal:'.$box->end_date->toDateString()] : []),
             ],
             'document_type' => ['nullable', Rule::in(['FACTURA', 'BOLETA', 'RECIBO', 'TICKET', 'OTRO'])],
             'document_series' => ['nullable', 'string', 'max:20'],
@@ -1091,9 +1298,74 @@ class PettyCashController extends Controller
             'events.creator:id,name,lastname',
             'exchange.creator:id,name,lastname',
             'exchange.items:id,exchange_id,petty_cash_expense_id,amount,concept,receipt_type,receipt_series,receipt_correlative',
+            'warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
+            'warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
         ]);
 
         $this->appendDocumentUrls($expense);
+    }
+
+    private function availableWarehouseExpensesQuery(PettyCashBox $box)
+    {
+        return WarehouseEntryExpense::query()
+            ->where('warehouse_entry_expenses.status', 'ACTIVE')
+            ->whereNull('petty_cash_expense_id')
+            ->where('amount', '>', 0)
+            ->where(function ($query) {
+                $query->where('document_classification', WarehouseEntryExpense::DOCUMENT_CLASSIFICATION_NON_OFFICIAL)
+                    ->orWhereIn('document_type', ['RECIBO', 'RECIBO_INTERNO', 'SIN_COMPROBANTE']);
+            })
+            ->where(function ($query) use ($box) {
+                $query->whereNull('currency_id')->orWhere('currency_id', $box->currency_id);
+            })
+            ->whereHas('warehouseEntry', fn ($query) => $query
+                ->where('company_id', $box->company_id)
+                ->where('currency_id', $box->currency_id)
+                ->where('status', 'registered'));
+    }
+
+    private function warehouseExpenseTrace(WarehouseEntryExpense $expense): string
+    {
+        $entry = $expense->warehouseEntry;
+        $supplierOrder = $entry?->supplierPurchaseOrder;
+        $customerOrders = collect($supplierOrder?->customerPurchaseOrders ?? []);
+        if ($supplierOrder?->customerPurchaseOrder) {
+            $customerOrders->prepend($supplierOrder->customerPurchaseOrder);
+        }
+
+        $parts = [
+            'Generado desde Ingreso de Almacén '.($entry?->entry_number ?: '#'.$entry?->id),
+        ];
+        if ($supplierOrder?->code) {
+            $parts[] = 'OC Proveedor '.$supplierOrder->code;
+        }
+        $customerOrderCodes = $customerOrders
+            ->map(fn ($order) => $order->code ?: $order->purchase_order_number)
+            ->filter()->unique()->values();
+        if ($customerOrderCodes->isNotEmpty()) {
+            $parts[] = 'OC Cliente '.$customerOrderCodes->implode(', ');
+        }
+
+        return implode(' / ', $parts);
+    }
+
+    private function warehouseExpenseDateForBox(
+        PettyCashBox $box,
+        WarehouseEntryExpense $warehouseExpense
+    ): string {
+        $start = $box->start_date->copy()->startOfDay();
+        $end = $box->end_date?->copy()->endOfDay();
+        $original = ($warehouseExpense->document_date ?: $warehouseExpense->created_at)?->copy()->startOfDay();
+        $today = now()->startOfDay();
+
+        if ($original && $original->greaterThanOrEqualTo($start) && (! $end || $original->lessThanOrEqualTo($end))) {
+            return $original->toDateString();
+        }
+        if ($today->greaterThanOrEqualTo($start) && (! $end || $today->lessThanOrEqualTo($end))) {
+            return $today->toDateString();
+        }
+
+        return ($end && $today->greaterThan($end) ? $end : $start)->toDateString();
     }
 
     private function visibleObservedExpensesQuery()
@@ -1103,8 +1375,8 @@ class PettyCashController extends Controller
             ->where('approval_status', PettyCashExpense::APPROVAL_OBSERVED);
 
         $user = Auth::user();
-        if (!$user?->can('admin.petty-cash.expenses.approve')
-            && !$user?->can('admin.petty-cash.expenses.observe')) {
+        if (! $user?->can('admin.petty-cash.expenses.approve')
+            && ! $user?->can('admin.petty-cash.expenses.observe')) {
             $query->where('created_by', Auth::id());
         }
 
@@ -1148,7 +1420,7 @@ class PettyCashController extends Controller
 
     private function assertExpenseDocumentIsUnique(array $data, ?PettyCashExpense $expense = null): void
     {
-        if (!$this->hasCompleteExpenseDocumentIdentity($data)) {
+        if (! $this->hasCompleteExpenseDocumentIdentity($data)) {
             return;
         }
 
@@ -1291,6 +1563,7 @@ class PettyCashController extends Controller
                 ]);
             }
             $this->validateFundSourceAccount($validated);
+
             return;
         }
 
@@ -1306,6 +1579,7 @@ class PettyCashController extends Controller
         if (! $sourceId) {
             $validated['previous_petty_cash_id'] = null;
             $validated['previous_balance'] = 0;
+
             return;
         }
 
@@ -1331,8 +1605,10 @@ class PettyCashController extends Controller
 
     private function storeDocument($documentable, $file, string $typeCode): ?string
     {
-        if (! $file) return null;
-        $path = $file->store('petty-cash/' . class_basename($documentable) . '/' . $documentable->id, 'public');
+        if (! $file) {
+            return null;
+        }
+        $path = $file->store('petty-cash/'.class_basename($documentable).'/'.$documentable->id, 'public');
         $description = $typeCode === 'CAJA_REP'
             ? 'Reposición de caja chica'
             : str_replace('_', ' ', $typeCode);
@@ -1404,7 +1680,7 @@ class PettyCashController extends Controller
 
     private function money(PettyCashBox $box, $amount): string
     {
-        return trim(($box->currency?->symbol ?? '') . ' ' . number_format((float) $amount, 2));
+        return trim(($box->currency?->symbol ?? '').' '.number_format((float) $amount, 2));
     }
 
     private function statusBadge(string $status): string
@@ -1416,7 +1692,8 @@ class PettyCashController extends Controller
             'REIMBURSED' => 'badge-primary',
             'CANCELLED' => 'badge-danger',
         ];
-        return '<span class="badge ' . ($classes[$status] ?? 'badge-light') . ' px-2 py-1">'
-            . e(PettyCashBox::STATUSES[$status] ?? $status) . '</span>';
+
+        return '<span class="badge '.($classes[$status] ?? 'badge-light').' px-2 py-1">'
+            .e(PettyCashBox::STATUSES[$status] ?? $status).'</span>';
     }
 }

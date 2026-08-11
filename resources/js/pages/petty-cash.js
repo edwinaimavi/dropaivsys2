@@ -26,6 +26,11 @@ $(function () {
     let pendingExchangeReceipts = [];
     let receiptIssuerLookup = null;
     let loadedReceiptIssuerRuc = '';
+    let availableWarehouseExpenses = [];
+    let selectedWarehouseExpenses = new Map();
+    let warehouseExpensePage = 1;
+    let warehouseExpenseLastPage = 1;
+    let warehouseExpenseCurrencySymbol = '';
     const sourceReceipts = {
         opening: { files: [], existing: [], urls: [] },
         replenishment: { files: [], existing: [], urls: [] }
@@ -96,7 +101,7 @@ $(function () {
 
     const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
-    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal';
+    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal, .petty-warehouse-expense-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const renderReceiptExchangeFiles = () => {
         receiptExchangePreviewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -223,11 +228,41 @@ $(function () {
             </div>
         </article>`;
 
+    const expenseWarehouseTrace = expense => {
+        const linkedExpense = expense?.warehouse_entry_expense;
+        const entry = linkedExpense?.warehouse_entry;
+        if (!linkedExpense || !entry) {
+            return {
+                html: '<span class="badge badge-light border">Pendiente de vincular</span>',
+                text: 'Pendiente de vincular'
+            };
+        }
+        const supplierOrder = entry.supplier_purchase_order;
+        const customerOrders = supplierOrder?.customer_purchase_orders?.length
+            ? supplierOrder.customer_purchase_orders
+            : (supplierOrder?.customer_purchase_order ? [supplierOrder.customer_purchase_order] : []);
+        const supplierOrderLabel = supplierOrder?.code || supplierOrder?.purchase_order_number;
+        const customerOrderLabels = customerOrders
+            .map(order => order.code || order.purchase_order_number)
+            .filter(Boolean);
+        const parts = [
+            `Ingreso ${entry.entry_number || `#${entry.id}`}`,
+            supplierOrderLabel ? `OC proveedor ${supplierOrderLabel}` : '',
+            customerOrderLabels.length ? `OC cliente ${customerOrderLabels.join(', ')}` : ''
+        ].filter(Boolean);
+        const activeLink = linkedExpense.status === 'ACTIVE';
+        return {
+            html: `<span class="badge badge-${activeLink ? 'info' : 'secondary'}"><i class="fas fa-warehouse mr-1"></i>${activeLink ? 'Vinculado' : 'Vínculo anulado'}</span><small class="petty-approval-trace">${parts.map(escapeHtml).join('<br>')}</small>`,
+            text: `${activeLink ? 'Vinculado' : 'Vínculo anulado'} · ${parts.join(' · ')}`
+        };
+    };
+
     const renderExpenseDetail = expense => {
         const symbol = expense.petty_cash_box?.currency?.symbol || currentBox?.currency?.symbol || '';
         const number = expense.document_full_number || expense.document_number || '-';
         const status = expenseDetailStatus(expense);
         $('#pced_status').html(`<span class="petty-approval-badge ${status[1]}">${escapeHtml(status[0])}</span>`);
+        const warehouse = expenseWarehouseTrace(expense);
         $('#pced_data').html([
             ['Fecha', date(expense.expense_date)],
             ['Tipo de comprobante', expense.document_type || '-'],
@@ -239,6 +274,7 @@ $(function () {
             ['Concepto', expense.concept || '-'],
             ['Importe', money(expense.amount, symbol)],
             ['Estado actual', status[0]],
+            ['Vínculo con almacén', warehouse.text],
             ['Registrado por', userName(expense.creator)],
             ['Fecha de registro', dateTime(expense.created_at)]
         ].map(item => `<div><small>${escapeHtml(item[0])}</small><strong>${escapeHtml(item[1])}</strong></div>`).join(''));
@@ -1199,8 +1235,9 @@ $(function () {
                 const realDocument = expense.exchange ? `${expense.exchange.document_type} ${expense.exchange.document_series}-${expense.exchange.document_correlative}` : 'Canjeado';
                 exchange = `<span class="petty-exchange-badge is-completed">Canjeado</span><small class="petty-approval-trace">${escapeHtml(realDocument)}</small>`;
             }
-            return `<tr><td><span class="petty-row-number">${expense.item_number}</span></td><td class="petty-date-cell">${date(expense.expense_date)}</td><td>${escapeHtml(voucher)}</td><td class="petty-supplier-cell">${escapeHtml(expense.supplier_name)}</td><td class="petty-concept-cell">${escapeHtml(expense.concept)}</td><td class="text-right petty-amount-cell">${money(expense.amount, symbol)}</td><td>${approval}</td><td>${exchange}</td><td class="text-center">${docs}</td><td class="text-center">${actions}</td></tr>`;
-        }).join('') : '<tr><td colspan="10" class="petty-empty-state"><i class="fas fa-receipt"></i><strong>No hay gastos registrados para esta caja.</strong><small>Los nuevos gastos aparecerán en esta sección.</small></td></tr>');
+            const warehouse = expenseWarehouseTrace(expense);
+            return `<tr><td><span class="petty-row-number">${expense.item_number}</span></td><td class="petty-date-cell">${date(expense.expense_date)}</td><td>${escapeHtml(voucher)}</td><td class="petty-supplier-cell">${escapeHtml(expense.supplier_name)}</td><td class="petty-concept-cell">${escapeHtml(expense.concept)}</td><td class="text-right petty-amount-cell">${money(expense.amount, symbol)}</td><td>${approval}</td><td>${exchange}</td><td>${warehouse.html}</td><td class="text-center">${docs}</td><td class="text-center">${actions}</td></tr>`;
+        }).join('') : '<tr><td colspan="11" class="petty-empty-state"><i class="fas fa-receipt"></i><strong>No hay gastos registrados para esta caja.</strong><small>Los nuevos gastos aparecerán en esta sección.</small></td></tr>');
         $('#pcv_replenishments').html(box.replenishments.length ? box.replenishments.map(item => {
             const sourceAccount = item.source_bank_account;
             const sourceLabel = sourceAccount ? [
@@ -1463,6 +1500,137 @@ $(function () {
             }).fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
     });
 
+    const warehouseExpenseCustomerOrders = expense => {
+        const supplierOrder = expense.warehouse_entry?.supplier_purchase_order;
+        if (supplierOrder?.customer_purchase_orders?.length) return supplierOrder.customer_purchase_orders;
+        return supplierOrder?.customer_purchase_order ? [supplierOrder.customer_purchase_order] : [];
+    };
+
+    const warehouseExpenseCustomerNames = expense => {
+        const entry = expense.warehouse_entry;
+        const names = [entry?.customer, ...warehouseExpenseCustomerOrders(expense).map(order => order.customer)]
+            .filter(Boolean)
+            .map(customer => customer.business_name || customer.full_name || [customer.first_name, customer.last_name].filter(Boolean).join(' '))
+            .filter(Boolean);
+        return [...new Set(names)];
+    };
+
+    const updateWarehouseExpenseSelection = () => {
+        $('.pc-warehouse-expense-check').each(function () {
+            $(this).prop('checked', selectedWarehouseExpenses.has(Number(this.value)));
+        });
+        const pageIds = availableWarehouseExpenses.map(expense => Number(expense.id));
+        $('#pcWarehouseExpenseSelectAll').prop(
+            'checked',
+            pageIds.length > 0 && pageIds.every(id => selectedWarehouseExpenses.has(id))
+        );
+        const total = [...selectedWarehouseExpenses.values()]
+            .reduce((sum, expense) => sum + Number(expense.total_amount || expense.amount || 0), 0);
+        $('#pcWarehouseExpenseSelection').text(`${selectedWarehouseExpenses.size} costo(s) seleccionado(s)`);
+        $('#pcWarehouseExpenseTotal').text(`Total: ${money(total, warehouseExpenseCurrencySymbol)}`);
+    };
+
+    const renderWarehouseExpenses = () => {
+        $('#pcWarehouseExpenseRows').html(availableWarehouseExpenses.length
+            ? availableWarehouseExpenses.map(expense => {
+                const entry = expense.warehouse_entry;
+                const supplierOrder = entry?.supplier_purchase_order;
+                const customerOrders = warehouseExpenseCustomerOrders(expense);
+                const customerOrderCodes = customerOrders.map(order => order.code || order.purchase_order_number).filter(Boolean);
+                const customerNames = warehouseExpenseCustomerNames(expense);
+                const documentNumber = [expense.document_series, expense.document_number].filter(Boolean).join('-');
+                const document = [expense.document_label, documentNumber].filter(Boolean).join(' ');
+                const orders = [
+                    supplierOrder?.code ? `OC Prov. ${supplierOrder.code}` : '',
+                    customerOrderCodes.length ? `OC Cli. ${customerOrderCodes.join(', ')}` : ''
+                ].filter(Boolean).join(' · ');
+                return `<tr><td class="text-center"><input type="checkbox" class="pc-warehouse-expense-check" value="${expense.id}"></td><td>${date(expense.document_date || expense.created_at)}</td><td><strong>${escapeHtml(entry?.entry_number || `#${entry?.id || '-'}`)}</strong><small>${escapeHtml(orders || 'Sin órdenes relacionadas')}</small></td><td>${escapeHtml(customerNames.join(', ') || '-')}</td><td><strong>${escapeHtml(expense.provider_name || '-')}</strong><small>${escapeHtml(expense.provider_ruc || '')}</small></td><td><span class="badge badge-light border">${escapeHtml(expense.expense_type_label || 'Otros gastos')}</span></td><td>${escapeHtml(document || 'Sin comprobante')}<small><span class="badge badge-warning">No oficial</span></small></td><td class="text-right font-weight-bold">${money(expense.total_amount || expense.amount, warehouseExpenseCurrencySymbol)}</td><td>${escapeHtml(expense.description || '-')}<small><i class="fas fa-warehouse mr-1"></i>Origen: Almacén</small></td></tr>`;
+            }).join('')
+            : '<tr><td colspan="9" class="text-center text-muted py-4"><i class="fas fa-check-circle mr-1"></i>No hay costos de almacén pendientes para esta caja.</td></tr>');
+        $('#pcWarehouseExpensePage').text(`Página ${warehouseExpensePage} de ${warehouseExpenseLastPage}`);
+        $('#btnWarehouseExpensePrevious').prop('disabled', warehouseExpensePage <= 1);
+        $('#btnWarehouseExpenseNext').prop('disabled', warehouseExpensePage >= warehouseExpenseLastPage);
+        updateWarehouseExpenseSelection();
+    };
+
+    const loadWarehouseExpenses = (page = 1) => {
+        const boxId = $('#pc_expense_box_id').val();
+        if (!boxId) return notify('warning', 'Debe aperturar una caja chica activa para registrar estos gastos.');
+        $('#pcWarehouseExpenseRows').html('<tr><td colspan="9" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm mr-1"></span>Consultando costos...</td></tr>');
+        return api({
+            url: `${base}/${boxId}/warehouse-expenses/available`,
+            method: 'GET',
+            data: {
+                search: $('#pcWarehouseExpenseSearch').val(),
+                date_from: $('#pcWarehouseExpenseDateFrom').val(),
+                date_to: $('#pcWarehouseExpenseDateTo').val(),
+                page,
+                per_page: 20
+            }
+        }).done(response => {
+            availableWarehouseExpenses = response.data || [];
+            warehouseExpensePage = Number(response.meta?.current_page || 1);
+            warehouseExpenseLastPage = Number(response.meta?.last_page || 1);
+            warehouseExpenseCurrencySymbol = response.meta?.currency_symbol || '';
+            renderWarehouseExpenses();
+        }).fail(xhr => {
+            availableWarehouseExpenses = [];
+            $('#pcWarehouseExpenseRows').html(`<tr><td colspan="9" class="text-center text-danger py-4">${escapeHtml(errorMessage(xhr))}</td></tr>`);
+        });
+    };
+
+    $(document).on('click', '#btnPullWarehouseExpenses', function () {
+        if (!$('#pc_expense_box_id').val()) return notify('warning', 'Debe aperturar una caja chica activa para registrar estos gastos.');
+        selectedWarehouseExpenses = new Map();
+        warehouseExpensePage = 1;
+        $('#pcWarehouseExpenseSearch,#pcWarehouseExpenseDateFrom,#pcWarehouseExpenseDateTo').val('');
+        $('#pettyCashWarehouseExpenseModal').modal('show');
+        loadWarehouseExpenses(1);
+    });
+    $(document).on('click', '#btnSearchWarehouseExpenses', () => loadWarehouseExpenses(1));
+    $(document).on('click', '#btnClearWarehouseExpenseFilters', function () {
+        $('#pcWarehouseExpenseSearch,#pcWarehouseExpenseDateFrom,#pcWarehouseExpenseDateTo').val('');
+        loadWarehouseExpenses(1);
+    });
+    $(document).on('click', '#btnWarehouseExpensePrevious', () => loadWarehouseExpenses(warehouseExpensePage - 1));
+    $(document).on('click', '#btnWarehouseExpenseNext', () => loadWarehouseExpenses(warehouseExpensePage + 1));
+    $(document).on('change', '.pc-warehouse-expense-check', function () {
+        const id = Number(this.value);
+        const expense = availableWarehouseExpenses.find(item => Number(item.id) === id);
+        if (this.checked && expense) selectedWarehouseExpenses.set(id, expense);
+        else selectedWarehouseExpenses.delete(id);
+        updateWarehouseExpenseSelection();
+    });
+    $(document).on('change', '#pcWarehouseExpenseSelectAll', function () {
+        availableWarehouseExpenses.forEach(expense => {
+            if (this.checked) selectedWarehouseExpenses.set(Number(expense.id), expense);
+            else selectedWarehouseExpenses.delete(Number(expense.id));
+        });
+        updateWarehouseExpenseSelection();
+    });
+    $(document).on('click', '#btnConfirmWarehouseExpenses', function () {
+        if (!selectedWarehouseExpenses.size) return notify('warning', 'Seleccione al menos un costo de almacén.');
+        const button = $(this).prop('disabled', true);
+        button.find('i').addClass('fa-spin fa-spinner').removeClass('fa-link');
+        api({
+            url: `${base}/${$('#pc_expense_box_id').val()}/warehouse-expenses/pull`,
+            method: 'POST',
+            data: { warehouse_entry_expense_ids: [...selectedWarehouseExpenses.keys()] }
+        }).done(response => {
+            $('#pettyCashWarehouseExpenseModal,#pettyCashExpenseModal').modal('hide');
+            if (response.counts) {
+                updateAttentionCounter('#btnPendingPettyCashExpenses', '#pcPendingExpensesBadge', response.counts.pending, 'Gastos por aprobar');
+                updateAttentionCounter('#btnObservedPettyCashExpenses', '#pcObservedExpensesBadge', response.counts.observed, 'Gastos observados');
+            }
+            table.ajax.reload(null, false);
+            loadPendingExpenses();
+            if (currentBox) loadBox(currentBox.id).done(box => { currentBox = box; renderDetail(box); });
+            notify('success', response.message);
+        }).fail(xhr => notify('error', errorMessage(xhr))).always(() => {
+            button.prop('disabled', false).find('i').removeClass('fa-spin fa-spinner').addClass('fa-link');
+        });
+    });
+
     $(document).on('click', '.addPettyCashExpense, .btn-create-petty-cash-expense', function (event) {
         event.preventDefault();
         event.stopPropagation();
@@ -1472,6 +1640,7 @@ $(function () {
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(''); $('#pc_expense_box_id').val($(this).data('id'));
         resetExpenseDocumentDuplicateState();
         resetExpenseDocuments();
+        $('#btnPullWarehouseExpenses').removeClass('d-none');
         $('#pcExpenseTitle').text('Registrar gasto'); $('#pettyCashExpenseModal').modal('show');
     });
 
@@ -1479,6 +1648,7 @@ $(function () {
         const expense = currentBox?.expenses?.find(item => Number(item.id) === Number($(this).data('id')));
         if (!expense) return;
         $('#pce_observed_notice').remove();
+        $('#btnPullWarehouseExpenses').addClass('d-none');
         $('#pce_correction_section').toggleClass('d-none', expense.approval_status !== 'observado');
         $('#pce_correction_comment').prop('required', expense.approval_status === 'observado').val('');
         if (expense.approval_status === 'observado') {

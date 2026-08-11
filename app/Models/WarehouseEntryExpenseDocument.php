@@ -10,7 +10,7 @@ class WarehouseEntryExpenseDocument extends Model
 
     public const TYPE_PAYMENT_PROOF = 'payment_proof';
 
-    protected $fillable = ['warehouse_entry_expense_id', 'document_type', 'description', 'file_path', 'original_name', 'mime_type', 'file_size', 'status', 'created_by', 'updated_by'];
+    protected $fillable = ['warehouse_entry_expense_id', 'source_document_id', 'source_context', 'document_type', 'description', 'file_path', 'original_name', 'mime_type', 'file_size', 'status', 'created_by', 'updated_by'];
 
     protected $casts = ['file_size' => 'integer'];
 
@@ -22,4 +22,5 @@ class WarehouseEntryExpenseDocument extends Model
     }
 
     public function expense() { return $this->belongsTo(WarehouseEntryExpense::class, 'warehouse_entry_expense_id'); }
+    public function sourceDocument() { return $this->belongsTo(Document::class, 'source_document_id'); }
 }

@@ -7,7 +7,7 @@
                 <div class="modal-header petty-detail-header">
                     <div class="d-flex align-items-center">
                         <span class="petty-detail-header-icon"><i class="fas fa-exchange-alt"></i></span>
-                        <div class="petty-detail-heading"><small>CONTROL DOCUMENTAL</small><h4 class="mb-0">Canjear recibos</h4><p>Seleccione los recibos que serán reemplazados por una factura o boleta.</p></div>
+                        <div class="petty-detail-heading"><small>CONTROL DOCUMENTAL</small><h4 class="mb-0">Canjear recibos</h4><p>Seleccione los recibos que serán reemplazados por un comprobante oficial.</p></div>
                     </div>
                     <button type="button" class="close petty-close" data-dismiss="modal"><span>&times;</span></button>
                 </div>
@@ -28,7 +28,7 @@
                     <div class="row">
                         <div class="col-lg-8">
                             <section class="petty-detail-card h-100">
-                                <div class="petty-detail-card-title"><div><span><i class="fas fa-file-invoice"></i></span><div><h6>Datos del comprobante real</h6><small>Ingrese el RUC de quien emite la factura o boleta que reemplaza los recibos.</small></div></div></div>
+                                <div class="petty-detail-card-title"><div><span><i class="fas fa-file-invoice"></i></span><div><h6>Datos del comprobante real</h6><small>Ingrese el RUC de quien emite el comprobante oficial que reemplaza los recibos.</small></div></div></div>
                                 <div class="form-row align-items-end">
                                     <div class="form-group col-md-4">
                                         <label>RUC emisor *</label>
@@ -45,7 +45,7 @@
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-3"><label>Fecha de canje *</label><input type="date" name="exchange_date" id="pcre_date" class="form-control" required></div>
-                                    <div class="form-group col-md-3"><label>Tipo *</label><select name="document_type" class="form-control" required><option value="">Seleccione</option><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option></select></div>
+                                    <div class="form-group col-md-3"><label>Tipo *</label><select name="document_type" class="form-control" required><option value="">Seleccione</option><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option></select></div>
                                     <div class="form-group col-md-3"><label>Serie *</label><input name="document_series" class="form-control text-uppercase" maxlength="20" required></div>
                                     <div class="form-group col-md-3"><label>Correlativo *</label><input name="document_correlative" class="form-control text-uppercase" maxlength="50" required></div>
                                 </div>

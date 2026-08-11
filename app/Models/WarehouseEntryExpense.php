@@ -3,9 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class WarehouseEntryExpense extends Model
 {
+    public const SOURCE_MANUAL = 'manual';
+
+    public const SOURCE_PETTY_CASH = 'petty_cash';
+
+    public const DOCUMENT_CLASSIFICATION_OFFICIAL = 'official';
+
+    public const DOCUMENT_CLASSIFICATION_NON_OFFICIAL = 'non_official';
+
     public const IGV_RATE = 18.0;
 
     public const IGV_DOCUMENT_TYPES = ['FACTURA', 'BOLETA'];
@@ -22,9 +31,11 @@ class WarehouseEntryExpense extends Model
         'SIN_COMPROBANTE' => 'Sin comprobante',
     ];
 
-    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'created_by', 'updated_by'];
+    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'source_type', 'petty_cash_expense_id', 'petty_cash_replenishment_id', 'document_classification', 'official_document_type', 'internal_document_type', 'exchanged_document_id', 'exchanged_at', 'payment_proof_path', 'official_document_path', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'created_by', 'updated_by'];
+
     protected $casts = [
         'document_date' => 'date',
+        'exchanged_at' => 'datetime',
         'amount' => 'decimal:2',
         'affects_igv' => 'boolean',
         'igv_rate' => 'decimal:2',
@@ -64,6 +75,55 @@ class WarehouseEntryExpense extends Model
         return self::DOCUMENT_TYPES[$normalized] ?? ($normalized ?: self::DOCUMENT_TYPES['SIN_COMPROBANTE']);
     }
 
+    public static function integrationColumnsAvailable(): bool
+    {
+        return Schema::hasTable('warehouse_entry_expenses')
+            && collect([
+                'source_type',
+                'petty_cash_expense_id',
+                'petty_cash_replenishment_id',
+                'document_classification',
+                'official_document_type',
+                'internal_document_type',
+                'exchanged_document_id',
+                'exchanged_at',
+                'payment_proof_path',
+                'official_document_path',
+            ])->every(fn (string $column) => Schema::hasColumn('warehouse_entry_expenses', $column));
+    }
+
+    public static function documentMetadata(?string $documentType): array
+    {
+        $type = self::normalizeDocumentType($documentType);
+        $official = self::isOfficialDocument($type);
+
+        return [
+            'document_classification' => $official
+                ? self::DOCUMENT_CLASSIFICATION_OFFICIAL
+                : self::DOCUMENT_CLASSIFICATION_NON_OFFICIAL,
+            'official_document_type' => $official ? match ($type) {
+                'FACTURA' => 'factura',
+                'BOLETA' => 'boleta',
+                default => 'recibo_por_honorarios',
+            } : null,
+            'internal_document_type' => $official ? null : match ($type) {
+                'RECIBO_INTERNO' => 'recibo_interno',
+                default => 'sin_comprobante',
+            },
+        ];
+    }
+
+    public static function expenseTypeLabel(?string $expenseType): string
+    {
+        return match (strtolower(trim((string) $expenseType))) {
+            'agency_freight', 'transport_agency', 'courier', 'shipping' => 'Flete de agencia',
+            'pickup_transfer', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse',
+            'supplier_warehouse_pickup', 'transfer_to_agency', 'truck', 'mobility',
+            'delivery', 'transfer', 'flete', 'transporte', 'movilidad' => 'Recojo / traslado',
+            default => 'Otros gastos',
+        };
+    }
+
     public function getDocumentTypeAttribute(?string $value): string
     {
         return self::normalizeDocumentType($value);
@@ -89,12 +149,58 @@ class WarehouseEntryExpense extends Model
         ];
     }
 
-    public function warehouseEntry() { return $this->belongsTo(WarehouseEntry::class); }
-    public function provider() { return $this->belongsTo(Supplier::class, 'provider_id'); }
-    public function shippingAgency() { return $this->belongsTo(ShippingAgency::class); }
-    public function currency() { return $this->belongsTo(Currency::class); }
-    public function distributions() { return $this->hasMany(WarehouseEntryExpenseDistribution::class); }
-    public function documents() { return $this->hasMany(WarehouseEntryExpenseDocument::class)->where('status', 'ACTIVE'); }
-    public function invoiceDocuments() { return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_INVOICE); }
-    public function paymentProofDocuments() { return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF); }
+    public function warehouseEntry()
+    {
+        return $this->belongsTo(WarehouseEntry::class);
+    }
+
+    public function pettyCashExpense()
+    {
+        return $this->belongsTo(PettyCashExpense::class);
+    }
+
+    public function pettyCashReplenishment()
+    {
+        return $this->belongsTo(PettyCashReplenishment::class);
+    }
+
+    public function exchangedDocument()
+    {
+        return $this->belongsTo(Document::class, 'exchanged_document_id');
+    }
+
+    public function provider()
+    {
+        return $this->belongsTo(Supplier::class, 'provider_id');
+    }
+
+    public function shippingAgency()
+    {
+        return $this->belongsTo(ShippingAgency::class);
+    }
+
+    public function currency()
+    {
+        return $this->belongsTo(Currency::class);
+    }
+
+    public function distributions()
+    {
+        return $this->hasMany(WarehouseEntryExpenseDistribution::class);
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(WarehouseEntryExpenseDocument::class)->where('status', 'ACTIVE');
+    }
+
+    public function invoiceDocuments()
+    {
+        return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_INVOICE);
+    }
+
+    public function paymentProofDocuments()
+    {
+        return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF);
+    }
 }
