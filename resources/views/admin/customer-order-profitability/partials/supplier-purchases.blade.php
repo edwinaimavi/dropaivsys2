@@ -1,9 +1,3 @@
-@php
-    $withIgv = $mode === \App\Services\CustomerOrderProfitabilityService::MODE_WITH_IGV;
-    $modeLabel = $withIgv ? 'Con IGV' : 'Sin IGV';
-    $consideredColumn = $withIgv ? 'Total con IGV en soles' : 'Total sin IGV en soles';
-@endphp
-
 <div class="cop-section-heading">
     <div>
         <span class="cop-eyebrow">Abastecimiento</span>
@@ -14,7 +8,7 @@
 </div>
 <div class="cop-purchase-mode-note">
     <i class="fas fa-info-circle"></i>
-    Los importes mostrados respetan el modo de cálculo seleccionado: <strong>{{$modeLabel}}</strong>.
+    La compra considerada respeta la condición IGV de cada OC proveedor y prioriza los importes registrados en Almacén.
 </div>
 <div class="table-responsive cop-inner-table">
     <table class="table table-hover mb-0">
@@ -23,10 +17,10 @@
                 <th>OC proveedor</th>
                 <th>Proveedor / artículo</th>
                 <th>Moneda compra</th>
-                <th>Moneda pago</th>
-                <th class="text-right">TC</th>
-                <th class="text-right">{{$consideredColumn}}</th>
-                <th>Desglose en soles</th>
+                <th class="text-right">Subtotal</th>
+                <th class="text-right">IGV</th>
+                <th class="text-right">Total compra</th>
+                <th class="text-right">Compra considerada</th>
                 <th>Estado</th>
             </tr>
         </thead>
@@ -39,16 +33,18 @@
                     <td>
                         {{$item->purchase_currency_code ?: '-'}}
                         <small class="d-block text-muted">Total origen: {{$item->purchase_currency_symbol}} {{$money($item->line_total)}}</small>
+                        @if($item->purchase_currency_code !== 'PEN' && (float)$item->pen_conversion_factor > 0)
+                            <small class="d-block text-muted">TC: {{number_format((float)$item->pen_conversion_factor, 4)}}</small>
+                        @endif
                     </td>
-                    <td>{{$item->payment_currency_code ?: $item->purchase_currency_code ?: '-'}}</td>
-                    <td class="text-right">{{(float)$item->pen_conversion_factor > 0 && $item->purchase_currency_code !== 'PEN' ? number_format((float)$item->pen_conversion_factor, 4) : '-'}}</td>
+                    <td class="text-right text-nowrap">S/ {{$money($item->purchase_subtotal_pen)}}</td>
+                    <td class="text-right text-nowrap">S/ {{$money($item->purchase_igv_pen)}}</td>
+                    <td class="text-right text-nowrap">S/ {{$money($item->purchase_total_pen)}}</td>
                     <td class="text-right"><strong class="cop-purchase-considered">S/ {{$money($item->considered_purchase_amount)}}</strong></td>
                     <td>
-                        <span class="cop-purchase-breakdown"><small>Subtotal</small><strong>S/ {{$money($item->purchase_subtotal_pen)}}</strong></span>
-                        <span class="cop-purchase-breakdown"><small>IGV</small><strong>S/ {{$money($item->purchase_igv_pen)}}</strong></span>
-                        <span class="cop-purchase-breakdown"><small>Total</small><strong>S/ {{$money($item->purchase_total_pen)}}</strong></span>
+                        <span class="cop-status-pill {{$supplierStatus['class']}}"><i class="fas {{$supplierStatus['icon']}}"></i>{{$supplierStatus['label']}}</span>
+                        <small class="cop-purchase-source">{{$item->purchase_amount_source === 'warehouse_entry' ? 'Según Almacén' : 'Según OC proveedor'}}</small>
                     </td>
-                    <td><span class="cop-status-pill {{$supplierStatus['class']}}"><i class="fas {{$supplierStatus['icon']}}"></i>{{$supplierStatus['label']}}</span></td>
                 </tr>
             @empty
                 <tr><td colspan="8" class="cop-empty"><i class="fas fa-shopping-cart"></i>Sin compras vinculadas.</td></tr>

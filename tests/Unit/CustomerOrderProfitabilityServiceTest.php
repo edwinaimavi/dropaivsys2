@@ -185,38 +185,60 @@ it('no trata una compra extranjera sin conversión como si fueran soles', functi
     expect(invokeProfitabilityMethod('supplierPurchasePenFactor', $item))->toBe(0.0);
 });
 
-it('expone subtotal, IGV, total e importe considerado por línea según el modo', function () {
-    $withoutIgv = (object) [
+it('considera el total con IGV cuando la OC proveedor es afecta', function () {
+    $purchase = (object) [
         'taxable_base_pen' => 26047.80,
         'line_total_pen' => 30736.40,
+        'order_affect_igv' => true,
     ];
-    $withIgv = clone $withoutIgv;
 
-    invokeProfitabilityMethod('applyPurchaseAmountsForMode', $withoutIgv, 'without_igv');
-    invokeProfitabilityMethod('applyPurchaseAmountsForMode', $withIgv, 'with_igv');
+    invokeProfitabilityMethod('applyConsideredPurchaseAmounts', $purchase);
 
-    expect($withoutIgv->purchase_subtotal_pen)->toBe(26047.80)
-        ->and($withoutIgv->purchase_igv_pen)->toBe(4688.60)
-        ->and($withoutIgv->purchase_total_pen)->toBe(30736.40)
-        ->and($withoutIgv->considered_purchase_amount)->toBe(26047.80)
-        ->and($withIgv->considered_purchase_amount)->toBe(30736.40);
+    expect($purchase->purchase_subtotal_pen)->toBe(26047.80)
+        ->and($purchase->purchase_igv_pen)->toBe(4688.60)
+        ->and($purchase->purchase_total_pen)->toBe(30736.40)
+        ->and($purchase->considered_purchase_amount)->toBe(30736.40);
 });
 
-it('hace coincidir la suma de filas con la compra considerada en ambos modos', function () {
-    $sourceRows = [
-        (object) ['taxable_base_pen' => 22000.00, 'line_total_pen' => 25960.00],
-        (object) ['taxable_base_pen' => 4047.80, 'line_total_pen' => 4776.40],
+it('considera el importe normal de una OC proveedor no afecta a IGV', function () {
+    $purchase = (object) [
+        'taxable_base_pen' => 1200.00,
+        'line_total_pen' => 1200.00,
+        'order_affect_igv' => false,
     ];
 
-    $sumForMode = function (string $mode) use ($sourceRows): float {
-        return round((float) collect($sourceRows)->map(function ($source) use ($mode) {
-            $item = clone $source;
-            invokeProfitabilityMethod('applyPurchaseAmountsForMode', $item, $mode);
+    invokeProfitabilityMethod('applyConsideredPurchaseAmounts', $purchase);
 
-            return $item->considered_purchase_amount;
-        })->sum(), 2);
-    };
+    expect($purchase->purchase_igv_pen)->toBe(0.0)
+        ->and($purchase->considered_purchase_amount)->toBe(1200.00);
+});
 
-    expect($sumForMode('without_igv'))->toBe(26047.80)
-        ->and($sumForMode('with_igv'))->toBe(30736.40);
+it('prioriza el desglose del ingreso de almacén sobre los importes de la OC proveedor', function () {
+    $item = (object) [
+        'order_affect_igv' => true,
+        'total_with_igv' => 99999.00,
+        'line_total' => 99999.00,
+        'quantity' => 1,
+        'unit_price' => 99999.00,
+        'taxable_base' => 84744.92,
+    ];
+    $warehouseAmount = (object) [
+        'subtotal' => 26047.80,
+        'igv' => 4688.60,
+        'total' => 30736.40,
+    ];
+
+    $amounts = invokeProfitabilityMethod('purchaseSourceAmounts', $item, $warehouseAmount, true);
+
+    expect($amounts)->toBe([
+        'subtotal' => 26047.80,
+        'total' => 30736.40,
+        'source' => 'warehouse_entry',
+    ]);
+});
+
+it('reproduce el caso 4505470202 con la compra total como costo real', function () {
+    $figures = invokeProfitabilityMethod('profitFigures', 43781.50, 30736.40, 0, 0);
+
+    expect($figures['gross'])->toBe(13045.10);
 });

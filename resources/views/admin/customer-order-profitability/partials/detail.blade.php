@@ -41,7 +41,7 @@
         <div class="row cop-metrics-grid">
             @foreach([
                 [$mode === 'with_igv' ? 'Venta con IGV' : 'Venta sin IGV', $saleValue, 'sale', 'fa-coins', 'sale'],
-                [$mode === 'with_igv' ? 'Compra con IGV' : 'Compra sin IGV', $purchaseValue, 'purchase', 'fa-shopping-cart', 'purchases'],
+                ['Compra considerada', $purchaseValue, 'purchase', 'fa-shopping-cart', 'purchases'],
                 ['Utilidad bruta', $gross, 'gross', 'fa-chart-bar', 'profit'],
                 ['Flete / recojo / traslado con comprobante', $freightValue, 'freight', 'fa-truck', 'costs'],
                 ['Otros gastos / sin comprobante', $otherTotal, 'other', 'fa-receipt', 'costs'],
@@ -73,7 +73,7 @@
     </div>
 
     <div id="cop_purchases" class="tab-pane fade">
-        @include('admin.customer-order-profitability.partials.supplier-purchases', compact('mode', 'supplierItems', 'supplierOrderIds', 'purchaseValue', 'money'))
+        @include('admin.customer-order-profitability.partials.supplier-purchases', compact('supplierItems', 'supplierOrderIds', 'purchaseValue', 'money'))
     </div>
 
     <div id="cop_costs" class="tab-pane fade">
@@ -96,6 +96,6 @@
         <div class="cop-section-heading"><div><span class="cop-eyebrow">Resultado final</span><h6>Indicadores ejecutivos de rentabilidad</h6><small>Lectura consolidada del rendimiento económico de la orden.</small></div><span class="cop-profit-level cop-profit-{{$profitLevel}}"><i class="fas fa-signal"></i>Rentabilidad {{$profitLabel}}</span></div>
         <div class="row cop-executive-results"><div class="col-md-4"><div><small>Utilidad bruta</small><strong>{{$money($gross)}}</strong><span>Venta menos compra</span></div></div><div class="col-md-4"><div><small>Utilidad operativa</small><strong>{{$money($operating)}}</strong><span>Después de transporte con comprobante</span></div></div><div class="col-md-4"><div class="cop-executive-net"><small>Utilidad neta</small><strong>{{$money($net)}}</strong><span>Después de renta y otros / sin comprobante</span></div></div></div>
         <div class="cop-profit-gauge"><div class="cop-profit-gauge-head"><span>Indicador de rentabilidad</span><strong>{{$money($percentage)}}%</strong></div><div class="progress"><div class="progress-bar cop-gauge-{{$profitLevel}}" style="width: {{max(2,min(abs($percentage),100))}}%"></div></div><div class="cop-gauge-scale"><span>Baja</span><span>Media</span><span>Alta</span></div></div>
-        <div class="cop-statement"><div><span>{{$mode==='with_igv'?'Venta con IGV':'Venta sin IGV'}}</span><strong>{{$money($saleValue)}}</strong></div><div><span>- {{$mode==='with_igv'?'Compra con IGV':'Compra sin IGV'}}</span><strong>{{$money($purchaseValue)}}</strong></div><div class="total"><span>= Utilidad bruta</span><strong>{{$money($gross)}}</strong></div><div><span>- Flete / recojo / traslado con comprobante</span><strong>{{$money($freightValue)}}</strong></div><div class="total"><span>= Utilidad operativa</span><strong>{{$money($operating)}}</strong></div><div><span>- Impuesto renta estimado</span><strong>{{$money($incomeTax)}}</strong></div><div><span>- Otros gastos / sin comprobante</span><strong>{{$money($otherTotal)}}</strong></div><div class="total cop-final-total"><span>= Utilidad neta</span><strong>{{$money($net)}}</strong></div></div>
+        <div class="cop-statement"><div><span>{{$mode==='with_igv'?'Venta con IGV':'Venta sin IGV'}}</span><strong>{{$money($saleValue)}}</strong></div><div><span>- Compra considerada</span><strong>{{$money($purchaseValue)}}</strong></div><div class="total"><span>= Utilidad bruta</span><strong>{{$money($gross)}}</strong></div><div><span>- Flete / recojo / traslado con comprobante</span><strong>{{$money($freightValue)}}</strong></div><div class="total"><span>= Utilidad operativa</span><strong>{{$money($operating)}}</strong></div><div><span>- Impuesto renta estimado</span><strong>{{$money($incomeTax)}}</strong></div><div><span>- Otros gastos / sin comprobante</span><strong>{{$money($otherTotal)}}</strong></div><div class="total cop-final-total"><span>= Utilidad neta</span><strong>{{$money($net)}}</strong></div></div>
     </div>
 </div>

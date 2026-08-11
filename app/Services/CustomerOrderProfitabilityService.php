@@ -56,18 +56,34 @@ class CustomerOrderProfitabilityService
                 'payment_currencies.symbol as payment_currency_symbol'
             )
             ->get();
-        $supplierItems->each(function ($item) use ($mode) {
+        $warehousePurchaseAmounts = DB::table('warehouse_entry_items as entry_items')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
+            ->join('supplier_purchase_order_items as purchase_items', 'purchase_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
+            ->whereIn('entry_items.supplier_purchase_order_item_id', $supplierItems->pluck('id'))
+            ->whereNull('entries.deleted_at')
+            ->where('entries.status', 'registered')
+            ->where('entry_items.status', '!=', 'deleted')
+            ->groupBy('entry_items.supplier_purchase_order_item_id', 'purchase_items.supplier_purchase_order_id')
+            ->selectRaw('entry_items.supplier_purchase_order_item_id, purchase_items.supplier_purchase_order_id')
+            ->selectRaw('SUM(entry_items.subtotal) as subtotal, SUM(entry_items.tax_amount) as igv, SUM(entry_items.line_total) as total')
+            ->get()
+            ->keyBy('supplier_purchase_order_item_id');
+        $supplierOrdersWithEntries = $warehousePurchaseAmounts
+            ->pluck('supplier_purchase_order_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique();
+        $supplierItems->each(function ($item) use ($warehousePurchaseAmounts, $supplierOrdersWithEntries) {
             $factor = $this->supplierPurchasePenFactor($item);
-            $nativeTotal = (float) ($item->total_with_igv ?? $item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
-            $nativeBase = ! $item->order_affect_igv
-                ? $nativeTotal
-                : (float) ($item->taxable_base ?? $item->subtotal ?? ($nativeTotal / 1.18));
+            $useWarehouseAmounts = $supplierOrdersWithEntries->contains((int) $item->supplier_purchase_order_id);
+            $warehouseAmount = $warehousePurchaseAmounts->get($item->id);
+            $sourceAmounts = $this->purchaseSourceAmounts($item, $warehouseAmount, $useWarehouseAmounts);
 
             $item->pen_conversion_factor = $factor;
-            $item->line_total_pen = round($nativeTotal * $factor, 2);
-            $item->taxable_base_pen = round($nativeBase * $factor, 2);
+            $item->line_total_pen = round($sourceAmounts['total'] * $factor, 2);
+            $item->taxable_base_pen = round($sourceAmounts['subtotal'] * $factor, 2);
             $item->unit_price_pen = round((float) $item->unit_price * $factor, 4);
-            $this->applyPurchaseAmountsForMode($item, $mode);
+            $item->purchase_amount_source = $sourceAmounts['source'];
+            $this->applyConsideredPurchaseAmounts($item);
         });
         $supplierOrderIds = $supplierItems->pluck('supplier_purchase_order_id')->unique();
         $entryIds = DB::table('warehouse_entries as entries')
@@ -110,7 +126,7 @@ class CustomerOrderProfitabilityService
         $linkedTotal = $linkedFigures['linkedValue'];
         $withoutReceiptTotal = round((float) $withoutReceipt->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
         $saleValue = $mode === self::MODE_WITHOUT_IGV ? $saleBase : $saleTotal;
-        $purchaseValue = $mode === self::MODE_WITHOUT_IGV ? $purchaseBase : $purchaseTotal;
+        $purchaseValue = round((float) $supplierItems->sum('considered_purchase_amount'), 2);
         $figures = $this->profitFigures($saleValue, $purchaseValue, $freightValue, $otherTotal);
         ['gross' => $gross, 'operating' => $operating, 'incomeTax' => $incomeTax, 'net' => $net] = $figures;
         $denominator = $purchaseValue + $freightValue + $otherTotal;
@@ -293,13 +309,40 @@ class CustomerOrderProfitabilityService
         return $exchangeRate > 0 ? $exchangeRate : 0.0;
     }
 
-    private function applyPurchaseAmountsForMode(object $item, string $mode): void
+    private function applyConsideredPurchaseAmounts(object $item): void
     {
         $item->purchase_subtotal_pen = round((float) $item->taxable_base_pen, 2);
         $item->purchase_total_pen = round((float) $item->line_total_pen, 2);
         $item->purchase_igv_pen = round($item->purchase_total_pen - $item->purchase_subtotal_pen, 2);
-        $item->considered_purchase_amount = $mode === self::MODE_WITH_IGV
+        $item->considered_purchase_amount = (bool) ($item->order_affect_igv ?? false)
             ? $item->purchase_total_pen
             : $item->purchase_subtotal_pen;
+    }
+
+    private function purchaseSourceAmounts(object $item, ?object $warehouseAmount, bool $useWarehouseAmounts): array
+    {
+        if ($useWarehouseAmounts) {
+            $total = (float) ($warehouseAmount?->total ?? 0);
+
+            return [
+                'subtotal' => (bool) ($item->order_affect_igv ?? false)
+                    ? (float) ($warehouseAmount?->subtotal ?? 0)
+                    : $total,
+                'total' => $total,
+                'source' => 'warehouse_entry',
+            ];
+        }
+
+        $total = (float) ($item->total_with_igv
+            ?? $item->line_total
+            ?: ((float) $item->quantity * (float) $item->unit_price));
+
+        return [
+            'subtotal' => (bool) ($item->order_affect_igv ?? false)
+                ? (float) ($item->taxable_base ?? $item->subtotal ?? ($total / 1.18))
+                : $total,
+            'total' => $total,
+            'source' => 'supplier_purchase_order',
+        ];
     }
 }
