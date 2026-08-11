@@ -236,3 +236,82 @@ it('sirve la ruta histórica de constancia de pago sin exponer su ubicación fí
         ->toContain('pago-historico.jpg')
         ->not->toContain('costos/');
 });
+
+it('muestra completos los costos vinculados de la OC 4505460426', function () {
+    $firstFreight = profitabilityAttachmentCost([
+        'expense_category' => 'freight_transport',
+        'expense_type' => 'agency_freight',
+        'document_type' => 'FACTURA',
+        'affects_igv' => true,
+        'igv_rate' => 18,
+        'amount' => 128,
+        'taxable_amount' => 108.47,
+        'igv_amount' => 19.53,
+        'total_amount' => 128,
+    ]);
+    $secondFreight = profitabilityAttachmentCost([
+        'expense_category' => 'freight_transport',
+        'expense_type' => 'agency_freight',
+        'document_type' => 'FACTURA',
+        'affects_igv' => true,
+        'igv_rate' => 18,
+        'amount' => 25,
+        'taxable_amount' => 21.19,
+        'igv_amount' => 3.81,
+        'total_amount' => 25,
+    ]);
+    $other = profitabilityAttachmentCost([
+        'amount' => 1150,
+        'taxable_amount' => 1150,
+        'total_amount' => 1150,
+    ]);
+    $costs = collect([$firstFreight, $secondFreight, $other]);
+    $costs->each(fn (WarehouseEntryExpense $cost) => $cost->setAttribute('profitability_attachments', []));
+    $this->order->setRelation('customer', $this->customer);
+    $this->order->setRelation('company', $this->company);
+    $this->order->setRelation('currency', $this->currency);
+    $this->order->setRelation('items', collect());
+
+    $html = view('admin.customer-order-profitability.partials.detail', [
+        'mode' => 'without_igv',
+        'order' => $this->order,
+        'supplierItems' => collect(),
+        'supplierOrderIds' => collect(),
+        'costs' => $costs,
+        'operationalTransportCosts' => collect([$firstFreight, $secondFreight]),
+        'otherOrUnsupportedCosts' => collect([$other]),
+        'saleTotal' => 10000,
+        'saleBase' => 10000,
+        'saleIgv' => 0,
+        'saleValue' => 10000,
+        'purchaseValue' => 5000,
+        'freightValue' => 153,
+        'otherTotal' => 1150,
+        'linkedTotal' => 1303,
+        'gross' => 5000,
+        'operating' => 4847,
+        'incomeTax' => 1429.87,
+        'net' => 2267.13,
+        'percentage' => 35.97,
+        'purchasedByItem' => collect(),
+        'enteredByCustomerItem' => collect(),
+        'warnings' => [],
+        'igvRate' => 18,
+        'incomeTaxRate' => 29.5,
+        'igvSales' => 0,
+        'igvPurchases' => 0,
+        'igvLinkedCosts' => 23.34,
+        'igvDifference' => -23.34,
+        'orderDocuments' => collect(),
+    ])->render();
+
+    expect($html)->toContain('Subtotal <strong>153.00</strong>')
+        ->toContain('<td class="text-right font-weight-bold">128.00</td>')
+        ->toContain('<td class="text-right font-weight-bold">25.00</td>')
+        ->toContain('Subtotal <strong>1,150.00</strong>')
+        ->toContain('4,847.00')
+        ->toContain('1,429.87')
+        ->toContain('2,267.13')
+        ->toContain('35.97%')
+        ->not->toContain('Subtotal <strong>129.66</strong>');
+});

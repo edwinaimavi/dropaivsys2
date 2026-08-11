@@ -127,14 +127,20 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
-    $(document).on('change input', '#supplier_order_payment_currency_id,#supplier_order_apply_exchange_rate,#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount', updateSupplierOrderFinancialSummary);
+    $(document).on('change input', '#supplier_order_payment_currency_id,#supplier_order_apply_exchange_rate,#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount', function () {
+        filterSupplierOrderAdvanceBankAccounts();
+        updateSupplierOrderFinancialSummary();
+    });
     $(document).on('change input', '#supplierPurchaseOrderForm', updateSupplierOrderFormSummary);
     $(document).on('shown.bs.tab', '#supplierPurchaseOrderModal .supplier-order-form-tabs a[data-toggle="pill"]', updateSupplierOrderFormSummary);
     $(document).on('change', '#supplier_order_new_advance_proof', function () {
         $(this).siblings('.custom-file-label').text(this.files?.[0]?.name || 'Seleccionar archivo');
     });
 
-    $(document).on('change', '#supplier_order_company_id', applySupplierOrderCompanyDefaults);
+    $(document).on('change', '#supplier_order_company_id', function () {
+        applySupplierOrderCompanyDefaults();
+        filterSupplierOrderAdvanceBankAccounts();
+    });
 
     $(document).on('input', '#supplierPurchaseOrderForm .text-uppercase', function () {
         this.value = this.value.toUpperCase();
@@ -761,6 +767,7 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_exchange_rate,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount').val('');
     $('#supplier_order_advance_type,#supplier_order_new_advance_method').val('');
     $('#supplier_order_new_advance_date').val(new Date().toISOString().slice(0, 10));
+    $('#supplier_order_new_advance_bank_account_id').val('');
     $('#supplier_order_new_advance_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
     $('#supplierOrderExistingAdvancePayments').empty().data('paid-amount', 0);
     $('#supplier_order_document_type').val('').trigger('change.select2');
@@ -2309,6 +2316,23 @@ function supplierOrderFinancialCurrency(selector) {
     };
 }
 
+function filterSupplierOrderAdvanceBankAccounts() {
+    const select = $('#supplier_order_new_advance_bank_account_id');
+    if (!select.length) return;
+    const companyId = String($('#supplier_order_company_id').val() || '');
+    const currencyId = String($('#supplier_order_payment_currency_id').val() || '');
+    let selectedIsVisible = false;
+    select.find('option').each(function () {
+        const option = $(this);
+        if (!option.val()) return;
+        const visible = String(option.data('company-id')) === companyId
+            && String(option.data('currency-id')) === currencyId;
+        option.prop('hidden', !visible).prop('disabled', !visible);
+        if (visible && option.prop('selected')) selectedIsVisible = true;
+    });
+    if (select.val() && !selectedIsVisible) select.val('');
+}
+
 function updateSupplierOrderFinancialSummary() {
     if (!$('#supplier_order_payment_currency_id').length) return;
     const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
@@ -2389,7 +2413,7 @@ function renderSupplierOrderAdvancePayments(payments) {
         return;
     }
 
-    container.html(`<div class="table-responsive"><table class="table table-sm supplier-order-advance-payments-table"><thead><tr><th>Fecha</th><th>Cuenta</th><th>Medio</th><th>Operación</th><th class="text-right">Monto</th><th class="text-right">Soles</th><th>Usuario</th><th>Constancia</th></tr></thead><tbody>${rows.map(payment => `<tr><td>${escapeSupplierOrderHtml(String(payment.payment_date || '').slice(0,10))}</td><td>${escapeSupplierOrderHtml(payment.supplier_account?.bank?.short_name || payment.supplier_account?.bank?.description || '-')}</td><td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td><td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td><td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td><td class="text-right">S/ ${formatSupplierOrderMoney(payment.amount_pen)}</td><td>${escapeSupplierOrderHtml(payment.creator?.name || '-')}</td><td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye"></i> Ver</a>` : '-'}</td></tr>`).join('')}</tbody></table></div>`);
+    container.html(`<div class="table-responsive"><table class="table table-sm supplier-order-advance-payments-table"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Cuenta proveedor</th><th>Medio</th><th>Operación</th><th class="text-right">Monto</th><th class="text-right">Soles</th><th>Usuario</th><th>Constancia</th></tr></thead><tbody>${rows.map(payment => `<tr><td>${escapeSupplierOrderHtml(String(payment.payment_date || '').slice(0,10))}</td><td>${escapeSupplierOrderHtml(payment.company_bank_account?.bank?.short_name || payment.company_bank_account?.bank?.description || '-')}<small class="d-block text-muted">${escapeSupplierOrderHtml(payment.company_bank_account?.account_number || '')}</small></td><td>${escapeSupplierOrderHtml(payment.supplier_account?.bank?.short_name || payment.supplier_account?.bank?.description || '-')}</td><td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td><td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td><td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td><td class="text-right">S/ ${formatSupplierOrderMoney(payment.amount_pen)}</td><td>${escapeSupplierOrderHtml(payment.creator?.name || '-')}</td><td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye"></i> Ver</a>` : '-'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
 function setDefaultSupplierOrderCurrency() {

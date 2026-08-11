@@ -20,9 +20,24 @@ class CompanyBankAccount extends Model
         'is_detraction',
         'status',
         'observation',
+        'opening_balance',
+        'current_balance',
+        'opening_balance_date',
+        'opening_balance_observation',
+        'opening_balance_set_by',
+        'opening_balance_set_at',
+        'last_movement_at',
         'created_by',
         'updated_by',
         'deleted_by',
+    ];
+
+    protected $casts = [
+        'opening_balance' => 'decimal:4',
+        'current_balance' => 'decimal:4',
+        'opening_balance_date' => 'date',
+        'opening_balance_set_at' => 'datetime',
+        'last_movement_at' => 'datetime',
     ];
 
     public function company()
@@ -53,5 +68,30 @@ class CompanyBankAccount extends Model
     public function deleter()
     {
         return $this->belongsTo(User::class, 'deleted_by');
+    }
+
+    public function openingBalanceSetter()
+    {
+        return $this->belongsTo(User::class, 'opening_balance_set_by');
+    }
+
+    public function movements()
+    {
+        return $this->hasMany(BankMovement::class);
+    }
+
+    public function outgoingTransfers()
+    {
+        return $this->hasMany(BankTransfer::class, 'from_company_bank_account_id');
+    }
+
+    public function incomingTransfers()
+    {
+        return $this->hasMany(BankTransfer::class, 'to_company_bank_account_id');
+    }
+
+    public function reconciliations()
+    {
+        return $this->hasMany(BankReconciliation::class);
     }
 }

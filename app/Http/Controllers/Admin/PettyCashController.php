@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Bank;
+use App\Models\BankMovement;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
@@ -18,6 +19,7 @@ use App\Models\PettyCashReplenishment;
 use App\Models\WarehouseEntryExpense;
 use App\Services\DocumentLookupException;
 use App\Services\DocumentLookupService;
+use App\Services\BankMovementService;
 use App\Services\PettyCashCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -34,7 +36,10 @@ use Yajra\DataTables\Facades\DataTables;
 
 class PettyCashController extends Controller
 {
-    public function __construct(private readonly PettyCashCalculator $calculator)
+    public function __construct(
+        private readonly PettyCashCalculator $calculator,
+        private readonly BankMovementService $bankMovementService
+    )
     {
         $this->middleware('can:admin.petty-cash.index')->only([
             'index', 'list', 'previousBalance', 'sourceBankAccounts',
@@ -205,6 +210,7 @@ class PettyCashController extends Controller
                 foreach ($files as $file) {
                     $storedPaths[] = $this->storeDocument($box, $file, 'PETTY_CASH_OPENING_FUND_RECEIPT');
                 }
+                $this->registerPettyCashOpeningBankMovement($box);
 
                 return $box;
             });
@@ -339,6 +345,7 @@ class PettyCashController extends Controller
                     $account->currency?->code,
                     $account->account_number,
                 ])).($account->cci ? " | CCI: {$account->cci}" : ''),
+                'currency_code' => $account->currency?->code,
             ]);
 
         return response()->json(['data' => $accounts]);
@@ -389,6 +396,7 @@ class PettyCashController extends Controller
                     $storedPaths[] = $this->storeDocument($locked, $file, 'PETTY_CASH_OPENING_FUND_RECEIPT');
                 }
                 $this->recalculateTotals($locked);
+                $this->syncPettyCashOpeningBankMovement($locked->fresh());
             });
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(array_filter($storedPaths));
@@ -402,9 +410,22 @@ class PettyCashController extends Controller
     {
         DB::transaction(function () use ($pettyCash) {
             $box = PettyCashBox::lockForUpdate()->findOrFail($pettyCash->id);
-            if ($box->expenses()->exists()) {
+            if ($box->expenses()->exists() || $box->replenishments()->exists()) {
                 $box->update(['status' => PettyCashBox::STATUS_CANCELLED, 'updated_by' => Auth::id()]);
             } else {
+                $movement = BankMovement::query()
+                    ->where('source_type', 'PETTY_CASH_OPENING')
+                    ->where('source_id', $box->id)
+                    ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+                    ->latest('id')
+                    ->first();
+                if ($movement) {
+                    $this->bankMovementService->cancelMovement(
+                        $movement,
+                        'ANULACIÓN DE APERTURA DE CAJA CHICA '.$box->code,
+                        Auth::id()
+                    );
+                }
                 $box->delete();
             }
         });
@@ -1004,11 +1025,12 @@ class PettyCashController extends Controller
             'observation' => ['nullable', 'string', 'max:1000'],
             'fund_source_company_id' => ['required', 'exists:companies,id'],
             'fund_source_bank_account_id' => ['required', 'exists:company_bank_accounts,id'],
+            'fund_source_exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'fund_source_receipts' => ['nullable', 'array'],
             'fund_source_receipts.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ]);
-        $this->validateFundSourceAccount($validated);
+        $this->validateFundSourceAccount($validated + ['currency_id' => $pettyCash->currency_id]);
 
         $files = array_values(array_filter([
             ...(array) $request->file('fund_source_receipts', []),
@@ -1040,6 +1062,7 @@ class PettyCashController extends Controller
                 foreach ($files as $file) {
                     $storedPaths[] = $this->storeDocument($replenishment, $file, 'CAJA_REP');
                 }
+                $this->registerPettyCashReplenishmentBankMovement($box, $replenishment);
 
                 $this->recalculateTotals($box);
                 $box->refresh();
@@ -1480,6 +1503,7 @@ class PettyCashController extends Controller
                 'nullable',
                 'exists:company_bank_accounts,id',
             ],
+            'fund_source_exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'fund_source_receipts' => ['nullable', 'array'],
             'fund_source_receipts.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'previous_balance' => ['nullable', 'numeric', 'min:0'],
@@ -1513,6 +1537,7 @@ class PettyCashController extends Controller
     private function validateFundSourceAccount(array $validated): void
     {
         $account = CompanyBankAccount::query()
+            ->with('currency:id,code')
             ->whereKey($validated['fund_source_bank_account_id'])
             ->where('company_id', $validated['fund_source_company_id'])
             ->where('status', 'ACTIVE')
@@ -1521,6 +1546,17 @@ class PettyCashController extends Controller
         if (! $account) {
             throw ValidationException::withMessages([
                 'fund_source_bank_account_id' => 'La cuenta bancaria seleccionada no pertenece a la empresa origen.',
+            ]);
+        }
+        if (isset($validated['currency_id']) && (int) $account->currency_id !== (int) $validated['currency_id']) {
+            throw ValidationException::withMessages([
+                'fund_source_bank_account_id' => 'La moneda de la cuenta bancaria debe coincidir con la moneda de Caja Chica.',
+            ]);
+        }
+        if (strtoupper((string) $account->currency?->code) !== 'PEN'
+            && empty($validated['fund_source_exchange_rate'])) {
+            throw ValidationException::withMessages([
+                'fund_source_exchange_rate' => 'Ingrese el tipo de cambio para registrar la salida bancaria en soles.',
             ]);
         }
     }
@@ -1569,7 +1605,99 @@ class PettyCashController extends Controller
 
         $validated['fund_source_company_id'] = null;
         $validated['fund_source_bank_account_id'] = null;
+        $validated['fund_source_exchange_rate'] = null;
         $validated['fund_source_receipts'] = [];
+    }
+
+    private function registerPettyCashOpeningBankMovement(PettyCashBox $box): void
+    {
+        if (! $box->fund_source_bank_account_id || (float) $box->approved_fund <= 0) {
+            return;
+        }
+
+        $this->bankMovementService->createMovement([
+            'company_bank_account_id' => $box->fund_source_bank_account_id,
+            'currency_id' => $box->currency_id,
+            'movement_date' => $box->start_date,
+            'movement_type' => 'EGRESO',
+            'amount' => $box->approved_fund,
+            'exchange_rate' => $box->fund_source_exchange_rate,
+            'direction' => 'OUT',
+            'concept' => 'Apertura de Caja Chica',
+            'description' => $box->observations,
+            'source_type' => 'PETTY_CASH_OPENING',
+            'source_id' => $box->id,
+            'source_code' => $box->code,
+            'source_description' => 'Fondo entregado para apertura de Caja Chica',
+            'idempotency_key' => "petty-cash-opening:{$box->id}",
+        ], Auth::id());
+    }
+
+    private function syncPettyCashOpeningBankMovement(PettyCashBox $box): void
+    {
+        $movement = BankMovement::query()
+            ->where('source_type', 'PETTY_CASH_OPENING')
+            ->where('source_id', $box->id)
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+        $shouldExist = $box->fund_source_bank_account_id && (float) $box->approved_fund > 0;
+        $matches = $movement
+            && (int) $movement->company_bank_account_id === (int) $box->fund_source_bank_account_id
+            && (int) $movement->currency_id === (int) $box->currency_id
+            && abs((float) $movement->amount - (float) $box->approved_fund) < 0.00005
+            && abs((float) $movement->exchange_rate - (float) $box->fund_source_exchange_rate) < 0.0000005
+            && $movement->movement_date?->toDateString() === $box->start_date?->toDateString();
+
+        if ($movement && (! $shouldExist || ! $matches)) {
+            $this->bankMovementService->cancelMovement(
+                $movement,
+                'ACTUALIZACIÓN DE LA APERTURA DE CAJA CHICA '.$box->code,
+                Auth::id()
+            );
+            $movement = null;
+        }
+        if (! $shouldExist || $movement) {
+            return;
+        }
+
+        $this->bankMovementService->createMovement([
+            'company_bank_account_id' => $box->fund_source_bank_account_id,
+            'currency_id' => $box->currency_id,
+            'movement_date' => $box->start_date,
+            'movement_type' => 'EGRESO',
+            'amount' => $box->approved_fund,
+            'exchange_rate' => $box->fund_source_exchange_rate,
+            'direction' => 'OUT',
+            'concept' => 'Apertura de Caja Chica',
+            'description' => $box->observations,
+            'source_type' => 'PETTY_CASH_OPENING',
+            'source_id' => $box->id,
+            'source_code' => $box->code,
+            'source_description' => 'Fondo entregado para apertura de Caja Chica',
+            'idempotency_key' => "petty-cash-opening:{$box->id}:v".(BankMovement::query()->max('id') + 1),
+        ], Auth::id());
+    }
+
+    private function registerPettyCashReplenishmentBankMovement(PettyCashBox $box, PettyCashReplenishment $replenishment): void
+    {
+        $this->bankMovementService->createMovement([
+            'company_bank_account_id' => $replenishment->fund_source_bank_account_id,
+            'currency_id' => $box->currency_id,
+            'movement_date' => $replenishment->replenishment_date,
+            'movement_type' => 'EGRESO',
+            'amount' => $replenishment->amount,
+            'exchange_rate' => $replenishment->fund_source_exchange_rate,
+            'direction' => 'OUT',
+            'concept' => 'Reposición de Caja Chica',
+            'description' => $replenishment->observation,
+            'operation_number' => $replenishment->reference_number,
+            'source_type' => 'PETTY_CASH_REPLENISHMENT',
+            'source_id' => $replenishment->id,
+            'source_code' => $replenishment->code,
+            'source_description' => "Reposición de {$box->code}",
+            'idempotency_key' => "petty-cash-replenishment:{$replenishment->id}",
+        ], Auth::id());
     }
 
     private function validatePreviousBalance(array &$validated, ?PettyCashBox $current = null): void

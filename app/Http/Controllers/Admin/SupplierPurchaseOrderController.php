@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\Bank;
 use App\Models\Brand;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\CustomerPurchaseOrderItem;
@@ -23,6 +24,7 @@ use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Ubigeo;
 use App\Models\Unit;
 use App\Services\SupplierPurchaseOrderFinancialService;
+use App\Services\BankMovementService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -86,6 +88,13 @@ class SupplierPurchaseOrderController extends Controller
             ->with('bank:id,description,short_name', 'currency:id,code')
             ->where('status', 'ACTIVE')
             ->orderBy('account_number')
+            ->get();
+
+        $companyBankAccounts = CompanyBankAccount::query()
+            ->with(['company:id,business_name,trade_name', 'bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->where('status', 'ACTIVE')
+            ->orderBy('company_id')
+            ->orderBy('bank_id')
             ->get();
 
         $currencies = Currency::query()
@@ -162,6 +171,7 @@ class SupplierPurchaseOrderController extends Controller
             'companies',
             'suppliers',
             'supplierAccounts',
+            'companyBankAccounts',
             'currencies',
             'banks',
             'customerPurchaseOrders',
@@ -570,6 +580,8 @@ class SupplierPurchaseOrderController extends Controller
             'items.brand',
             'advancePayments.currency',
             'advancePayments.supplierAccount.bank',
+            'advancePayments.companyBankAccount.bank',
+            'advancePayments.companyBankAccount.currency',
             'advancePayments.creator:id,name',
         ]);
         $this->appendEntryProgress($supplierPurchaseOrder);
@@ -802,6 +814,11 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_documents.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'advance_payments' => ['nullable', 'array'],
             'advance_payments.*.amount' => ['nullable', 'numeric', 'gt:0'],
+            'advance_payments.*.company_bank_account_id' => [
+                'nullable',
+                'required_with:advance_payments.*.amount',
+                'exists:company_bank_accounts,id',
+            ],
             'advance_payments.*.payment_date' => ['nullable', 'required_with:advance_payments.*.amount', 'date'],
             'advance_payments.*.payment_method' => [
                 'nullable',
@@ -842,6 +859,8 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_documents.*.file.mimes' => 'Solo se permiten archivos PDF, JPG, JPEG o PNG.',
             'supplier_documents.*.file.max' => 'El archivo no debe superar los 10 MB.',
             'advance_payments.*.amount.gt' => 'El pago del anticipo debe ser mayor a cero.',
+            'advance_payments.*.company_bank_account_id.required_with' => 'Seleccione la cuenta bancaria de la empresa desde la que se pagó el anticipo.',
+            'advance_payments.*.company_bank_account_id.exists' => 'La cuenta bancaria de origen seleccionada no existe.',
             'advance_payments.*.payment_date.required_with' => 'Ingrese la fecha del pago del anticipo.',
             'advance_payments.*.payment_method.required_with' => 'Seleccione el medio de pago del anticipo.',
             'advance_payments.*.proof.mimes' => 'La constancia del anticipo debe ser PDF, JPG, JPEG, PNG o WEBP.',
@@ -913,6 +932,30 @@ class SupplierPurchaseOrderController extends Controller
                 $newAdvancePayments = collect($validated['advance_payments'] ?? [])
                     ->filter(fn ($payment) => (float) ($payment['amount'] ?? 0) > 0)
                     ->values();
+
+                if ($newAdvancePayments->isNotEmpty()) {
+                    abort_unless(Auth::user()?->can('admin.banks.movements.create'), 403);
+
+                    $bankAccounts = CompanyBankAccount::query()
+                        ->whereIn('id', $newAdvancePayments->pluck('company_bank_account_id')->filter()->unique())
+                        ->where('status', 'ACTIVE')
+                        ->get()
+                        ->keyBy('id');
+
+                    foreach ($newAdvancePayments as $index => $payment) {
+                        $account = $bankAccounts->get((int) ($payment['company_bank_account_id'] ?? 0));
+                        if (! $account || (int) $account->company_id !== (int) $validated['company_id']) {
+                            throw ValidationException::withMessages([
+                                "advance_payments.{$index}.company_bank_account_id" => 'La cuenta bancaria debe estar activa y pertenecer a la empresa de la orden.',
+                            ]);
+                        }
+                        if ((int) $account->currency_id !== (int) $paymentCurrency->id) {
+                            throw ValidationException::withMessages([
+                                "advance_payments.{$index}.company_bank_account_id" => 'La moneda de la cuenta bancaria debe coincidir con la moneda de pago del anticipo.',
+                            ]);
+                        }
+                    }
+                }
 
                 if ($existingAdvancePayments->isNotEmpty()
                     && (int) $order->payment_currency_id !== (int) $paymentCurrency->id) {
@@ -1095,6 +1138,8 @@ class SupplierPurchaseOrderController extends Controller
                         'paymentCurrency',
                         'advancePayments.currency',
                         'advancePayments.supplierAccount.bank',
+                        'advancePayments.companyBankAccount.bank',
+                        'advancePayments.companyBankAccount.currency',
                         'destinationUbigeo',
                         'shippingAgency',
                         'shippingAgencyBranch',
@@ -1813,8 +1858,9 @@ class SupplierPurchaseOrderController extends Controller
                 $storedPaths[] = $storedPath;
             }
 
-            $order->advancePayments()->create([
+            $advancePayment = $order->advancePayments()->create([
                 'supplier_account_id' => $order->supplier_account_id,
+                'company_bank_account_id' => $paymentData['company_bank_account_id'],
                 'currency_id' => $paymentCurrency->id,
                 'payment_date' => $paymentData['payment_date'],
                 'amount' => round((float) $paymentData['amount'], 4),
@@ -1837,6 +1883,29 @@ class SupplierPurchaseOrderController extends Controller
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
             ]);
+
+            app(BankMovementService::class)->createMovement([
+                'company_bank_account_id' => $advancePayment->company_bank_account_id,
+                'currency_id' => $paymentCurrency->id,
+                'movement_date' => $advancePayment->payment_date->toDateString(),
+                'movement_type' => 'EGRESO',
+                'amount' => $advancePayment->amount,
+                'exchange_rate' => $advancePayment->exchange_rate,
+                'amount_pen' => $advancePayment->amount_pen,
+                'direction' => 'OUT',
+                'concept' => 'Anticipo a proveedor',
+                'description' => $advancePayment->observation,
+                'operation_number' => $advancePayment->operation_number,
+                'file_path' => $advancePayment->proof_path,
+                'file_original_name' => $advancePayment->proof_original_name,
+                'file_mime_type' => $advancePayment->proof_mime_type,
+                'file_size' => $advancePayment->proof_size,
+                'source_type' => 'SUPPLIER_ADVANCE',
+                'source_id' => $advancePayment->id,
+                'source_code' => $order->code,
+                'source_description' => 'Anticipo de la orden de compra a proveedor',
+                'idempotency_key' => "supplier-advance:{$advancePayment->id}",
+            ], Auth::id());
         }
 
         return $storedPaths;

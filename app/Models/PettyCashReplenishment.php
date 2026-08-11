@@ -11,12 +11,12 @@ class PettyCashReplenishment extends Model
 
     protected $fillable = [
         'petty_cash_box_id', 'code', 'replenishment_date', 'amount',
-        'fund_source_company_id', 'fund_source_bank_account_id',
+        'fund_source_company_id', 'fund_source_bank_account_id', 'fund_source_exchange_rate',
         'payment_method', 'bank_id', 'bank_account', 'reference_number',
         'observation', 'status', 'created_by', 'updated_by',
     ];
 
-    protected $casts = ['replenishment_date' => 'date', 'amount' => 'decimal:2'];
+    protected $casts = ['replenishment_date' => 'date', 'amount' => 'decimal:2', 'fund_source_exchange_rate' => 'decimal:6'];
 
     public function pettyCashBox() { return $this->belongsTo(PettyCashBox::class); }
     public function bank() { return $this->belongsTo(Bank::class); }

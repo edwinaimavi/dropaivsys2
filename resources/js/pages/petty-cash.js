@@ -612,9 +612,10 @@ $(function () {
         api({ url: `${base}/source-companies/${companyId}/bank-accounts`, method: 'GET' })
             .done(response => {
                 const accounts = response.data || [];
-                select.html('<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => `<option value="${account.id}">${escapeHtml(account.label)}</option>`).join(''))
+                select.html('<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => `<option value="${account.id}" data-currency="${escapeHtml(account.currency_code || '')}">${escapeHtml(account.label)}</option>`).join(''))
                     .prop('disabled', !accounts.length).val(String(selectedId || ''));
                 $(helpSelector).text(accounts.length ? '' : 'Esta empresa no tiene cuentas bancarias registradas.');
+                select.trigger('change.bankExchangeRate');
             })
             .fail(xhr => $(helpSelector).text(errorMessage(xhr)));
     };
@@ -955,6 +956,14 @@ $(function () {
     $('#pcr_fund_source_company_id').on('change', function () {
         loadSourceAccounts(this.value, '#pcr_fund_source_bank_account_id', '#pcr_fund_source_account_help');
     });
+    $(document).on('change.bankExchangeRate', '#pc_fund_source_bank_account_id,#pcr_fund_source_bank_account_id', function () {
+        const opening = this.id === 'pc_fund_source_bank_account_id';
+        const prefix = opening ? '#pc' : '#pcr';
+        const foreign = String($(this).find('option:selected').data('currency') || '').toUpperCase() !== 'PEN' && Boolean(this.value);
+        $(`${prefix}_fund_source_exchange_rate_group`).toggleClass('d-none', !foreign);
+        $(`${prefix}_fund_source_exchange_rate`).prop('required', foreign);
+        if (!foreign) $(`${prefix}_fund_source_exchange_rate`).val('');
+    });
     $('#pc_fund_source_receipts').on('change', function () { addSourceReceipts('opening', this.files); });
     $('#pcr_fund_source_receipts').on('change', function () { addSourceReceipts('replenishment', this.files); });
     $('.petty-source-upload').on('dragenter dragover', function (event) {
@@ -1137,6 +1146,7 @@ $(function () {
             updateOpeningAmount();
             resetSourceReceipts('opening', box.documents || []);
             $('#pc_fund_source_company_id').val(box.fund_source_company_id || '');
+            $('#pc_fund_source_exchange_rate').val(box.fund_source_exchange_rate || '');
             if (box.fund_source_company_id) {
                 loadSourceAccounts(box.fund_source_company_id, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help', box.fund_source_bank_account_id);
             }
@@ -1920,6 +1930,8 @@ $(function () {
             $('#pettyCashReplenishmentForm')[0].reset(); $('#pcr_box_id').val(box.id);
             resetSourceReceipts('replenishment');
             $('#pcr_fund_source_bank_account_id').prop('disabled', true).html('<option value="">Seleccione primero una empresa</option>');
+            $('#pcr_fund_source_exchange_rate').val('').prop('required', false);
+            $('#pcr_fund_source_exchange_rate_group').addClass('d-none');
             $('#pcr_fund_source_account_help').text('');
             const symbol = box.currency?.symbol || '';
             const summary = box.financial_summary || {};

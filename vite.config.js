@@ -23,6 +23,7 @@ export default defineConfig({
                 'resources/js/pages/company.js',
                 'resources/js/pages/market-study.js',
                 'resources/js/pages/petty-cash.js',
+                'resources/js/pages/bank-treasury.js',
                 'resources/js/pages/presentation.js',
                 'resources/js/pages/quote.js',
                 'resources/js/pages/supplier.js',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Bank;
+use App\Models\BankMovement;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
@@ -74,7 +75,9 @@ it('registra una reposición sin datos bancarios manuales y recalcula los saldos
         ->and($replenishment->fund_source_bank_account_id)->toBe($account->id)
         ->and($replenishment->documents)->toHaveCount(1)
         ->and($replenishment->documents->first()->documentType->code)->toBe('CAJA_REP')
-        ->and(DocumentType::where('code', 'CAJA_REP')->count())->toBe(1);
+        ->and(DocumentType::where('code', 'CAJA_REP')->count())->toBe(1)
+        ->and(BankMovement::where('source_type', 'PETTY_CASH_REPLENISHMENT')->where('source_id', $replenishment->id)->count())->toBe(1)
+        ->and((float) $account->fresh()->current_balance)->toBe(-300.0);
 });
 
 it('impide cerrar con gastos pendientes y permite cerrar después de resolverlos', function () {

@@ -469,6 +469,13 @@ return [
                     'url' => 'admin/petty-cash',
                     'can' => 'admin.petty-cash.index',
                 ],
+                [
+                    'text' => 'Bancos / Tesorería',
+                    'icon' => 'fas fa-university',
+                    'icon_color' => 'info',
+                    'url' => 'admin/banks',
+                    'can' => 'admin.banks.view',
+                ],
             ],
         ],
         [

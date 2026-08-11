@@ -287,6 +287,19 @@ class RoleSeeder extends Seeder
             'admin.petty-cash.receipt-exchanges.show' => 'Ver detalle de canjes de recibos',
             'admin.petty-cash.receipt-exchanges.destroy' => 'Anular canjes de recibos de caja chica',
 
+            'admin.banks.view' => 'Ver Bancos y Tesorería',
+            'admin.banks.create' => 'Crear configuraciones bancarias de Tesorería',
+            'admin.banks.edit' => 'Editar configuración y saldo inicial de cuentas bancarias',
+            'admin.banks.movements' => 'Ver movimientos bancarios',
+            'admin.banks.movements.create' => 'Registrar movimientos bancarios',
+            'admin.banks.movements.cancel' => 'Anular y reversar movimientos bancarios',
+            'admin.banks.transfers' => 'Ver transferencias bancarias',
+            'admin.banks.transfers.create' => 'Registrar transferencias bancarias',
+            'admin.banks.reconciliations' => 'Ver conciliaciones bancarias',
+            'admin.banks.reconciliations.create' => 'Registrar conciliaciones bancarias',
+            'admin.banks.adjustments' => 'Registrar ajustes bancarios',
+            'admin.banks.export' => 'Exportar información de Bancos y Tesorería',
+
             'admin.profile.index' => 'Ver perfil',
             'admin.profile.update' => 'Actualizar perfil',
         ];

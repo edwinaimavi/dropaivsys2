@@ -8,10 +8,7 @@
     $otherCosts = $otherOrUnsupportedCosts;
     $costHasRecognizedIgv = fn ($cost) => (bool) $cost->affects_igv
         && \App\Models\WarehouseEntryExpense::supportsIgv($cost->document_type);
-    $costValue = function ($cost) use ($mode, $costHasRecognizedIgv) {
-        $total = (float) ($cost->total_amount ?: $cost->amount);
-        return $mode === 'without_igv' && $costHasRecognizedIgv($cost) ? (float) $cost->taxable_amount : $total;
-    };
+    $costValue = fn ($cost) => (float) ($cost->total_amount ?: $cost->amount);
     $costTypeLabel = function ($cost) {
         $type = strtolower((string) ($cost->expense_type ?? ''));
         if (in_array($type, ['agency_freight', 'transport_agency', 'courier', 'shipping'])) return 'Flete de agencia';
@@ -77,7 +74,7 @@
     </div>
 
     <div id="cop_costs" class="tab-pane fade">
-        <div class="cop-section-heading"><div><span class="cop-eyebrow">Costos vinculados</span><h6>Detalle de transporte y otros gastos</h6><small>Los costos de transporte afectan la utilidad operativa; otros gastos se descuentan de la utilidad neta.</small></div><div class="cop-section-total"><small>Total vinculado</small><strong>{{$money($linkedTotal)}}</strong></div></div>
+        <div class="cop-section-heading"><div><span class="cop-eyebrow">Costos vinculados</span><h6>Detalle de transporte y otros gastos</h6><small>El importe considerado es siempre el monto completo registrado. El IGV se muestra solo como información documental.</small></div><div class="cop-section-total"><small>Total vinculado</small><strong>{{$money($linkedTotal)}}</strong></div></div>
         @foreach([['Flete / recojo / traslado con comprobante', $freightCosts, $freightValue, 'fa-truck', 'operating'], ['Otros gastos / sin comprobante', $otherCosts, $otherTotal, 'fa-receipt', 'net']] as [$title, $rows, $subtotal, $icon, $impact])
             <div class="cop-cost-block"><div class="cop-cost-block-header"><div><span class="cop-cost-icon"><i class="fas {{$icon}}"></i></span><div><h6>{{$title}}</h6><small>{{$impact === 'operating' ? 'Se descuenta antes del impuesto a la renta.' : 'Se descuenta después del impuesto a la renta.'}}</small></div></div><span class="cop-cost-subtotal">Subtotal <strong>{{$money($subtotal)}}</strong></span></div>
             <div class="table-responsive cop-inner-table"><table class="table table-hover mb-0"><thead><tr><th>Tipo</th><th>Responsable</th><th>Documento</th><th>Clasificación</th><th>IGV</th><th>Fecha</th><th class="text-right">Importe considerado</th><th>Adjuntos</th><th>Observación</th></tr></thead><tbody>@forelse($rows as $cost)@php($officialDocument=\App\Models\WarehouseEntryExpense::isOfficialDocument($cost->document_type))@php($attachments=collect($cost->profitability_attachments ?? []))<tr><td><strong>{{$costTypeLabel($cost)}}</strong></td><td>{{$cost->provider_name ?: '-'}}</td><td>{{collect([\App\Models\WarehouseEntryExpense::documentTypeLabel($cost->document_type),$cost->document_series,$cost->document_number])->filter()->join(' ')}}</td><td><span class="cop-classification-badge {{$officialDocument ? 'is-operational' : 'is-other'}}"><i class="fas {{$officialDocument ? 'fa-check-circle' : 'fa-exclamation-circle'}}"></i>{{$officialDocument ? 'Con comprobante oficial' : 'Otros gastos / sin comprobante'}}</span></td><td><span class="badge {{$costHasRecognizedIgv($cost) ? 'badge-success' : 'badge-light'}}">{{$costHasRecognizedIgv($cost) ? 'Afecto IGV' : 'Sin IGV'}}</span></td><td>{{$cost->document_date?->format('d/m/Y') ?: '-'}}</td><td class="text-right font-weight-bold">{{$money($costValue($cost))}}</td><td>@include('admin.customer-order-profitability.partials.linked-cost-attachments', ['attachments' => $attachments])</td><td>{{$cost->description ?: '-'}}</td></tr>@empty<tr><td colspan="9" class="cop-empty"><i class="fas {{$icon}}"></i>Sin registros en esta categoría.</td></tr>@endforelse</tbody></table></div></div>

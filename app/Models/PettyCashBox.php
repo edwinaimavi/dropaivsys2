@@ -27,7 +27,7 @@ class PettyCashBox extends Model
     protected $fillable = [
         'code', 'company_id', 'currency_id', 'approved_amount_id', 'approved_amount_snapshot', 'period_month', 'period_year',
         'periodicity', 'start_date', 'end_date', 'approved_fund', 'previous_balance',
-        'fund_source_company_id', 'fund_source_bank_account_id',
+        'fund_source_company_id', 'fund_source_bank_account_id', 'fund_source_exchange_rate',
         'previous_petty_cash_id', 'opening_amount',
         'total_expenses', 'cash_balance', 'reimbursement_amount',
         'responsible_name', 'responsible_dni', 'supervisor_name', 'supervisor_dni',
@@ -45,6 +45,7 @@ class PettyCashBox extends Model
         'total_expenses' => 'decimal:2',
         'cash_balance' => 'decimal:2',
         'reimbursement_amount' => 'decimal:2',
+        'fund_source_exchange_rate' => 'decimal:6',
         'closed_at' => 'datetime',
         'reimbursed_at' => 'datetime',
     ];

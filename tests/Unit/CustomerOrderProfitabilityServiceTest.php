@@ -39,7 +39,7 @@ it('considera formal el costo cuando se adjunta luego la factura', function () {
     expect(invokeProfitabilityMethod('hasOfficialDocument', $cost))->toBeTrue();
 });
 
-it('reconoce el IGV de factura según el tipo y el campo afecto IGV', function () {
+it('mantiene el importe completo aunque una factura tenga IGV', function () {
     $cost = (object) [
         'document_type' => 'FACTURA',
         'affects_igv' => true,
@@ -50,7 +50,7 @@ it('reconoce el IGV de factura según el tipo y el campo afecto IGV', function (
         'documents' => [(object) ['document_type' => 'payment_proof', 'file_path' => 'pago.png', 'status' => 'ACTIVE']],
     ];
 
-    expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(100.0);
+    expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(118.0);
 });
 
 it('reconoce tipos actuales e históricos de transporte', function (array $cost, bool $expected) {
@@ -129,7 +129,7 @@ it('no calcula impuesto a la renta cuando la utilidad operativa es negativa', fu
         ->and($figures['net'])->toBe(-80.0);
 });
 
-it('usa la base de un flete afecto en modo sin IGV y su total en modo con IGV', function () {
+it('usa el importe completo del flete en ambos modos y conserva el IGV informativo', function () {
     $cost = (object) [
         'document_type' => 'FACTURA',
         'affects_igv' => true,
@@ -144,9 +144,42 @@ it('usa la base de un flete afecto en modo sin IGV y su total en modo con IGV', 
     $withoutIgv = invokeProfitabilityMethod('linkedCostFigures', collect([$cost]), collect(), 'without_igv');
     $withIgv = invokeProfitabilityMethod('linkedCostFigures', collect([$cost]), collect(), 'with_igv');
 
-    expect($withoutIgv['freightValue'])->toBe(209.66)
+    expect($withoutIgv['freightValue'])->toBe(247.40)
         ->and($withoutIgv['linkedIgv'])->toBe(37.74)
         ->and($withIgv['freightValue'])->toBe(247.40);
+});
+
+it('reproduce los costos vinculados de la OC 4505460426 sin retirar el IGV', function () {
+    $freight = collect([
+        (object) [
+            'document_type' => 'FACTURA', 'affects_igv' => true, 'igv_rate' => 18,
+            'amount' => 128.00, 'total_amount' => 128.00,
+            'taxable_amount' => 108.47, 'igv_amount' => 19.53,
+        ],
+        (object) [
+            'document_type' => 'FACTURA', 'affects_igv' => true, 'igv_rate' => 18,
+            'amount' => 25.00, 'total_amount' => 25.00,
+            'taxable_amount' => 21.19, 'igv_amount' => 3.81,
+        ],
+    ]);
+    $other = collect([
+        (object) [
+            'document_type' => 'SIN_COMPROBANTE', 'affects_igv' => false,
+            'amount' => 1150.00, 'total_amount' => 1150.00,
+        ],
+    ]);
+
+    $figures = invokeProfitabilityMethod('linkedCostFigures', $freight, $other, 'without_igv');
+    $profit = invokeProfitabilityMethod('profitFigures', 10000.00, 5000.00, $figures['freightValue'], $figures['otherValue']);
+
+    expect($figures['freightValue'])->toBe(153.0)
+        ->and($figures['otherValue'])->toBe(1150.0)
+        ->and($figures['linkedValue'])->toBe(1303.0)
+        ->and($figures['freightBase'])->toBe(129.66)
+        ->and($figures['freightIgv'])->toBe(23.34)
+        ->and($profit['operating'])->toBe(4847.0)
+        ->and($profit['incomeTax'])->toBe(1429.87)
+        ->and($profit['net'])->toBe(2267.13);
 });
 
 it('mantiene recibos y gastos sin comprobante por su importe completo', function () {

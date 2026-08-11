@@ -2,6 +2,7 @@
 
 
 use App\Http\Controllers\Admin\ArticleController;
+use App\Http\Controllers\Admin\BankTreasuryController;
 
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -57,6 +58,22 @@ Route::prefix('document-lookup')->name('document-lookup.')->group(function () {
 
 Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateTheme'])
     ->name('user-preferences.theme.update');
+
+Route::prefix('banks')->name('banks.')->group(function () {
+    Route::get('/', [BankTreasuryController::class, 'index'])->name('index');
+    Route::get('list', [BankTreasuryController::class, 'list'])->name('list');
+    Route::post('movements', [BankTreasuryController::class, 'storeMovement'])->name('movements.store');
+    Route::post('transfers', [BankTreasuryController::class, 'storeTransfer'])->name('transfers.store');
+    Route::post('reconciliations', [BankTreasuryController::class, 'storeReconciliation'])->name('reconciliations.store');
+    Route::get('accounts/{account}/movements/available', [BankTreasuryController::class, 'availableMovements'])->name('movements.available');
+    Route::put('accounts/{account}/opening-balance', [BankTreasuryController::class, 'configureOpeningBalance'])->name('opening-balance.update');
+    Route::get('accounts/{account}/export/{format}', [BankTreasuryController::class, 'accountExport'])->name('accounts.export');
+    Route::get('accounts/{account}', [BankTreasuryController::class, 'show'])->name('show');
+    Route::post('movements/{movement}/cancel', [BankTreasuryController::class, 'cancelMovement'])->name('movements.cancel');
+    Route::post('transfers/{transfer}/cancel', [BankTreasuryController::class, 'cancelTransfer'])->name('transfers.cancel');
+    Route::get('files/{type}/{id}', [BankTreasuryController::class, 'file'])->name('files');
+    Route::get('export/{format}', [BankTreasuryController::class, 'export'])->name('export');
+});
 
 Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty-cash.list');
 Route::get('petty-cash/previous-balance', [PettyCashController::class, 'previousBalance'])->name('petty-cash.previous-balance');

@@ -39,6 +39,7 @@
                         <div class="form-row">
                             <div class="form-group col-md-6"><label>Empresa origen *</label><select name="fund_source_company_id" id="pcr_fund_source_company_id" class="form-control" required><option value="">Seleccione empresa</option>@foreach($companies as $company)<option value="{{ $company->id }}">{{ $company->trade_name ?? $company->business_name }}</option>@endforeach</select></div>
                             <div class="form-group col-md-6"><label>Cuenta bancaria origen *</label><select name="fund_source_bank_account_id" id="pcr_fund_source_bank_account_id" class="form-control" required disabled><option value="">Seleccione primero una empresa</option></select><small id="pcr_fund_source_account_help" class="petty-source-help"></small></div>
+                            <div class="form-group col-md-4 d-none" id="pcr_fund_source_exchange_rate_group"><label>Tipo de cambio *</label><input type="number" step="0.000001" min="0.000001" name="fund_source_exchange_rate" id="pcr_fund_source_exchange_rate" class="form-control"><small class="petty-source-help">Necesario para normalizar la salida bancaria en soles.</small></div>
                         </div>
                         <label class="petty-source-upload petty-replenishment-upload" for="pcr_fund_source_receipts">
                             <i class="fas fa-cloud-upload-alt"></i><span><strong>Seleccionar comprobantes de reposición</strong><small>PDF, JPG, JPEG o PNG hasta 10 MB</small></span>

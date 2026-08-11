@@ -241,7 +241,7 @@ class CustomerOrderProfitabilityService
     {
         $breakdown = $this->costTaxBreakdown($cost);
 
-        return $mode === self::MODE_WITHOUT_IGV ? $breakdown['base'] : $breakdown['total'];
+        return $breakdown['total'];
     }
 
     private function linkedCostFigures($freight, $other, string $mode): array
@@ -256,8 +256,10 @@ class CustomerOrderProfitabilityService
         $otherGrossTotal = $sum($other, 'total');
         $otherBase = $sum($other, 'base');
         $otherIgv = $sum($other, 'igv');
-        $freightValue = $mode === self::MODE_WITHOUT_IGV ? $freightBase : $freightTotal;
-        $otherValue = $mode === self::MODE_WITHOUT_IGV ? $otherBase : $otherGrossTotal;
+        // Regla de negocio: el importe ingresado en costos vinculados es el costo real
+        // para rentabilidad. El desglose base/IGV se conserva solo como información.
+        $freightValue = $freightTotal;
+        $otherValue = $otherGrossTotal;
 
         return [
             'freightTotal' => $freightTotal,
