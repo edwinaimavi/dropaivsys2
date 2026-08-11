@@ -50,6 +50,10 @@ document.addEventListener('DOMContentLoaded', () => {
     $(document).on('click', '.cop-view', function () { openProfitability($(this).data('id')); });
     $(document).on('click', '.cop-view-order-documents', function () { showProfitabilityOrderDocuments($(this).attr('data-documents') || '[]'); });
     $(document).on('click', '.cop-summary-tab-link[data-tab-target]', function () { openProfitabilityTab($(this).data('tab-target')); });
+    $(document).on('click', '.cop-preview-linked-image', function (event) {
+        event.preventDefault();
+        showLinkedExpenseImage($(this).attr('href'), $(this).data('label'));
+    });
     $(document).on('keydown', '.cop-summary-tab-link[data-tab-target]', function (event) {
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -57,6 +61,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     $('#copRecalculate').on('click', function () { recalculate(this); });
+    $('#copLinkedDocumentPreviewModal').on('hidden.bs.modal', function () {
+        $('#copLinkedDocumentPreviewImage').attr('src', '');
+        if ($('#copDetailModal').hasClass('show')) $('body').addClass('modal-open');
+    });
 });
 
 function filters() { return { company_id: $('#cop_company').val(), customer_id: $('#cop_customer').val(), status: $('#cop_status').val(), date_from: $('#cop_from').val(), date_to: $('#cop_to').val(), search_order: $('#cop_search').val(), mode: $('#cop_mode').val() }; }
@@ -81,4 +89,5 @@ function renderNetProfit(value, type, row) { if (type !== 'display') return Numb
 function renderProfitability(value, type) { const amount = Number(value || 0); if (type !== 'display') return amount; const css = amount < 0 ? 'cop-profit-negative' : amount <= 5 ? 'cop-profit-low' : amount <= 15 ? 'cop-profit-medium' : 'cop-profit-high'; const icon = amount < 0 ? 'fa-arrow-down' : amount <= 5 ? 'fa-minus' : 'fa-arrow-up'; return `<span class="cop-profit-pill ${css}"><i class="fas ${icon}"></i>${amount.toFixed(2)}%</span>`; }
 function renderStatus(value, row) { return `<span class="cop-status-pill ${escapeHtml(row.status_class || 'cop-status-unknown')}"><i class="fas ${escapeHtml(row.status_icon || 'fa-minus')}"></i>${escapeHtml(value || 'Sin estado')}</span>`; }
 function showProfitabilityOrderDocuments(documents) { try { documents = JSON.parse(documents); } catch (_) { documents = []; } const rows = documents.length ? documents.map(document => `<tr><td>${escapeHtml(document.type || '-')}</td><td>${escapeHtml(document.file || '-')}</td><td>${escapeHtml(document.date || '-')}</td><td class="text-center"><a href="${escapeHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-info btn-xs"><i class="fas fa-eye mr-1"></i>Ver</a></td></tr>`).join('') : '<tr><td colspan="4" class="text-center text-muted py-4">No hay documentos adjuntos para esta orden.</td></tr>'; $('#copOrderDocumentsBody').html(`<table class="table table-sm table-hover mb-0"><thead><tr><th>Tipo</th><th>Archivo</th><th>Fecha</th><th class="text-center">Acción</th></tr></thead><tbody>${rows}</tbody></table>`); $('#copOrderDocumentsModal').modal('show'); }
+function showLinkedExpenseImage(url, label) { const image = $('#copLinkedDocumentPreviewImage'); const error = $('#copLinkedDocumentPreviewError'); $('#copLinkedDocumentPreviewTitle').text(label || 'Vista previa'); $('#copLinkedDocumentOpenTab').attr('href', url); error.addClass('d-none'); image.removeClass('d-none').off('error').one('error', function () { image.addClass('d-none'); error.removeClass('d-none'); }).attr('src', url); $('#copLinkedDocumentPreviewModal').modal('show'); }
 function escapeHtml(value) { return $('<div>').text(value).html(); }

@@ -5,7 +5,7 @@ use App\Services\CustomerOrderProfitabilityService;
 function invokeProfitabilityMethod(string $method, mixed ...$arguments): mixed
 {
     return (new ReflectionMethod(CustomerOrderProfitabilityService::class, $method))
-        ->invoke(new CustomerOrderProfitabilityService(), ...$arguments);
+        ->invoke(new CustomerOrderProfitabilityService, ...$arguments);
 }
 
 it('clasifica los documentos oficiales por su tipo', function (string $documentType, bool $expected) {
@@ -183,4 +183,40 @@ it('no trata una compra extranjera sin conversión como si fueran soles', functi
     ];
 
     expect(invokeProfitabilityMethod('supplierPurchasePenFactor', $item))->toBe(0.0);
+});
+
+it('expone subtotal, IGV, total e importe considerado por línea según el modo', function () {
+    $withoutIgv = (object) [
+        'taxable_base_pen' => 26047.80,
+        'line_total_pen' => 30736.40,
+    ];
+    $withIgv = clone $withoutIgv;
+
+    invokeProfitabilityMethod('applyPurchaseAmountsForMode', $withoutIgv, 'without_igv');
+    invokeProfitabilityMethod('applyPurchaseAmountsForMode', $withIgv, 'with_igv');
+
+    expect($withoutIgv->purchase_subtotal_pen)->toBe(26047.80)
+        ->and($withoutIgv->purchase_igv_pen)->toBe(4688.60)
+        ->and($withoutIgv->purchase_total_pen)->toBe(30736.40)
+        ->and($withoutIgv->considered_purchase_amount)->toBe(26047.80)
+        ->and($withIgv->considered_purchase_amount)->toBe(30736.40);
+});
+
+it('hace coincidir la suma de filas con la compra considerada en ambos modos', function () {
+    $sourceRows = [
+        (object) ['taxable_base_pen' => 22000.00, 'line_total_pen' => 25960.00],
+        (object) ['taxable_base_pen' => 4047.80, 'line_total_pen' => 4776.40],
+    ];
+
+    $sumForMode = function (string $mode) use ($sourceRows): float {
+        return round((float) collect($sourceRows)->map(function ($source) use ($mode) {
+            $item = clone $source;
+            invokeProfitabilityMethod('applyPurchaseAmountsForMode', $item, $mode);
+
+            return $item->considered_purchase_amount;
+        })->sum(), 2);
+    };
+
+    expect($sumForMode('without_igv'))->toBe(26047.80)
+        ->and($sumForMode('with_igv'))->toBe(30736.40);
 });

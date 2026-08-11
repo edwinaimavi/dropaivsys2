@@ -520,6 +520,8 @@ Route::post('customer-order-profitability/{customerPurchaseOrder}/recalculate', 
 Route::get('customer-order-profitability/{customerPurchaseOrder}/pdf', [CustomerOrderProfitabilityController::class, 'pdf'])->name('customer-order-profitability.pdf');
 Route::get('customer-order-profitability/{customerPurchaseOrder}/print', [CustomerOrderProfitabilityController::class, 'print'])->name('customer-order-profitability.print');
 Route::get('customer-order-profitability/{customerPurchaseOrder}/documents/{document}/view', [CustomerOrderProfitabilityController::class, 'viewDocument'])->name('customer-order-profitability.documents.view');
+Route::get('customer-order-profitability/{customerPurchaseOrder}/expense-documents/{expenseDocument}/view', [CustomerOrderProfitabilityController::class, 'viewExpenseDocument'])->name('customer-order-profitability.expense-documents.view');
+Route::get('customer-order-profitability/{customerPurchaseOrder}/expenses/{expense}/files/{type}/view', [CustomerOrderProfitabilityController::class, 'viewLegacyExpenseDocument'])->name('customer-order-profitability.expense-files.view');
 Route::get('customer-order-profitability/{customerPurchaseOrder}', [CustomerOrderProfitabilityController::class, 'show'])->name('customer-order-profitability.show');
 Route::get('customer-order-profitability', [CustomerOrderProfitabilityController::class, 'index'])->name('customer-order-profitability.index');
 
