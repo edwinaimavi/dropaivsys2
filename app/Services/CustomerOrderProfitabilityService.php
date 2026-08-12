@@ -66,13 +66,16 @@ class CustomerOrderProfitabilityService
             ->groupBy('entry_items.supplier_purchase_order_item_id', 'purchase_items.supplier_purchase_order_id')
             ->selectRaw('entry_items.supplier_purchase_order_item_id, purchase_items.supplier_purchase_order_id')
             ->selectRaw('SUM(entry_items.subtotal) as subtotal, SUM(entry_items.tax_amount) as igv, SUM(entry_items.line_total) as total')
+            ->selectRaw('SUM(CASE WHEN entries.affect_igv = 1 THEN entry_items.subtotal ELSE entry_items.line_total END) as accounting_base')
+            ->selectRaw('SUM(CASE WHEN entries.affect_igv = 1 THEN entry_items.line_total ELSE 0 END) as affected_total')
+            ->selectRaw('SUM(CASE WHEN entries.affect_igv = 1 THEN 0 ELSE entry_items.line_total END) as unaffected_total')
             ->get()
             ->keyBy('supplier_purchase_order_item_id');
         $supplierOrdersWithEntries = $warehousePurchaseAmounts
             ->pluck('supplier_purchase_order_id')
             ->map(fn ($id) => (int) $id)
             ->unique();
-        $supplierItems->each(function ($item) use ($warehousePurchaseAmounts, $supplierOrdersWithEntries) {
+        $supplierItems->each(function ($item) use ($warehousePurchaseAmounts, $supplierOrdersWithEntries, $mode) {
             $factor = $this->supplierPurchasePenFactor($item);
             $useWarehouseAmounts = $supplierOrdersWithEntries->contains((int) $item->supplier_purchase_order_id);
             $warehouseAmount = $warehousePurchaseAmounts->get($item->id);
@@ -81,9 +84,11 @@ class CustomerOrderProfitabilityService
             $item->pen_conversion_factor = $factor;
             $item->line_total_pen = round($sourceAmounts['total'] * $factor, 2);
             $item->taxable_base_pen = round($sourceAmounts['subtotal'] * $factor, 2);
+            $item->purchase_affected_total_pen = round($sourceAmounts['affected_total'] * $factor, 2);
+            $item->purchase_unaffected_total_pen = round($sourceAmounts['unaffected_total'] * $factor, 2);
             $item->unit_price_pen = round((float) $item->unit_price * $factor, 4);
             $item->purchase_amount_source = $sourceAmounts['source'];
-            $this->applyConsideredPurchaseAmounts($item);
+            $this->applyConsideredPurchaseAmounts($item, $mode);
         });
         $supplierOrderIds = $supplierItems->pluck('supplier_purchase_order_id')->unique();
         $entryIds = DB::table('warehouse_entries as entries')
@@ -102,10 +107,13 @@ class CustomerOrderProfitabilityService
             'base' => $saleBase,
             'igv' => $saleIgv,
             'considered' => $saleValue,
-        ] = $this->saleAmounts($order, $activeSaleItems);
+            'profitability' => $saleProfitValue,
+        ] = $this->saleAmounts($order, $activeSaleItems, $mode);
         $purchaseTotal = round((float) $supplierItems->sum('line_total_pen'), 2);
         $purchaseBase = round((float) $supplierItems->sum('taxable_base_pen'), 2);
         $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
+        $purchaseValue = $purchaseTotal;
+        $purchaseProfitValue = $this->purchaseProfitabilityValue($supplierItems, $mode);
         $withoutReceipt = $costs->reject(fn ($cost) => $this->hasOfficialDocument($cost));
         ['freight' => $operationalTransportCosts, 'other' => $otherOrUnsupportedCosts] = $this->classifyLinkedCosts($costs);
         $freight = $operationalTransportCosts;
@@ -122,14 +130,12 @@ class CustomerOrderProfitabilityService
         $linkedGrossTotal = $linkedFigures['linkedGrossTotal'];
         $linkedBase = $linkedFigures['linkedBase'];
         $linkedIgv = $linkedFigures['linkedIgv'];
-        $linkedTotal = $linkedFigures['linkedValue'];
+        $linkedProfitValue = $linkedFigures['linkedValue'];
+        $linkedTotal = $linkedGrossTotal;
         $withoutReceiptTotal = round((float) $withoutReceipt->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
-        // La rentabilidad operativa usa siempre los desembolsos e ingresos totales reales.
-        // Base e IGV continúan disponibles únicamente para el desglose contable.
-        $purchaseValue = $purchaseTotal;
-        $figures = $this->profitFigures($saleValue, $purchaseValue, $freightValue, $otherTotal);
+        $figures = $this->profitFigures($saleProfitValue, $purchaseProfitValue, $freightValue, $otherTotal);
         ['gross' => $gross, 'operating' => $operating, 'incomeTax' => $incomeTax, 'net' => $net] = $figures;
-        $denominator = $purchaseValue + $freightValue + $otherTotal;
+        $denominator = $purchaseProfitValue + $freightValue + $otherTotal;
         $percentage = $denominator > 0 ? round(($net / $denominator) * 100, 2) : 0.0;
 
         $customerItemByArticle = $order->items->where('status', '!=', 'deleted')->keyBy('article_id');
@@ -155,7 +161,7 @@ class CustomerOrderProfitabilityService
             $warnings[] = 'La orden presenta utilidad negativa.';
         }
 
-        return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
+        return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'saleProfitValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'purchaseProfitValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'linkedProfitValue', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
             'igvRate' => self::IGV_RATE, 'incomeTaxRate' => self::INCOME_TAX_RATE,
             'igvSales' => $saleIgv, 'igvPurchases' => $purchaseIgv, 'igvLinkedCosts' => $linkedIgv,
             'igvDifference' => round($saleIgv - $purchaseIgv - $linkedIgv, 2),
@@ -180,13 +186,11 @@ class CustomerOrderProfitabilityService
 
     private function classifyLinkedCosts($costs): array
     {
-        $freight = collect($costs)->filter(fn ($cost) => $this->isTransportCost($cost) && $this->hasOfficialDocument($cost)
-        )->values();
+        $official = collect($costs)->filter(fn ($cost) => $this->hasOfficialDocument($cost))->values();
 
         return [
-            'freight' => $freight,
-            'other' => collect($costs)->reject(fn ($cost) => $this->isTransportCost($cost) && $this->hasOfficialDocument($cost)
-            )->values(),
+            'freight' => $official,
+            'other' => collect($costs)->reject(fn ($cost) => $this->hasOfficialDocument($cost))->values(),
         ];
     }
 
@@ -213,7 +217,7 @@ class CustomerOrderProfitabilityService
             && WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'));
     }
 
-    private function saleAmounts(CustomerPurchaseOrder $order, $activeSaleItems): array
+    private function saleAmounts(CustomerPurchaseOrder $order, $activeSaleItems, string $mode = self::MODE_WITHOUT_IGV): array
     {
         $itemsTotal = round((float) collect($activeSaleItems)->sum(
             fn ($item) => (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))
@@ -223,7 +227,13 @@ class CustomerOrderProfitabilityService
             : $itemsTotal;
 
         if (! $order->affect_igv) {
-            return ['total' => $saleTotal, 'base' => $saleTotal, 'igv' => 0.0, 'considered' => $saleTotal];
+            return [
+                'total' => $saleTotal,
+                'base' => $saleTotal,
+                'igv' => 0.0,
+                'considered' => $saleTotal,
+                'profitability' => $saleTotal,
+            ];
         }
 
         $storedBase = round((float) $order->subtotal_taxed + (float) $order->subtotal_exonerated, 2);
@@ -236,7 +246,13 @@ class CustomerOrderProfitabilityService
         $storedIgv = round((float) $order->igv, 2);
         $saleIgv = $storedIgv > 0 ? $storedIgv : round($saleTotal - $saleBase, 2);
 
-        return ['total' => $saleTotal, 'base' => $saleBase, 'igv' => $saleIgv, 'considered' => $saleTotal];
+        return [
+            'total' => $saleTotal,
+            'base' => $saleBase,
+            'igv' => $saleIgv,
+            'considered' => $saleTotal,
+            'profitability' => $this->profitabilityAmount($saleTotal, true, $mode),
+        ];
     }
 
     private function costTaxBreakdown($cost): array
@@ -267,11 +283,26 @@ class CustomerOrderProfitabilityService
     {
         $breakdown = $this->costTaxBreakdown($cost);
 
-        return $breakdown['total'];
+        return $this->profitabilityAmount(
+            $breakdown['total'],
+            $this->costHasIgv($cost),
+            $mode,
+            (float) data_get($cost, 'igv_rate', self::IGV_RATE)
+        );
     }
 
     private function linkedCostFigures($freight, $other, string $mode): array
     {
+        collect($freight)->concat($other)->each(function ($cost) use ($mode) {
+            $value = $this->costValueForMode($cost, $mode);
+
+            if (method_exists($cost, 'setAttribute')) {
+                $cost->setAttribute('profitability_amount', $value);
+            } else {
+                $cost->profitability_amount = $value;
+            }
+        });
+
         $sum = function ($costs, string $field): float {
             return round((float) $costs->sum(fn ($cost) => $this->costTaxBreakdown($cost)[$field]), 2);
         };
@@ -282,10 +313,8 @@ class CustomerOrderProfitabilityService
         $otherGrossTotal = $sum($other, 'total');
         $otherBase = $sum($other, 'base');
         $otherIgv = $sum($other, 'igv');
-        // Regla de negocio: el importe ingresado en costos vinculados es el costo real
-        // para rentabilidad. El desglose base/IGV se conserva solo como información.
-        $freightValue = $freightTotal;
-        $otherValue = $otherGrossTotal;
+        $freightValue = round((float) $freight->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
+        $otherValue = round((float) $other->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
 
         return [
             'freightTotal' => $freightTotal,
@@ -301,6 +330,32 @@ class CustomerOrderProfitabilityService
             'linkedIgv' => round($freightIgv + $otherIgv, 2),
             'linkedValue' => round($freightValue + $otherValue, 2),
         ];
+    }
+
+    private function profitabilityAmount(
+        float $total,
+        bool $affectsIgv,
+        string $mode,
+        float $igvRate = self::IGV_RATE
+    ): float {
+        if ($mode !== self::MODE_WITH_IGV || ! $affectsIgv) {
+            return round($total, 2);
+        }
+
+        $igvRate = $igvRate > 0 ? $igvRate : self::IGV_RATE;
+
+        return round($total / (1 + ($igvRate / 100)), 2);
+    }
+
+    private function purchaseProfitabilityValue($supplierItems, string $mode): float
+    {
+        $affectedTotal = (float) collect($supplierItems)->sum('purchase_affected_total_pen');
+        $unaffectedTotal = (float) collect($supplierItems)->sum('purchase_unaffected_total_pen');
+
+        return round(
+            $this->profitabilityAmount($affectedTotal, true, $mode) + $unaffectedTotal,
+            2
+        );
     }
 
     private function profitFigures(float $saleValue, float $purchaseValue, float $freightValue, float $otherValue): array
@@ -337,12 +392,19 @@ class CustomerOrderProfitabilityService
         return $exchangeRate > 0 ? $exchangeRate : 0.0;
     }
 
-    private function applyConsideredPurchaseAmounts(object $item): void
+    private function applyConsideredPurchaseAmounts(object $item, string $mode = self::MODE_WITHOUT_IGV): void
     {
         $item->purchase_subtotal_pen = round((float) $item->taxable_base_pen, 2);
         $item->purchase_total_pen = round((float) $item->line_total_pen, 2);
         $item->purchase_igv_pen = round($item->purchase_total_pen - $item->purchase_subtotal_pen, 2);
         $item->considered_purchase_amount = $item->purchase_total_pen;
+        $affectsIgv = (bool) ($item->order_affect_igv ?? false);
+        $affectedTotal = (float) ($item->purchase_affected_total_pen ?? ($affectsIgv ? $item->purchase_total_pen : 0));
+        $unaffectedTotal = (float) ($item->purchase_unaffected_total_pen ?? ($affectsIgv ? 0 : $item->purchase_total_pen));
+        $item->profitability_purchase_amount = round(
+            $this->profitabilityAmount($affectedTotal, true, $mode) + $unaffectedTotal,
+            2
+        );
     }
 
     private function purchaseSourceAmounts(object $item, ?object $warehouseAmount, bool $useWarehouseAmounts): array
@@ -351,10 +413,10 @@ class CustomerOrderProfitabilityService
             $total = (float) ($warehouseAmount?->total ?? 0);
 
             return [
-                'subtotal' => (bool) ($item->order_affect_igv ?? false)
-                    ? (float) ($warehouseAmount?->subtotal ?? 0)
-                    : $total,
+                'subtotal' => (float) ($warehouseAmount?->accounting_base ?? $warehouseAmount?->subtotal ?? 0),
                 'total' => $total,
+                'affected_total' => (float) ($warehouseAmount?->affected_total ?? 0),
+                'unaffected_total' => (float) ($warehouseAmount?->unaffected_total ?? 0),
                 'source' => 'warehouse_entry',
             ];
         }
@@ -368,6 +430,8 @@ class CustomerOrderProfitabilityService
                 ? (float) ($item->taxable_base ?? $item->subtotal ?? ($total / 1.18))
                 : $total,
             'total' => $total,
+            'affected_total' => (bool) ($item->order_affect_igv ?? false) ? $total : 0.0,
+            'unaffected_total' => (bool) ($item->order_affect_igv ?? false) ? 0.0 : $total,
             'source' => 'supplier_purchase_order',
         ];
     }

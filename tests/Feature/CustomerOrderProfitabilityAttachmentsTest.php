@@ -1,15 +1,21 @@
 <?php
 
 use App\Http\Controllers\Admin\CustomerOrderProfitabilityController;
+use App\Models\Article;
+use App\Models\Category;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\Supplier;
+use App\Models\SupplierPurchaseOrder;
+use App\Models\SupplierPurchaseOrderItem;
+use App\Models\Unit;
 use App\Models\User;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
+use App\Models\WarehouseEntryItem;
 use App\Services\CustomerOrderProfitabilityService;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
@@ -161,10 +167,19 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         'saleBase' => 0,
         'saleIgv' => 0,
         'saleValue' => 0,
+        'saleProfitValue' => 0,
         'purchaseValue' => 0,
+        'purchaseTotal' => 0,
+        'purchaseBase' => 0,
+        'purchaseIgv' => 0,
+        'purchaseProfitValue' => 0,
         'freightValue' => 50,
         'otherTotal' => 150,
         'linkedTotal' => 200,
+        'linkedGrossTotal' => 200,
+        'linkedBase' => 200,
+        'linkedIgv' => 0,
+        'linkedProfitValue' => 200,
         'gross' => 0,
         'operating' => -50,
         'incomeTax' => 0,
@@ -286,10 +301,19 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         'saleBase' => 10000,
         'saleIgv' => 0,
         'saleValue' => 10000,
+        'saleProfitValue' => 10000,
         'purchaseValue' => 5000,
+        'purchaseTotal' => 5000,
+        'purchaseBase' => 5000,
+        'purchaseIgv' => 0,
+        'purchaseProfitValue' => 5000,
         'freightValue' => 153,
         'otherTotal' => 1150,
         'linkedTotal' => 1303,
+        'linkedGrossTotal' => 1303,
+        'linkedBase' => 1279.66,
+        'linkedIgv' => 23.34,
+        'linkedProfitValue' => 1303,
         'gross' => 5000,
         'operating' => 4847,
         'incomeTax' => 1429.87,
@@ -307,13 +331,128 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         'orderDocuments' => collect(),
     ])->render();
 
-    expect($html)->toContain('Subtotal <strong>153.00</strong>')
+    expect($html)->toContain('Usado en cálculo <strong>153.00</strong>')
         ->toContain('<td class="text-right font-weight-bold">128.00</td>')
         ->toContain('<td class="text-right font-weight-bold">25.00</td>')
-        ->toContain('Subtotal <strong>1,150.00</strong>')
+        ->toContain('Usado en cálculo <strong>1,150.00</strong>')
         ->toContain('4,847.00')
         ->toContain('1,429.87')
         ->toContain('2,267.13')
         ->toContain('35.97%')
-        ->not->toContain('Subtotal <strong>129.66</strong>');
+        ->not->toContain('Usado en cálculo <strong>129.66</strong>');
+});
+
+it('calcula el modal con bases sin IGV y conserva visibles los totales registrados', function () {
+    $category = Category::create([
+        'description' => 'CATEGORÍA DE PRUEBA',
+        'code' => 'CAT-RENT',
+        'type' => 'PRODUCTO COMERCIAL',
+        'status' => 'ACTIVE',
+    ]);
+    $unit = Unit::create([
+        'abbreviation' => 'UND-RENT',
+        'description' => 'UNIDAD DE PRUEBA',
+        'status' => 'ACTIVE',
+    ]);
+    $article = Article::create([
+        'code' => 'ART-RENT',
+        'category_id' => $category->id,
+        'unit_id' => $unit->id,
+        'legal_name' => 'ARTÍCULO RENTABILIDAD',
+        'billing_name' => 'ARTÍCULO RENTABILIDAD',
+        'status' => 'ACTIVE',
+    ]);
+    $this->order->update([
+        'affect_igv' => true,
+        'subtotal_taxed' => 15752.54,
+        'igv' => 2835.46,
+        'grand_total' => 18588.00,
+    ]);
+    $customerItem = $this->order->items()->create([
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 1,
+        'unit_price' => 18588.00,
+        'subtotal' => 15752.54,
+        'tax_amount' => 2835.46,
+        'line_total' => 18588.00,
+        'status' => 'active',
+    ]);
+    $supplierOrder = SupplierPurchaseOrder::create([
+        'code' => 'OCP-RENT-001',
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->currency->id,
+        'payment_currency_id' => $this->currency->id,
+        'customer_purchase_order_id' => $this->order->id,
+        'order_type' => 'local',
+        'affect_igv' => true,
+        'subtotal' => 12671.19,
+        'igv' => 2280.81,
+        'grand_total' => 14952.00,
+        'total_purchase_currency' => 14952.00,
+        'total_payment_currency' => 14952.00,
+        'total_pen' => 14952.00,
+        'status' => 'registered',
+    ]);
+    $supplierItem = SupplierPurchaseOrderItem::create([
+        'supplier_purchase_order_id' => $supplierOrder->id,
+        'article_id' => $article->id,
+        'customer_purchase_order_item_id' => $customerItem->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 1,
+        'unit_price' => 14952.00,
+        'subtotal' => 12671.19,
+        'tax_amount' => 2280.81,
+        'line_total' => 14952.00,
+        'total_with_igv' => 14952.00,
+        'taxable_base' => 12671.19,
+        'igv_amount' => 2280.81,
+        'status' => 'active',
+    ]);
+    $this->entry->update([
+        'supplier_purchase_order_id' => $supplierOrder->id,
+        'affect_igv' => true,
+        'subtotal' => 12671.19,
+        'igv' => 2280.81,
+        'grand_total' => 14952.00,
+    ]);
+    WarehouseEntryItem::create([
+        'warehouse_entry_id' => $this->entry->id,
+        'supplier_purchase_order_item_id' => $supplierItem->id,
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 1,
+        'unit_price' => 14952.00,
+        'subtotal' => 12671.19,
+        'tax_amount' => 2280.81,
+        'line_total' => 14952.00,
+        'status' => 'active',
+    ]);
+    profitabilityAttachmentCost([
+        'expense_category' => 'freight_transport',
+        'expense_type' => 'agency_freight',
+        'document_type' => 'FACTURA',
+        'amount' => 27.50,
+        'affects_igv' => true,
+        'igv_rate' => 18,
+        'taxable_amount' => 23.31,
+        'igv_amount' => 4.19,
+        'total_amount' => 27.50,
+    ]);
+
+    $data = app(CustomerOrderProfitabilityService::class)->calculate(
+        $this->order->fresh(),
+        CustomerOrderProfitabilityService::MODE_WITH_IGV
+    );
+
+    expect($data['saleValue'])->toBe(18588.00)
+        ->and($data['purchaseValue'])->toBe(14952.00)
+        ->and($data['saleProfitValue'])->toBe(15752.54)
+        ->and($data['purchaseProfitValue'])->toBe(12671.19)
+        ->and($data['gross'])->toBe(3081.35)
+        ->and($data['freightValue'])->toBe(23.31)
+        ->and($data['operating'])->toBe(3058.04)
+        ->and($data['linkedTotal'])->toBe(27.50)
+        ->and($data['linkedProfitValue'])->toBe(23.31);
 });
