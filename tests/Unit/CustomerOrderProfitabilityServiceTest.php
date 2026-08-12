@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\CustomerPurchaseOrder;
+use App\Models\CustomerPurchaseOrderItem;
 use App\Services\CustomerOrderProfitabilityService;
 
 function invokeProfitabilityMethod(string $method, mixed ...$arguments): mixed
@@ -51,6 +53,24 @@ it('mantiene el importe completo aunque una factura tenga IGV', function () {
     ];
 
     expect(invokeProfitabilityMethod('costValueForMode', $cost, 'without_igv'))->toBe(118.0);
+});
+
+it('usa el total registrado de un costo vinculado afecto a IGV', function () {
+    $cost = (object) [
+        'document_type' => 'FACTURA',
+        'affects_igv' => true,
+        'igv_rate' => 18,
+        'amount' => 128.00,
+        'total_amount' => 128.00,
+        'taxable_amount' => 108.47,
+        'igv_amount' => 19.53,
+    ];
+
+    $figures = invokeProfitabilityMethod('linkedCostFigures', collect([$cost]), collect(), 'without_igv');
+
+    expect($figures['linkedValue'])->toBe(128.0)
+        ->and($figures['linkedBase'])->toBe(108.47)
+        ->and($figures['linkedIgv'])->toBe(19.53);
 });
 
 it('reconoce tipos actuales e históricos de transporte', function (array $cost, bool $expected) {
@@ -218,19 +238,19 @@ it('no trata una compra extranjera sin conversión como si fueran soles', functi
     expect(invokeProfitabilityMethod('supplierPurchasePenFactor', $item))->toBe(0.0);
 });
 
-it('considera el total con IGV cuando la OC proveedor es afecta', function () {
+it('considera el total de 14700 cuando la OC proveedor es afecta a IGV', function () {
     $purchase = (object) [
-        'taxable_base_pen' => 26047.80,
-        'line_total_pen' => 30736.40,
+        'taxable_base_pen' => 12457.63,
+        'line_total_pen' => 14700.00,
         'order_affect_igv' => true,
     ];
 
     invokeProfitabilityMethod('applyConsideredPurchaseAmounts', $purchase);
 
-    expect($purchase->purchase_subtotal_pen)->toBe(26047.80)
-        ->and($purchase->purchase_igv_pen)->toBe(4688.60)
-        ->and($purchase->purchase_total_pen)->toBe(30736.40)
-        ->and($purchase->considered_purchase_amount)->toBe(30736.40);
+    expect($purchase->purchase_subtotal_pen)->toBe(12457.63)
+        ->and($purchase->purchase_igv_pen)->toBe(2242.37)
+        ->and($purchase->purchase_total_pen)->toBe(14700.00)
+        ->and($purchase->considered_purchase_amount)->toBe(14700.00);
 });
 
 it('considera el importe normal de una OC proveedor no afecta a IGV', function () {
@@ -274,4 +294,33 @@ it('reproduce el caso 4505470202 con la compra total como costo real', function 
     $figures = invokeProfitabilityMethod('profitFigures', 43781.50, 30736.40, 0, 0);
 
     expect($figures['gross'])->toBe(13045.10);
+});
+
+it('usa el total de la OC cliente afecta a IGV como venta considerada', function () {
+    $order = new CustomerPurchaseOrder([
+        'affect_igv' => true,
+        'subtotal_taxed' => 14237.29,
+        'subtotal_exonerated' => 0,
+        'igv' => 2562.71,
+        'grand_total' => 16800.00,
+    ]);
+    $items = collect([
+        new CustomerPurchaseOrderItem([
+            'quantity' => 1,
+            'unit_price' => 16800.00,
+            'subtotal' => 14237.29,
+            'tax_amount' => 2562.71,
+            'line_total' => 16800.00,
+            'status' => 'active',
+        ]),
+    ]);
+
+    $sale = invokeProfitabilityMethod('saleAmounts', $order, $items);
+    $profit = invokeProfitabilityMethod('profitFigures', $sale['total'], 14700.00, 0, 0);
+
+    expect($sale['base'])->toBe(14237.29)
+        ->and($sale['igv'])->toBe(2562.71)
+        ->and($sale['total'])->toBe(16800.00)
+        ->and($sale['considered'])->toBe(16800.00)
+        ->and($profit['gross'])->toBe(2100.00);
 });

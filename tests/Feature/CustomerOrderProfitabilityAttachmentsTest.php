@@ -185,8 +185,10 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
     expect($html)->toContain('Ver comprobante')
         ->toContain('Ver pago')
         ->toContain('Ver recibo interno')
+        ->toContain('Venta considerada')
         ->toContain('Sin adjuntos')
         ->toContain('Archivo no encontrado')
+        ->not->toContain('Venta sin IGV')
         ->not->toContain('Comprobante: Sí');
 });
 

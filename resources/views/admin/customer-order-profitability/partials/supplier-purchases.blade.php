@@ -8,7 +8,7 @@
 </div>
 <div class="cop-purchase-mode-note">
     <i class="fas fa-info-circle"></i>
-    La compra considerada respeta la condición IGV de cada OC proveedor y prioriza los importes registrados en Almacén.
+    La compra considerada usa el total real, incluido IGV cuando corresponde, y prioriza los importes registrados en Almacén.
 </div>
 <div class="table-responsive cop-inner-table">
     <table class="table table-hover mb-0">
