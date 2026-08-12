@@ -16,12 +16,15 @@ function profitabilitySupplierItem(float $subtotal, float $total, bool $affectIg
         'purchase_igv_pen' => round($total - $subtotal, 2),
         'purchase_total_pen' => $total,
         'considered_purchase_amount' => $affectIgv ? $total : $subtotal,
+        'purchase_affected_total_pen' => $affectIgv ? $total : 0,
+        'purchase_unaffected_total_pen' => $affectIgv ? 0 : $total,
+        'profitability_purchase_amount' => $affectIgv ? $subtotal : $total,
         'purchase_amount_source' => 'warehouse_entry',
         'order_status' => 'registered',
     ];
 }
 
-it('muestra la compra total afecta a IGV aunque el análisis esté en modo sin IGV', function () {
+it('muestra la base de la compra afecta como importe usado en utilidad', function () {
     $items = collect([
         profitabilitySupplierItem(22000.00, 25960.00),
         profitabilitySupplierItem(4047.80, 4776.40),
@@ -30,21 +33,23 @@ it('muestra la compra total afecta a IGV aunque el análisis esté en modo sin I
         'supplierItems' => $items,
         'supplierOrderIds' => collect([1]),
         'purchaseValue' => 30736.40,
+        'purchaseProfitValue' => 26047.80,
         'money' => fn ($value) => number_format((float) $value, 2),
     ])->render();
 
-    expect($html)->toContain('Compra considerada')
-        ->toContain('S/ 30,736.40')
+    expect($html)->toContain('Compra para utilidad')
+        ->toContain('S/ 26,047.80')
         ->toContain('Subtotal')
         ->toContain('IGV')
         ->toContain('Total compra')
         ->toContain('S/ 25,960.00')
         ->toContain('S/ 4,776.40')
+        ->toContain('Base sin IGV')
         ->toContain('Según Almacén')
         ->not->toContain('Total sin IGV en soles');
 });
 
-it('muestra como compra considerada el importe normal de una compra no afecta', function () {
+it('muestra completo el importe usado de una compra no afecta', function () {
     $items = collect([
         profitabilitySupplierItem(1200.00, 1200.00, false),
     ]);
@@ -52,11 +57,13 @@ it('muestra como compra considerada el importe normal de una compra no afecta', 
         'supplierItems' => $items,
         'supplierOrderIds' => collect([1]),
         'purchaseValue' => 1200.00,
+        'purchaseProfitValue' => 1200.00,
         'money' => fn ($value) => number_format((float) $value, 2),
     ])->render();
 
-    expect($html)->toContain('Compra considerada')
+    expect($html)->toContain('Compra para utilidad')
         ->toContain('S/ 1,200.00')
         ->toContain('S/ 0.00')
+        ->toContain('Importe no afecto')
         ->not->toContain('modo de cálculo seleccionado');
 });

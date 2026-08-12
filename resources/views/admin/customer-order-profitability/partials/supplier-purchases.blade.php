@@ -4,11 +4,11 @@
         <h6>Compras vinculadas a la orden</h6>
         <small>{{count($supplierOrderIds)}} orden(es) de compra a proveedor · importes normalizados a soles</small>
     </div>
-    <div class="cop-section-total"><small>Compra considerada</small><strong>S/ {{$money($purchaseValue)}}</strong></div>
+    <div class="cop-section-total"><small>Compra para utilidad</small><strong>S/ {{$money($purchaseProfitValue)}}</strong></div>
 </div>
 <div class="cop-purchase-mode-note">
     <i class="fas fa-info-circle"></i>
-    La compra considerada usa el total real, incluido IGV cuando corresponde, y prioriza los importes registrados en Almacén.
+    El total registrado se conserva como referencia. Las compras afectas se normalizan a base sin IGV para calcular la utilidad.
 </div>
 <div class="table-responsive cop-inner-table">
     <table class="table table-hover mb-0">
@@ -20,7 +20,7 @@
                 <th class="text-right">Subtotal</th>
                 <th class="text-right">IGV</th>
                 <th class="text-right">Total compra</th>
-                <th class="text-right">Compra considerada</th>
+                <th class="text-right">Usado en utilidad</th>
                 <th>Estado</th>
             </tr>
         </thead>
@@ -40,7 +40,7 @@
                     <td class="text-right text-nowrap">S/ {{$money($item->purchase_subtotal_pen)}}</td>
                     <td class="text-right text-nowrap">S/ {{$money($item->purchase_igv_pen)}}</td>
                     <td class="text-right text-nowrap">S/ {{$money($item->purchase_total_pen)}}</td>
-                    <td class="text-right"><strong class="cop-purchase-considered">S/ {{$money($item->considered_purchase_amount)}}</strong></td>
+                    <td class="text-right"><strong class="cop-purchase-considered">S/ {{$money($item->profitability_purchase_amount)}}</strong><small class="cop-purchase-source">{{$item->purchase_affected_total_pen > 0 ? 'Base sin IGV' : 'Importe no afecto'}}</small></td>
                     <td>
                         <span class="cop-status-pill {{$supplierStatus['class']}}"><i class="fas {{$supplierStatus['icon']}}"></i>{{$supplierStatus['label']}}</span>
                         <small class="cop-purchase-source">{{$item->purchase_amount_source === 'warehouse_entry' ? 'Según Almacén' : 'Según OC proveedor'}}</small>

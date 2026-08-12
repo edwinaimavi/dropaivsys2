@@ -335,10 +335,10 @@ class CustomerOrderProfitabilityService
     private function profitabilityAmount(
         float $total,
         bool $affectsIgv,
-        string $mode,
+        string $_mode,
         float $igvRate = self::IGV_RATE
     ): float {
-        if ($mode !== self::MODE_WITH_IGV || ! $affectsIgv) {
+        if (! $affectsIgv) {
             return round($total, 2);
         }
 

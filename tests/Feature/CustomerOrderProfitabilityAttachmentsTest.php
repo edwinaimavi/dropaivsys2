@@ -387,12 +387,12 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'customer_purchase_order_id' => $this->order->id,
         'order_type' => 'local',
         'affect_igv' => true,
-        'subtotal' => 12671.19,
+        'subtotal' => 12671.16,
         'igv' => 2280.81,
-        'grand_total' => 14952.00,
-        'total_purchase_currency' => 14952.00,
-        'total_payment_currency' => 14952.00,
-        'total_pen' => 14952.00,
+        'grand_total' => 14951.97,
+        'total_purchase_currency' => 14951.97,
+        'total_payment_currency' => 14951.97,
+        'total_pen' => 14951.97,
         'status' => 'registered',
     ]);
     $supplierItem = SupplierPurchaseOrderItem::create([
@@ -401,21 +401,21 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'customer_purchase_order_item_id' => $customerItem->id,
         'billing_name_snapshot' => $article->billing_name,
         'quantity' => 1,
-        'unit_price' => 14952.00,
-        'subtotal' => 12671.19,
+        'unit_price' => 14951.97,
+        'subtotal' => 12671.16,
         'tax_amount' => 2280.81,
-        'line_total' => 14952.00,
-        'total_with_igv' => 14952.00,
-        'taxable_base' => 12671.19,
+        'line_total' => 14951.97,
+        'total_with_igv' => 14951.97,
+        'taxable_base' => 12671.16,
         'igv_amount' => 2280.81,
         'status' => 'active',
     ]);
     $this->entry->update([
         'supplier_purchase_order_id' => $supplierOrder->id,
         'affect_igv' => true,
-        'subtotal' => 12671.19,
+        'subtotal' => 12671.16,
         'igv' => 2280.81,
-        'grand_total' => 14952.00,
+        'grand_total' => 14951.97,
     ]);
     WarehouseEntryItem::create([
         'warehouse_entry_id' => $this->entry->id,
@@ -423,10 +423,10 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'article_id' => $article->id,
         'billing_name_snapshot' => $article->billing_name,
         'quantity' => 1,
-        'unit_price' => 14952.00,
-        'subtotal' => 12671.19,
+        'unit_price' => 14951.97,
+        'subtotal' => 12671.16,
         'tax_amount' => 2280.81,
-        'line_total' => 14952.00,
+        'line_total' => 14951.97,
         'status' => 'active',
     ]);
     profitabilityAttachmentCost([
@@ -443,16 +443,17 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
 
     $data = app(CustomerOrderProfitabilityService::class)->calculate(
         $this->order->fresh(),
-        CustomerOrderProfitabilityService::MODE_WITH_IGV
+        CustomerOrderProfitabilityService::MODE_WITHOUT_IGV
     );
 
     expect($data['saleValue'])->toBe(18588.00)
-        ->and($data['purchaseValue'])->toBe(14952.00)
+        ->and($data['purchaseValue'])->toBe(14951.97)
         ->and($data['saleProfitValue'])->toBe(15752.54)
-        ->and($data['purchaseProfitValue'])->toBe(12671.19)
-        ->and($data['gross'])->toBe(3081.35)
+        ->and($data['purchaseProfitValue'])->toBe(12671.16)
+        ->and($data['gross'])->toBe(3081.38)
         ->and($data['freightValue'])->toBe(23.31)
-        ->and($data['operating'])->toBe(3058.04)
+        ->and($data['operating'])->toBe(3058.07)
         ->and($data['linkedTotal'])->toBe(27.50)
-        ->and($data['linkedProfitValue'])->toBe(23.31);
+        ->and($data['linkedProfitValue'])->toBe(23.31)
+        ->and($data['gross'])->not->toBe(3636.03);
 });
