@@ -56,7 +56,7 @@ class CustomerOrderProfitabilityController extends Controller
             $data = $this->service->calculate($order, $mode);
             $status = CustomerPurchaseOrder::statusPresentation($order->status);
 
-            return ['id' => $order->id, 'code' => $order->code, 'purchase_order_number' => $order->purchase_order_number, 'customer' => $order->customer?->business_name ?: $order->customer?->full_name, 'company' => $order->company?->trade_name ?: $order->company?->business_name, 'currency' => 'S/', 'sale_total' => $data['saleValue'], 'purchase_total' => $data['purchaseValue'], 'linked_costs_total' => $data['linkedTotal'], 'net_profit' => $data['net'], 'profitability_percentage' => $data['percentage'], 'status_label' => $status['label'], 'status_class' => $status['class'], 'status_icon' => $status['icon']];
+            return ['id' => $order->id, 'code' => $order->code, 'purchase_order_number' => $order->purchase_order_number, 'customer' => $order->customer?->business_name ?: $order->customer?->full_name, 'company' => $order->company?->trade_name ?: $order->company?->business_name, 'currency' => 'S/', 'sale_total' => $data['saleValue'], 'purchase_total' => $data['purchaseValue'], 'linked_costs_total' => $data['linkedTotal'], 'net_profit' => $data['net'], 'profitability_base' => $data['profitabilityBase'], 'profitability_percentage' => $data['percentage'], 'status_label' => $status['label'], 'status_class' => $status['class'], 'status_icon' => $status['icon']];
         });
 
         return DataTables::of($rows)->addIndexColumn()->make(true);
@@ -163,7 +163,7 @@ class CustomerOrderProfitabilityController extends Controller
         ])->values();
         $snapshot = $save ? $this->service->saveSnapshot($data) : $order->profitabilityAnalyses()->where('calculation_mode', $data['mode'])->latest()->first();
 
-        return ['html' => view('admin.customer-order-profitability.partials.detail', $data + compact('snapshot'))->render(), 'metrics' => ['net_profit' => $data['net'], 'profitability_percentage' => $data['percentage']], 'warnings' => $data['warnings']];
+        return ['html' => view('admin.customer-order-profitability.partials.detail', $data + compact('snapshot'))->render(), 'metrics' => ['net_profit' => $data['net'], 'profitability_base' => $data['profitabilityBase'], 'profitability_percentage' => $data['percentage']], 'warnings' => $data['warnings']];
     }
 
     private function appendLinkedExpenseAttachments(CustomerPurchaseOrder $order, $costs): void

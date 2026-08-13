@@ -20,8 +20,9 @@ class CustomerOrderProfitabilityService
 
     public function calculate(CustomerPurchaseOrder $order, string $mode = self::MODE_WITHOUT_IGV): array
     {
-        $mode = in_array($mode, [self::MODE_WITHOUT_IGV, self::MODE_WITH_IGV], true) ? $mode : self::MODE_WITHOUT_IGV;
         $order->loadMissing(['customer', 'company', 'currency', 'documents.documentType', 'items.article', 'items.unit', 'items.presentation', 'items.brand']);
+        $usesIgvStructure = (bool) $order->affect_igv;
+        $mode = $usesIgvStructure ? self::MODE_WITH_IGV : self::MODE_WITHOUT_IGV;
         $itemIds = $order->items->where('status', '!=', 'deleted')->pluck('id');
         $directSupplierOrderIds = DB::table('supplier_purchase_orders')
             ->where('customer_purchase_order_id', $order->id)
@@ -75,20 +76,20 @@ class CustomerOrderProfitabilityService
             ->pluck('supplier_purchase_order_id')
             ->map(fn ($id) => (int) $id)
             ->unique();
-        $supplierItems->each(function ($item) use ($warehousePurchaseAmounts, $supplierOrdersWithEntries, $mode) {
+        $supplierItems->each(function ($item) use ($warehousePurchaseAmounts, $supplierOrdersWithEntries, $usesIgvStructure) {
             $factor = $this->supplierPurchasePenFactor($item);
             $useWarehouseAmounts = $supplierOrdersWithEntries->contains((int) $item->supplier_purchase_order_id);
             $warehouseAmount = $warehousePurchaseAmounts->get($item->id);
             $sourceAmounts = $this->purchaseSourceAmounts($item, $warehouseAmount, $useWarehouseAmounts);
 
             $item->pen_conversion_factor = $factor;
-            $item->line_total_pen = round($sourceAmounts['total'] * $factor, 2);
-            $item->taxable_base_pen = round($sourceAmounts['subtotal'] * $factor, 2);
-            $item->purchase_affected_total_pen = round($sourceAmounts['affected_total'] * $factor, 2);
-            $item->purchase_unaffected_total_pen = round($sourceAmounts['unaffected_total'] * $factor, 2);
+            $item->line_total_pen = round($sourceAmounts['total'] * $factor, 6);
+            $item->taxable_base_pen = round($sourceAmounts['subtotal'] * $factor, 6);
+            $item->purchase_affected_total_pen = round($sourceAmounts['affected_total'] * $factor, 6);
+            $item->purchase_unaffected_total_pen = round($sourceAmounts['unaffected_total'] * $factor, 6);
             $item->unit_price_pen = round((float) $item->unit_price * $factor, 4);
             $item->purchase_amount_source = $sourceAmounts['source'];
-            $this->applyConsideredPurchaseAmounts($item, $mode);
+            $this->applyConsideredPurchaseAmounts($item, $usesIgvStructure);
         });
         $supplierOrderIds = $supplierItems->pluck('supplier_purchase_order_id')->unique();
         $entryIds = DB::table('warehouse_entries as entries')
@@ -108,17 +109,17 @@ class CustomerOrderProfitabilityService
             'igv' => $saleIgv,
             'considered' => $saleValue,
             'profitability' => $saleProfitValue,
-        ] = $this->saleAmounts($order, $activeSaleItems, $mode);
+        ] = $this->saleAmounts($order, $activeSaleItems, $usesIgvStructure);
         $purchaseTotal = round((float) $supplierItems->sum('line_total_pen'), 2);
         $purchaseBase = round((float) $supplierItems->sum('taxable_base_pen'), 2);
         $purchaseIgv = round($purchaseTotal - $purchaseBase, 2);
         $purchaseValue = $purchaseTotal;
-        $purchaseProfitValue = $this->purchaseProfitabilityValue($supplierItems, $mode);
+        $purchaseProfitValue = $this->purchaseProfitabilityValue($supplierItems, $usesIgvStructure);
         $withoutReceipt = $costs->reject(fn ($cost) => $this->hasOfficialDocument($cost));
         ['freight' => $operationalTransportCosts, 'other' => $otherOrUnsupportedCosts] = $this->classifyLinkedCosts($costs);
         $freight = $operationalTransportCosts;
         $other = $otherOrUnsupportedCosts;
-        $linkedFigures = $this->linkedCostFigures($freight, $other, $mode);
+        $linkedFigures = $this->linkedCostFigures($freight, $other, $usesIgvStructure);
         $freightTotal = $linkedFigures['freightTotal'];
         $freightBase = $linkedFigures['freightBase'];
         $freightIgv = $linkedFigures['freightIgv'];
@@ -132,11 +133,33 @@ class CustomerOrderProfitabilityService
         $linkedIgv = $linkedFigures['linkedIgv'];
         $linkedProfitValue = $linkedFigures['linkedValue'];
         $linkedTotal = $linkedGrossTotal;
-        $withoutReceiptTotal = round((float) $withoutReceipt->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
+        $withoutReceiptTotal = round((float) $withoutReceipt->sum(fn ($cost) => $this->costValueForStructure($cost, $usesIgvStructure)), 2);
         $figures = $this->profitFigures($saleProfitValue, $purchaseProfitValue, $freightValue, $otherTotal);
         ['gross' => $gross, 'operating' => $operating, 'incomeTax' => $incomeTax, 'net' => $net] = $figures;
-        $denominator = $purchaseProfitValue + $freightValue + $otherTotal;
-        $percentage = $denominator > 0 ? round(($net / $denominator) * 100, 2) : 0.0;
+        ['base' => $profitabilityBase, 'percentage' => $percentage] = $this->profitabilityMetrics(
+            $purchaseProfitValue,
+            $freightValue,
+            $otherTotal,
+            $incomeTax,
+            $net
+        );
+        [
+            'igvSales' => $igvSales,
+            'igvPurchases' => $igvPurchases,
+            'igvOfficialCosts' => $igvOfficialCosts,
+            'igvPayable' => $igvPayable,
+            'igvCreditBalance' => $igvCreditBalance,
+            'totalTaxes' => $totalTaxes,
+        ] = $this->taxFigures(
+            $usesIgvStructure,
+            $saleTotal,
+            $saleProfitValue,
+            $purchaseTotal,
+            $purchaseProfitValue,
+            $freightTotal,
+            $freightValue,
+            $incomeTax
+        );
 
         $customerItemByArticle = $order->items->where('status', '!=', 'deleted')->keyBy('article_id');
         $supplierItems->each(function ($item) use ($customerItemByArticle) {
@@ -161,10 +184,10 @@ class CustomerOrderProfitabilityService
             $warnings[] = 'La orden presenta utilidad negativa.';
         }
 
-        return compact('mode', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'saleProfitValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'purchaseProfitValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'linkedProfitValue', 'gross', 'operating', 'incomeTax', 'net', 'percentage', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
+        return compact('mode', 'usesIgvStructure', 'order', 'supplierItems', 'supplierOrderIds', 'entryIds', 'costs', 'operationalTransportCosts', 'otherOrUnsupportedCosts', 'saleTotal', 'saleBase', 'saleIgv', 'saleValue', 'saleProfitValue', 'purchaseTotal', 'purchaseBase', 'purchaseIgv', 'purchaseValue', 'purchaseProfitValue', 'freightTotal', 'freightBase', 'freightIgv', 'freightValue', 'withoutReceiptTotal', 'otherGrossTotal', 'otherBase', 'otherIgv', 'otherTotal', 'linkedGrossTotal', 'linkedBase', 'linkedIgv', 'linkedTotal', 'linkedProfitValue', 'gross', 'operating', 'incomeTax', 'net', 'profitabilityBase', 'percentage', 'igvSales', 'igvPurchases', 'igvOfficialCosts', 'igvPayable', 'igvCreditBalance', 'totalTaxes', 'purchasedByItem', 'enteredByCustomerItem', 'warnings') + [
             'igvRate' => self::IGV_RATE, 'incomeTaxRate' => self::INCOME_TAX_RATE,
-            'igvSales' => $saleIgv, 'igvPurchases' => $purchaseIgv, 'igvLinkedCosts' => $linkedIgv,
-            'igvDifference' => round($saleIgv - $purchaseIgv - $linkedIgv, 2),
+            'igvLinkedCosts' => $igvOfficialCosts,
+            'igvDifference' => $igvPayable,
         ];
     }
 
@@ -214,11 +237,12 @@ class CustomerOrderProfitabilityService
     private function costHasIgv($cost): bool
     {
         return filter_var(data_get($cost, 'affects_igv', false), FILTER_VALIDATE_BOOLEAN)
-            && WarehouseEntryExpense::supportsIgv(data_get($cost, 'document_type'));
+            && $this->hasOfficialDocument($cost);
     }
 
-    private function saleAmounts(CustomerPurchaseOrder $order, $activeSaleItems, string $mode = self::MODE_WITHOUT_IGV): array
+    private function saleAmounts(CustomerPurchaseOrder $order, $activeSaleItems, ?bool $usesIgvStructure = null): array
     {
+        $usesIgvStructure ??= (bool) $order->affect_igv;
         $itemsTotal = round((float) collect($activeSaleItems)->sum(
             fn ($item) => (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price))
         ), 2);
@@ -251,7 +275,7 @@ class CustomerOrderProfitabilityService
             'base' => $saleBase,
             'igv' => $saleIgv,
             'considered' => $saleTotal,
-            'profitability' => $this->profitabilityAmount($saleTotal, true, $mode),
+            'profitability' => $this->profitabilityAmount($saleTotal, true, $usesIgvStructure),
         ];
     }
 
@@ -279,22 +303,22 @@ class CustomerOrderProfitabilityService
         return ['total' => $total, 'base' => $base, 'igv' => $igv];
     }
 
-    private function costValueForMode($cost, string $mode): float
+    private function costValueForStructure($cost, bool $usesIgvStructure): float
     {
         $breakdown = $this->costTaxBreakdown($cost);
 
         return $this->profitabilityAmount(
             $breakdown['total'],
             $this->costHasIgv($cost),
-            $mode,
+            $usesIgvStructure,
             (float) data_get($cost, 'igv_rate', self::IGV_RATE)
         );
     }
 
-    private function linkedCostFigures($freight, $other, string $mode): array
+    private function linkedCostFigures($freight, $other, bool $usesIgvStructure): array
     {
-        collect($freight)->concat($other)->each(function ($cost) use ($mode) {
-            $value = $this->costValueForMode($cost, $mode);
+        collect($freight)->concat($other)->each(function ($cost) use ($usesIgvStructure) {
+            $value = $this->costValueForStructure($cost, $usesIgvStructure);
 
             if (method_exists($cost, 'setAttribute')) {
                 $cost->setAttribute('profitability_amount', $value);
@@ -313,8 +337,9 @@ class CustomerOrderProfitabilityService
         $otherGrossTotal = $sum($other, 'total');
         $otherBase = $sum($other, 'base');
         $otherIgv = $sum($other, 'igv');
-        $freightValue = round((float) $freight->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
-        $otherValue = round((float) $other->sum(fn ($cost) => $this->costValueForMode($cost, $mode)), 2);
+        $freightValue = round((float) $freight->sum(fn ($cost) => $this->costValueForStructure($cost, $usesIgvStructure)), 6);
+        // Los documentos no oficiales se descuentan completos después de la renta.
+        $otherValue = round($otherGrossTotal, 6);
 
         return [
             'freightTotal' => $freightTotal,
@@ -328,44 +353,96 @@ class CustomerOrderProfitabilityService
             'linkedGrossTotal' => round($freightTotal + $otherGrossTotal, 2),
             'linkedBase' => round($freightBase + $otherBase, 2),
             'linkedIgv' => round($freightIgv + $otherIgv, 2),
-            'linkedValue' => round($freightValue + $otherValue, 2),
+            'linkedValue' => round($freightValue + $otherValue, 6),
         ];
     }
 
     private function profitabilityAmount(
         float $total,
         bool $affectsIgv,
-        string $_mode,
+        bool $usesIgvStructure,
         float $igvRate = self::IGV_RATE
     ): float {
-        if (! $affectsIgv) {
-            return round($total, 2);
+        if (! $usesIgvStructure || ! $affectsIgv) {
+            return round($total, 6);
         }
 
         $igvRate = $igvRate > 0 ? $igvRate : self::IGV_RATE;
 
-        return round($total / (1 + ($igvRate / 100)), 2);
+        return round($total / (1 + ($igvRate / 100)), 6);
     }
 
-    private function purchaseProfitabilityValue($supplierItems, string $mode): float
+    private function purchaseProfitabilityValue($supplierItems, bool $usesIgvStructure): float
     {
         $affectedTotal = (float) collect($supplierItems)->sum('purchase_affected_total_pen');
         $unaffectedTotal = (float) collect($supplierItems)->sum('purchase_unaffected_total_pen');
 
         return round(
-            $this->profitabilityAmount($affectedTotal, true, $mode) + $unaffectedTotal,
-            2
+            $this->profitabilityAmount($affectedTotal, true, $usesIgvStructure) + $unaffectedTotal,
+            6
         );
     }
 
     private function profitFigures(float $saleValue, float $purchaseValue, float $freightValue, float $otherValue): array
     {
-        $gross = round($saleValue - $purchaseValue, 2);
-        $operating = round($gross - $freightValue, 2);
-        $incomeTax = round(max($operating, 0) * (self::INCOME_TAX_RATE / 100), 2);
-        $net = round($operating - $incomeTax - $otherValue, 2);
+        $grossValue = $saleValue - $purchaseValue;
+        $operatingValue = $grossValue - $freightValue;
+        $incomeTaxValue = max($operatingValue, 0) * (self::INCOME_TAX_RATE / 100);
+        $netValue = $operatingValue - $incomeTaxValue - $otherValue;
+        $gross = round($grossValue, 2);
+        $operating = round($operatingValue, 2);
+        $incomeTax = round($incomeTaxValue, 2);
+        $net = round($netValue, 2);
 
         return compact('gross', 'operating', 'incomeTax', 'net');
+    }
+
+    private function profitabilityMetrics(
+        float $purchaseValue,
+        float $officialCosts,
+        float $otherExpenses,
+        float $estimatedIncomeTax,
+        float $netProfit
+    ): array {
+        $profitabilityBase = round(
+            $purchaseValue + $officialCosts + $otherExpenses + $estimatedIncomeTax,
+            2
+        );
+        $profitabilityPercentage = $profitabilityBase > 0
+            ? round(($netProfit / $profitabilityBase) * 100, 2)
+            : 0.0;
+
+        return [
+            'base' => $profitabilityBase,
+            'percentage' => $profitabilityPercentage,
+        ];
+    }
+
+    private function taxFigures(
+        bool $usesIgvStructure,
+        float $saleTotal,
+        float $saleProfitValue,
+        float $purchaseTotal,
+        float $purchaseProfitValue,
+        float $officialCostsTotal,
+        float $officialCostsValue,
+        float $incomeTax
+    ): array {
+        $igvSales = $usesIgvStructure ? round($saleTotal - $saleProfitValue, 2) : 0.0;
+        $igvPurchases = $usesIgvStructure ? round($purchaseTotal - $purchaseProfitValue, 2) : 0.0;
+        $igvOfficialCosts = $usesIgvStructure ? round($officialCostsTotal - $officialCostsValue, 2) : 0.0;
+        $igvPayable = round($igvSales - $igvPurchases - $igvOfficialCosts, 2);
+        $igvCreditBalance = $igvPayable < 0 ? abs($igvPayable) : 0.0;
+        $totalTaxes = round($incomeTax + max($igvPayable, 0), 2);
+
+        return compact(
+            'igvSales',
+            'igvPurchases',
+            'igvOfficialCosts',
+            'igvPayable',
+            'igvCreditBalance',
+            'totalTaxes'
+        );
     }
 
     private function supplierPurchasePenFactor(object $item): float
@@ -392,7 +469,7 @@ class CustomerOrderProfitabilityService
         return $exchangeRate > 0 ? $exchangeRate : 0.0;
     }
 
-    private function applyConsideredPurchaseAmounts(object $item, string $mode = self::MODE_WITHOUT_IGV): void
+    private function applyConsideredPurchaseAmounts(object $item, bool $usesIgvStructure = false): void
     {
         $item->purchase_subtotal_pen = round((float) $item->taxable_base_pen, 2);
         $item->purchase_total_pen = round((float) $item->line_total_pen, 2);
@@ -402,8 +479,8 @@ class CustomerOrderProfitabilityService
         $affectedTotal = (float) ($item->purchase_affected_total_pen ?? ($affectsIgv ? $item->purchase_total_pen : 0));
         $unaffectedTotal = (float) ($item->purchase_unaffected_total_pen ?? ($affectsIgv ? 0 : $item->purchase_total_pen));
         $item->profitability_purchase_amount = round(
-            $this->profitabilityAmount($affectedTotal, true, $mode) + $unaffectedTotal,
-            2
+            $this->profitabilityAmount($affectedTotal, true, $usesIgvStructure) + $unaffectedTotal,
+            6
         );
     }
 

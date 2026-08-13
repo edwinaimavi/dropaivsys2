@@ -99,6 +99,19 @@ function profitabilityAttachmentCost(array $attributes = []): WarehouseEntryExpe
     ], $attributes));
 }
 
+it('incluye la base corregida en la respuesta AJAX del modal', function () {
+    $response = $this->getJson(route('admin.customer-order-profitability.show', $this->order));
+
+    $response->assertOk()
+        ->assertJsonStructure([
+            'html',
+            'metrics' => ['net_profit', 'profitability_base', 'profitability_percentage'],
+            'warnings',
+        ])
+        ->assertJsonPath('metrics.profitability_base', 0)
+        ->assertJsonPath('metrics.profitability_percentage', 0);
+});
+
 it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo perdido', function () {
     Storage::disk('public')->put('costos/factura.pdf', '%PDF-1.4');
     Storage::disk('public')->put('costos/pago.png', 'imagen');
@@ -157,6 +170,7 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
     $this->order->setRelation('items', collect());
     $html = view('admin.customer-order-profitability.partials.detail', [
         'mode' => 'without_igv',
+        'usesIgvStructure' => true,
         'order' => $this->order,
         'supplierItems' => collect(),
         'supplierOrderIds' => collect(),
@@ -173,6 +187,9 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         'purchaseBase' => 0,
         'purchaseIgv' => 0,
         'purchaseProfitValue' => 0,
+        'freightTotal' => 50,
+        'freightBase' => 50,
+        'freightIgv' => 0,
         'freightValue' => 50,
         'otherTotal' => 150,
         'linkedTotal' => 200,
@@ -184,7 +201,8 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         'operating' => -50,
         'incomeTax' => 0,
         'net' => -200,
-        'percentage' => 0,
+        'profitabilityBase' => 200,
+        'percentage' => -100,
         'purchasedByItem' => collect(),
         'enteredByCustomerItem' => collect(),
         'warnings' => [],
@@ -194,6 +212,10 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         'igvPurchases' => 0,
         'igvLinkedCosts' => 0,
         'igvDifference' => 0,
+        'igvOfficialCosts' => 0,
+        'igvPayable' => 0,
+        'igvCreditBalance' => 0,
+        'totalTaxes' => 0,
         'orderDocuments' => collect(),
     ])->render();
 
@@ -291,6 +313,7 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
 
     $html = view('admin.customer-order-profitability.partials.detail', [
         'mode' => 'without_igv',
+        'usesIgvStructure' => true,
         'order' => $this->order,
         'supplierItems' => collect(),
         'supplierOrderIds' => collect(),
@@ -307,6 +330,9 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         'purchaseBase' => 5000,
         'purchaseIgv' => 0,
         'purchaseProfitValue' => 5000,
+        'freightTotal' => 153,
+        'freightBase' => 129.66,
+        'freightIgv' => 23.34,
         'freightValue' => 153,
         'otherTotal' => 1150,
         'linkedTotal' => 1303,
@@ -318,7 +344,8 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         'operating' => 4847,
         'incomeTax' => 1429.87,
         'net' => 2267.13,
-        'percentage' => 35.97,
+        'profitabilityBase' => 7732.87,
+        'percentage' => 29.32,
         'purchasedByItem' => collect(),
         'enteredByCustomerItem' => collect(),
         'warnings' => [],
@@ -328,6 +355,10 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         'igvPurchases' => 0,
         'igvLinkedCosts' => 23.34,
         'igvDifference' => -23.34,
+        'igvOfficialCosts' => 23.34,
+        'igvPayable' => -23.34,
+        'igvCreditBalance' => 23.34,
+        'totalTaxes' => 1429.87,
         'orderDocuments' => collect(),
     ])->render();
 
@@ -338,7 +369,9 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         ->toContain('4,847.00')
         ->toContain('1,429.87')
         ->toContain('2,267.13')
-        ->toContain('35.97%')
+        ->toContain('29.32%')
+        ->toContain('Base total para rentabilidad')
+        ->toContain('7,732.87')
         ->not->toContain('Usado en cálculo <strong>129.66</strong>');
 });
 
@@ -440,6 +473,17 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'igv_amount' => 4.19,
         'total_amount' => 27.50,
     ]);
+    profitabilityAttachmentCost([
+        'expense_category' => 'other_expense',
+        'expense_type' => 'other',
+        'document_type' => 'RECIBO_INTERNO',
+        'amount' => 400.00,
+        'affects_igv' => false,
+        'igv_rate' => 0,
+        'taxable_amount' => 400.00,
+        'igv_amount' => 0,
+        'total_amount' => 400.00,
+    ]);
 
     $data = app(CustomerOrderProfitabilityService::class)->calculate(
         $this->order->fresh(),
@@ -447,13 +491,54 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
     );
 
     expect($data['saleValue'])->toBe(18588.00)
+        ->and($data['mode'])->toBe(CustomerOrderProfitabilityService::MODE_WITH_IGV)
+        ->and($data['usesIgvStructure'])->toBeTrue()
         ->and($data['purchaseValue'])->toBe(14951.97)
-        ->and($data['saleProfitValue'])->toBe(15752.54)
-        ->and($data['purchaseProfitValue'])->toBe(12671.16)
+        ->and(round($data['saleProfitValue'], 2))->toBe(15752.54)
+        ->and(round($data['purchaseProfitValue'], 2))->toBe(12671.16)
         ->and($data['gross'])->toBe(3081.38)
-        ->and($data['freightValue'])->toBe(23.31)
-        ->and($data['operating'])->toBe(3058.07)
-        ->and($data['linkedTotal'])->toBe(27.50)
-        ->and($data['linkedProfitValue'])->toBe(23.31)
+        ->and(round($data['freightValue'], 2))->toBe(23.31)
+        ->and($data['operating'])->toBe(3058.08)
+        ->and($data['incomeTax'])->toBe(902.13)
+        ->and($data['otherTotal'])->toBe(400.00)
+        ->and($data['net'])->toBe(1755.94)
+        ->and($data['profitabilityBase'])->toBe(13996.60)
+        ->and($data['percentage'])->toBe(12.55)
+        ->and($data['linkedTotal'])->toBe(427.50)
+        ->and(round($data['linkedProfitValue'], 2))->toBe(423.31)
+        ->and($data['igvPayable'])->toBe(550.46)
+        ->and($data['totalTaxes'])->toBe(1452.59)
         ->and($data['gross'])->not->toBe(3636.03);
+
+    $pdf = view('admin.customer-order-profitability.pdf', $data)->render();
+
+    expect($pdf)->toContain('Costos oficiales')
+        ->toContain('IGV por pagar')
+        ->toContain('S/ 550.46')
+        ->toContain('Total impuestos')
+        ->toContain('S/ 1,452.59')
+        ->toContain('Base total para rentabilidad')
+        ->toContain('S/ 13,996.60')
+        ->toContain('12.55%');
+
+    $this->order->update(['affect_igv' => false]);
+    $exonerated = app(CustomerOrderProfitabilityService::class)->calculate(
+        $this->order->fresh(),
+        CustomerOrderProfitabilityService::MODE_WITH_IGV
+    );
+
+    expect($exonerated['mode'])->toBe(CustomerOrderProfitabilityService::MODE_WITHOUT_IGV)
+        ->and($exonerated['usesIgvStructure'])->toBeFalse()
+        ->and($exonerated['saleProfitValue'])->toBe(18588.00)
+        ->and($exonerated['purchaseProfitValue'])->toBe(14951.97)
+        ->and($exonerated['gross'])->toBe(3636.03)
+        ->and($exonerated['freightValue'])->toBe(27.50)
+        ->and($exonerated['operating'])->toBe(3608.53)
+        ->and($exonerated['incomeTax'])->toBe(1064.52)
+        ->and($exonerated['otherTotal'])->toBe(400.00)
+        ->and($exonerated['net'])->toBe(2144.01)
+        ->and($exonerated['profitabilityBase'])->toBe(16443.99)
+        ->and($exonerated['percentage'])->toBe(13.04)
+        ->and($exonerated['igvPayable'])->toBe(0.0)
+        ->and($exonerated['totalTaxes'])->toBe(1064.52);
 });

@@ -34,10 +34,12 @@ it('muestra la base de la compra afecta como importe usado en utilidad', functio
         'supplierOrderIds' => collect([1]),
         'purchaseValue' => 30736.40,
         'purchaseProfitValue' => 26047.80,
+        'usesIgvStructure' => true,
         'money' => fn ($value) => number_format((float) $value, 2),
     ])->render();
 
-    expect($html)->toContain('Compra para utilidad')
+    expect($html)->toContain('Compra considerada')
+        ->toContain('S/ 30,736.40')
         ->toContain('S/ 26,047.80')
         ->toContain('Subtotal')
         ->toContain('IGV')
@@ -58,12 +60,13 @@ it('muestra completo el importe usado de una compra no afecta', function () {
         'supplierOrderIds' => collect([1]),
         'purchaseValue' => 1200.00,
         'purchaseProfitValue' => 1200.00,
+        'usesIgvStructure' => false,
         'money' => fn ($value) => number_format((float) $value, 2),
     ])->render();
 
-    expect($html)->toContain('Compra para utilidad')
+    expect($html)->toContain('Compra considerada')
         ->toContain('S/ 1,200.00')
         ->toContain('S/ 0.00')
-        ->toContain('Importe no afecto')
+        ->toContain('Importe completo')
         ->not->toContain('modo de cálculo seleccionado');
 });
