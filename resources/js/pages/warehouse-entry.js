@@ -289,6 +289,8 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '.deleteWarehouseEntry', function () {
         deleteWarehouseEntry($(this).data('id'));
     });
+
+    openWarehouseEntryFromDeepLink();
 });
 
 function prepareWarehouseEntryModalLayers() {
@@ -589,6 +591,35 @@ function generateWarehouseEntryNumber() {
         });
 }
 
+function openWarehouseEntryFromDeepLink() {
+    const deepLink = window.warehouseEntryDeepLink;
+    if (!deepLink) return;
+
+    clearWarehouseEntryDeepLinkQuery();
+
+    if (deepLink.action === 'edit' && deepLink.warehouse_entry_id) {
+        loadWarehouseEntryForEdit(deepLink.warehouse_entry_id);
+        return;
+    }
+
+    const orderId = String(deepLink.supplier_purchase_order_id || '');
+    if (deepLink.action !== 'create' || !orderId) return;
+
+    resetWarehouseEntryForm();
+    $('#warehouseEntryModalLabel').text('Nuevo Ingreso de Almacen');
+    generateWarehouseEntryNumber();
+    warehouseEntryAcknowledgedLogisticsOrders.add(orderId);
+    $('#warehouseEntryModal').modal('show');
+    $('#warehouse_entry_supplier_purchase_order_id').val(orderId).trigger('change');
+}
+
+function clearWarehouseEntryDeepLinkQuery() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('from_supplier_purchase_order');
+    url.searchParams.delete('auto_open');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 function resetWarehouseEntryForm() {
     const form = $('#warehouseEntryForm');
 
@@ -867,6 +898,17 @@ function saveWarehouseEntry(form) {
             });
         })
         .fail(function (xhr) {
+            if (xhr.status === 409 && xhr.responseJSON?.existing_entry_id) {
+                const existingEntryId = xhr.responseJSON.existing_entry_id;
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Ingreso existente',
+                    text: xhr.responseJSON.message || 'Esta orden ya tiene un ingreso de almacén asociado.',
+                    confirmButtonText: 'Abrir ingreso'
+                }).then(() => loadWarehouseEntryForEdit(existingEntryId));
+                return;
+            }
+
             if (xhr.status === 422) {
                 showWarehouseEntryValidationErrors(xhr.responseJSON?.errors || {});
                 return;
@@ -1161,6 +1203,7 @@ function loadWarehouseEntrySourceItems(options = {}) {
             warehouseEntrySourceOrderTotal = parseWarehouseEntryNumber(response.order_total);
             $('#warehouse_entry_payment_method').val(response.payment_method || '');
             $('#warehouse_entry_payment_condition').val(response.payment_condition || '');
+            $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(response.document_type));
             $('#warehouse_entry_affect_igv').val(response.affect_igv ? '1' : '0');
             updateWarehouseEntryDeliveryCostContext(response.delivery_type || '');
 

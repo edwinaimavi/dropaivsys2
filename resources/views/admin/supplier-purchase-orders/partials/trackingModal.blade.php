@@ -42,7 +42,9 @@
                             <i class="fas fa-warehouse"></i>
                             <div><strong>Mercader&iacute;a marcada como recibida</strong><span>Registra el ingreso de almac&eacute;n para generar stock.</span></div>
                             @can('admin.warehouse-entries.store')
-                                <a href="{{ route('admin.warehouse-entries.index') }}" class="btn btn-sm btn-success">Registrar ingreso</a>
+                                <a href="{{ route('admin.warehouse-entries.index') }}" id="spoRegisterWarehouseEntry"
+                                    data-base-url="{{ route('admin.warehouse-entries.index') }}"
+                                    class="btn btn-sm btn-success">Registrar ingreso</a>
                             @endcan
                         </div>
                     </section>

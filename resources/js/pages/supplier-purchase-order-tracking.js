@@ -73,10 +73,21 @@ function openSpoTrackingFromQuery() {
 function openSpoTracking(orderId) {
     spoTrackingOrderId = orderId;
     $('#spo_tracking_order_id').val(orderId);
+    updateSpoWarehouseEntryLink(orderId);
     $('#spoTrackingTimeline').empty();
     $('#spoTrackingLoading').show();
     $('#supplierPurchaseOrderTrackingModal').modal('show');
     loadSpoTrackings();
+}
+
+function updateSpoWarehouseEntryLink(orderId) {
+    const link = document.getElementById('spoRegisterWarehouseEntry');
+    if (!link) return;
+
+    const url = new URL(link.dataset.baseUrl || link.href, window.location.origin);
+    url.searchParams.set('from_supplier_purchase_order', orderId);
+    url.searchParams.set('auto_open', '1');
+    link.href = url.toString();
 }
 
 function loadSpoTrackings() {

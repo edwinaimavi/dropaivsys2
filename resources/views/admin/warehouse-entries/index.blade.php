@@ -1445,6 +1445,7 @@
 
 @push('js')
     <script>
+        window.warehouseEntryDeepLink = @json($warehouseEntryDeepLink);
         window.routes = Object.assign(window.routes || {}, {
             warehouseEntryList: "{{ route('admin.warehouse-entries.list') }}",
             warehouseEntryStore: "{{ route('admin.warehouse-entries.store') }}",

@@ -64,8 +64,9 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $warehouseEntryDeepLink = $this->warehouseEntryDeepLink($request);
         $supplierPurchaseOrders = SupplierPurchaseOrder::query()
             ->with('supplier:id,business_name,short_name,ruc', 'company:id,business_name,trade_name')
             ->orderByDesc('id')
@@ -116,7 +117,8 @@ class WarehouseEntryController extends Controller
             'presentations',
             'brands',
             'warehouses',
-            'shippingAgencies'
+            'shippingAgencies',
+            'warehouseEntryDeepLink'
         ));
     }
 
@@ -720,6 +722,7 @@ class WarehouseEntryController extends Controller
             'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
+            'document_type' => $this->normalizeDocumentType($order->document_type),
             'delivery_type' => SupplierPurchaseOrder::normalizeDeliveryType($order->delivery_type),
             'affect_igv' => (bool) $order->affect_igv,
             'items' => $items,
@@ -893,8 +896,21 @@ class WarehouseEntryController extends Controller
                 $supplierPurchaseOrder = ! empty($validated['supplier_purchase_order_id'])
                     ? SupplierPurchaseOrder::query()
                         ->with('supplier:id,ruc')
+                        ->when(! $entry, fn ($query) => $query->lockForUpdate())
                         ->findOrFail($validated['supplier_purchase_order_id'])
                     : null;
+                if (! $entry && $supplierPurchaseOrder) {
+                    $existingEntry = $this->warehouseEntryForSupplierPurchaseOrder($supplierPurchaseOrder->id);
+
+                    if ($existingEntry) {
+                        return response()->json([
+                            'status' => 'existing',
+                            'message' => 'Esta orden de compra ya tiene un ingreso de almacén asociado. Se abrirá el ingreso existente.',
+                            'existing_entry_id' => $existingEntry->id,
+                            'data' => $existingEntry,
+                        ], 409);
+                    }
+                }
                 if ($supplierPurchaseOrder?->hasPendingCashAdvance()
                     && (! $entry || (int) $entry->supplier_purchase_order_id !== (int) $supplierPurchaseOrder->id)) {
                     throw ValidationException::withMessages([
@@ -1801,6 +1817,40 @@ class WarehouseEntryController extends Controller
         $value = mb_strtoupper(trim((string) $value), 'UTF-8');
 
         return $value === '' ? 'FACTURA' : $value;
+    }
+
+    private function warehouseEntryDeepLink(Request $request): ?array
+    {
+        if (! $request->boolean('auto_open')) {
+            return null;
+        }
+
+        $supplierPurchaseOrderId = filter_var(
+            $request->query('from_supplier_purchase_order'),
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+
+        if (! $supplierPurchaseOrderId
+            || ! SupplierPurchaseOrder::query()->whereKey($supplierPurchaseOrderId)->exists()) {
+            return null;
+        }
+
+        $existingEntry = $this->warehouseEntryForSupplierPurchaseOrder($supplierPurchaseOrderId);
+
+        return [
+            'action' => $existingEntry ? 'edit' : 'create',
+            'supplier_purchase_order_id' => (int) $supplierPurchaseOrderId,
+            'warehouse_entry_id' => $existingEntry?->id,
+        ];
+    }
+
+    private function warehouseEntryForSupplierPurchaseOrder(int $supplierPurchaseOrderId): ?WarehouseEntry
+    {
+        return WarehouseEntry::query()
+            ->where('supplier_purchase_order_id', $supplierPurchaseOrderId)
+            ->latest('id')
+            ->first();
     }
 
     private function refreshSupplierPurchaseOrderStatus(?int $supplierPurchaseOrderId): void
