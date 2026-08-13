@@ -137,7 +137,11 @@ class CustomerOrderProfitabilityService
         $figures = $this->profitFigures($saleProfitValue, $purchaseProfitValue, $freightValue, $otherTotal);
         ['gross' => $gross, 'operating' => $operating, 'incomeTax' => $incomeTax, 'net' => $net] = $figures;
         ['base' => $profitabilityBase, 'percentage' => $percentage] = $this->profitabilityMetrics(
+            $usesIgvStructure,
+            $purchaseValue,
             $purchaseProfitValue,
+            $saleIgv,
+            $purchaseIgv,
             $freightValue,
             $otherTotal,
             $net
@@ -397,13 +401,21 @@ class CustomerOrderProfitabilityService
     }
 
     private function profitabilityMetrics(
-        float $purchaseValue,
+        bool $usesIgvStructure,
+        float $purchaseConsidered,
+        float $purchaseProfitValue,
+        float $salesIgv,
+        float $purchasesIgv,
         float $officialCosts,
         float $otherExpenses,
         float $netProfit
     ): array {
+        $purchaseForBase = $usesIgvStructure ? $purchaseConsidered : $purchaseProfitValue;
+        $salesPurchasesIgvDifference = $usesIgvStructure
+            ? round($salesIgv - $purchasesIgv, 2)
+            : 0.0;
         $profitabilityBase = round(
-            $purchaseValue + $officialCosts + $otherExpenses,
+            $purchaseForBase + $salesPurchasesIgvDifference + $officialCosts + $otherExpenses,
             2
         );
         $profitabilityPercentage = $profitabilityBase > 0

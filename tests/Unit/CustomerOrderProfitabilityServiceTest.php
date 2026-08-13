@@ -153,12 +153,39 @@ it('no calcula impuesto a la renta cuando la utilidad operativa es negativa', fu
 
 it('no incluye el impuesto a la renta estimado en la base del porcentaje de rentabilidad', function () {
     $figures = invokeProfitabilityMethod('profitFigures', 890.00, 400.00, 90.00, 0.00);
-    $metrics = invokeProfitabilityMethod('profitabilityMetrics', 400.00, 90.00, 0.00, $figures['net']);
+    $metrics = invokeProfitabilityMethod(
+        'profitabilityMetrics',
+        false,
+        400.00,
+        400.00,
+        0.00,
+        0.00,
+        90.00,
+        0.00,
+        $figures['net']
+    );
 
     expect($figures['incomeTax'])->toBe(118.00)
         ->and($figures['net'])->toBe(282.00)
         ->and($metrics['base'])->toBe(490.00)
         ->and($metrics['percentage'])->toBe(57.55);
+});
+
+it('calcula la rentabilidad con IGV usando la compra considerada y la diferencia entre IGV de venta y compra', function () {
+    $metrics = invokeProfitabilityMethod(
+        'profitabilityMetrics',
+        true,
+        25800.00,
+        21864.41,
+        5834.75,
+        3935.59,
+        254.62,
+        1500.00,
+        5758.84
+    );
+
+    expect($metrics['base'])->toBe(29453.78)
+        ->and($metrics['percentage'])->toBe(19.55);
 });
 
 it('usa la base del flete oficial afecto solo en la estructura con IGV', function () {
