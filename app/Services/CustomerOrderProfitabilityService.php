@@ -140,7 +140,6 @@ class CustomerOrderProfitabilityService
             $purchaseProfitValue,
             $freightValue,
             $otherTotal,
-            $incomeTax,
             $net
         );
         [
@@ -401,11 +400,10 @@ class CustomerOrderProfitabilityService
         float $purchaseValue,
         float $officialCosts,
         float $otherExpenses,
-        float $estimatedIncomeTax,
         float $netProfit
     ): array {
         $profitabilityBase = round(
-            $purchaseValue + $officialCosts + $otherExpenses + $estimatedIncomeTax,
+            $purchaseValue + $officialCosts + $otherExpenses,
             2
         );
         $profitabilityPercentage = $profitabilityBase > 0

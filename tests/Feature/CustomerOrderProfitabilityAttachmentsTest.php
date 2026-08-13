@@ -502,8 +502,8 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->and($data['incomeTax'])->toBe(902.13)
         ->and($data['otherTotal'])->toBe(400.00)
         ->and($data['net'])->toBe(1755.94)
-        ->and($data['profitabilityBase'])->toBe(13996.60)
-        ->and($data['percentage'])->toBe(12.55)
+        ->and($data['profitabilityBase'])->toBe(13094.47)
+        ->and($data['percentage'])->toBe(13.41)
         ->and($data['linkedTotal'])->toBe(427.50)
         ->and(round($data['linkedProfitValue'], 2))->toBe(423.31)
         ->and($data['igvPayable'])->toBe(550.46)
@@ -518,8 +518,8 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->toContain('Total impuestos')
         ->toContain('S/ 1,452.59')
         ->toContain('Base total para rentabilidad')
-        ->toContain('S/ 13,996.60')
-        ->toContain('12.55%');
+        ->toContain('S/ 13,094.47')
+        ->toContain('13.41%');
 
     $this->order->update(['affect_igv' => false]);
     $exonerated = app(CustomerOrderProfitabilityService::class)->calculate(
@@ -537,8 +537,8 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->and($exonerated['incomeTax'])->toBe(1064.52)
         ->and($exonerated['otherTotal'])->toBe(400.00)
         ->and($exonerated['net'])->toBe(2144.01)
-        ->and($exonerated['profitabilityBase'])->toBe(16443.99)
-        ->and($exonerated['percentage'])->toBe(13.04)
+        ->and($exonerated['profitabilityBase'])->toBe(15379.47)
+        ->and($exonerated['percentage'])->toBe(13.94)
         ->and($exonerated['igvPayable'])->toBe(0.0)
         ->and($exonerated['totalTaxes'])->toBe(1064.52);
 });
