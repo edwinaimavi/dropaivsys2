@@ -216,11 +216,70 @@
             outline: none;
         }
 
-        .modern-input-group .invalid-feedback {
-            margin-top: 7px;
-            color: #b42318;
+        .modern-input.auth-input-error {
+            border-color: #eaa2a2 !important;
+            background: rgba(255, 250, 250, .96) !important;
+            background-image: none !important;
+            box-shadow: inset 0 0 0 1px rgba(220, 38, 38, .025) !important;
+        }
+
+        .modern-input.auth-input-error + .input-group-append .input-group-text {
+            border-color: #eaa2a2 !important;
+            color: #c24141;
+            background: rgba(255, 247, 247, .96) !important;
+        }
+
+        .modern-input.auth-input-error:focus {
+            border-color: #dc7777 !important;
+            box-shadow: 0 0 0 4px rgba(220, 38, 38, .09) !important;
+        }
+
+        .modern-input.auth-input-error:focus + .input-group-append .input-group-text {
+            border-color: #dc7777 !important;
+            box-shadow: 0 0 0 4px rgba(220, 38, 38, .09) !important;
+        }
+
+        .modern-input-group .auth-field-error {
+            display: flex;
+            width: 100%;
+            flex: 0 0 100%;
+            align-items: center;
+            gap: 7px;
+            margin-top: 8px;
+            padding: 7px 10px;
+            border: 1px solid rgba(239, 68, 68, .18);
+            border-radius: 10px;
+            color: #9f2d2d;
+            background: rgba(254, 242, 242, .88);
+            box-shadow: 0 5px 14px rgba(127, 29, 29, .045);
             font-size: 11.5px;
-            font-weight: 800;
+            font-weight: 750;
+            line-height: 1.35;
+            animation: authErrorReveal .28s ease-out both;
+        }
+
+        .auth-error-icon {
+            flex: 0 0 auto;
+            color: #d85c5c;
+            font-size: 11px;
+        }
+
+        @keyframes authErrorReveal {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .modern-input-group .auth-field-error {
+                animation: none;
+            }
         }
 
         .login-options-row {
@@ -341,6 +400,12 @@
                 align-items: stretch;
                 flex-direction: column;
             }
+
+            .modern-input-group .auth-field-error {
+                align-items: flex-start;
+                padding: 7px 9px;
+                font-size: 11.25px;
+            }
         }
     </style>
 @endpush
@@ -379,8 +444,9 @@
         <label for="email" class="login-label">Email</label>
         <div class="input-group modern-input-group">
             <input id="email" type="email" name="email"
-                class="form-control modern-input @error('email') is-invalid @enderror"
-                value="{{ old('email') }}" placeholder="correo@dropaiv.com" autofocus autocomplete="email">
+                class="form-control modern-input @error('email') is-invalid auth-input-error @enderror"
+                value="{{ old('email') }}" placeholder="correo@dropaiv.com" autofocus autocomplete="email"
+                @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
 
             <div class="input-group-append">
                 <div class="input-group-text">
@@ -389,8 +455,9 @@
             </div>
 
             @error('email')
-                <span class="invalid-feedback" role="alert">
-                    <strong>{{ $message }}</strong>
+                <span id="email-error" class="auth-field-error" role="alert">
+                    <i class="fas fa-exclamation-circle auth-error-icon" aria-hidden="true"></i>
+                    <span>{{ blank(old('email')) ? 'El correo electrónico es obligatorio.' : $message }}</span>
                 </span>
             @enderror
         </div>
@@ -398,8 +465,9 @@
         <label for="password" class="login-label">Contrase&ntilde;a</label>
         <div class="input-group modern-input-group">
             <input id="password" type="password" name="password"
-                class="form-control modern-input @error('password') is-invalid @enderror"
-                placeholder="Ingresa tu contrase&ntilde;a" autocomplete="current-password">
+                class="form-control modern-input @error('password') is-invalid auth-input-error @enderror"
+                placeholder="Ingresa tu contrase&ntilde;a" autocomplete="current-password"
+                @error('password') aria-invalid="true" aria-describedby="password-error" @enderror>
 
             <div class="input-group-append">
                 <button type="button" class="input-group-text password-toggle" id="togglePassword"
@@ -409,8 +477,9 @@
             </div>
 
             @error('password')
-                <span class="invalid-feedback" role="alert">
-                    <strong>{{ $message }}</strong>
+                <span id="password-error" class="auth-field-error" role="alert">
+                    <i class="fas fa-exclamation-circle auth-error-icon" aria-hidden="true"></i>
+                    <span>La contraseña es obligatoria.</span>
                 </span>
             @enderror
         </div>

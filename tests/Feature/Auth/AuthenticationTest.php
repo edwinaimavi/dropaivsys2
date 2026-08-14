@@ -10,6 +10,23 @@ test('login screen can be rendered', function () {
     $response->assertStatus(200);
 });
 
+test('required login errors use the styled Spanish field messages', function () {
+    $this->from('/login')
+        ->post('/login', [])
+        ->assertRedirect('/login')
+        ->assertSessionHasErrors(['email', 'password']);
+
+    $response = $this->get('/login');
+
+    $response->assertOk()
+        ->assertSeeText('El correo electrónico es obligatorio.')
+        ->assertSeeText('La contraseña es obligatoria.')
+        ->assertSee('auth-field-error', false)
+        ->assertSee('auth-input-error', false)
+        ->assertSee('aria-describedby="email-error"', false)
+        ->assertSee('aria-describedby="password-error"', false);
+});
+
 test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
 
