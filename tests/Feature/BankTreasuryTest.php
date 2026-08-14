@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\SupplierPurchaseOrderController;
 use App\Models\Bank;
 use App\Models\BankMovement;
+use App\Models\BankTransfer;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
@@ -12,6 +13,7 @@ use App\Models\SupplierPurchaseOrder;
 use App\Models\User;
 use App\Services\BankMovementService;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 
 beforeEach(function () {
@@ -133,9 +135,185 @@ it('transfiere entre cuentas creando dos asientos vinculados', function () {
         'operation_number' => 'OP-TRF-001',
     ], $this->user->id);
 
+    $outgoingMovement = $transfer->movements->firstWhere('direction', BankMovement::DIRECTION_OUT);
+    $incomingMovement = $transfer->movements->firstWhere('direction', BankMovement::DIRECTION_IN);
+
     expect($transfer->movements)->toHaveCount(2)
+        ->and($outgoingMovement->bank_transfer_id)->toBe($transfer->id)
+        ->and($incomingMovement->bank_transfer_id)->toBe($transfer->id)
+        ->and($outgoingMovement->source_code)->toBe($transfer->code)
+        ->and($incomingMovement->source_code)->toBe($transfer->code)
+        ->and($outgoingMovement->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and($incomingMovement->status)->toBe(BankMovement::STATUS_REGISTERED)
         ->and((float) $this->origin->fresh()->current_balance)->toBe(700.0)
         ->and((float) $this->destination->fresh()->current_balance)->toBe(300.0);
+});
+
+it('permite transferir hacia una cuenta activa de otra empresa', function () {
+    $otherCompany = Company::create([
+        'business_name' => 'EMPRESA DESTINO S.A.C.',
+        'ruc' => '20999999992',
+        'status' => true,
+    ]);
+    $this->destination->update(['company_id' => $otherCompany->id]);
+    $this->service->configureOpeningBalance($this->origin, '200', '2026-08-01', null, null, $this->user->id);
+
+    $transfer = $this->service->createTransfer([
+        'from_company_bank_account_id' => $this->origin->id,
+        'to_company_bank_account_id' => $this->destination->id,
+        'transfer_date' => '2026-08-04 10:00:00',
+        'amount' => '50.0000',
+        'operation_number' => 'OP-INTEREMPRESA-01',
+    ], $this->user->id);
+
+    expect($transfer->company_id)->toBe($this->company->id)
+        ->and($transfer->movements->firstWhere('direction', 'OUT')->company_id)->toBe($this->company->id)
+        ->and($transfer->movements->firstWhere('direction', 'IN')->company_id)->toBe($otherCompany->id)
+        ->and((float) $this->origin->fresh()->current_balance)->toBe(150.0)
+        ->and((float) $this->destination->fresh()->current_balance)->toBe(50.0);
+});
+
+it('transfiere de soles a moneda extranjera usando el tipo de cambio', function () {
+    $usd = Currency::create([
+        'code' => 'USD',
+        'description' => 'Dólares americanos',
+        'symbol' => '$',
+        'status' => 'ACTIVE',
+    ]);
+    $this->destination->update(['currency_id' => $usd->id]);
+    $this->service->configureOpeningBalance($this->origin, '760', '2026-08-01', null, null, $this->user->id);
+
+    $transfer = $this->service->createTransfer([
+        'from_company_bank_account_id' => $this->origin->id,
+        'to_company_bank_account_id' => $this->destination->id,
+        'transfer_date' => '2026-08-04 11:00:00',
+        'amount' => '380.0000',
+        'exchange_rate' => '3.800000',
+        'operation_number' => 'OP-PEN-USD-01',
+    ], $this->user->id);
+
+    expect((float) $transfer->destination_amount)->toBe(100.0)
+        ->and((float) $transfer->exchange_rate)->toBe(3.8)
+        ->and((float) $this->origin->fresh()->current_balance)->toBe(380.0)
+        ->and((float) $this->destination->fresh()->current_balance)->toBe(100.0);
+});
+
+it('permite transferir entre cuentas de la misma moneda extranjera sin exigir tipo de cambio', function () {
+    $usd = Currency::create([
+        'code' => 'USD',
+        'description' => 'Dólares americanos',
+        'symbol' => '$',
+        'status' => 'ACTIVE',
+    ]);
+    $this->origin->update(['currency_id' => $usd->id, 'current_balance' => 100]);
+    $this->destination->update(['currency_id' => $usd->id]);
+
+    $transfer = $this->service->createTransfer([
+        'from_company_bank_account_id' => $this->origin->id,
+        'to_company_bank_account_id' => $this->destination->id,
+        'transfer_date' => '2026-08-04 11:30:00',
+        'amount' => '25.0000',
+        'operation_number' => 'OP-USD-USD-01',
+    ], $this->user->id);
+
+    expect((float) $transfer->destination_amount)->toBe(25.0)
+        ->and((float) $transfer->exchange_rate)->toBe(1.0)
+        ->and((float) $this->origin->fresh()->current_balance)->toBe(75.0)
+        ->and((float) $this->destination->fresh()->current_balance)->toBe(25.0);
+});
+
+it('rechaza transferencias sin saldo suficiente o hacia cuentas inactivas', function () {
+    expect(fn () => $this->service->createTransfer([
+        'from_company_bank_account_id' => $this->origin->id,
+        'to_company_bank_account_id' => $this->destination->id,
+        'transfer_date' => '2026-08-04 12:00:00',
+        'amount' => '1.0000',
+        'operation_number' => 'OP-SIN-SALDO',
+    ], $this->user->id))->toThrow(ValidationException::class, 'saldo suficiente');
+
+    $this->origin->update(['current_balance' => 100]);
+    $this->destination->update(['status' => 'INACTIVE']);
+
+    expect(fn () => $this->service->createTransfer([
+        'from_company_bank_account_id' => $this->origin->id,
+        'to_company_bank_account_id' => $this->destination->id,
+        'transfer_date' => '2026-08-04 12:30:00',
+        'amount' => '1.0000',
+        'operation_number' => 'OP-CUENTA-INACTIVA',
+    ], $this->user->id))->toThrow(ValidationException::class, 'no se encuentra activa')
+        ->and(BankTransfer::count())->toBe(0)
+        ->and(BankMovement::count())->toBe(0);
+});
+
+it('valida por HTTP destino obligatorio diferente y activo', function () {
+    Permission::findOrCreate('admin.banks.transfers.create', 'web');
+    $this->user->givePermissionTo('admin.banks.transfers.create');
+    $this->origin->update(['current_balance' => 100]);
+    $payload = [
+        'from_company_bank_account_id' => $this->origin->id,
+        'transfer_date' => '2026-08-04 13:00:00',
+        'amount' => '10.0000',
+        'operation_number' => 'OP-HTTP-01',
+    ];
+
+    $this->actingAs($this->user)->postJson(route('admin.banks.transfers.store'), $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('to_company_bank_account_id')
+        ->assertJsonPath('errors.to_company_bank_account_id.0', 'Seleccione la cuenta bancaria que recibirá la transferencia.');
+
+    $this->postJson(route('admin.banks.transfers.store'), [
+        ...$payload,
+        'to_company_bank_account_id' => $this->origin->id,
+    ])->assertUnprocessable()
+        ->assertJsonPath('errors.to_company_bank_account_id.0', 'No puede transferir a la misma cuenta bancaria.');
+
+    $usd = Currency::create([
+        'code' => 'USD',
+        'description' => 'Dólares americanos',
+        'symbol' => '$',
+        'status' => 'ACTIVE',
+    ]);
+    $this->destination->update(['currency_id' => $usd->id]);
+    $this->postJson(route('admin.banks.transfers.store'), [
+        ...$payload,
+        'to_company_bank_account_id' => $this->destination->id,
+    ])->assertUnprocessable()
+        ->assertJsonPath('errors.exchange_rate.0', 'Ingrese un tipo de cambio mayor a cero para transferir entre monedas distintas.');
+
+    $this->destination->update(['status' => 'INACTIVE']);
+    $this->postJson(route('admin.banks.transfers.store'), [
+        ...$payload,
+        'to_company_bank_account_id' => $this->destination->id,
+    ])->assertUnprocessable()
+        ->assertJsonPath('errors.to_company_bank_account_id.0', 'La cuenta bancaria destino no existe o no se encuentra activa.');
+});
+
+it('renderiza todas las cuentas activas en el modal y conserva el refresco de destino', function () {
+    Permission::findOrCreate('admin.banks.view', 'web');
+    $this->user->givePermissionTo('admin.banks.view');
+    $inactive = CompanyBankAccount::create([
+        'company_id' => $this->company->id,
+        'bank_id' => $this->bank->id,
+        'currency_id' => $this->currency->id,
+        'account_holder' => 'CUENTA INACTIVA',
+        'account_number' => '001-300',
+        'is_detraction' => 'NO',
+        'status' => 'INACTIVE',
+    ]);
+
+    $this->actingAs($this->user)->get(route('admin.banks.index'))
+        ->assertOk()
+        ->assertSee($this->origin->account_number)
+        ->assertSee($this->destination->account_number)
+        ->assertDontSee($inactive->account_number)
+        ->assertSee('bankTransferDestinationHelp', false);
+
+    $javascript = file_get_contents(resource_path('js/pages/bank-treasury.js'));
+    expect($javascript)
+        ->toContain('filter(option => !originId || String(option.value) !== originId)')
+        ->toContain('No hay otra cuenta bancaria activa disponible para recibir la transferencia.')
+        ->toContain('Seleccione la cuenta bancaria que recibirá la transferencia.')
+        ->not->toContain("data('company')) === String(company)");
 });
 
 it('anula mediante reversa y reconstruye correctamente el saldo del libro', function () {

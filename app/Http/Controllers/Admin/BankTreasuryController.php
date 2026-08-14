@@ -145,6 +145,12 @@ class BankTreasuryController extends Controller
                 $movement->setAttribute('source_label', BankMovement::sourceLabel($movement->source_type));
                 $movement->setAttribute('file_url', $movement->file_path
                     ? route('admin.banks.files', ['type' => 'movement', 'id' => $movement->id]) : null);
+                $movement->setAttribute('source_url', $movement->source_type === 'WAREHOUSE_ENTRY_PAYMENT'
+                    ? route('admin.warehouse-entries.index', [
+                        'from_warehouse_entry' => $movement->source_id,
+                        'auto_open' => 1,
+                    ])
+                    : null);
             }) : collect();
         $transfers = Auth::user()?->can('admin.banks.transfers') ? BankTransfer::query()
             ->with(['fromAccount.bank:id,description,short_name', 'toAccount.bank:id,description,short_name', 'currency:id,code,symbol', 'destinationCurrency:id,code,symbol'])
@@ -283,9 +289,12 @@ class BankTreasuryController extends Controller
 
     public function storeTransfer(Request $request)
     {
+        $activeAccountRule = fn () => Rule::exists('company_bank_accounts', 'id')
+            ->where(fn ($query) => $query->where('status', 'ACTIVE')->whereNull('deleted_at'));
+
         $validated = $request->validate([
-            'from_company_bank_account_id' => ['required', 'exists:company_bank_accounts,id'],
-            'to_company_bank_account_id' => ['required', 'different:from_company_bank_account_id', 'exists:company_bank_accounts,id'],
+            'from_company_bank_account_id' => ['required', $activeAccountRule()],
+            'to_company_bank_account_id' => ['required', 'different:from_company_bank_account_id', $activeAccountRule()],
             'transfer_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
@@ -294,11 +303,31 @@ class BankTreasuryController extends Controller
             'file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
             'from_company_bank_account_id.required' => 'Seleccione la cuenta bancaria origen.',
-            'to_company_bank_account_id.required' => 'Seleccione la cuenta bancaria destino.',
-            'to_company_bank_account_id.different' => 'No puede transferir a la misma cuenta.',
+            'from_company_bank_account_id.exists' => 'La cuenta bancaria origen no existe o no se encuentra activa.',
+            'to_company_bank_account_id.required' => 'Seleccione la cuenta bancaria que recibirá la transferencia.',
+            'to_company_bank_account_id.different' => 'No puede transferir a la misma cuenta bancaria.',
+            'to_company_bank_account_id.exists' => 'La cuenta bancaria destino no existe o no se encuentra activa.',
             'amount.gt' => 'El monto debe ser mayor a cero.',
+            'exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
             'operation_number.required' => 'Ingrese el número de operación de la transferencia.',
         ]);
+
+        $transferAccounts = CompanyBankAccount::query()
+            ->with('currency:id,code')
+            ->whereIn('id', [
+                $validated['from_company_bank_account_id'],
+                $validated['to_company_bank_account_id'],
+            ])
+            ->get()
+            ->keyBy('id');
+        $fromAccount = $transferAccounts->get((int) $validated['from_company_bank_account_id']);
+        $toAccount = $transferAccounts->get((int) $validated['to_company_bank_account_id']);
+
+        if ($fromAccount?->currency_id !== $toAccount?->currency_id && empty($validated['exchange_rate'])) {
+            throw ValidationException::withMessages([
+                'exchange_rate' => 'Ingrese un tipo de cambio mayor a cero para transferir entre monedas distintas.',
+            ]);
+        }
 
         $storedPath = null;
         try {

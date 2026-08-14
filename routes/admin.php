@@ -620,6 +620,10 @@ Route::get(
     'warehouse-entries/list',
     [WarehouseEntryController::class, 'list']
 )->name('warehouse-entries.list');
+Route::get(
+    'warehouse-entries/company/{company}/bank-accounts',
+    [WarehouseEntryController::class, 'bankAccounts']
+)->name('warehouse-entries.company-bank-accounts');
 
 Route::get(
     'warehouse-entries/generate-number',

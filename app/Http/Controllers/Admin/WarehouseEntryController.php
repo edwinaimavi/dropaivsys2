@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Brand;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerPurchaseOrder;
@@ -24,8 +25,10 @@ use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemLotDocument;
+use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\WarehouseKardexService;
 use App\Services\PettyCashWarehouseExpenseService;
+use App\Services\WarehouseEntryBankPaymentService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -45,12 +48,19 @@ class WarehouseEntryController extends Controller
 
     private PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService;
 
-    public function __construct(?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null)
+    private WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService;
+
+    public function __construct(
+        ?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null,
+        ?WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService = null
+    )
     {
         $this->pettyCashWarehouseExpenseService = $pettyCashWarehouseExpenseService
             ?? app(PettyCashWarehouseExpenseService::class);
+        $this->warehouseEntryBankPaymentService = $warehouseEntryBankPaymentService
+            ?? app(WarehouseEntryBankPaymentService::class);
         $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
-        $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber']);
+        $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber', 'bankAccounts']);
         $this->middleware('can:admin.warehouse-entries.load-items')->only([
             'loadSupplierPurchaseOrderItems',
             'supplierPurchaseOrderLogisticsStatus',
@@ -105,7 +115,6 @@ class WarehouseEntryController extends Controller
             ->orderBy('trade_name')
             ->orderBy('business_name')
             ->get(['id', 'ruc', 'business_name', 'trade_name']);
-
         return view('admin.warehouse-entries.index', compact(
             'supplierPurchaseOrders',
             'companies',
@@ -120,6 +129,23 @@ class WarehouseEntryController extends Controller
             'shippingAgencies',
             'warehouseEntryDeepLink'
         ));
+    }
+
+    public function bankAccounts(Company $company)
+    {
+        abort_unless($company->status, 404);
+
+        $accounts = CompanyBankAccount::query()
+            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->where('company_id', $company->id)
+            ->where('status', 'ACTIVE')
+            ->orderBy('id')
+            ->get([
+                'id', 'company_id', 'bank_id', 'currency_id', 'account_number',
+                'cci', 'account_holder', 'current_balance', 'status',
+            ]);
+
+        return response()->json(['data' => $accounts]);
     }
 
     public function availablePettyCashExpenses(Request $request)
@@ -490,6 +516,11 @@ class WarehouseEntryController extends Controller
             'customer',
             'currency',
             'warehouse',
+            'bankPaymentAccount.bank:id,description,short_name',
+            'bankPaymentAccount.currency:id,code,symbol',
+            'bankPaymentMovement.account.bank:id,description,short_name',
+            'bankPaymentMovement.account.currency:id,code,symbol',
+            'bankPaymentMovement.originalCurrency:id,code,symbol',
             'creator:id,name,lastname,email',
             'updater:id,name,lastname,email',
             'items.article',
@@ -512,6 +543,15 @@ class WarehouseEntryController extends Controller
                 })->with('documentType');
             },
         ]);
+
+        if ($warehouseEntry->bankPaymentMovement) {
+            $warehouseEntry->bankPaymentMovement->setAttribute(
+                'file_url',
+                $warehouseEntry->bankPaymentMovement->file_path
+                    ? Storage::disk('public')->url($warehouseEntry->bankPaymentMovement->file_path)
+                    : null
+            );
+        }
 
         if (! Auth::user()?->can('admin.warehouse-entries.expenses.index')) {
             $warehouseEntry->unsetRelation('expenses');
@@ -627,6 +667,11 @@ class WarehouseEntryController extends Controller
                 $customerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($warehouseEntry);
 
                 $kardexService->reverseWarehouseEntry($warehouseEntry, 'Ingreso de almacen anulado');
+                $this->warehouseEntryBankPaymentService->cancel(
+                    $warehouseEntry,
+                    'INGRESO DE ALMACÉN ANULADO '.$warehouseEntry->entry_number,
+                    Auth::id()
+                );
 
                 $warehouseEntry->update([
                     'status' => self::STATUS_CANCELLED,
@@ -735,6 +780,7 @@ class WarehouseEntryController extends Controller
         $generatedPdfUrl = null;
         $generatedDocumentId = null;
         $pdfError = null;
+        $storedBankPaymentPath = null;
 
         $request->merge([
             'document_type' => $this->normalizeDocumentType($request->input('document_type')),
@@ -743,6 +789,18 @@ class WarehouseEntryController extends Controller
                 ->all(),
         ]);
         $hasSupplierPurchaseOrder = $request->filled('supplier_purchase_order_id');
+
+        if (! $entry && $hasSupplierPurchaseOrder) {
+            $existingEntry = $this->warehouseEntryForSupplierPurchaseOrder((int) $request->input('supplier_purchase_order_id'));
+            if ($existingEntry) {
+                return response()->json([
+                    'status' => 'existing',
+                    'message' => 'Esta orden de compra ya tiene un ingreso de almacén asociado. Se abrirá el ingreso existente.',
+                    'existing_entry_id' => $existingEntry->id,
+                    'data' => $existingEntry,
+                ], 409);
+            }
+        }
 
         $documentRules = $this->newDocumentUploadRules($request);
 
@@ -770,6 +828,22 @@ class WarehouseEntryController extends Controller
                 'nullable',
                 'date',
             ],
+            'payment_company_bank_account_id' => [
+                Rule::requiredIf(! $request->boolean('generate_account_payable')),
+                'nullable',
+                'integer',
+                'exists:company_bank_accounts,id',
+            ],
+            'bank_payment_date' => [
+                Rule::requiredIf(! $request->boolean('generate_account_payable')),
+                'nullable',
+                'date',
+            ],
+            'bank_payment_operation_number' => ['nullable', 'string', 'max:100'],
+            'bank_payment_exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'bank_payment_proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'bank_payment_observation' => ['nullable', 'string', 'max:1500'],
+            'bank_payment_negative_balance_confirmed' => ['nullable', 'boolean'],
             'seller_name' => ['nullable', 'string', 'max:255'],
             'affect_igv' => ['nullable', 'boolean'],
             'guide_series' => ['nullable', 'string', 'max:20'],
@@ -869,6 +943,12 @@ class WarehouseEntryController extends Controller
             'expenses.*.invoice_file.max' => 'El archivo de la factura no debe superar los 10 MB.',
             'expenses.*.payment_proof_file.mimes' => 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.',
             'expenses.*.payment_proof_file.max' => 'El archivo de la constancia de pago no debe superar los 10 MB.',
+            'payment_company_bank_account_id.required' => 'Seleccione la cuenta bancaria utilizada para pagar al proveedor.',
+            'payment_company_bank_account_id.exists' => 'La cuenta bancaria seleccionada no existe.',
+            'bank_payment_date.required' => 'Indique la fecha en que se realizó el pago al proveedor.',
+            'bank_payment_exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
+            'bank_payment_proof.mimes' => 'La constancia bancaria debe ser PDF, JPG, JPEG, PNG o WEBP.',
+            'bank_payment_proof.max' => 'La constancia bancaria no debe superar los 10 MB.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -887,7 +967,8 @@ class WarehouseEntryController extends Controller
                 &$generatedPdfPath,
                 &$generatedPdfUrl,
                 &$generatedDocumentId,
-                &$pdfError
+                &$pdfError,
+                &$storedBankPaymentPath
             ) {
                 $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
                 $previousCustomerPurchaseOrderIds = $entry
@@ -926,6 +1007,13 @@ class WarehouseEntryController extends Controller
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
                 $generateAccountPayable = (bool) ($validated['generate_account_payable'] ?? false);
+                $paymentCondition = $supplierPurchaseOrder?->payment_condition
+                    ?? ($validated['payment_condition'] ?? null);
+                if ($generateAccountPayable && $this->isCashPaymentCondition($paymentCondition)) {
+                    throw ValidationException::withMessages([
+                        'generate_account_payable' => 'Una compra al contado o ya pagada debe registrar la cuenta bancaria de salida.',
+                    ]);
+                }
                 $guideRuc = $this->upperOrNull($validated['guide_ruc'] ?? null)
                     ?? $supplier?->ruc;
 
@@ -942,12 +1030,41 @@ class WarehouseEntryController extends Controller
                     'document_number' => $this->upperOrNull($validated['document_number'] ?? null),
                     'document_date' => $validated['document_date'] ?? null,
                     'payment_method' => $supplierPurchaseOrder?->payment_method ?? ($validated['payment_method'] ?? null),
-                    'payment_condition' => $supplierPurchaseOrder?->payment_condition ?? ($validated['payment_condition'] ?? null),
+                    'payment_condition' => $paymentCondition,
                     'generate_account_payable' => $generateAccountPayable,
                     'payable_amount' => $totals['grand_total'],
                     'expected_payment_date' => $generateAccountPayable
                         ? ($validated['expected_payment_date'] ?? null)
                         : null,
+                    'payment_company_bank_account_id' => $generateAccountPayable
+                        ? null
+                        : ($validated['payment_company_bank_account_id'] ?? null),
+                    'bank_payment_date' => $generateAccountPayable
+                        ? null
+                        : ($validated['bank_payment_date'] ?? null),
+                    'bank_payment_operation_number' => $generateAccountPayable
+                        ? null
+                        : $this->upperOrNull($validated['bank_payment_operation_number'] ?? null),
+                    'bank_payment_exchange_rate' => $generateAccountPayable
+                        ? null
+                        : ($validated['bank_payment_exchange_rate'] ?? null),
+                    'bank_payment_proof_path' => $generateAccountPayable
+                        ? null
+                        : $entry?->bank_payment_proof_path,
+                    'bank_payment_proof_original_name' => $generateAccountPayable
+                        ? null
+                        : $entry?->bank_payment_proof_original_name,
+                    'bank_payment_proof_mime_type' => $generateAccountPayable
+                        ? null
+                        : $entry?->bank_payment_proof_mime_type,
+                    'bank_payment_proof_size' => $generateAccountPayable
+                        ? null
+                        : $entry?->bank_payment_proof_size,
+                    'bank_payment_observation' => $generateAccountPayable
+                        ? null
+                        : $this->upperOrNull($validated['bank_payment_observation'] ?? null),
+                    'bank_payment_negative_balance_confirmed' => ! $generateAccountPayable
+                        && (bool) ($validated['bank_payment_negative_balance_confirmed'] ?? false),
                     'seller_name' => $this->upperOrNull($validated['seller_name'] ?? null),
                     'affect_igv' => $affectIgv,
                     'guide_series' => $this->upperOrNull($validated['guide_series'] ?? null),
@@ -971,6 +1088,20 @@ class WarehouseEntryController extends Controller
                     $entryData['entry_number'] = $this->nextEntryNumber();
                     $entryData['created_by'] = Auth::id();
                     $entry = WarehouseEntry::create($entryData);
+                }
+
+                $bankPaymentProof = $request->file('bank_payment_proof');
+                if (! $generateAccountPayable && $bankPaymentProof instanceof UploadedFile && $bankPaymentProof->isValid()) {
+                    $storedBankPaymentPath = $bankPaymentProof->store(
+                        "warehouse_entries/{$entry->id}/bank-payment",
+                        'public'
+                    );
+                    $entry->update([
+                        'bank_payment_proof_path' => $storedBankPaymentPath,
+                        'bank_payment_proof_original_name' => $bankPaymentProof->getClientOriginalName(),
+                        'bank_payment_proof_mime_type' => $bankPaymentProof->getMimeType(),
+                        'bank_payment_proof_size' => $bankPaymentProof->getSize(),
+                    ]);
                 }
 
                 $retainedItemIds = [];
@@ -1023,6 +1154,8 @@ class WarehouseEntryController extends Controller
                     $request->input('warehouse_entry_lot_documents', []),
                     $request->file('warehouse_entry_lot_documents', [])
                 );
+
+                $this->warehouseEntryBankPaymentService->sync($entry, Auth::id());
 
                 $freshEntry = $entry->fresh([
                     'supplier',
@@ -1079,7 +1212,7 @@ class WarehouseEntryController extends Controller
                     'message' => $entry->wasRecentlyCreated
                         ? 'Ingreso de almacen registrado correctamente.'
                         : 'Ingreso de almacen actualizado correctamente.',
-                    'data' => $entry->fresh(['items']),
+                    'data' => $entry->fresh(['items', 'bankPaymentMovement.account.bank', 'bankPaymentMovement.account.currency']),
                     'pdf_path' => $generatedPdfPath,
                     'pdf_url' => $generatedPdfUrl,
                     'document_id' => $generatedDocumentId,
@@ -1087,10 +1220,16 @@ class WarehouseEntryController extends Controller
                 ], $entry->wasRecentlyCreated ? 201 : 200);
             });
         } catch (ValidationException $e) {
+            if ($storedBankPaymentPath && Storage::disk('public')->exists($storedBankPaymentPath)) {
+                Storage::disk('public')->delete($storedBankPaymentPath);
+            }
             throw $e;
         } catch (\Throwable $e) {
             if ($generatedPdfPath && Storage::disk('public')->exists($generatedPdfPath)) {
                 Storage::disk('public')->delete($generatedPdfPath);
+            }
+            if ($storedBankPaymentPath && Storage::disk('public')->exists($storedBankPaymentPath)) {
+                Storage::disk('public')->delete($storedBankPaymentPath);
             }
 
             Log::error('Error saving warehouse entry', [
@@ -1819,10 +1958,33 @@ class WarehouseEntryController extends Controller
         return $value === '' ? 'FACTURA' : $value;
     }
 
+    private function isCashPaymentCondition(?string $value): bool
+    {
+        $value = mb_strtolower(trim((string) $value), 'UTF-8');
+
+        return str_contains($value, 'contado') || str_contains($value, 'pagado');
+    }
+
     private function warehouseEntryDeepLink(Request $request): ?array
     {
         if (! $request->boolean('auto_open')) {
             return null;
+        }
+
+        $warehouseEntryId = filter_var(
+            $request->query('from_warehouse_entry'),
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+        if ($warehouseEntryId) {
+            $warehouseEntry = WarehouseEntry::query()->find($warehouseEntryId);
+            if ($warehouseEntry) {
+                return [
+                    'action' => 'edit',
+                    'supplier_purchase_order_id' => $warehouseEntry->supplier_purchase_order_id,
+                    'warehouse_entry_id' => $warehouseEntry->id,
+                ];
+            }
         }
 
         $supplierPurchaseOrderId = filter_var(
@@ -1923,12 +2085,8 @@ class WarehouseEntryController extends Controller
 
     private function customerPurchaseOrderIdsForWarehouseEntry(WarehouseEntry $entry)
     {
-        $supplierItemIds = $entry->items()
-            ->whereNotNull('supplier_purchase_order_item_id')
-            ->pluck('supplier_purchase_order_item_id')
-            ->all();
-
-        return $this->customerPurchaseOrderIdsForSupplierItemIds($supplierItemIds);
+        return app(CustomerPurchaseOrderStatusService::class)
+            ->customerOrderIdsForWarehouseEntry($entry);
     }
 
     private function customerPurchaseOrderIdsForSupplierItemIds(array $supplierItemIds)
@@ -1949,10 +2107,8 @@ class WarehouseEntryController extends Controller
 
     private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
     {
-        CustomerPurchaseOrder::query()
-            ->whereIn('id', collect($customerPurchaseOrderIds)->filter()->unique()->values()->all())
-            ->get()
-            ->each(fn (CustomerPurchaseOrder $order) => $order->refreshSupplyStatus());
+        app(CustomerPurchaseOrderStatusService::class)
+            ->recalculateMany($customerPurchaseOrderIds);
     }
 
     private function warehouseEntryForPdf(WarehouseEntry $entry): WarehouseEntry

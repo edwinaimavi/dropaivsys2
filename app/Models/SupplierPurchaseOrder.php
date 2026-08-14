@@ -206,7 +206,8 @@ class SupplierPurchaseOrder extends Model
 
     public function items()
     {
-        return $this->hasMany(SupplierPurchaseOrderItem::class);
+        return $this->hasMany(SupplierPurchaseOrderItem::class)
+            ->where('status', '!=', 'deleted');
     }
 
     public function trackings()

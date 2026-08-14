@@ -37,6 +37,7 @@
                             <div class="col-sm-6 col-lg-4"><div class="warehouse-entry-detail-field"><small>{{ $label }}</small><strong id="{{ $id }}">-</strong></div></div>
                         @endforeach
                         <div class="col-12"><div class="warehouse-entry-detail-field warehouse-entry-detail-field-wide"><small>Observaciones</small><strong id="vwe_observations">-</strong></div></div>
+                        <div class="col-12"><div id="vwe_bank_payment_summary" class="warehouse-entry-bank-payment-summary"></div></div>
                     </div></div></div></div>
 
                     <div class="tab-pane fade" id="vwe_items_tab"><div class="card border-0 shadow-sm warehouse-entry-card">

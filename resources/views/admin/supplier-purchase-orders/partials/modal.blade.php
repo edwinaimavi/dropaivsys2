@@ -722,6 +722,7 @@
                         <tr class="supplier-order-item-row">
                             <td class="supplier-order-item-index align-middle"></td>
                             <td>
+                                <input type="hidden" name="items[__INDEX__][id]" class="item-id">
                                 <input type="hidden" name="items[__INDEX__][market_study_item_id]"
                                     class="item-market-study-item-id">
                                 <input type="hidden" name="items[__INDEX__][quote_item_id]"

@@ -17,8 +17,8 @@ class BankMovement extends Model
     public const STATUS_CANCELLED = 'ANULADO';
 
     protected $fillable = [
-        'code', 'company_bank_account_id', 'company_id', 'currency_id', 'bank_transfer_id',
-        'movement_date', 'movement_type', 'amount', 'exchange_rate', 'amount_pen', 'direction',
+        'code', 'company_bank_account_id', 'company_id', 'currency_id', 'original_currency_id', 'bank_transfer_id',
+        'movement_date', 'movement_type', 'amount', 'original_amount', 'exchange_rate', 'original_exchange_rate', 'amount_pen', 'direction',
         'concept', 'description', 'operation_number', 'document_type', 'document_series',
         'document_number', 'document_date', 'file_path', 'file_original_name', 'file_mime_type',
         'file_size', 'source_type', 'source_id', 'source_code', 'source_description', 'status',
@@ -30,7 +30,9 @@ class BankMovement extends Model
         'movement_date' => 'datetime',
         'document_date' => 'date',
         'amount' => 'decimal:4',
+        'original_amount' => 'decimal:4',
         'exchange_rate' => 'decimal:6',
+        'original_exchange_rate' => 'decimal:6',
         'amount_pen' => 'decimal:4',
         'balance_after' => 'decimal:4',
         'file_size' => 'integer',
@@ -50,6 +52,11 @@ class BankMovement extends Model
     public function currency()
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    public function originalCurrency()
+    {
+        return $this->belongsTo(Currency::class, 'original_currency_id');
     }
 
     public function transfer()
@@ -111,6 +118,7 @@ class BankMovement extends Model
             'PETTY_CASH_REPLENISHMENT' => 'Reposición de Caja Chica',
             'PETTY_CASH_EXPENSE_EXCHANGE' => 'Canje de Caja Chica',
             'WAREHOUSE_ENTRY_EXPENSE' => 'Costo de Almacén',
+            'WAREHOUSE_ENTRY_PAYMENT' => 'Ingreso de AlmacÃ©n',
             'BANK_TRANSFER' => 'Transferencia bancaria',
             'BANK_ADJUSTMENT' => 'Ajuste bancario',
             'BANK_OPENING_BALANCE' => 'Saldo inicial',

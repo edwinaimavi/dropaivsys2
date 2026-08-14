@@ -140,7 +140,7 @@
                                             class="form-control form-control-sm js-warehouse-entry-select">
                                             <option value="">Seleccione</option>
                                             @foreach ($currencies as $currency)
-                                                <option value="{{ $currency->id }}" data-symbol="{{ $currency->symbol ?? $currency->code }}">
+                                                <option value="{{ $currency->id }}" data-code="{{ $currency->code }}" data-symbol="{{ $currency->symbol ?? $currency->code }}">
                                                     {{ $currency->code }} - {{ $currency->description }}
                                                 </option>
                                             @endforeach
@@ -303,6 +303,71 @@
                                             class="form-control form-control-sm text-uppercase" rows="2"></textarea>
                                         <span class="invalid-feedback"></span>
                                     </div>
+                                </div>
+
+                                <div class="warehouse-entry-bank-payment-card mt-2">
+                                    <div class="warehouse-entry-bank-payment-heading">
+                                        <span><i class="fas fa-university"></i></span>
+                                        <div>
+                                            <strong>Pago de la compra al proveedor</strong>
+                                            <small>Registra la cuenta de salida y genera el egreso pendiente de conciliaci&oacute;n en Tesorer&iacute;a.</small>
+                                        </div>
+                                    </div>
+                                    <div id="warehouseEntryBankPaymentCreditHelp" class="warehouse-entry-bank-payment-help d-none">
+                                        <i class="fas fa-clock"></i>
+                                        <span>Este ingreso generar&aacute; una cuenta por pagar. No se descontar&aacute; saldo bancario hasta registrar el pago.</span>
+                                    </div>
+                                    <div id="warehouseEntryBankPaymentFields" class="row mt-3">
+                                        <input type="hidden" id="warehouse_entry_bank_payment_negative_balance_confirmed"
+                                            name="bank_payment_negative_balance_confirmed" value="0">
+                                        <div class="form-group col-lg-6">
+                                            <label>BANCO / CUENTA BANCARIA DE SALIDA *</label>
+                                            <select id="warehouse_entry_payment_company_bank_account_id"
+                                                name="payment_company_bank_account_id"
+                                                class="form-control form-control-sm js-warehouse-entry-select">
+                                                <option value="">Seleccione cuenta bancaria</option>
+                                            </select>
+                                            <small id="warehouseEntryBankAccountHelp" class="form-text text-muted">Seleccione primero la empresa para ver sus cuentas activas.</small>
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                        <div class="form-group col-sm-6 col-lg-3">
+                                            <label>FECHA DE PAGO *</label>
+                                            <input type="date" id="warehouse_entry_bank_payment_date" name="bank_payment_date"
+                                                class="form-control form-control-sm" value="{{ now()->toDateString() }}">
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                        <div class="form-group col-sm-6 col-lg-3">
+                                            <label>N&deg; OPERACI&Oacute;N / CONSTANCIA</label>
+                                            <input type="text" id="warehouse_entry_bank_payment_operation_number"
+                                                name="bank_payment_operation_number" class="form-control form-control-sm text-uppercase" maxlength="100">
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                        <div id="warehouseEntryBankPaymentExchangeRateGroup" class="form-group col-sm-6 col-lg-3 d-none">
+                                            <label>TIPO DE CAMBIO *</label>
+                                            <input type="number" step="0.000001" min="0.000001"
+                                                id="warehouse_entry_bank_payment_exchange_rate"
+                                                name="bank_payment_exchange_rate" class="form-control form-control-sm text-right">
+                                            <small class="form-text text-muted">Soles por unidad de moneda extranjera.</small>
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                        <div class="form-group col-sm-6 col-lg-4">
+                                            <label>CONSTANCIA BANCARIA</label>
+                                            <div class="custom-file custom-file-sm">
+                                                <input type="file" id="warehouse_entry_bank_payment_proof" name="bank_payment_proof"
+                                                    class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                                                <label class="custom-file-label" for="warehouse_entry_bank_payment_proof">Seleccionar archivo</label>
+                                            </div>
+                                            <small id="warehouseEntryBankPaymentExistingProof" class="form-text text-muted"></small>
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                        <div class="form-group col-lg-5">
+                                            <label>OBSERVACI&Oacute;N DEL PAGO</label>
+                                            <input type="text" id="warehouse_entry_bank_payment_observation"
+                                                name="bank_payment_observation" class="form-control form-control-sm text-uppercase" maxlength="1500">
+                                            <span class="invalid-feedback"></span>
+                                        </div>
+                                    </div>
+                                    <div id="warehouseEntryBankPaymentStatus" class="warehouse-entry-bank-payment-status d-none"></div>
                                 </div>
                             </div>
                         </div>

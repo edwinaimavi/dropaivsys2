@@ -27,6 +27,16 @@ class WarehouseEntry extends Model
         'generate_account_payable',
         'payable_amount',
         'expected_payment_date',
+        'payment_company_bank_account_id',
+        'bank_payment_date',
+        'bank_payment_operation_number',
+        'bank_payment_exchange_rate',
+        'bank_payment_proof_path',
+        'bank_payment_proof_original_name',
+        'bank_payment_proof_mime_type',
+        'bank_payment_proof_size',
+        'bank_payment_observation',
+        'bank_payment_negative_balance_confirmed',
         'seller_name',
         'affect_igv',
         'guide_series',
@@ -44,12 +54,16 @@ class WarehouseEntry extends Model
     protected $casts = [
         'document_date' => 'date',
         'expected_payment_date' => 'date',
+        'bank_payment_date' => 'date',
         'generate_account_payable' => 'boolean',
+        'bank_payment_negative_balance_confirmed' => 'boolean',
         'affect_igv' => 'boolean',
         'payable_amount' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'igv' => 'decimal:2',
         'grand_total' => 'decimal:2',
+        'bank_payment_exchange_rate' => 'decimal:6',
+        'bank_payment_proof_size' => 'integer',
     ];
 
     public function supplierPurchaseOrder()
@@ -80,6 +94,25 @@ class WarehouseEntry extends Model
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function bankPaymentAccount()
+    {
+        return $this->belongsTo(CompanyBankAccount::class, 'payment_company_bank_account_id');
+    }
+
+    public function bankPaymentMovement()
+    {
+        return $this->hasOne(BankMovement::class, 'source_id')
+            ->where('source_type', 'WAREHOUSE_ENTRY_PAYMENT')
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+            ->latestOfMany();
+    }
+
+    public function bankPaymentMovements()
+    {
+        return $this->hasMany(BankMovement::class, 'source_id')
+            ->where('source_type', 'WAREHOUSE_ENTRY_PAYMENT');
     }
 
     public function items()

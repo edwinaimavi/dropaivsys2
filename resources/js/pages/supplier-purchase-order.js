@@ -1716,6 +1716,7 @@ function addSupplierOrderItemRow(data = {}) {
 
     const row = $('#supplierOrderItemsTbody tr.supplier-order-item-row').last();
 
+    row.find('.item-id').val(data.id || '');
     row.find('.item-market-study-item-id').val(data.market_study_item_id || '');
     row.find('.item-quote-item-id').val(data.quote_item_id || '');
     row.find('.item-customer-purchase-order-item-id').val(data.customer_purchase_order_item_id || '');

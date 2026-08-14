@@ -23,6 +23,7 @@ use App\Models\SupplierPurchaseOrderItem;
 use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Ubigeo;
 use App\Models\Unit;
+use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\SupplierPurchaseOrderFinancialService;
 use App\Services\BankMovementService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -784,6 +785,12 @@ class SupplierPurchaseOrderController extends Controller
             'important_note' => ['nullable', 'string'],
             'status' => ['nullable', Rule::in($this->statusValues())],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => [
+                'nullable',
+                'integer',
+                Rule::exists('supplier_purchase_order_items', 'id')
+                    ->where('supplier_purchase_order_id', $order?->id ?? 0),
+            ],
             'items.*.article_id' => ['required', 'exists:articles,id'],
             'items.*.market_study_item_id' => ['nullable', 'exists:market_study_items,id'],
             'items.*.quote_item_id' => ['nullable', 'exists:quote_items,id'],
@@ -1076,7 +1083,6 @@ class SupplierPurchaseOrderController extends Controller
 
                 if ($order) {
                     $order->update($orderData);
-                    $order->items()->delete();
                 } else {
                     $sequence = $this->nextPurchaseOrderSequence($supplierAccount);
                     $orderData['code'] = $sequence['code'];
@@ -1101,8 +1107,22 @@ class SupplierPurchaseOrderController extends Controller
                     );
                 }
 
+                $retainedItemIds = [];
                 foreach ($preparedItems as $item) {
-                    $order->items()->create($item);
+                    $itemId = $item['_item_id'] ?? null;
+                    unset($item['_item_id']);
+
+                    $orderItem = $itemId
+                        ? $order->items()->whereKey($itemId)->firstOrFail()
+                        : $order->items()->make();
+                    $orderItem->fill($item)->save();
+                    $retainedItemIds[] = $orderItem->id;
+                }
+
+                if (! $wasRecentlyCreated) {
+                    $order->items()
+                        ->whereNotIn('id', $retainedItemIds)
+                        ->update(['status' => 'deleted']);
                 }
 
                 $uploadedDocumentPaths = array_merge(
@@ -1210,6 +1230,7 @@ class SupplierPurchaseOrderController extends Controller
                     : 0;
 
                 return [
+                    '_item_id' => $item['id'] ?? null,
                     'article_id' => $item['article_id'],
                     'market_study_item_id' => $item['market_study_item_id'] ?? null,
                     'quote_item_id' => $item['quote_item_id'] ?? null,
@@ -2270,30 +2291,13 @@ class SupplierPurchaseOrderController extends Controller
 
     private function customerPurchaseOrderIdsForSupplierOrder(SupplierPurchaseOrder $order)
     {
-        $pivotIds = DB::table('supplier_purchase_order_customer_purchase_order')
-            ->where('supplier_purchase_order_id', $order->id)
-            ->pluck('customer_purchase_order_id');
-
-        $itemIds = DB::table('supplier_purchase_order_items as supplier_items')
-            ->join('customer_purchase_order_items as customer_items', 'customer_items.id', '=', 'supplier_items.customer_purchase_order_item_id')
-            ->where('supplier_items.supplier_purchase_order_id', $order->id)
-            ->where('supplier_items.status', '!=', 'deleted')
-            ->pluck('customer_items.customer_purchase_order_id');
-
-        return $pivotIds
-            ->merge($itemIds)
-            ->merge([$order->customer_purchase_order_id])
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
+        return app(CustomerPurchaseOrderStatusService::class)
+            ->customerOrderIdsForSupplierOrder((int) $order->id);
     }
 
     private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
     {
-        CustomerPurchaseOrder::query()
-            ->whereIn('id', collect($customerPurchaseOrderIds)->filter()->unique()->values()->all())
-            ->get()
-            ->each(fn (CustomerPurchaseOrder $order) => $order->refreshSupplyStatus());
+        app(CustomerPurchaseOrderStatusService::class)
+            ->recalculateMany($customerPurchaseOrderIds);
     }
 }

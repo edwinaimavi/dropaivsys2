@@ -742,6 +742,70 @@
             font-size: 11px;
         }
 
+        .warehouse-entry-bank-payment-card {
+            padding: 13px 14px 6px;
+            border: 1px solid #d7e8e4;
+            border-radius: 11px;
+            background: linear-gradient(145deg, #f9fdfc, #f1f8f6);
+        }
+
+        .warehouse-entry-bank-payment-heading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .warehouse-entry-bank-payment-heading > span {
+            display: inline-grid;
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border-radius: 9px;
+            background: #dff1eb;
+            color: #187557;
+        }
+
+        .warehouse-entry-bank-payment-heading strong,
+        .warehouse-entry-bank-payment-heading small {
+            display: block;
+        }
+
+        .warehouse-entry-bank-payment-heading strong { color: #234f41; font-size: 12px; }
+        .warehouse-entry-bank-payment-heading small { margin-top: 2px; color: #71827c; font-size: 10.5px; }
+
+        .warehouse-entry-bank-payment-help,
+        .warehouse-entry-bank-payment-status,
+        .warehouse-entry-bank-payment-summary {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: 1px solid #d7e8e4;
+            border-radius: 9px;
+            background: #fff;
+            color: #526c63;
+            font-size: 11px;
+        }
+
+        .warehouse-entry-bank-payment-help i,
+        .warehouse-entry-bank-payment-status i { margin-right: 7px; color: #168267; }
+        .warehouse-entry-bank-payment-status.is-pending { border-color: #cfe2ff; background: #f2f7ff; color: #365c8d; }
+        .warehouse-entry-bank-payment-status.is-reconciled { border-color: #c9ead8; background: #effaf4; color: #256346; }
+        .warehouse-entry-bank-payment-summary strong,
+        .warehouse-entry-bank-payment-summary small { display: block; }
+        .warehouse-entry-bank-payment-summary strong { color: #284e42; font-size: 12px; }
+        .warehouse-entry-bank-payment-summary small { margin-top: 3px; color: #71817b; }
+
+        #warehouseEntryBankPaymentFields .custom-file,
+        #warehouseEntryBankPaymentFields .custom-file-input,
+        #warehouseEntryBankPaymentFields .custom-file-label { height: 30px; }
+        #warehouseEntryBankPaymentFields .custom-file-label { padding: 5px 76px 5px 8px; font-size: 11px; }
+        #warehouseEntryBankPaymentFields .custom-file-label::after { height: 28px; padding: 5px 9px; }
+
+        @media (max-width: 575.98px) {
+            .warehouse-entry-bank-payment-card { padding: 11px 10px 4px; }
+            .warehouse-entry-bank-payment-heading { align-items: flex-start; }
+        }
+
         .warehouse-entry-modal label {
             margin-bottom: 3px;
             color: #68717a;
@@ -1454,6 +1518,7 @@
             warehouseEntryShow: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryGenerateNumber: "{{ route('admin.warehouse-entries.generateNumber') }}",
             warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}",
+            warehouseEntryCompanyBankAccounts: "{{ url('admin/warehouse-entries/company') }}",
             warehouseEntryAvailablePettyCashExpenses: "{{ route('admin.warehouse-entries.petty-cash-expenses.available') }}",
             supplierPurchaseOrderLogisticsStatus: "{{ url('admin/supplier-purchase-orders') }}"
         });

@@ -34,6 +34,14 @@ it('does not classify an available order as in purchase', function () {
     expect($order->isInPurchase())->toBeFalse();
 });
 
+it('keeps an order registered when it has neither supplier purchase nor warehouse entries', function () {
+    expect(CustomerPurchaseOrder::supplyStatusFromQuantities(
+        [1 => 10],
+        [],
+        []
+    ))->toBe(CustomerPurchaseOrder::STATUS_REGISTERED);
+});
+
 it('marks the customer order as in purchase when at least one supplier order item exists', function () {
     expect(CustomerPurchaseOrder::supplyStatusFromQuantities(
         [1 => 50, 2 => 60, 3 => 3],

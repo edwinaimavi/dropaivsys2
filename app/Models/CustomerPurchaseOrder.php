@@ -2,14 +2,15 @@
 
 namespace App\Models;
 
+use App\Services\CustomerPurchaseOrderStatusService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\DB;
 
 class CustomerPurchaseOrder extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_REGISTERED = 'registered';
     public const STATUS_ENTERED = 'entered';
     public const STATUS_ATTENDED = 'attended';
     public const STATUS_NOT_ATTENDED = 'not_attended';
@@ -195,75 +196,16 @@ class CustomerPurchaseOrder extends Model
 
     public function refreshSupplyStatus(): bool
     {
-        if (in_array($this->status, [
-            'cancelled',
-            'delivered',
-            'invoiced',
-            self::STATUS_NOT_ATTENDED,
-        ], true)) {
-            return false;
-        }
-
-        $requestedByItem = $this->items()
-            ->where('status', '!=', 'deleted')
-            ->select('id', 'quantity')
-            ->get()
-            ->mapWithKeys(fn (CustomerPurchaseOrderItem $item) => [
-                $item->id => round((float) $item->quantity, 2),
-            ]);
-
-        if ($requestedByItem->isEmpty()) {
-            return $this->applySupplyStatus('registered');
-        }
-
-        $itemIds = $requestedByItem->keys()->all();
-
-        $purchasedByItem = SupplierPurchaseOrderItem::query()
-            ->join('supplier_purchase_orders as orders', 'orders.id', '=', 'supplier_purchase_order_items.supplier_purchase_order_id')
-            ->whereIn('supplier_purchase_order_items.customer_purchase_order_item_id', $itemIds)
-            ->whereNull('orders.deleted_at')
-            ->where('orders.status', '!=', 'cancelled')
-            ->where('supplier_purchase_order_items.status', '!=', 'deleted')
-            ->groupBy('supplier_purchase_order_items.customer_purchase_order_item_id')
-            ->selectRaw('supplier_purchase_order_items.customer_purchase_order_item_id, SUM(supplier_purchase_order_items.quantity) as purchased_quantity')
-            ->pluck('purchased_quantity', 'customer_purchase_order_item_id')
-            ->map(fn ($quantity) => round((float) $quantity, 2));
-
-        if ($purchasedByItem->isEmpty()) {
-            return $this->applySupplyStatus('registered');
-        }
-
-        $enteredByItem = DB::table('warehouse_entry_items as items')
-            ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
-            ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'items.supplier_purchase_order_item_id')
-            ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
-            ->whereIn('supplier_items.customer_purchase_order_item_id', $itemIds)
-            ->whereNull('entries.deleted_at')
-            ->whereNull('supplier_orders.deleted_at')
-            ->where('entries.status', 'registered')
-            ->where('supplier_orders.status', '!=', 'cancelled')
-            ->where('items.status', '!=', 'deleted')
-            ->where('supplier_items.status', '!=', 'deleted')
-            ->groupBy('supplier_items.customer_purchase_order_item_id')
-            ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(items.quantity) as entered_quantity')
-            ->pluck('entered_quantity', 'customer_purchase_order_item_id')
-            ->map(fn ($quantity) => round((float) $quantity, 2));
-
-        $status = self::supplyStatusFromQuantities(
-            $requestedByItem->all(),
-            $purchasedByItem->all(),
-            $enteredByItem->all(),
-            filled($this->attention_document_path)
-        );
-
-        return $this->applySupplyStatus($status);
+        return app(CustomerPurchaseOrderStatusService::class)
+            ->recalculate($this)['changed'];
     }
 
     public static function supplyStatusFromQuantities(
         array $requested,
         array $purchased,
         array $entered,
-        bool $hasAttentionClosureDocument = false
+        bool $hasAttentionClosureDocument = false,
+        bool $hasSupplierPurchaseOrder = false
     ): string
     {
         $allEntered = collect($requested)->every(fn ($quantity, $itemId) =>
@@ -276,17 +218,8 @@ class CustomerPurchaseOrder extends Model
 
         if (round((float) collect($entered)->sum(), 2) > 0) return self::STATUS_PARTIAL_ENTERED;
 
-        return self::STATUS_IN_PURCHASE;
-    }
-
-    private function applySupplyStatus(string $status): bool
-    {
-        if ($this->status === $status) {
-            return false;
-        }
-
-        $this->forceFill(['status' => $status])->save();
-
-        return true;
+        return $hasSupplierPurchaseOrder || round((float) collect($purchased)->sum(), 2) > 0
+            ? self::STATUS_IN_PURCHASE
+            : self::STATUS_REGISTERED;
     }
 }

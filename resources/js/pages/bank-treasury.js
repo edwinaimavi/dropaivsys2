@@ -3,6 +3,9 @@ $(function () {
     const permissions = window.bankTreasuryPermissions || {};
     const sources = window.bankTreasurySources || {};
     let selectedAccount = null;
+    const transferAccountOptions = $('#bankTransferTo option[value!=""]').map(function () {
+        return this.cloneNode(true);
+    }).get();
 
     $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
 
@@ -50,6 +53,7 @@ $(function () {
     $(document).on('change', '.custom-file-input', function () {
         $(this).siblings('.custom-file-label').text(this.files?.[0]?.name || 'Seleccionar archivo');
     });
+    initializeTransferSelects();
 
     $(document).on('click', '.btn-bank-view', function () { loadAccount($(this).data('id'), true); });
     $(document).on('click', '.btn-bank-opening', function () { loadAccount($(this).data('id')).done(openOpeningModal); });
@@ -70,6 +74,7 @@ $(function () {
     });
     $('#bankTransferForm').on('submit', function (event) {
         event.preventDefault();
+        if (!validateTransferForm(this)) return;
         submitForm(this, routes.transfers, 'POST', '#bankTransferModal');
     });
     $('#bankReconciliationForm').on('submit', function (event) {
@@ -141,7 +146,15 @@ $(function () {
 
     function renderMovements(rows, symbol) {
         if (!rows.length) return empty('Sin movimientos bancarios registrados.');
-        return `<div class="table-responsive"><table class="table table-hover table-sm bank-detail-table"><thead><tr><th>Fecha</th><th>Código</th><th>Tipo</th><th>Concepto</th><th>Origen</th><th class="text-right">Ingreso</th><th class="text-right">Egreso</th><th class="text-right">Saldo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${rows.map(row => `<tr><td>${formatDate(row.movement_date)}</td><td><strong>${escapeHtml(row.code)}</strong></td><td>${escapeHtml(row.type_label)}</td><td>${escapeHtml(row.concept)}</td><td>${escapeHtml(row.source_label)}<small class="d-block text-muted">${escapeHtml(row.source_code || '')}</small></td><td class="text-right text-success">${row.direction === 'IN' ? money(row.amount, symbol) : ''}</td><td class="text-right text-danger">${row.direction === 'OUT' ? money(row.amount, symbol) : ''}</td><td class="text-right font-weight-bold">${money(row.balance_after, symbol)}</td><td><span class="bank-status ${row.status}">${row.status}</span></td><td>${movementActions(row)}</td></tr>`).join('')}</tbody></table></div>`;
+        return `<div class="table-responsive"><table class="table table-hover table-sm bank-detail-table"><thead><tr><th>Fecha</th><th>Código</th><th>Tipo</th><th>Concepto</th><th>Origen</th><th class="text-right">Ingreso</th><th class="text-right">Egreso</th><th class="text-right">Saldo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${rows.map(row => `<tr><td>${formatDate(row.movement_date)}</td><td><strong>${escapeHtml(row.code)}</strong></td><td>${escapeHtml(row.type_label)}</td><td>${escapeHtml(row.concept)}</td><td>${movementSource(row)}</td><td class="text-right text-success">${row.direction === 'IN' ? money(row.amount, symbol) : ''}</td><td class="text-right text-danger">${row.direction === 'OUT' ? money(row.amount, symbol) : ''}</td><td class="text-right font-weight-bold">${money(row.balance_after, symbol)}</td><td><span class="bank-status ${row.status}">${row.status}</span></td><td>${movementActions(row)}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+
+    function movementSource(row) {
+        const code = escapeHtml(row.source_code || '');
+        const detail = row.source_url
+            ? `<a href="${escapeHtml(row.source_url)}" class="d-block font-weight-bold">${code || 'Abrir origen'}</a>`
+            : `<small class="d-block text-muted">${code}</small>`;
+        return `${escapeHtml(row.source_label)}${detail}`;
     }
 
     function movementActions(row) {
@@ -219,21 +232,114 @@ $(function () {
 
     function openTransferModal(accountId) {
         $('#bankTransferForm')[0].reset();
-        $('#bankTransferFrom').val(accountId || '');
+        $('#bankTransferFrom').val(accountId || '').trigger('change.select2');
         $('#bankTransferDate').val(nowLocal());
         filterTransferDestinations();
         $('#bankTransferModal').modal('show');
     }
     $('#bankTransferFrom').on('change', filterTransferDestinations);
-    function filterTransferDestinations() {
-        const origin = $('#bankTransferFrom option:selected');
-        const company = origin.data('company');
-        const id = String(origin.val() || '');
-        $('#bankTransferTo option').each(function () {
-            const visible = !this.value || (String($(this).data('company')) === String(company) && String(this.value) !== id);
-            $(this).prop('disabled', !visible).toggle(visible);
+    $('#bankTransferTo').on('change', updateTransferExchangeRate);
+    $('#bankTransferRate').on('input', function () { $(this).removeData('automatic-rate'); });
+
+    function initializeTransferSelects() {
+        if (typeof $.fn.select2 !== 'function') return;
+        $('#bankTransferFrom, #bankTransferTo').each(function () {
+            const select = $(this);
+            if (select.hasClass('select2-hidden-accessible')) select.select2('destroy');
+            select.select2({
+                theme: 'bootstrap4',
+                width: '100%',
+                dropdownParent: $('#bankTransferModal'),
+                placeholder: 'Seleccione cuenta',
+                allowClear: true
+            });
         });
-        if ($('#bankTransferTo option:selected').prop('disabled')) $('#bankTransferTo').val('');
+    }
+
+    function filterTransferDestinations() {
+        const originId = String($('#bankTransferFrom').val() || '');
+        const destination = $('#bankTransferTo');
+        const previousDestination = String(destination.val() || '');
+        const availableOptions = transferAccountOptions
+            .filter(option => !originId || String(option.value) !== originId);
+
+        destination.empty().append(new Option('Seleccione cuenta', ''));
+        availableOptions.forEach(option => destination.append(option.cloneNode(true)));
+
+        const hasAvailableDestination = availableOptions.length > 0;
+        destination.prop('disabled', !hasAvailableDestination);
+        if (hasAvailableDestination && availableOptions.some(option => String(option.value) === previousDestination)) {
+            destination.val(previousDestination);
+        } else {
+            destination.val('');
+        }
+
+        $('#bankTransferDestinationHelp')
+            .toggleClass('text-danger', !hasAvailableDestination)
+            .toggleClass('text-muted', hasAvailableDestination)
+            .text(hasAvailableDestination
+                ? 'Seleccione la cuenta que recibirá la transferencia.'
+                : 'No hay otra cuenta bancaria activa disponible para recibir la transferencia.');
+        destination.trigger('change.select2');
+        updateTransferExchangeRate();
+    }
+
+    function updateTransferExchangeRate() {
+        const sourceCurrency = String($('#bankTransferFrom option:selected').data('currency') || '');
+        const destinationCurrency = String($('#bankTransferTo option:selected').data('currency') || '');
+        const currenciesSelected = sourceCurrency && destinationCurrency;
+        const differentCurrencies = currenciesSelected && sourceCurrency !== destinationCurrency;
+        const rate = $('#bankTransferRate');
+
+        rate.prop('required', Boolean(differentCurrencies));
+        $('#bankTransferRateGroup').toggleClass('bank-exchange-required', Boolean(differentCurrencies));
+        $('#bankTransferRateHelp')
+            .toggleClass('text-danger', Boolean(differentCurrencies))
+            .toggleClass('text-muted', !differentCurrencies)
+            .text(differentCurrencies
+                ? 'Obligatorio porque las cuentas tienen distinta moneda.'
+                : 'Para cuentas de la misma moneda se usará 1.00.');
+
+        if (currenciesSelected && !differentCurrencies && !String(rate.val() || '').trim()) {
+            rate.val('1.00').data('automatic-rate', true);
+        } else if (differentCurrencies && rate.data('automatic-rate')) {
+            rate.val('').removeData('automatic-rate');
+        }
+    }
+
+    function validateTransferForm(form) {
+        clearErrors(form);
+        const source = $('#bankTransferFrom');
+        const destination = $('#bankTransferTo');
+        const sourceId = String(source.val() || '');
+        const destinationId = String(destination.val() || '');
+
+        if (!sourceId) {
+            return showTransferValidation(source, 'Seleccione la cuenta bancaria de origen.');
+        }
+        if (!destinationId) {
+            const message = destination.prop('disabled')
+                ? 'No hay otra cuenta bancaria activa disponible para recibir la transferencia.'
+                : 'Seleccione la cuenta bancaria que recibirá la transferencia.';
+            return showTransferValidation(destination, message);
+        }
+        if (sourceId === destinationId) {
+            return showTransferValidation(destination, 'No puede transferir a la misma cuenta bancaria.');
+        }
+
+        const sourceCurrency = String(source.find('option:selected').data('currency') || '');
+        const destinationCurrency = String(destination.find('option:selected').data('currency') || '');
+        if (sourceCurrency !== destinationCurrency && Number($('#bankTransferRate').val() || 0) <= 0) {
+            return showTransferValidation($('#bankTransferRate'), 'Ingrese un tipo de cambio mayor a cero para transferir entre monedas distintas.');
+        }
+
+        return true;
+    }
+
+    function showTransferValidation(field, message) {
+        markFieldInvalid(field, message);
+        Swal.fire('Revise la transferencia', message, 'warning');
+        return false;
     }
 
     function openReconciliationModal(accountId) {
@@ -282,13 +388,24 @@ $(function () {
     function nowLocal() { const date = new Date(); date.setMinutes(date.getMinutes()-date.getTimezoneOffset()); return date.toISOString().slice(0,16); }
     function formatDate(value, time = true) { if (!value) return '-'; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value).slice(0,10); return date.toLocaleString('es-PE', time ? {dateStyle:'short',timeStyle:'short'} : {dateStyle:'short'}); }
     function escapeHtml(value) { return $('<div>').text(value ?? '').html(); }
-    function clearErrors(form) { $(form).find('.is-invalid').removeClass('is-invalid'); $(form).find('.invalid-feedback.bank-error').remove(); }
+    function clearErrors(form) {
+        $(form).find('.is-invalid').removeClass('is-invalid');
+        $(form).find('.select2-selection.is-invalid').removeClass('is-invalid');
+        $(form).find('.invalid-feedback.bank-error').remove();
+    }
+    function markFieldInvalid(field, message) {
+        field.addClass('is-invalid');
+        const select2 = field.next('.select2');
+        if (select2.length) select2.find('.select2-selection').addClass('is-invalid');
+        const anchor = select2.length ? select2 : field;
+        anchor.after(`<div class="invalid-feedback bank-error d-block">${escapeHtml(message)}</div>`);
+    }
     function showErrors(form, xhr) {
         const errors = xhr.responseJSON?.errors || {};
         Object.entries(errors).forEach(([key, messages]) => {
             const name = key.replace(/\.\d+\./g, '[0][').replace(/$/,'');
             const field = $(form).find(`[name="${key}"],[name="${name}"]`).first();
-            field.addClass('is-invalid').after(`<div class="invalid-feedback bank-error">${escapeHtml(messages[0])}</div>`);
+            markFieldInvalid(field, messages[0]);
         });
         Swal.fire('No se pudo completar', xhr.responseJSON?.message || Object.values(errors).flat()[0] || 'Revise los datos ingresados.', 'error');
     }

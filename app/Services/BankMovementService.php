@@ -85,12 +85,17 @@ class BankMovementService
 
             if (! $from || ! $to || $from->id === $to->id) {
                 throw ValidationException::withMessages([
-                    'to_company_bank_account_id' => 'La cuenta destino debe ser diferente de la cuenta origen.',
+                    'to_company_bank_account_id' => 'No puede transferir a la misma cuenta bancaria.',
                 ]);
             }
-            if ($from->company_id !== $to->company_id) {
+            if ($from->status !== 'ACTIVE') {
                 throw ValidationException::withMessages([
-                    'to_company_bank_account_id' => 'Las transferencias de esta versión deben realizarse entre cuentas de la misma empresa.',
+                    'from_company_bank_account_id' => 'La cuenta bancaria origen no existe o no se encuentra activa.',
+                ]);
+            }
+            if ($to->status !== 'ACTIVE') {
+                throw ValidationException::withMessages([
+                    'to_company_bank_account_id' => 'La cuenta bancaria destino no existe o no se encuentra activa.',
                 ]);
             }
 
@@ -104,12 +109,29 @@ class BankMovementService
 
             $amount = (float) $data['amount'];
             $rate = isset($data['exchange_rate']) ? (float) $data['exchange_rate'] : null;
-            $amountPen = $this->amountInPen($amount, $sourceCode, $rate);
+            if ($amount <= 0) {
+                throw ValidationException::withMessages(['amount' => 'El monto debe ser mayor a cero.']);
+            }
+            if ((float) $from->current_balance < $amount) {
+                throw ValidationException::withMessages([
+                    'amount' => 'La cuenta bancaria origen no tiene saldo suficiente para realizar la transferencia.',
+                ]);
+            }
+
+            $sameCurrency = $sourceCode === $destinationCode;
+            if (! $sameCurrency && (! $rate || $rate <= 0)) {
+                throw ValidationException::withMessages([
+                    'exchange_rate' => 'Ingrese un tipo de cambio mayor a cero para transferir entre monedas distintas.',
+                ]);
+            }
+            $effectiveRate = $rate ?: 1.0;
+            $amountPen = $sourceCode === 'PEN' ? $amount : $amount * $effectiveRate;
             $destinationAmount = match (true) {
-                $sourceCode === $destinationCode => $amount,
+                $sameCurrency => $amount,
                 $destinationCode === 'PEN' => $amountPen,
-                default => $amountPen / $this->requiredRate($rate),
+                default => $amountPen / $effectiveRate,
             };
+            $storedRate = ($sourceCode === 'PEN' && $destinationCode === 'PEN') ? null : $effectiveRate;
 
             $transfer = BankTransfer::create([
                 'code' => $this->code('TRF'),
@@ -121,7 +143,7 @@ class BankMovementService
                 'currency_id' => $from->currency_id,
                 'destination_amount' => $destinationAmount,
                 'destination_currency_id' => $to->currency_id,
-                'exchange_rate' => ($sourceCode === 'PEN' && $destinationCode === 'PEN') ? null : $rate,
+                'exchange_rate' => $storedRate,
                 'amount_pen' => $amountPen,
                 'operation_number' => $data['operation_number'] ?? null,
                 'description' => $data['description'] ?? null,
@@ -141,7 +163,7 @@ class BankMovementService
                 'movement_date' => $data['transfer_date'],
                 'movement_type' => 'TRANSFERENCIA_SALIDA',
                 'amount' => $amount,
-                'exchange_rate' => $sourceCode === 'PEN' ? null : $rate,
+                'exchange_rate' => $sourceCode === 'PEN' ? null : $storedRate,
                 'amount_pen' => $amountPen,
                 'direction' => BankMovement::DIRECTION_OUT,
                 'concept' => 'Transferencia a otra cuenta',
@@ -160,7 +182,7 @@ class BankMovementService
                 'movement_date' => $data['transfer_date'],
                 'movement_type' => 'TRANSFERENCIA_ENTRADA',
                 'amount' => $destinationAmount,
-                'exchange_rate' => $destinationCode === 'PEN' ? null : $rate,
+                'exchange_rate' => $destinationCode === 'PEN' ? null : $storedRate,
                 'amount_pen' => $amountPen,
                 'direction' => BankMovement::DIRECTION_IN,
                 'concept' => 'Transferencia recibida de otra cuenta',
@@ -188,6 +210,18 @@ class BankMovementService
             }
 
             return $this->cancelMovementLocked($movement, $reason, $userId);
+        });
+    }
+
+    public function cancelMovementForSourceCorrection(
+        BankMovement $movement,
+        string $reason,
+        ?int $userId
+    ): BankMovement {
+        return DB::transaction(function () use ($movement, $reason, $userId) {
+            $movement = BankMovement::query()->lockForUpdate()->findOrFail($movement->id);
+
+            return $this->cancelMovementLocked($movement, $reason, $userId, true);
         });
     }
 
@@ -323,12 +357,17 @@ class BankMovementService
         ]);
     }
 
-    private function cancelMovementLocked(BankMovement $movement, string $reason, ?int $userId): BankMovement
+    private function cancelMovementLocked(
+        BankMovement $movement,
+        string $reason,
+        ?int $userId,
+        bool $allowReconciled = false
+    ): BankMovement
     {
         if ($movement->status === BankMovement::STATUS_CANCELLED) {
             throw ValidationException::withMessages(['movement' => 'El movimiento ya se encuentra anulado.']);
         }
-        if ($movement->status === BankMovement::STATUS_RECONCILED) {
+        if ($movement->status === BankMovement::STATUS_RECONCILED && ! $allowReconciled) {
             throw ValidationException::withMessages([
                 'movement' => 'No se puede anular un movimiento conciliado. Primero debe regularizar la conciliación.',
             ]);
@@ -348,10 +387,13 @@ class BankMovementService
         $reversal = $this->createMovementLocked([
             'company_bank_account_id' => $movement->company_bank_account_id,
             'currency_id' => $movement->currency_id,
+            'original_currency_id' => $movement->original_currency_id,
             'movement_date' => now(),
             'movement_type' => 'REVERSA',
             'amount' => $movement->amount,
+            'original_amount' => $movement->original_amount,
             'exchange_rate' => $movement->exchange_rate,
+            'original_exchange_rate' => $movement->original_exchange_rate,
             'amount_pen' => $movement->amount_pen,
             'direction' => $movement->direction === BankMovement::DIRECTION_IN
                 ? BankMovement::DIRECTION_OUT
