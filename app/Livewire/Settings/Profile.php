@@ -44,6 +44,7 @@ class Profile extends Component
         ]);
 
         $user->fill($validated);
+        $user->updated_by = $user->id;
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;

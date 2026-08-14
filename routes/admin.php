@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerOrderLabelingController;
 
 use App\Http\Controllers\Admin\PresentationController;
+use App\Http\Controllers\Admin\ProfileController;
 
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\RoleController;
@@ -58,6 +59,9 @@ Route::prefix('document-lookup')->name('document-lookup.')->group(function () {
 
 Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateTheme'])
     ->name('user-preferences.theme.update');
+
+Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
+Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
 
 Route::prefix('banks')->name('banks.')->group(function () {
     Route::get('/', [BankTreasuryController::class, 'index'])->name('index');
@@ -128,6 +132,7 @@ Route::resource('petty-cash', PettyCashController::class)
 
 //Rutas para la gestión de usuarios en el panel de administración|
 Route::get('users/list', [UserController::class, 'list'])->name('users.list');
+Route::get('users/{user}', [UserController::class, 'show'])->name('users.show');
 Route::resource('users', UserController::class)->except(['create', 'show']);
 
 Route::get('roles/list', [RoleController::class, 'list'])->name('roles.list');

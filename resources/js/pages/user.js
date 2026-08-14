@@ -118,6 +118,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $('#imgPreview').attr('src', getValidUserImage(photo));
         $('#password').prop('required', false).val('');
         $('#password_confirmation').prop('required', false).val('');
+        configurePrincipalUserForm(Number(button.data('is-principal')) === 1);
         $('#btnSaveUser').html('<i class="fas fa-save mr-1"></i>Actualizar Usuario');
         $('#exampleModalLabel').text('Editar Usuario');
         $('#userModalSubtitle').text('Actualización de datos y permisos del usuario');
@@ -131,18 +132,26 @@ document.addEventListener("DOMContentLoaded", function () {
         const fullName = `${name} ${lastname}`.trim() || 'Sin nombre';
         const isActive = Number(button.data('status')) === 1;
         const photo = button.data('photo');
-        const hasPhoto = isValidUserImage(photo);
+        const hasPhoto = Number(button.data('has-photo')) === 1;
+        const isPrincipal = Number(button.data('is-principal')) === 1;
         const roleName = button.attr('data-role-name') || 'Sin rol';
+        const historical = 'No registrado / histórico';
 
         $('#vu_name').text(fullName);
-        $('#vu_dni').text(button.data('dni') || '-');
-        $('#vu_email').text(button.data('email') || '-');
-        $('#vu_phone').text(button.data('phone') || '-');
-        $('#vu_address').text(button.data('address') || 'Sin direccion registrada');
+        $('#vu_firstname').text(name || historical).toggleClass('users-detail-historical', !name);
+        $('#vu_lastname').text(lastname || historical).toggleClass('users-detail-historical', !lastname);
+        $('#vu_dni').text(button.data('dni') || historical).toggleClass('users-detail-historical', !button.data('dni'));
+        $('#vu_email, #vu_access_email, #vu_summary_email').text(button.data('email') || historical);
+        $('#vu_phone, #vu_summary_phone').text(button.data('phone') || historical)
+            .toggleClass('users-detail-historical', !button.data('phone'));
+        $('#vu_address').text(button.data('address') || historical)
+            .toggleClass('users-detail-historical', !button.data('address'));
         $('#vu_role_summary').text(roleName).toggleClass('users-role-chip-empty', roleName === 'Sin rol');
         $('#vu_role_detail').text(roleName).toggleClass('users-role-chip-empty', roleName === 'Sin rol');
         $('#vu_created_at').text(button.attr('data-created-at') || '-');
         $('#vu_updated_at').text(button.attr('data-updated-at') || '-');
+        setUserPrincipalIndicator(isPrincipal);
+        setUserAuditLoading();
 
         $('#vu_status')
             .text(isActive ? 'ACTIVO' : 'INACTIVO')
@@ -156,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('#vu_photo').toggleClass('d-none', !hasPhoto);
         $('#vu_photo_placeholder').toggleClass('d-none', hasPhoto);
+        $('#vu_photo_placeholder').text(getUserInitials(name, lastname));
 
         if (hasPhoto) {
             $('#vu_photo').attr('src', photo);
@@ -163,7 +173,34 @@ document.addEventListener("DOMContentLoaded", function () {
             $('#vu_photo').removeAttr('src');
         }
 
+        $('#user-detail-personal-tab').tab('show');
         $('#viewUserModal').modal('show');
+
+        $.get(`${window.routes.showUser}/${button.data('id')}`)
+            .done(function (response) {
+                const audit = response.data || {};
+                setUserHistoricalValue('#vu_created_by', audit.created_by, historical);
+                setUserHistoricalValue('#vu_updated_by', audit.updated_by, historical);
+                setUserHistoricalValue('#vu_role_changed_by', audit.last_role_changed_by, historical);
+                setUserHistoricalValue('#vu_audit_created_at', audit.created_at, historical);
+                setUserHistoricalValue('#vu_audit_updated_at', audit.updated_at, historical);
+                setUserHistoricalValue('#vu_role_changed_at', audit.last_role_changed_at, historical);
+                $('#vu_created_at').text(audit.created_at || historical);
+                $('#vu_updated_at').text(audit.updated_at || historical);
+                setUserPrincipalIndicator(Boolean(audit.is_principal));
+            })
+            .fail(function () {
+                setUserAuditFallback();
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Trazabilidad no disponible',
+                    text: 'No se pudo cargar la información de auditoría del usuario.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3500
+                });
+            });
     });
 
     $('#userModal').on('hidden.bs.modal', function () {
@@ -202,8 +239,8 @@ document.addEventListener("DOMContentLoaded", function () {
                             timer: 3000
                         });
                     },
-                    error: function () {
-                        Swal.fire('Error', 'Ocurrió un error al eliminar el usuario.', 'error');
+                    error: function (xhr) {
+                        Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el usuario.', 'error');
                     }
                 });
             }
@@ -283,12 +320,45 @@ function resetUserModal() {
     $('#btnSaveUser').prop('disabled', false).html('<i class="fas fa-save mr-1"></i>Guardar Usuario');
     $('#password').prop('required', true);
     $('#password_confirmation').prop('required', true);
+    configurePrincipalUserForm(false);
     $('#error-messages').addClass('d-none').empty();
     $('#imgPreview').attr('src', defaultUserImage);
     $('#image').val('');
     clearTimeout(userDniLookupTimer);
     lastUserDniLookup = '';
     setUserDniLookupLoading(false);
+}
+
+function configurePrincipalUserForm(isPrincipal) {
+    const protectedFields = '#role, #status';
+
+    $(protectedFields).prop('disabled', isPrincipal);
+    $('#principal-user-notice').toggleClass('d-none', !isPrincipal);
+    $('#dni, #email, #role').prop('required', true);
+}
+
+function setUserAuditLoading() {
+    $('#vu_created_by, #vu_updated_by, #vu_role_changed_by, #vu_audit_created_at, #vu_audit_updated_at, #vu_role_changed_at')
+        .removeClass('users-detail-historical')
+        .text('Cargando...');
+}
+
+function setUserAuditFallback() {
+    const historical = 'No registrado / histórico';
+    $('#vu_created_by, #vu_updated_by, #vu_role_changed_by, #vu_audit_created_at, #vu_audit_updated_at, #vu_role_changed_at')
+        .text(historical)
+        .addClass('users-detail-historical');
+}
+
+function setUserHistoricalValue(selector, value, fallback) {
+    $(selector)
+        .text(value || fallback)
+        .toggleClass('users-detail-historical', !value || value === fallback);
+}
+
+function setUserPrincipalIndicator(isPrincipal) {
+    $('#vu_principal_indicator').text(isPrincipal ? 'Usuario principal protegido' : 'Usuario regular');
+    $('#vu_principal_field').toggleClass('is-principal', isPrincipal);
 }
 
 function lookupUserDni(forceLookup = false) {

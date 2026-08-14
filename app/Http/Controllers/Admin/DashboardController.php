@@ -7,6 +7,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\MarketStudy;
 use App\Models\Quote;
 use App\Models\SupplierPurchaseOrder;
+use App\Models\User;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseKardexMovement;
 use App\Models\WarehouseStock;
@@ -83,29 +84,42 @@ class DashboardController extends Controller
         $latestMarketStudies = $this->safeLatest(MarketStudy::class, [], 4);
         $latestKardexMovements = $this->safeLatest(WarehouseKardexMovement::class, ['article', 'warehouse', 'currency'], 4);
 
+        $dashboardUsersQuery = User::query()
+            ->whereIn('status', [0, 1]);
+
+        $dashboardUsersTotal = (clone $dashboardUsersQuery)->count();
+        $dashboardUsers = $dashboardUsersQuery
+            ->select(['id', 'name', 'lastname', 'photo', 'status'])
+            ->with('roles:id,name')
+            ->orderByDesc('status')
+            ->orderBy('name')
+            ->orderBy('lastname')
+            ->limit(8)
+            ->get();
+
         $alerts = [
             [
                 'permission' => 'admin.quotes.index',
                 'icon' => 'fas fa-clock',
-                'title' => number_format($metrics['expiringQuotes']) . ' cotizaciones por vencer',
+                'title' => number_format($metrics['expiringQuotes']).' cotizaciones por vencer',
                 'description' => 'Vigencia dentro de los próximos 7 días.',
             ],
             [
                 'permission' => 'admin.kardex.index',
                 'icon' => 'fas fa-exclamation-triangle',
-                'title' => number_format($metrics['lowStockItems']) . ' productos con stock bajo',
+                'title' => number_format($metrics['lowStockItems']).' productos con stock bajo',
                 'description' => 'Según el mínimo configurado en inventario.',
             ],
             [
                 'permission' => 'admin.kardex.index',
                 'icon' => 'fas fa-calendar-times',
-                'title' => number_format($metrics['expiringStockItems']) . ' productos próximos a vencer',
+                'title' => number_format($metrics['expiringStockItems']).' productos próximos a vencer',
                 'description' => 'Vencimiento dentro de los próximos 30 días.',
             ],
             [
                 'permission' => 'admin.supplier-purchase-orders.index',
                 'icon' => 'fas fa-clipboard-check',
-                'title' => number_format($metrics['monthSupplierPurchaseOrders']) . ' órdenes a proveedores este mes',
+                'title' => number_format($metrics['monthSupplierPurchaseOrders']).' órdenes a proveedores este mes',
                 'description' => 'Seguimiento mensual de compras para abastecimiento.',
             ],
         ];
@@ -126,6 +140,8 @@ class DashboardController extends Controller
             'latestSupplierOrders',
             'latestMarketStudies',
             'latestKardexMovements',
+            'dashboardUsers',
+            'dashboardUsersTotal',
             'alerts'
         ));
     }
@@ -138,7 +154,7 @@ class DashboardController extends Controller
     private function safeCountWhere(string $modelClass, ?callable $callback = null): int
     {
         try {
-            if (! class_exists($modelClass) || ! Schema::hasTable((new $modelClass())->getTable())) {
+            if (! class_exists($modelClass) || ! Schema::hasTable((new $modelClass)->getTable())) {
                 return 0;
             }
 
@@ -161,7 +177,7 @@ class DashboardController extends Controller
                 return 0;
             }
 
-            $model = new $modelClass();
+            $model = new $modelClass;
 
             if (! Schema::hasTable($model->getTable()) || ! Schema::hasColumn($model->getTable(), $column)) {
                 return 0;
@@ -180,7 +196,7 @@ class DashboardController extends Controller
                 return array_fill(0, 12, 0);
             }
 
-            $model = new $modelClass();
+            $model = new $modelClass;
 
             if (! Schema::hasTable($model->getTable()) || ! Schema::hasColumn($model->getTable(), 'created_at')) {
                 return array_fill(0, 12, 0);
@@ -205,7 +221,7 @@ class DashboardController extends Controller
                 return array_fill(0, 12, 0);
             }
 
-            $model = new $modelClass();
+            $model = new $modelClass;
 
             if (
                 ! Schema::hasTable($model->getTable())
@@ -242,7 +258,7 @@ class DashboardController extends Controller
     private function safeLatest(string $modelClass, array $relations = [], int $limit = 5)
     {
         try {
-            if (! class_exists($modelClass) || ! Schema::hasTable((new $modelClass())->getTable())) {
+            if (! class_exists($modelClass) || ! Schema::hasTable((new $modelClass)->getTable())) {
                 return collect();
             }
 

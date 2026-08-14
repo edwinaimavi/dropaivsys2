@@ -22,6 +22,10 @@
 
                 <div class="modal-body">
                     <div id="error-messages" class="alert alert-danger d-none"></div>
+                    <div id="principal-user-notice" class="alert users-principal-notice d-none" role="status">
+                        <i class="fas fa-shield-alt mr-2"></i>
+                        <span>Usuario principal protegido: su rol y estado no pueden modificarse.</span>
+                    </div>
 
                     <div class="row">
                         <div class="col-lg-3 mb-3 mb-lg-0">

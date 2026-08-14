@@ -77,6 +77,8 @@
             </aside>
         </section>
 
+        @include('admin.dashboard.partials.users-team')
+
         <section class="dashboard-section kpi-section">
             <div class="section-heading"><div><span>Visión ejecutiva</span><h2>Indicadores clave</h2></div><p>Panorama acumulado y actividad del mes.</p></div>
             <div class="kpi-grid">

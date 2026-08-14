@@ -45,6 +45,7 @@ test('email verification status is unchanged when email address is unchanged', f
 });
 
 test('user can delete their account', function () {
+    User::factory()->create(); // Usuario principal protegido.
     $user = User::factory()->create();
 
     $this->actingAs($user);
@@ -59,6 +60,20 @@ test('user can delete their account', function () {
 
     expect($user->fresh())->toBeNull();
     expect(auth()->check())->toBeFalse();
+});
+
+test('principal user cannot delete their account', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    Livewire::test('settings.delete-user-form')
+        ->set('password', 'password')
+        ->call('deleteUser')
+        ->assertHasErrors(['password']);
+
+    expect($user->fresh())->not->toBeNull();
+    expect(auth()->check())->toBeTrue();
 });
 
 test('correct password must be provided to delete account', function () {

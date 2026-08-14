@@ -34,6 +34,7 @@ class Password extends Component
 
         Auth::user()->update([
             'password' => Hash::make($validated['password']),
+            'updated_by' => Auth::id(),
         ]);
 
         $this->reset('current_password', 'password', 'password_confirmation');

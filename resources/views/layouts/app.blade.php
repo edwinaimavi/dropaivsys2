@@ -66,7 +66,7 @@
             <img src="{{ $rutaFoto }}" alt="Avatar" class="img-avatar-navbar">
         </a>
         <div class="dropdown-menu dropdown-menu-right dp-user-menu">
-            <a href="#" class="dropdown-item">
+            <a href="#" class="dropdown-item" id="btnOpenUserProfile" role="button">
                 <i class="fas fa-user-circle mr-2"></i>
                 Mi Perfil
             </a>
@@ -97,6 +97,8 @@
     </div>
 
     @yield('content_body')
+
+    @include('admin.profile.modal')
 @stop
 
 @section('footer')
@@ -125,9 +127,15 @@
             updateUrl: @json(route('admin.user-preferences.theme.update')),
             csrf: @json(csrf_token())
         };
+        window.DropaivProfile = {
+            showUrl: @json(route('admin.profile.show')),
+            updateUrl: @json(route('admin.profile.update')),
+            csrf: @json(csrf_token())
+        };
     </script>
     @vite('resources/js/pages/theme-preferences.js')
     @vite('resources/js/pages/table-actions.js')
+    @vite('resources/js/pages/user-profile.js')
     {{--     <script src="{{ asset('vendor/datatables/js/popper.min.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.bootstrap4.js') }}"></script>    
@@ -804,5 +812,5 @@
             }
         }
     </style>
-    @vite(['resources/css/admin-modern.css', 'resources/css/theme-preferences.css'])
+    @vite(['resources/css/admin-modern.css', 'resources/css/theme-preferences.css', 'resources/css/user-profile.css'])
 @endpush
