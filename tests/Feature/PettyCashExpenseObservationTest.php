@@ -5,6 +5,8 @@ use App\Models\Currency;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseObservation;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -251,8 +253,11 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         ->assertUnprocessable()
         ->assertJsonValidationErrors('correction_comment');
 
+    Storage::fake('public');
     $this->actingAs($this->creator)
-        ->putJson(route('admin.petty-cash.expenses.update', $this->expense), [
+        ->post(route('admin.petty-cash.expenses.update', $this->expense), [
+            '_method' => 'PUT',
+            '_token' => csrf_token(),
             'expense_date' => '2026-07-02',
             'document_type' => 'FACTURA',
             'document_series' => 'F001',
@@ -262,6 +267,7 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
             'observation' => 'SOLICITADO POR LOGÍSTICA',
             'correction_comment' => 'Se detalló el origen, destino, mercadería trasladada y la orden relacionada.',
             'amount' => 300,
+            'documents' => [UploadedFile::fake()->image('factura-corregida.jpg')],
         ])
         ->assertOk()
         ->assertJsonPath('success', true)
@@ -274,6 +280,7 @@ it('observa, corrige y aprueba un gasto sin afectar saldo antes de la aprobació
         )
         ->assertJsonPath('latest_lifted_observation.resolved_by', $this->creator->id)
         ->assertJsonPath('latest_lifted_observation.resolver.id', $this->creator->id)
+        ->assertJsonPath('expense.documents.0.original_name', 'factura-corregida.jpg')
         ->assertJsonPath('counts.pending', 1)
         ->assertJsonPath('counts.observed', 0)
         ->assertJsonCount(1, 'history');

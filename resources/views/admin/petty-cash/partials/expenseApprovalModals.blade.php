@@ -7,6 +7,7 @@
 </div>
 <div class="modal fade petty-approval-modal" id="pettyCashExpenseApprovalModal" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
     <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content border-0"><form id="pettyCashExpenseApprovalForm">
+        @csrf
         <input type="hidden" id="pca_expense_id"><input type="hidden" id="pca_action">
         <div class="modal-header petty-detail-header"><div class="d-flex align-items-center"><span id="pca_icon" class="petty-detail-header-icon"><i class="fas fa-clipboard-check"></i></span><div><small>CONTROL ADMINISTRATIVO</small><h4 id="pca_title">Revisar gasto pendiente</h4><p>Revisa toda la información y elige una decisión administrativa.</p></div></div><button type="button" class="close petty-close" data-dismiss="modal"><span>&times;</span></button></div>
         <div class="modal-body petty-detail-body">

@@ -2,6 +2,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <form id="pettyCashReplenishmentForm" enctype="multipart/form-data">
+                @csrf
                 <input type="hidden" id="pcr_box_id">
                 <div class="modal-header petty-replenishment-header">
                     <div class="petty-replenishment-title">

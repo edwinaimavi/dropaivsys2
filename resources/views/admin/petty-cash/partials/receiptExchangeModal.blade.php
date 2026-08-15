@@ -2,6 +2,7 @@
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <form id="pettyCashReceiptExchangeForm" enctype="multipart/form-data">
+                @csrf
                 <input type="hidden" id="pcre_box_id">
                 <input type="hidden" name="document_issuer_id" id="pcre_document_issuer_id">
                 <div class="modal-header petty-detail-header">

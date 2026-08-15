@@ -2,6 +2,7 @@
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
         <div class="modal-content border-0">
             <form id="pettyCashExpenseForm" enctype="multipart/form-data">
+                @csrf
                 <input type="hidden" id="pc_expense_box_id">
                 <input type="hidden" id="pc_expense_id">
 

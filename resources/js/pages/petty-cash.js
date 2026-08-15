@@ -6,7 +6,15 @@ $(function () {
     if (!app.length) return;
 
     const base = app.data('base-url');
-    const csrf = $('meta[name="csrf-token"]').attr('content');
+    const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const expiredSessionMessage = 'Tu sesión ha vencido o el formulario expiró. Recarga la página e intenta nuevamente.';
+
+    $.ajaxSetup({
+        headers: {
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json'
+        }
+    });
     const canEditExpenseDocument = Boolean(app.data('can-edit-expense-document'));
     let currentBox = null;
     let table;
@@ -51,7 +59,30 @@ $(function () {
         return `${(value / 1048576).toFixed(1)} MB`;
     };
     const notify = (icon, title) => window.Swal ? Swal.fire({ icon, title, confirmButtonColor: '#20765c' }) : alert(title);
-    const errorMessage = xhr => xhr.responseJSON?.message || Object.values(xhr.responseJSON?.errors || {}).flat()[0] || 'No fue posible completar la operación.';
+    const isExpiredSession = xhr => [401, 419].includes(Number(xhr?.status));
+    const errorMessage = xhr => isExpiredSession(xhr)
+        ? expiredSessionMessage
+        : xhr.responseJSON?.message || Object.values(xhr.responseJSON?.errors || {}).flat()[0] || 'No fue posible completar la operación.';
+    const notifyRequestError = xhr => {
+        if (!isExpiredSession(xhr)) return notify('error', errorMessage(xhr));
+
+        if (!window.Swal) {
+            alert(expiredSessionMessage);
+            return;
+        }
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Sesión vencida',
+            text: expiredSessionMessage,
+            confirmButtonText: 'Recargar página',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#20765c'
+        }).then(result => {
+            if (result.isConfirmed) window.location.reload();
+        });
+    };
     const loading = (form, active) => form.find('[type="submit"]').prop('disabled', active).find('i').toggleClass('fa-spin', active);
     const userName = user => user ? [user.name, user.lastname].filter(Boolean).join(' ') : '-';
     const resolvedObservations = expense => (expense?.observations || [])
@@ -99,7 +130,20 @@ $(function () {
         return `<span class="petty-approval-badge ${state[1]}">${state[0]}</span>${lifted}<small class="petty-approval-trace">${trace}</small>`;
     };
 
-    const api = (options) => $.ajax({ headers: { 'X-CSRF-TOKEN': csrf }, ...options });
+    const api = (options) => {
+        const token = csrfToken();
+        const headers = {
+            'Accept': 'application/json',
+            ...(options.headers || {})
+        };
+
+        if (token) headers['X-CSRF-TOKEN'] = token;
+        if (options.data instanceof FormData && token && !options.data.has('_token')) {
+            options.data.append('_token', token);
+        }
+
+        return $.ajax({ ...options, headers });
+    };
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
     const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal, .petty-warehouse-expense-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
@@ -699,7 +743,7 @@ $(function () {
                     if (currentBox) renderDetail(currentBox);
                     $('#pettyCashImageEditorModal').modal('hide');
                     notify('success', response.message);
-                }).fail(xhr => notify('error', errorMessage(xhr))).always(() => button.prop('disabled', false));
+                }).fail(notifyRequestError).always(() => button.prop('disabled', false));
                 return;
             }
             const collection = imageEditorCollection(target.collection);
@@ -1066,7 +1110,7 @@ $(function () {
                 </tr>`;
             }).join('') : '<tr><td colspan="6" class="text-center text-muted py-3">Aún no existe historial de aprobaciones.</td></tr>');
             $('#pca_history_section').removeClass('d-none');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     };
     const openApprovedAmountModal = useOpeningSelection => {
         const form = $('#pettyCashApprovedAmountForm');
@@ -1099,7 +1143,7 @@ $(function () {
             if (window.Swal) {
                 Swal.fire({ icon: 'success', title: response.message, timer: 1800, showConfirmButton: false });
             }
-        }).fail(xhr => notify('error', errorMessage(xhr)))
+        }).fail(notifyRequestError)
             .always(() => loading(form, false));
     });
 
@@ -1115,7 +1159,7 @@ $(function () {
         loading($(this), true);
         api({ url: id ? `${base}/${id}` : base, method: 'POST', data, processData: false, contentType: false })
             .done(response => { $('#pettyCashModal').modal('hide'); table.ajax.reload(null, false); notify('success', response.message); })
-            .fail(xhr => notify('error', errorMessage(xhr)))
+            .fail(notifyRequestError)
             .always(() => loading($(this), false));
     });
 
@@ -1152,7 +1196,7 @@ $(function () {
             }
             $('#pc_side_expenses').text(money(box.total_expenses)); $('#pc_side_balance').text(money(box.cash_balance));
             $('#pettyCashModalLabel').text('Editar caja chica'); $('#btnSavePettyCash span').text('Actualizar Caja'); $('#pettyCashModal').modal('show');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     });
 
     const renderDetail = box => {
@@ -1294,7 +1338,7 @@ $(function () {
             renderDetail(box);
             $('#viewPettyCashModal .nav-link[href="#pcv_tab_summary"]').tab('show');
             $('#viewPettyCashModal').modal('show');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     });
 
     const selectReviewAction = action => {
@@ -1444,7 +1488,7 @@ $(function () {
     $('#btnObservedPettyCashExpenses').on('click', function () {
         loadObservedExpenses()
             .done(() => $('#observedPettyCashExpensesModal').modal('show'))
-            .fail(xhr => notify('error', errorMessage(xhr)));
+            .fail(notifyRequestError);
     });
     $(document).on('click', '.correctObservedPettyCashExpense, #btnCorrectObservedExpense', function () {
         const expense = findObservedExpense($(this).data('id'));
@@ -1457,11 +1501,11 @@ $(function () {
                 .appendTo(document.body)
                 .trigger('click')
                 .remove();
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     });
 
     $('#btnPendingPettyCashExpenses').on('click', function () {
-        loadPendingExpenses().done(() => $('#pendingPettyCashExpensesModal').modal('show')).fail(xhr => notify('error', errorMessage(xhr)));
+        loadPendingExpenses().done(() => $('#pendingPettyCashExpensesModal').modal('show')).fail(notifyRequestError);
     });
     $('#btnApproveExpensesFromDetail').on('click', function () {
         $('#btnPendingPettyCashExpenses').trigger('click');
@@ -1507,7 +1551,7 @@ $(function () {
                 loadObservedExpenses();
                 if (currentBox) loadBox(currentBox.id).done(renderDetail);
                 notify('success', response.message);
-            }).fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
+            }).fail(notifyRequestError).always(() => loading($(this), false));
     });
 
     const warehouseExpenseCustomerOrders = expense => {
@@ -1636,7 +1680,7 @@ $(function () {
             loadPendingExpenses();
             if (currentBox) loadBox(currentBox.id).done(box => { currentBox = box; renderDetail(box); });
             notify('success', response.message);
-        }).fail(xhr => notify('error', errorMessage(xhr))).always(() => {
+        }).fail(notifyRequestError).always(() => {
             button.prop('disabled', false).find('i').removeClass('fa-spin fa-spinner').addClass('fa-link');
         });
     });
@@ -1715,7 +1759,7 @@ $(function () {
             renderExpenseDocuments();
             if (currentBox) renderDetail(currentBox);
             notify('success', response.message);
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
 
         Swal.fire({
             icon: 'warning',
@@ -1859,19 +1903,19 @@ $(function () {
                 loadBox(boxId).done(box => {
                     currentBox = box;
                     renderDetail(box);
-                }).fail(xhr => notify('error', errorMessage(xhr)));
+                }).fail(notifyRequestError);
                 if (wasObservedCorrection) {
                     $('#pce_correction_comment').val('');
                     $('#pce_correction_section').addClass('d-none');
                 }
                 notify('success', response.message);
             })
-            .fail(xhr => notify('error', errorMessage(xhr))).always(() => loading($(this), false));
+            .fail(notifyRequestError).always(() => loading($(this), false));
     });
 
     $(document).on('click', '.deletePettyCashExpense', function () {
         const id = $(this).data('id');
-        const run = () => api({ url: `${base}/expenses/${id}`, method: 'DELETE' }).done(response => { $('#viewPettyCashModal').modal('hide'); table.ajax.reload(null, false); notify('success', response.message); }).fail(xhr => notify('error', errorMessage(xhr)));
+        const run = () => api({ url: `${base}/expenses/${id}`, method: 'DELETE' }).done(response => { $('#viewPettyCashModal').modal('hide'); table.ajax.reload(null, false); notify('success', response.message); }).fail(notifyRequestError);
         Swal.fire({ icon: 'warning', title: '¿Eliminar este gasto?', showCancelButton: true, confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar', confirmButtonColor: '#dc3545' }).then(result => result.isConfirmed && run());
     });
 
@@ -1910,7 +1954,7 @@ $(function () {
             $('#btnConfirmClosePettyCash').prop('disabled', unresolvedExpenses > 0)
                 .attr('title', pendingExpenses > 0 ? 'Tiene gastos pendientes de aprobación.' : '');
             $('#pettyCashCloseModal').modal('show');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     });
 
     $('#btnConfirmClosePettyCash').on('click', function () {
@@ -1918,7 +1962,7 @@ $(function () {
         const button = $(this).prop('disabled', true);
         api({ url: `${base}/${$('#pcc_box_id').val()}/close`, method: 'POST', data: { close_observation: $('#pcc_close_observation').val() } })
             .done(response => { $('#pettyCashCloseModal').modal('hide'); table.ajax.reload(null, false); notify('success', response.message); })
-            .fail(xhr => notify('error', errorMessage(xhr))).always(() => button.prop('disabled', false));
+            .fail(notifyRequestError).always(() => button.prop('disabled', false));
     });
 
     $(document).on('click', '.deletePettyCash, .btn-cancel-petty-cash', function (event) {
@@ -1926,7 +1970,7 @@ $(function () {
         event.stopPropagation();
         const id = $(this).data('id');
         Swal.fire({ icon: 'warning', title: '¿Anular la caja chica?', text: 'Esta acción retirará la caja de la operación activa.', showCancelButton: true, confirmButtonText: 'Sí, anular', cancelButtonText: 'Cancelar', confirmButtonColor: '#dc3545' })
-            .then(result => result.isConfirmed && api({ url: `${base}/${id}`, method: 'DELETE' }).done(response => { table.ajax.reload(null, false); notify('success', response.message); }).fail(xhr => notify('error', errorMessage(xhr))));
+            .then(result => result.isConfirmed && api({ url: `${base}/${id}`, method: 'DELETE' }).done(response => { table.ajax.reload(null, false); notify('success', response.message); }).fail(notifyRequestError));
     });
 
     $(document).off('click', '.btn-replenish-petty-cash').on('click', '.btn-replenish-petty-cash', function (event) {
@@ -1962,7 +2006,7 @@ $(function () {
             $('#btnSavePettyCashReplenishment').prop('disabled', !hasPending);
             $('#pcr_date').val(new Date().toISOString().slice(0, 10));
             $('#pettyCashReplenishmentModal').modal('show');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     });
 
     $('#pcr_amount').on('input', function () {
@@ -2015,14 +2059,14 @@ $(function () {
             }).join('') : '<tr><td colspan="7" class="petty-empty-state"><strong>No hay recibos aprobados pendientes de canje.</strong></td></tr>');
             updateReceiptExchangeSelection();
             $('#pettyCashReceiptExchangeModal').modal('show');
-        }).fail(xhr => notify('error', errorMessage(xhr)));
+        }).fail(notifyRequestError);
     };
     $(document).on('click', '.exchangePettyCashReceipts, .btn-exchange-petty-cash-receipts', function (event) {
         event.preventDefault();
         event.stopPropagation();
         const boxId = $(this).data('id');
         if (currentBox && Number(currentBox.id) === Number(boxId)) openReceiptExchange(currentBox);
-        else loadBox(boxId).done(openReceiptExchange).fail(xhr => notify('error', errorMessage(xhr)));
+        else loadBox(boxId).done(openReceiptExchange).fail(notifyRequestError);
     });
 
     $(document).on('change', '.pcre-receipt', updateReceiptExchangeSelection);
@@ -2065,7 +2109,7 @@ $(function () {
                 });
                 notify('success', response.message);
             })
-            .fail(xhr => notify('error', errorMessage(xhr)))
+            .fail(notifyRequestError)
             .always(() => loading(form, false));
     });
 });

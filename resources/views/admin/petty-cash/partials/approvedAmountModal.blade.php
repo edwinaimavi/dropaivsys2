@@ -2,6 +2,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
         <div class="modal-content border-0">
             <form id="pettyCashApprovedAmountForm">
+                @csrf
                 <div class="modal-header">
                     <div class="d-flex align-items-center">
                         <span class="petty-approved-modal-icon"><i class="fas fa-hand-holding-usd"></i></span>
