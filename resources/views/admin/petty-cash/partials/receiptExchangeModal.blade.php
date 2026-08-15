@@ -55,7 +55,7 @@
                         <div class="col-lg-4">
                             <section class="petty-detail-card h-100">
                                 <div class="petty-exchange-total"><small>TOTAL A CANJEAR</small><strong id="pcre_total">S/ 0.00</strong><span>Calculado desde los recibos seleccionados</span></div>
-                                <label class="petty-source-upload mt-2" for="pcre_documents"><i class="fas fa-cloud-upload-alt"></i><span><strong>Adjuntar comprobante real</strong><small>PDF, JPG, JPEG o PNG hasta 10 MB</small></span><input type="file" name="documents[]" id="pcre_documents" accept=".pdf,.jpg,.jpeg,.png" multiple></label>
+                                <label class="petty-source-upload mt-2" for="pcre_documents"><i class="fas fa-cloud-upload-alt"></i><span><strong>Adjuntar comprobante real</strong><small>PDF, JPG, JPEG, PNG o WEBP hasta 10 MB</small></span><input type="file" name="documents[]" id="pcre_documents" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple></label>
                                 <div id="pcre_document_previews" class="petty-source-previews"></div>
                             </section>
                         </div>

@@ -117,6 +117,7 @@ class BankMovement extends Model
             'PETTY_CASH_OPENING' => 'Apertura de Caja Chica',
             'PETTY_CASH_REPLENISHMENT' => 'Reposición de Caja Chica',
             'PETTY_CASH_EXPENSE_EXCHANGE' => 'Canje de Caja Chica',
+            'GENERAL_CASH_FUNDING' => 'Retiro para Caja General',
             'WAREHOUSE_ENTRY_EXPENSE' => 'Costo de Almacén',
             'WAREHOUSE_ENTRY_PAYMENT' => 'Ingreso de AlmacÃ©n',
             'BANK_TRANSFER' => 'Transferencia bancaria',

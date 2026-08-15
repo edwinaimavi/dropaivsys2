@@ -3,6 +3,7 @@
 
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\BankTreasuryController;
+use App\Http\Controllers\Admin\GeneralCashController;
 
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -77,6 +78,24 @@ Route::prefix('banks')->name('banks.')->group(function () {
     Route::post('transfers/{transfer}/cancel', [BankTreasuryController::class, 'cancelTransfer'])->name('transfers.cancel');
     Route::get('files/{type}/{id}', [BankTreasuryController::class, 'file'])->name('files');
     Route::get('export/{format}', [BankTreasuryController::class, 'export'])->name('export');
+});
+
+Route::prefix('general-cash')->name('general-cash.')->group(function () {
+    Route::get('/', [GeneralCashController::class, 'index'])->name('index');
+    Route::get('list', [GeneralCashController::class, 'list'])->name('list');
+    Route::get('bank-accounts', [GeneralCashController::class, 'bankAccounts'])->name('bank-accounts');
+    Route::get('export/{format}', [GeneralCashController::class, 'export'])->name('export');
+    Route::get('documents/{document}/view', [GeneralCashController::class, 'viewDocument'])->name('documents.view');
+    Route::post('boxes', [GeneralCashController::class, 'store'])->name('store');
+    Route::get('boxes/{generalCash}', [GeneralCashController::class, 'show'])->name('show');
+    Route::put('boxes/{generalCash}', [GeneralCashController::class, 'update'])->name('update');
+    Route::post('fundings', [GeneralCashController::class, 'storeFunding'])->name('fundings.store');
+    Route::post('fundings/{movement}/cancel', [GeneralCashController::class, 'cancelFunding'])->name('fundings.cancel');
+    Route::post('expenses', [GeneralCashController::class, 'storeExpense'])->name('expenses.store');
+    Route::post('expenses/{expense}/approve', [GeneralCashController::class, 'approveExpense'])->name('expenses.approve');
+    Route::post('expenses/{expense}/observe', [GeneralCashController::class, 'observeExpense'])->name('expenses.observe');
+    Route::post('expenses/{expense}/cancel', [GeneralCashController::class, 'cancelExpense'])->name('expenses.cancel');
+    Route::post('reconciliations', [GeneralCashController::class, 'storeReconciliation'])->name('reconciliations.store');
 });
 
 Route::get('petty-cash/list', [PettyCashController::class, 'list'])->name('petty-cash.list');
@@ -616,6 +635,10 @@ Route::get(
     'warehouse-entries/petty-cash-expenses/available',
     [WarehouseEntryController::class, 'availablePettyCashExpenses']
 )->name('warehouse-entries.petty-cash-expenses.available');
+Route::get(
+    'warehouse-entries/petty-cash-expenses/{pettyCashExpense}/documents/{document}/view',
+    [WarehouseEntryController::class, 'viewPettyCashExpenseDocument']
+)->name('warehouse-entries.petty-cash-expenses.documents.view');
 Route::get(
     'warehouse-entries/list',
     [WarehouseEntryController::class, 'list']

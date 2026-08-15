@@ -29,8 +29,8 @@
                                 <label class="petty-receipts-dropzone" for="pce_documents">
                                     <i class="fas fa-cloud-upload-alt"></i>
                                     <strong>Seleccionar comprobantes</strong>
-                                    <small>PDF, JPG, JPEG o PNG · máx. 10 MB c/u</small>
-                                    <input type="file" name="documents[]" id="pce_documents" accept=".pdf,.jpg,.jpeg,.png" multiple>
+                                    <small>PDF, JPG, JPEG, PNG o WEBP · máx. 10 MB c/u</small>
+                                    <input type="file" name="documents[]" id="pce_documents" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple>
                                 </label>
                                 <div id="pce_documents_preview" class="petty-receipts-list" aria-live="polite"></div>
                             </aside>
@@ -49,7 +49,7 @@
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group col-md-3"><label>Fecha *</label><input type="date" name="expense_date" id="pce_expense_date" class="form-control" required></div>
-                                    <div class="form-group col-md-3"><label>Tipo comprobante</label><select name="document_type" id="pce_document_type" class="form-control"><option value="">Seleccione</option><option>FACTURA</option><option>BOLETA</option><option>RECIBO</option><option>TICKET</option><option>OTRO</option></select></div>
+                                    <div class="form-group col-md-3"><label>Tipo comprobante</label><select name="document_type" id="pce_document_type" class="form-control"><option value="">Seleccione</option><option value="FACTURA">FACTURA</option><option value="BOLETA">BOLETA</option><option value="RECIBO_HONORARIOS">RECIBO POR HONORARIOS</option><option value="RECIBO">RECIBO INTERNO</option><option value="SIN_COMPROBANTE">SIN COMPROBANTE</option><option value="TICKET">TICKET</option><option value="OTRO">OTRO</option></select></div>
                                     <div class="form-group col-md-3"><label>Serie</label><input name="document_series" id="pce_document_series" class="form-control text-uppercase" maxlength="20" placeholder="F001"></div>
                                     <div class="form-group col-md-3"><label>Correlativo</label><input name="document_correlative" id="pce_document_correlative" class="form-control text-uppercase" maxlength="50" placeholder="000123"></div>
                                 </div>

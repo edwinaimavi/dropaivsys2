@@ -14,6 +14,7 @@
                 <input type="hidden" id="pcc_box_id">
                 <div id="pcc_summary" class="petty-detail-summary"></div>
                 <div id="pcc_pending_expenses_warning" class="alert alert-danger d-none"></div>
+                <div id="pcc_pending_link_warning" class="alert alert-warning d-none"></div>
                 <div id="pcc_pending_warning" class="alert alert-warning d-none"></div>
                 <div class="form-group"><label for="pcc_close_observation">Observación de cierre</label><textarea id="pcc_close_observation" class="form-control" rows="3" maxlength="2000" placeholder="Motivo o comentario de la decisión de cierre..."></textarea></div>
                 <div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle mr-1"></i> Después del cierre no podrá modificar los gastos registrados.</div>

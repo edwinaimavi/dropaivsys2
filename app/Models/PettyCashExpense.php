@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
 class PettyCashExpense extends Model
@@ -12,13 +12,33 @@ class PettyCashExpense extends Model
     use SoftDeletes;
 
     public const APPROVAL_PENDING = 'pendiente_aprobacion';
+
     public const APPROVAL_OBSERVED = 'observado';
+
     public const APPROVAL_APPROVED = 'aprobado';
+
     public const APPROVAL_REJECTED = 'rechazado';
+
     public const APPROVAL_CANCELLED = 'anulado';
+
     public const EXCHANGE_NOT_APPLICABLE = 'NO_APLICA';
+
     public const EXCHANGE_PENDING = 'PENDIENTE_CANJE';
+
     public const EXCHANGE_COMPLETED = 'CANJEADO';
+
+    public const WAREHOUSE_LINKABLE_DOCUMENT_TYPES = [
+        'FACTURA',
+        'BOLETA',
+        'RECIBO_HONORARIOS',
+        'RECIBO_POR_HONORARIOS',
+        'RECIBO_HONORARIO',
+        'RECIBO',
+        'RECIBO_INTERNO',
+        'SIN_COMPROBANTE',
+        'TICKET',
+        'OTRO',
+    ];
 
     protected $fillable = [
         'petty_cash_box_id', 'item_number', 'expense_date', 'document_type',
@@ -50,14 +70,46 @@ class PettyCashExpense extends Model
         return $parts ? implode('-', $parts) : ($this->document_number ?: null);
     }
 
-    public function pettyCashBox() { return $this->belongsTo(PettyCashBox::class); }
-    public function supplier() { return $this->belongsTo(Supplier::class); }
-    public function documents() { return $this->morphMany(Document::class, 'documentable'); }
-    public function creator() { return $this->belongsTo(User::class, 'created_by'); }
-    public function approvedBy() { return $this->belongsTo(User::class, 'approved_by_user_id'); }
-    public function rejectedBy() { return $this->belongsTo(User::class, 'rejected_by_user_id'); }
-    public function exchange() { return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id'); }
-    public function exchangeItems() { return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id'); }
+    public function pettyCashBox()
+    {
+        return $this->belongsTo(PettyCashBox::class);
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function documents()
+    {
+        return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
+
+    public function rejectedBy()
+    {
+        return $this->belongsTo(User::class, 'rejected_by_user_id');
+    }
+
+    public function exchange()
+    {
+        return $this->belongsTo(PettyCashExpenseExchange::class, 'exchange_id');
+    }
+
+    public function exchangeItems()
+    {
+        return $this->hasMany(PettyCashExpenseExchangeItem::class, 'petty_cash_expense_id');
+    }
+
     public function warehouseEntryExpenses()
     {
         if (! Schema::hasTable('warehouse_entry_expenses')
@@ -67,6 +119,7 @@ class PettyCashExpense extends Model
 
         return $this->hasMany(WarehouseEntryExpense::class);
     }
+
     public function warehouseEntryExpense()
     {
         if (! Schema::hasTable('warehouse_entry_expenses')
@@ -76,8 +129,17 @@ class PettyCashExpense extends Model
 
         return $this->hasOne(WarehouseEntryExpense::class)->latestOfMany();
     }
-    public function observations() { return $this->hasMany(PettyCashExpenseObservation::class)->latest('observed_at'); }
-    public function events() { return $this->hasMany(PettyCashExpenseEvent::class)->latest(); }
+
+    public function observations()
+    {
+        return $this->hasMany(PettyCashExpenseObservation::class)->latest('observed_at');
+    }
+
+    public function events()
+    {
+        return $this->hasMany(PettyCashExpenseEvent::class)->latest();
+    }
+
     public function currentObservation()
     {
         return $this->hasOne(PettyCashExpenseObservation::class)
@@ -106,5 +168,35 @@ class PettyCashExpense extends Model
     public function scopePendingExchange(Builder $query): Builder
     {
         return $query->where('exchange_status', self::EXCHANGE_PENDING);
+    }
+
+    public function scopeAvailableForWarehouseLink(Builder $query): Builder
+    {
+        return $query
+            ->where('status', 'ACTIVE')
+            ->whereIn('document_type', self::WAREHOUSE_LINKABLE_DOCUMENT_TYPES)
+            ->approved()
+            ->whereDoesntHave('warehouseEntryExpenses')
+            ->whereHas('pettyCashBox', fn (Builder $boxQuery) => $boxQuery
+                ->where('status', PettyCashBox::STATUS_OPEN));
+    }
+
+    public function warehouseDocumentType(): ?string
+    {
+        $documentType = strtoupper(trim((string) $this->document_type));
+        $documentType = str_replace([' ', '-'], '_', $documentType);
+
+        return match ($documentType) {
+            'FACTURA', 'BOLETA' => $documentType,
+            'RECIBO_HONORARIOS', 'RECIBO_POR_HONORARIOS', 'RECIBO_HONORARIO' => 'RECIBO_HONORARIOS',
+            'RECIBO', 'RECIBO_INTERNO' => 'RECIBO_INTERNO',
+            'SIN_COMPROBANTE', 'TICKET', 'OTRO' => 'SIN_COMPROBANTE',
+            default => null,
+        };
+    }
+
+    public function hasWarehouseLinkableDocument(): bool
+    {
+        return $this->warehouseDocumentType() !== null;
     }
 }

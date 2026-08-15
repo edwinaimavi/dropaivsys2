@@ -1940,6 +1940,7 @@ function normalizeWarehouseEntryExpenseDocumentValue(documentType) {
     const normalized = String(documentType || '').trim().toUpperCase().replace(/[ -]+/g, '_');
     if (normalized === 'RECIBO') return 'RECIBO_INTERNO';
     if (['RECIBO_POR_HONORARIOS', 'RECIBO_HONORARIO'].includes(normalized)) return 'RECIBO_HONORARIOS';
+    if (['TICKET', 'OTRO'].includes(normalized)) return 'SIN_COMPROBANTE';
     return normalized;
 }
 
@@ -1980,7 +1981,7 @@ function openWarehouseEntryPettyCashModal() {
 
 function clearPettyCashExpenseFilters(reload = true) {
     $('#wePettyCashSearch,#wePettyCashProvider,#wePettyCashReceiptNumber,#wePettyCashDateFrom,#wePettyCashDateTo,#wePettyCashAmount').val('');
-    $('#wePettyCashExchangeStatus').val('PENDIENTE_CANJE');
+    $('#wePettyCashExchangeStatus').val('all');
     if (reload) loadAvailablePettyCashExpenses();
 }
 
@@ -2020,17 +2021,28 @@ function renderAvailablePettyCashExpenses() {
                 && expense.exchange?.status === 'ACTIVE';
             const exchangeDocumentsCount = (expense.exchange?.documents || [])
                 .filter(document => document.status === 'ACTIVE').length;
+            const documentType = exchanged
+                ? normalizeWarehouseEntryExpenseDocumentValue(expense.exchange.document_type)
+                : normalizeWarehouseEntryExpenseDocumentValue(expense.document_type);
             const attachmentsCount = Number(expense.documents_count || 0) + exchangeDocumentsCount;
             const exchangeLabel = exchanged
                 ? `Canjeado con ${warehouseEntryExpenseDocumentLabel(expense.exchange.document_type)}`
-                : 'Pendiente de canje';
-            const documentLabel = exchanged
-                ? [warehouseEntryExpenseDocumentLabel(expense.exchange.document_type), expense.exchange.document_series, expense.exchange.document_correlative].filter(Boolean).join(' ')
-                : `Recibo interno ${number}`;
+                : (expense.exchange_status === 'PENDIENTE_CANJE' ? 'Pendiente de canje' : 'Documento directo');
+            const documentLabel = [
+                warehouseEntryExpenseDocumentLabel(documentType),
+                exchanged ? expense.exchange.document_series : expense.document_series,
+                exchanged
+                    ? expense.exchange.document_correlative
+                    : (expense.document_correlative || expense.document_number)
+            ].filter(Boolean).join(' ');
+            const classification = isWarehouseEntryOfficialExpenseDocument(documentType)
+                ? 'Con comprobante oficial'
+                : 'Otros gastos / sin comprobante';
+            const statusBadge = exchanged ? 'success' : (expense.exchange_status === 'PENDIENTE_CANJE' ? 'warning' : 'info');
             const symbol = expense.petty_cash_box?.currency?.symbol || 'S/';
-            return `<tr data-expense-id="${expense.id}"><td class="text-center"><input type="checkbox" class="we-petty-cash-expense-check" value="${expense.id}"></td><td>${formatWarehouseEntryDisplayDate(expense.expense_date)}</td><td><strong>${escapeWarehouseEntryHtml(number)}</strong><small class="d-block text-muted">${escapeWarehouseEntryHtml(expense.petty_cash_box?.code || '-')}</small></td><td><strong>${escapeWarehouseEntryHtml(expense.supplier_name || '-')}</strong><small class="d-block text-muted">${escapeWarehouseEntryHtml(expense.supplier_ruc || '')}</small></td><td>${escapeWarehouseEntryHtml(expense.concept || '-')}</td><td class="text-right font-weight-bold">${escapeWarehouseEntryHtml(symbol)} ${formatWarehouseEntryMoney(expense.amount)}</td><td><span class="badge badge-${exchanged ? 'success' : 'warning'}">${escapeWarehouseEntryHtml(exchangeLabel)}</span></td><td>${escapeWarehouseEntryHtml(documentLabel)}<small class="d-block text-muted">${attachmentsCount} adjunto(s)</small></td><td><select class="form-control form-control-sm we-petty-cash-expense-type"><option value="agency_freight">Flete / transporte</option><option value="pickup_transfer" selected>Recojo / traslado</option><option value="other">Otros gastos</option></select></td></tr>`;
+            return `<tr data-expense-id="${expense.id}"><td class="text-center"><input type="checkbox" class="we-petty-cash-expense-check" value="${expense.id}"></td><td>${formatWarehouseEntryDisplayDate(expense.expense_date)}</td><td><strong>${escapeWarehouseEntryHtml(number)}</strong><small class="d-block text-muted">${escapeWarehouseEntryHtml(expense.petty_cash_box?.code || '-')}</small></td><td><strong>${escapeWarehouseEntryHtml(expense.supplier_name || '-')}</strong><small class="d-block text-muted">${escapeWarehouseEntryHtml(expense.supplier_ruc || '')}</small></td><td>${escapeWarehouseEntryHtml(expense.concept || '-')}</td><td class="text-right font-weight-bold">${escapeWarehouseEntryHtml(symbol)} ${formatWarehouseEntryMoney(expense.amount)}</td><td><span class="badge badge-${statusBadge}">${escapeWarehouseEntryHtml(exchangeLabel)}</span></td><td>${escapeWarehouseEntryHtml(documentLabel || 'Sin comprobante')}<small class="d-block text-muted">${escapeWarehouseEntryHtml(classification)} · ${attachmentsCount} adjunto(s)</small></td><td><select class="form-control form-control-sm we-petty-cash-expense-type"><option value="agency_freight">Flete / transporte</option><option value="pickup_transfer" selected>Recojo / traslado</option><option value="other">Otros gastos</option></select></td></tr>`;
         }).join('')
-        : '<tr><td colspan="9" class="text-center text-muted py-4"><i class="fas fa-check-circle mr-1"></i>No hay gastos disponibles con los filtros seleccionados.</td></tr>');
+        : '<tr><td colspan="9" class="text-center text-muted py-4"><i class="fas fa-check-circle mr-1"></i>No hay gastos disponibles en cajas abiertas para vincular.</td></tr>');
     updatePettyCashExpenseSelectionSummary();
 }
 
@@ -2064,9 +2076,20 @@ function confirmPettyCashExpenses() {
                 : null;
         const pettyCashDocumentsCount = Number(pettyCashExpense.documents_count || 0)
             + (exchange?.documents || []).filter(document => document.status === 'ACTIVE').length;
+        const inheritedDocuments = [
+            ...(pettyCashExpense.documents || []),
+            ...(exchange?.documents || [])
+        ]
+            .filter(document => document.status === 'ACTIVE')
+            .map(document => ({
+                ...document,
+                document_type: normalizeWarehouseEntryExpenseDocumentType(
+                    document.warehouse_document_type || document.document_type
+                )
+            }));
         const documentType = exchange
             ? normalizeWarehouseEntryExpenseDocumentValue(exchange.document_type)
-            : 'RECIBO_INTERNO';
+            : (normalizeWarehouseEntryExpenseDocumentValue(pettyCashExpense.document_type) || 'SIN_COMPROBANTE');
         const amount = parseWarehouseEntryNumber(pettyCashExpense.amount);
         const tax = calculateWarehouseEntryExpenseTax(amount, false);
 
@@ -2076,7 +2099,7 @@ function confirmPettyCashExpenses() {
             source_type: 'petty_cash',
             petty_cash_expense_id: pettyCashExpense.id,
             petty_cash_expense: pettyCashExpense,
-            source_reference: `${pettyCashExpense.petty_cash_box?.code || 'Caja Chica'} · RECIBO ${pettyCashExpense.document_full_number || pettyCashExpense.document_number || pettyCashExpense.item_number}`,
+            source_reference: `${pettyCashExpense.petty_cash_box?.code || 'Caja Chica'} · ${warehouseEntryExpenseDocumentLabel(documentType).toUpperCase()} ${pettyCashExpense.document_full_number || pettyCashExpense.document_number || pettyCashExpense.item_number}`,
             expense_type: type,
             shipping_agency_id: '',
             provider_id: pettyCashExpense.supplier_id || '',
@@ -2097,7 +2120,7 @@ function confirmPettyCashExpenses() {
             payment_proof_file: null,
             remove_invoice_document: false,
             remove_payment_proof_document: false,
-            documents: [],
+            documents: inheritedDocuments,
             petty_cash_documents_count: pettyCashDocumentsCount
         });
     });
@@ -2218,11 +2241,15 @@ function normalizeWarehouseEntryExpenseDocumentType(type) {
 }
 
 function warehouseEntryExpenseStoredDocument(expense, type) {
+    return warehouseEntryExpenseStoredDocuments(expense, type)[0] || null;
+}
+
+function warehouseEntryExpenseStoredDocuments(expense, type) {
     const config = warehouseEntryExpenseDocumentConfig(type);
-    if (expense?.[config.removeField]) return null;
+    if (expense?.[config.removeField]) return [];
     return [...(expense?.documents || [])]
         .filter(document => normalizeWarehouseEntryExpenseDocumentType(document.document_type) === type)
-        .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null;
+        .sort((left, right) => Number(left.id || 0) - Number(right.id || 0));
 }
 
 function handleWarehouseEntryExpenseFileChange() {
@@ -2376,12 +2403,24 @@ function renderWarehouseEntryExpenseDocumentLinks(expense) {
     const line = (type, label, missingLabel) => {
         const config = warehouseEntryExpenseDocumentConfig(type);
         const pendingFile = expense?.[config.fileField];
-        const storedDocument = warehouseEntryExpenseStoredDocument(expense, type);
+        const storedDocuments = warehouseEntryExpenseStoredDocuments(expense, type);
         if (pendingFile) {
             return `<span title="${escapeWarehouseEntryHtml(pendingFile.name)}"><strong>${label}:</strong> <span class="badge badge-info">Listo</span></span>`;
         }
-        if (storedDocument?.view_url) {
-            return `<span><strong>${label}:</strong> <a href="${storedDocument.view_url}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye mr-1"></i>Ver</a></span>`;
+        const availableDocuments = storedDocuments.filter(document => document.view_url);
+        if (availableDocuments.length) {
+            const links = availableDocuments.map((document, index) => `<a href="${document.view_url}" target="_blank" class="btn btn-outline-info btn-xs mr-1 mb-1" title="${escapeWarehouseEntryHtml(document.original_name || `Documento ${index + 1}`)}"><i class="fas fa-eye mr-1"></i>${availableDocuments.length > 1 ? `Ver ${index + 1}` : 'Ver'}</a>`).join('');
+            const multipleLabel = availableDocuments.length > 1
+                ? `<small class="text-muted d-block">Ver documentos · ${availableDocuments.length} archivos</small>`
+                : '';
+            const missingCount = storedDocuments.length - availableDocuments.length;
+            const unavailableLabel = missingCount > 0
+                ? `<small class="text-danger">${missingCount} no disponible(s)</small>`
+                : '';
+            return `<span><strong>${label}:</strong> ${links}${multipleLabel}${unavailableLabel}</span>`;
+        }
+        if (storedDocuments.length) {
+            return `<span class="text-danger"><strong>${label}:</strong> Documento no disponible o archivo no encontrado</span>`;
         }
         return `<span class="text-muted"><strong>${label}:</strong> ${missingLabel}</span>`;
     };
@@ -2399,10 +2438,19 @@ function warehouseEntryExpenseSourceHtml(expense) {
         return '<span class="warehouse-entry-source-badge is-manual"><i class="fas fa-pen"></i>Manual</span>';
     }
     const petty = expense.petty_cash_expense || {};
+    const sourceDocumentLabel = warehouseEntryExpenseDocumentLabel(
+        normalizeWarehouseEntryExpenseDocumentValue(petty.document_type) || expense.document_type
+    ).toUpperCase();
     const reference = expense.source_reference
-        || `${petty.petty_cash_box?.code || 'Caja Chica'} · RECIBO ${petty.document_full_number || petty.document_number || petty.item_number || expense.petty_cash_expense_id}`;
-    const exchanged = petty.exchange_status === 'CANJEADO' || isWarehouseEntryOfficialExpenseDocument(expense.document_type);
-    return `<span class="warehouse-entry-source-badge is-petty-cash" title="${escapeWarehouseEntryHtml(reference)}"><i class="fas fa-cash-register"></i>Caja Chica</span><small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml(reference)}</small><small class="d-block ${exchanged ? 'text-success' : 'text-warning'}">${exchanged ? `Canjeado con ${warehouseEntryExpenseDocumentLabel(expense.document_type)}` : 'Pendiente de canje'}</small>`;
+        || `${petty.petty_cash_box?.code || 'Caja Chica'} · ${sourceDocumentLabel} ${petty.document_full_number || petty.document_number || petty.item_number || expense.petty_cash_expense_id}`;
+    const exchangeStatus = petty.exchange_status || '';
+    const statusLabel = exchangeStatus === 'CANJEADO'
+        ? `Canjeado con ${warehouseEntryExpenseDocumentLabel(expense.document_type)}`
+        : (exchangeStatus === 'PENDIENTE_CANJE' ? 'Pendiente de canje' : 'Documento directo');
+    const statusClass = exchangeStatus === 'CANJEADO'
+        ? 'text-success'
+        : (exchangeStatus === 'PENDIENTE_CANJE' ? 'text-warning' : 'text-info');
+    return `<span class="warehouse-entry-source-badge is-petty-cash" title="${escapeWarehouseEntryHtml(reference)}"><i class="fas fa-cash-register"></i>Caja Chica</span><small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml(reference)}</small><small class="d-block ${statusClass}">${escapeWarehouseEntryHtml(statusLabel)}</small>`;
 }
 
 function renderWarehouseEntryExpenses() {
@@ -2488,7 +2536,7 @@ function fillWarehouseEntryForm(entry) {
         ...expense,
         source_type: expense.source_type || 'manual',
         source_reference: expense.source_type === 'petty_cash'
-            ? `${expense.petty_cash_expense?.petty_cash_box?.code || 'Caja Chica'} · RECIBO ${expense.petty_cash_expense?.document_full_number || expense.petty_cash_expense?.document_number || expense.petty_cash_expense?.item_number || expense.petty_cash_expense_id}`
+            ? `${expense.petty_cash_expense?.petty_cash_box?.code || 'Caja Chica'} · ${warehouseEntryExpenseDocumentLabel(normalizeWarehouseEntryExpenseDocumentValue(expense.petty_cash_expense?.document_type) || expense.document_type).toUpperCase()} ${expense.petty_cash_expense?.document_full_number || expense.petty_cash_expense?.document_number || expense.petty_cash_expense?.item_number || expense.petty_cash_expense_id}`
             : 'Manual',
         document_type: normalizeWarehouseEntryExpenseDocumentValue(expense.document_type) || 'SIN_COMPROBANTE',
         affects_igv: Boolean(expense.affects_igv),

@@ -12,8 +12,10 @@ use App\Models\Customer;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\Document;
 use App\Models\DocumentType;
-use App\Models\Presentation;
+use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
+use App\Models\PettyCashExpenseExchange;
+use App\Models\Presentation;
 use App\Models\ShippingAgency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
@@ -26,9 +28,9 @@ use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemLotDocument;
 use App\Services\CustomerPurchaseOrderStatusService;
-use App\Services\WarehouseKardexService;
 use App\Services\PettyCashWarehouseExpenseService;
 use App\Services\WarehouseEntryBankPaymentService;
+use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -43,7 +45,9 @@ use Yajra\DataTables\Facades\DataTables;
 class WarehouseEntryController extends Controller
 {
     private const STATUS_REGISTERED = 'registered';
+
     private const STATUS_CANCELLED = 'cancelled';
+
     private const PDF_OBSERVATION = 'PDF_GENERATED_WAREHOUSE_ENTRY';
 
     private PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService;
@@ -53,13 +57,15 @@ class WarehouseEntryController extends Controller
     public function __construct(
         ?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null,
         ?WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService = null
-    )
-    {
+    ) {
         $this->pettyCashWarehouseExpenseService = $pettyCashWarehouseExpenseService
             ?? app(PettyCashWarehouseExpenseService::class);
         $this->warehouseEntryBankPaymentService = $warehouseEntryBankPaymentService
             ?? app(WarehouseEntryBankPaymentService::class);
-        $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only(['viewExpenseDocument']);
+        $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only([
+            'viewExpenseDocument',
+            'viewPettyCashExpenseDocument',
+        ]);
         $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber', 'bankAccounts']);
         $this->middleware('can:admin.warehouse-entries.load-items')->only([
             'loadSupplierPurchaseOrderItems',
@@ -115,6 +121,7 @@ class WarehouseEntryController extends Controller
             ->orderBy('trade_name')
             ->orderBy('business_name')
             ->get(['id', 'ruc', 'business_name', 'trade_name']);
+
         return view('admin.warehouse-entries.index', compact(
             'supplierPurchaseOrders',
             'companies',
@@ -166,6 +173,7 @@ class WarehouseEntryController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'amount' => ['nullable', 'numeric', 'gt:0'],
             'exchange_status' => ['nullable', Rule::in([
+                PettyCashExpense::EXCHANGE_NOT_APPLICABLE,
                 PettyCashExpense::EXCHANGE_PENDING,
                 PettyCashExpense::EXCHANGE_COMPLETED,
                 'all',
@@ -175,23 +183,21 @@ class WarehouseEntryController extends Controller
         ]);
 
         $expenses = PettyCashExpense::query()
-            ->where('status', 'ACTIVE')
-            ->where('document_type', 'RECIBO')
-            ->approved()
-            ->whereDoesntHave('warehouseEntryExpenses')
+            ->availableForWarehouseLink()
             ->with([
-                'pettyCashBox:id,code,company_id,currency_id',
+                'pettyCashBox:id,code,company_id,currency_id,status',
                 'pettyCashBox.currency:id,code,symbol',
+                'documents' => fn ($query) => $query->where('status', 'ACTIVE')->with('documentType'),
                 'exchange:id,document_type,document_series,document_correlative,exchange_date,status',
-                'exchange.documents',
+                'exchange.documents' => fn ($query) => $query->where('status', 'ACTIVE')->with('documentType'),
             ])
             ->withCount(['documents' => fn ($query) => $query->where('status', 'ACTIVE')])
             ->when($validated['company_id'] ?? null, fn ($query, $companyId) => $query
                 ->whereHas('pettyCashBox', fn ($boxQuery) => $boxQuery->where('company_id', $companyId)))
             ->when($validated['currency_id'] ?? null, fn ($query, $currencyId) => $query
                 ->whereHas('pettyCashBox', fn ($boxQuery) => $boxQuery->where('currency_id', $currencyId)))
-            ->when(($validated['exchange_status'] ?? PettyCashExpense::EXCHANGE_PENDING) !== 'all',
-                fn ($query) => $query->where('exchange_status', $validated['exchange_status'] ?? PettyCashExpense::EXCHANGE_PENDING))
+            ->when(($validated['exchange_status'] ?? 'all') !== 'all',
+                fn ($query) => $query->where('exchange_status', $validated['exchange_status']))
             ->when($validated['date_from'] ?? null, fn ($query, $date) => $query->whereDate('expense_date', '>=', $date))
             ->when($validated['date_to'] ?? null, fn ($query, $date) => $query->whereDate('expense_date', '<=', $date))
             ->when($validated['amount'] ?? null, fn ($query, $amount) => $query->where('amount', round((float) $amount, 2)))
@@ -223,7 +229,42 @@ class WarehouseEntryController extends Controller
             ->limit(100)
             ->get();
 
+        $expenses->each(function (PettyCashExpense $expense) {
+            $expense->documents->each(function (Document $document) use ($expense) {
+                $this->presentPettyCashDocument(
+                    $expense,
+                    $document,
+                    $this->pettyCashWarehouseExpenseService->sourceDocumentType($document)
+                );
+            });
+            $expense->exchange?->documents?->each(function (Document $document) use ($expense) {
+                $this->presentPettyCashDocument(
+                    $expense,
+                    $document,
+                    WarehouseEntryExpenseDocument::TYPE_INVOICE
+                );
+            });
+        });
+
         return response()->json(['data' => $expenses]);
+    }
+
+    private function presentPettyCashDocument(
+        PettyCashExpense $expense,
+        Document $document,
+        string $warehouseDocumentType
+    ): void {
+        $available = filled($document->file_path)
+            && Storage::disk('public')->exists($document->file_path);
+
+        $document->setAttribute('warehouse_document_type', $warehouseDocumentType);
+        $document->setAttribute('file_available', $available);
+        $document->setAttribute(
+            'view_url',
+            $available
+                ? route('admin.warehouse-entries.petty-cash-expenses.documents.view', [$expense, $document])
+                : null
+        );
     }
 
     public function supplierPurchaseOrderLogisticsStatus(SupplierPurchaseOrder $supplierPurchaseOrder)
@@ -317,8 +358,7 @@ class WarehouseEntryController extends Controller
 
         return DataTables::of($entries)
             ->addIndexColumn()
-            ->editColumn('supplier_purchase_order_id', fn (WarehouseEntry $entry) =>
-                $entry->supplierPurchaseOrder?->code ?? $entry->purchase_order_number ?? '-')
+            ->editColumn('supplier_purchase_order_id', fn (WarehouseEntry $entry) => $entry->supplierPurchaseOrder?->code ?? $entry->purchase_order_number ?? '-')
             ->addColumn('customer_order', function (WarehouseEntry $entry) {
                 $customerOrders = $this->customerOrdersForWarehouseEntry($entry);
 
@@ -331,7 +371,7 @@ class WarehouseEntryController extends Controller
                     $customer = $customerOrder->customer;
                     $customerName = $customer?->business_name
                         ?? $customer?->full_name
-                        ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                        ?? trim(($customer?->first_name ?? '').' '.($customer?->last_name ?? ''))
                         ?: 'Sin cliente';
                     $branchName = $customerOrder->customerBranch?->branch_name ?: 'Sin sede registrada';
 
@@ -356,7 +396,7 @@ class WarehouseEntryController extends Controller
 
                 return $customer?->business_name
                     ?? $customer?->full_name
-                    ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                    ?? trim(($customer?->first_name ?? '').' '.($customer?->last_name ?? ''))
                     ?: 'Sin cliente relacionado';
             })
             ->addColumn('customer_order_branch', function (WarehouseEntry $entry) {
@@ -364,18 +404,14 @@ class WarehouseEntryController extends Controller
                     ?: 'Sin sede registrada';
             })
             ->addColumn('grand_total_value', fn (WarehouseEntry $entry) => (float) $entry->grand_total)
-            ->addColumn('supplier', fn (WarehouseEntry $entry) =>
-                $entry->supplier?->short_name ?? $entry->supplier?->business_name ?? '-')
-            ->addColumn('company', fn (WarehouseEntry $entry) =>
-                $entry->company?->trade_name ?? $entry->company?->business_name ?? '-')
-            ->addColumn('warehouse', fn (WarehouseEntry $entry) =>
-                $entry->warehouse?->name ?? 'SIN ALMACEN')
-            ->addColumn('currency', fn (WarehouseEntry $entry) =>
-                $entry->currency?->code ?? $entry->currency?->description ?? '-')
+            ->addColumn('supplier', fn (WarehouseEntry $entry) => $entry->supplier?->short_name ?? $entry->supplier?->business_name ?? '-')
+            ->addColumn('company', fn (WarehouseEntry $entry) => $entry->company?->trade_name ?? $entry->company?->business_name ?? '-')
+            ->addColumn('warehouse', fn (WarehouseEntry $entry) => $entry->warehouse?->name ?? 'SIN ALMACEN')
+            ->addColumn('currency', fn (WarehouseEntry $entry) => $entry->currency?->code ?? $entry->currency?->description ?? '-')
             ->editColumn('grand_total', function (WarehouseEntry $entry) {
                 $symbol = $entry->currency?->symbol ?? '';
 
-                return trim($symbol . ' ' . number_format((float) $entry->grand_total, 2));
+                return trim($symbol.' '.number_format((float) $entry->grand_total, 2));
             })
             ->editColumn('status', function (WarehouseEntry $entry) {
                 $status = $this->statusPresentation()[$entry->status] ?? [
@@ -393,8 +429,7 @@ class WarehouseEntryController extends Controller
                     e($status['label'])
                 );
             })
-            ->editColumn('created_at', fn (WarehouseEntry $entry) =>
-                $entry->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
+            ->editColumn('created_at', fn (WarehouseEntry $entry) => $entry->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('acciones', function (WarehouseEntry $entry) {
                 $pdfUrl = route('admin.warehouse-entries.pdf', $entry);
 
@@ -457,7 +492,7 @@ class WarehouseEntryController extends Controller
                     'cancelada' => self::STATUS_CANCELLED,
                 ];
 
-                $query->where('warehouse_entries.status', 'like', '%' . ($statusAliases[$normalized] ?? $keyword) . '%');
+                $query->where('warehouse_entries.status', 'like', '%'.($statusAliases[$normalized] ?? $keyword).'%');
             })
             ->rawColumns(['customer_order', 'status', 'acciones'])
             ->make(true);
@@ -557,9 +592,17 @@ class WarehouseEntryController extends Controller
             $warehouseEntry->unsetRelation('expenses');
         } else {
             $warehouseEntry->expenses->each(function (WarehouseEntryExpense $expense) use ($warehouseEntry) {
-                $expense->documents->each(fn (WarehouseEntryExpenseDocument $document) => $document->setAttribute(
-                    'view_url', route('admin.warehouse-entries.expenses.documents.view', [$warehouseEntry, $document])
-                ));
+                $expense->documents->each(function (WarehouseEntryExpenseDocument $document) use ($warehouseEntry) {
+                    $available = filled($document->file_path)
+                        && Storage::disk('public')->exists($document->file_path);
+                    $document->setAttribute('file_available', $available);
+                    $document->setAttribute(
+                        'view_url',
+                        $available
+                            ? route('admin.warehouse-entries.expenses.documents.view', [$warehouseEntry, $document])
+                            : null
+                    );
+                });
             });
         }
 
@@ -577,7 +620,39 @@ class WarehouseEntryController extends Controller
 
         return response()->file(Storage::disk('public')->path($expenseDocument->file_path), [
             'Content-Type' => $expenseDocument->mime_type ?: 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="' . ($expenseDocument->original_name ?: basename($expenseDocument->file_path)) . '"',
+            'Content-Disposition' => 'inline; filename="'.($expenseDocument->original_name ?: basename($expenseDocument->file_path)).'"',
+        ]);
+    }
+
+    public function viewPettyCashExpenseDocument(PettyCashExpense $pettyCashExpense, Document $document)
+    {
+        abort_unless(
+            PettyCashExpense::query()
+                ->availableForWarehouseLink()
+                ->whereKey($pettyCashExpense->id)
+                ->exists(),
+            404
+        );
+        $pettyCashExpense->loadMissing('exchange');
+        $isDirectDocument = $document->documentable_type === PettyCashExpense::class
+            && (int) $document->documentable_id === (int) $pettyCashExpense->id;
+        $isExchangeDocument = $pettyCashExpense->exchange_status === PettyCashExpense::EXCHANGE_COMPLETED
+            && $pettyCashExpense->exchange?->status === PettyCashExpenseExchange::STATUS_ACTIVE
+            && $document->documentable_type === PettyCashExpenseExchange::class
+            && (int) $document->documentable_id === (int) $pettyCashExpense->exchange_id;
+
+        abort_unless($isDirectDocument || $isExchangeDocument, 404);
+        abort_unless(
+            $document->status === 'ACTIVE'
+            && filled($document->file_path)
+            && Storage::disk('public')->exists($document->file_path),
+            404,
+            'Documento no disponible o archivo no encontrado.'
+        );
+
+        return response()->file(Storage::disk('public')->path($document->file_path), [
+            'Content-Type' => $document->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="'.($document->original_name ?: basename($document->file_path)).'"',
         ]);
     }
 
@@ -606,7 +681,7 @@ class WarehouseEntryController extends Controller
 
         return response()->file(Storage::disk('public')->path($document->file_path), [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
+            'Content-Disposition' => 'inline; filename="'.$document->original_name.'"',
         ]);
     }
 
@@ -688,7 +763,7 @@ class WarehouseEntryController extends Controller
                 'message' => 'Ingreso de almacen eliminado correctamente.',
             ]);
         } catch (\Throwable $e) {
-            Log::error('Error deleting warehouse entry: ' . $e->getMessage());
+            Log::error('Error deleting warehouse entry: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -762,7 +837,7 @@ class WarehouseEntryController extends Controller
             'supplier_ruc' => $order->supplier?->ruc,
             'customer_id' => $customer?->id,
             'currency_id' => $order->currency_id,
-            'currency_name' => trim(($order->currency?->code ?? '') . ' - ' . ($order->currency?->description ?? '')),
+            'currency_name' => trim(($order->currency?->code ?? '').' - '.($order->currency?->description ?? '')),
             'purchase_order_number' => $order->code,
             'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
             'payment_method' => $order->payment_method,
@@ -1120,14 +1195,16 @@ class WarehouseEntryController extends Controller
 
                     foreach ($lots as $lot) {
                         $lotId = $lot['id'] ?? null;
-                        $clientKey = $lot['client_key'] ?? ($lotId ? 'id:' . $lotId : null);
+                        $clientKey = $lot['client_key'] ?? ($lotId ? 'id:'.$lotId : null);
                         unset($lot['id'], $lot['client_key']);
                         $entryLot = $lotId
                             ? $entryItem->lots()->whereKey($lotId)->firstOrFail()
                             : $entryItem->lots()->make(['created_by' => Auth::id()]);
                         $entryLot->fill($lot + ['status' => 'active', 'updated_by' => Auth::id()])->save();
                         $retainedLotIds[] = $entryLot->id;
-                        if ($clientKey) $lotMap[$itemIndex . ':' . $clientKey] = $entryLot;
+                        if ($clientKey) {
+                            $lotMap[$itemIndex.':'.$clientKey] = $entryLot;
+                        }
                     }
 
                     $removedLots = $entryItem->lots()->whereNotIn('id', $retainedLotIds)->get();
@@ -1204,7 +1281,7 @@ class WarehouseEntryController extends Controller
                 } catch (\Throwable $pdfException) {
                     $pdfError = 'El ingreso se guardo, pero no se pudo generar el PDF.';
 
-                    Log::error('Error generating warehouse entry PDF: ' . $pdfException->getMessage());
+                    Log::error('Error generating warehouse entry PDF: '.$pdfException->getMessage());
                 }
 
                 return response()->json([
@@ -1284,7 +1361,7 @@ class WarehouseEntryController extends Controller
                 'status' => 'active',
                 'lots' => collect($item['lots'] ?? [])->map(fn (array $lot) => [
                     'id' => $lot['id'] ?? null,
-                    'client_key' => $lot['client_key'] ?? (($lot['id'] ?? null) ? 'id:' . $lot['id'] : null),
+                    'client_key' => $lot['client_key'] ?? (($lot['id'] ?? null) ? 'id:'.$lot['id'] : null),
                     'lot_code' => $this->upperOrNull($lot['lot_code'] ?? null),
                     'quantity' => round((float) ($lot['quantity'] ?? 0), 4),
                     'expiration_date' => $lot['expiration_date'] ?? null,
@@ -1314,6 +1391,8 @@ class WarehouseEntryController extends Controller
                 $sourceType = WarehouseEntryExpense::SOURCE_PETTY_CASH;
                 $data['petty_cash_expense_id'] = $existingExpense->petty_cash_expense_id;
             }
+            $keepsExistingPettyCashLink = $existingExpense?->source_type === WarehouseEntryExpense::SOURCE_PETTY_CASH
+                && (int) $existingExpense->petty_cash_expense_id === (int) ($data['petty_cash_expense_id'] ?? 0);
             $pettyCashExpense = null;
 
             if ($sourceType === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
@@ -1335,9 +1414,19 @@ class WarehouseEntryController extends Controller
 
                 if ($pettyCashExpense->status !== 'ACTIVE'
                     || $pettyCashExpense->approval_status !== PettyCashExpense::APPROVAL_APPROVED
-                    || strtoupper((string) $pettyCashExpense->document_type) !== 'RECIBO') {
+                    || ! $pettyCashExpense->hasWarehouseLinkableDocument()) {
                     throw ValidationException::withMessages([
-                        "expenses.$index.petty_cash_expense_id" => 'El gasto de Caja Chica debe estar activo, aprobado y registrado como recibo.',
+                        "expenses.$index.petty_cash_expense_id" => 'El gasto de Caja Chica debe estar activo, aprobado y tener un documento válido.',
+                    ]);
+                }
+                if (! $keepsExistingPettyCashLink
+                    && $pettyCashExpense->pettyCashBox?->status !== PettyCashBox::STATUS_OPEN) {
+                    $message = $pettyCashExpense->pettyCashBox?->status === PettyCashBox::STATUS_CLOSED
+                        ? 'Este gasto pertenece a una caja chica cerrada y no puede vincularse a un ingreso de almacén.'
+                        : 'Este gasto no pertenece a una caja chica abierta y no puede vincularse a un ingreso de almacén.';
+
+                    throw ValidationException::withMessages([
+                        "expenses.$index.petty_cash_expense_id" => $message,
                     ]);
                 }
                 if ((int) $pettyCashExpense->pettyCashBox?->company_id !== (int) $entry->company_id
@@ -1600,7 +1689,9 @@ class WarehouseEntryController extends Controller
             $activeDocuments->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
         }
 
-        if (! $file) return;
+        if (! $file) {
+            return;
+        }
 
         $path = $file->store(
             "warehouse_entries/{$entry->id}/expenses/{$expense->id}/{$documentType}",
@@ -1630,6 +1721,7 @@ class WarehouseEntryController extends Controller
             if (blank($data['description'] ?? null)) {
                 $data['description'] = 'El proveedor asumió el flete / costo incluido en la compra.';
             }
+
             return $data;
         }
 
@@ -1714,6 +1806,7 @@ class WarehouseEntryController extends Controller
             if (abs(array_sum($allocations) - $amount) > 0.009) {
                 throw ValidationException::withMessages(["expenses.$expenseIndex.distributions" => 'La distribución del gasto debe coincidir con el importe total.']);
             }
+
             return $allocations;
         }
 
@@ -1729,6 +1822,7 @@ class WarehouseEntryController extends Controller
             $result[$position] = $cents / 100;
             $remaining -= $cents;
         }
+
         return $result;
     }
 
@@ -1797,7 +1891,7 @@ class WarehouseEntryController extends Controller
         foreach ($items as $index => $item) {
             $orderItemId = $item['supplier_purchase_order_item_id'] ?? null;
 
-            if (!$orderItemId || !$orderItems->has((int) $orderItemId)) {
+            if (! $orderItemId || ! $orderItems->has((int) $orderItemId)) {
                 continue;
             }
 
@@ -1904,15 +1998,14 @@ class WarehouseEntryController extends Controller
         $lastNumber = WarehouseEntry::withTrashed()
             ->where('entry_number', 'like', 'ING-%')
             ->pluck('entry_number')
-            ->map(fn (?string $number) =>
-                preg_match('/^ING-(\d{6,})$/', (string) $number, $matches)
+            ->map(fn (?string $number) => preg_match('/^ING-(\d{6,})$/', (string) $number, $matches)
                     ? (int) $matches[1]
                     : 0)
             ->max() ?? 0;
 
         do {
             $lastNumber++;
-            $entryNumber = 'ING-' . str_pad($lastNumber, 6, '0', STR_PAD_LEFT);
+            $entryNumber = 'ING-'.str_pad($lastNumber, 6, '0', STR_PAD_LEFT);
         } while (WarehouseEntry::withTrashed()->where('entry_number', $entryNumber)->exists());
 
         return $entryNumber;
@@ -2143,8 +2236,8 @@ class WarehouseEntryController extends Controller
 
     private function generateWarehouseEntryPdf(WarehouseEntry $entry): array
     {
-        $fileName = 'ingreso_almacen_' . $this->sanitizeFileName($entry->entry_number) . '.pdf';
-        $storedPath = 'warehouse_entries/pdfs/' . $fileName;
+        $fileName = 'ingreso_almacen_'.$this->sanitizeFileName($entry->entry_number).'.pdf';
+        $storedPath = 'warehouse_entries/pdfs/'.$fileName;
 
         $pdf = Pdf::loadView('admin.warehouse-entries.pdf', [
             'entry' => $entry,
@@ -2290,7 +2383,7 @@ class WarehouseEntryController extends Controller
     ): void {
         foreach ($documentData as $index => $document) {
             $file = $documentFiles[$index]['file'] ?? null;
-            $mapKey = ($document['item_index'] ?? '') . ':' . ($document['lot_key'] ?? '');
+            $mapKey = ($document['item_index'] ?? '').':'.($document['lot_key'] ?? '');
             $lot = $lotMap[$mapKey] ?? null;
 
             if (! $file instanceof UploadedFile || ! $lot || (int) $lot->warehouseEntryItem->warehouse_entry_id !== (int) $entry->id) {

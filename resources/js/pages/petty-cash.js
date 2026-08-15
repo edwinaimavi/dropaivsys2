@@ -525,7 +525,7 @@ $(function () {
     const addSourceReceipts = (key, files) => {
         Array.from(files).forEach(file => {
             const extension = file.name.split('.').pop().toLowerCase();
-            if (!['pdf', 'jpg', 'jpeg', 'png'].includes(extension)) notify('error', `Formato no permitido: ${file.name}`);
+            if (!['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(extension)) notify('error', `Formato no permitido: ${file.name}`);
             else if (file.size > 10 * 1024 * 1024) notify('error', `El archivo supera el tamaño permitido: ${file.name}`);
             else sourceReceipts[key].files.push(file);
         });
@@ -1679,7 +1679,7 @@ $(function () {
     });
 
     $('#pce_documents').on('change', function () {
-        const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+        const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
         Array.from(this.files).forEach(file => {
             const extension = file.name.split('.').pop().toLowerCase();
             if (!allowedExtensions.includes(extension)) {
@@ -1885,6 +1885,9 @@ $(function () {
             const pendingExpenses = Number(box.pending_expenses_count || 0);
             const observedExpensesCount = Number(box.observed_expenses_count || 0);
             const unresolvedExpenses = pendingExpenses + observedExpensesCount;
+            const pendingExchangeReceipts = Number(box.pending_exchange_receipts_count || 0);
+            const pendingWarehouseLinks = Number(box.pending_warehouse_link_expenses_count || 0);
+            const hasPendingOperationalLinks = pendingExchangeReceipts > 0 || pendingWarehouseLinks > 0;
             $('#pcc_box_id').val(box.id);
             $('#pcc_close_observation').val('');
             $('#pcc_summary').html([
@@ -1900,6 +1903,9 @@ $(function () {
             );
             $('#pcc_pending_expenses_warning').toggleClass('d-none', unresolvedExpenses === 0).html(
                 '<i class="fas fa-ban mr-1"></i> No se puede cerrar la caja chica porque existen gastos pendientes de aprobación. Apruebe o rechace los gastos antes de cerrar.'
+            );
+            $('#pcc_pending_link_warning').toggleClass('d-none', !hasPendingOperationalLinks).html(
+                '<i class="fas fa-exclamation-triangle mr-1"></i> Esta caja tiene gastos pendientes de canje o vinculación. Si la cierra, ya no podrán jalarse desde almacén. ¿Desea continuar?'
             );
             $('#btnConfirmClosePettyCash').prop('disabled', unresolvedExpenses > 0)
                 .attr('title', pendingExpenses > 0 ? 'Tiene gastos pendientes de aprobación.' : '');

@@ -17,9 +17,10 @@ use App\Models\PettyCashExpenseExchange;
 use App\Models\PettyCashExpenseObservation;
 use App\Models\PettyCashReplenishment;
 use App\Models\WarehouseEntryExpense;
+use App\Models\WarehouseEntryExpenseDocument;
+use App\Services\BankMovementService;
 use App\Services\DocumentLookupException;
 use App\Services\DocumentLookupService;
-use App\Services\BankMovementService;
 use App\Services\PettyCashCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -39,8 +40,7 @@ class PettyCashController extends Controller
     public function __construct(
         private readonly PettyCashCalculator $calculator,
         private readonly BankMovementService $bankMovementService
-    )
-    {
+    ) {
         $this->middleware('can:admin.petty-cash.index')->only([
             'index', 'list', 'previousBalance', 'sourceBankAccounts',
         ]);
@@ -149,6 +149,8 @@ class PettyCashController extends Controller
                     ->where('document_type', 'RECIBO')
                     ->approved()
                     ->pendingExchange(),
+                'expenses as pending_warehouse_link_expenses_count' => fn ($query) => $query
+                    ->availableForWarehouseLink(),
             ])
             ->orderByDesc('id');
 
@@ -273,6 +275,10 @@ class PettyCashController extends Controller
             ->where('approval_status', PettyCashExpense::APPROVAL_APPROVED)
             ->where('exchange_status', PettyCashExpense::EXCHANGE_PENDING)
             ->count());
+        $pettyCash->setAttribute(
+            'pending_warehouse_link_expenses_count',
+            $pettyCash->expenses()->availableForWarehouseLink()->count()
+        );
         $pettyCash->setAttribute('can_create_receipt_exchanges', Auth::user()?->can('admin.petty-cash.receipt-exchanges.store') ?? false);
         $pettyCash->setAttribute('can_view_receipt_exchanges', Auth::user()?->can('admin.petty-cash.receipt-exchanges.show') ?? false);
         $pettyCash->setAttribute('replenished_total', (float) $pettyCash->replenishments->sum('amount'));
@@ -662,7 +668,7 @@ class PettyCashController extends Controller
 
         $this->normalizeExpenseDocumentRequest($request);
         $validated = $request->validate([
-            'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA', 'RECIBO', 'TICKET', 'OTRO'])],
+            'document_type' => ['required', Rule::in(['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS', 'RECIBO', 'SIN_COMPROBANTE', 'TICKET', 'OTRO'])],
             'document_series' => ['required', 'string', 'max:20'],
             'document_correlative' => ['required', 'string', 'max:50'],
             'supplier_ruc' => ['required', 'digits:11'],
@@ -912,9 +918,13 @@ class PettyCashController extends Controller
             404
         );
 
-        $path = DB::transaction(function () use ($document) {
+        [$path, $preserveFile] = DB::transaction(function () use ($document) {
             $locked = Document::lockForUpdate()->findOrFail($document->id);
             $filePath = $locked->file_path;
+            $preserveFile = WarehouseEntryExpenseDocument::query()
+                ->where('source_document_id', $locked->id)
+                ->where('status', 'ACTIVE')
+                ->exists();
             $locked->update([
                 'status' => 'INACTIVE',
                 'updated_by' => Auth::id(),
@@ -922,10 +932,10 @@ class PettyCashController extends Controller
             ]);
             $locked->delete();
 
-            return $filePath;
+            return [$filePath, $preserveFile];
         });
 
-        if ($path) {
+        if ($path && ! $preserveFile) {
             Storage::disk('public')->delete($path);
         }
 
@@ -969,6 +979,16 @@ class PettyCashController extends Controller
                     'file_size' => $image->getSize(),
                     'updated_by' => Auth::id(),
                 ]);
+                WarehouseEntryExpenseDocument::query()
+                    ->where('source_document_id', $locked->id)
+                    ->where('status', 'ACTIVE')
+                    ->update([
+                        'file_path' => $newPath,
+                        'original_name' => $image->getClientOriginalName(),
+                        'mime_type' => $image->getMimeType(),
+                        'file_size' => $image->getSize(),
+                        'updated_by' => Auth::id(),
+                    ]);
                 $expense->events()->create([
                     'document_id' => $locked->id,
                     'event' => 'comprobante_actualizado',
@@ -1155,7 +1175,7 @@ class PettyCashController extends Controller
                 'after_or_equal:'.$box->start_date->toDateString(),
                 ...($box->end_date ? ['before_or_equal:'.$box->end_date->toDateString()] : []),
             ],
-            'document_type' => ['nullable', Rule::in(['FACTURA', 'BOLETA', 'RECIBO', 'TICKET', 'OTRO'])],
+            'document_type' => ['nullable', Rule::in(['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS', 'RECIBO', 'SIN_COMPROBANTE', 'TICKET', 'OTRO'])],
             'document_series' => ['nullable', 'string', 'max:20'],
             'document_correlative' => ['nullable', 'string', 'max:50'],
             'supplier_id' => ['nullable', 'exists:suppliers,id'],
@@ -1172,8 +1192,8 @@ class PettyCashController extends Controller
                 'max:2000',
             ],
             'documents' => ['nullable', 'array'],
-            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
-            'document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
             'correction_comment.required' => 'La respuesta para levantar la observación es obligatoria.',
             'correction_comment.min' => 'Explica brevemente qué información o sustento corregiste.',

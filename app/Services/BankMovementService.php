@@ -203,6 +203,11 @@ class BankMovementService
     {
         return DB::transaction(function () use ($movement, $reason, $userId) {
             $movement = BankMovement::query()->lockForUpdate()->findOrFail($movement->id);
+            if ($movement->source_type === 'GENERAL_CASH_FUNDING') {
+                throw ValidationException::withMessages([
+                    'movement' => 'Este retiro debe anularse desde Caja General para reversar también el ingreso de efectivo.',
+                ]);
+            }
             if ($movement->bank_transfer_id) {
                 $this->cancelTransferLocked($movement->transfer()->lockForUpdate()->firstOrFail(), $reason, $userId);
 

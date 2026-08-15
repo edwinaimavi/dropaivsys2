@@ -145,12 +145,19 @@ class BankTreasuryController extends Controller
                 $movement->setAttribute('source_label', BankMovement::sourceLabel($movement->source_type));
                 $movement->setAttribute('file_url', $movement->file_path
                     ? route('admin.banks.files', ['type' => 'movement', 'id' => $movement->id]) : null);
-                $movement->setAttribute('source_url', $movement->source_type === 'WAREHOUSE_ENTRY_PAYMENT'
-                    ? route('admin.warehouse-entries.index', [
+                $movement->setAttribute('source_url', match ($movement->source_type) {
+                    'WAREHOUSE_ENTRY_PAYMENT' => route('admin.warehouse-entries.index', [
                         'from_warehouse_entry' => $movement->source_id,
                         'auto_open' => 1,
-                    ])
-                    : null);
+                    ]),
+                    'GENERAL_CASH_FUNDING' => Auth::user()?->can('admin.general-cash.show')
+                        ? route('admin.general-cash.index', [
+                            'from_movement' => $movement->source_id,
+                            'auto_open' => 1,
+                        ])
+                        : null,
+                    default => null,
+                });
             }) : collect();
         $transfers = Auth::user()?->can('admin.banks.transfers') ? BankTransfer::query()
             ->with(['fromAccount.bank:id,description,short_name', 'toAccount.bank:id,description,short_name', 'currency:id,code,symbol', 'destinationCurrency:id,code,symbol'])

@@ -300,6 +300,21 @@ class RoleSeeder extends Seeder
             'admin.banks.adjustments' => 'Registrar ajustes bancarios',
             'admin.banks.export' => 'Exportar información de Bancos y Tesorería',
 
+            'admin.general-cash.index' => 'Ver Caja General',
+            'admin.general-cash.show' => 'Ver detalle de Caja General',
+            'admin.general-cash.store' => 'Crear cajas generales',
+            'admin.general-cash.update' => 'Actualizar cajas generales',
+            'admin.general-cash.annul' => 'Anular y reversar ingresos de Caja General',
+            'admin.general-cash.movements' => 'Ver movimientos de Caja General',
+            'admin.general-cash.expenses' => 'Ver gastos de Caja General',
+            'admin.general-cash.expenses.store' => 'Registrar gastos de Caja General',
+            'admin.general-cash.expenses.approve' => 'Aprobar u observar gastos de Caja General',
+            'admin.general-cash.expenses.annul' => 'Anular y reversar gastos de Caja General',
+            'admin.general-cash.replenishments' => 'Ingresar efectivo desde banco a Caja General',
+            'admin.general-cash.close' => 'Registrar arqueos y cierres de Caja General',
+            'admin.general-cash.documents' => 'Ver documentos de Caja General',
+            'admin.general-cash.reports' => 'Exportar reportes de Caja General',
+
             'admin.profile.index' => 'Ver perfil',
             'admin.profile.update' => 'Actualizar perfil',
         ];

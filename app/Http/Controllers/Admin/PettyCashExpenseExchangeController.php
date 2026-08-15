@@ -4,19 +4,19 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
-use App\Models\DocumentType;
 use App\Models\DocumentIssuer;
+use App\Models\DocumentType;
 use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
+use App\Services\DocumentLookupService;
+use App\Services\PettyCashWarehouseExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use App\Services\DocumentLookupService;
-use App\Services\PettyCashWarehouseExpenseService;
 
 class PettyCashExpenseExchangeController extends Controller
 {
@@ -41,7 +41,7 @@ class PettyCashExpenseExchangeController extends Controller
         }
 
         $lookup = $documentLookup->searchRuc($ruc);
-        if (!($lookup['success'] ?? false)) {
+        if (! ($lookup['success'] ?? false)) {
             return response()->json([
                 'status' => ($lookup['code'] ?? '') === 'RUC_NOT_FOUND' ? 'not_found' : 'error',
                 'message' => $lookup['message'] ?? 'No se pudo consultar el RUC. Puede ingresar la razón social manualmente.',
@@ -97,7 +97,7 @@ class PettyCashExpenseExchangeController extends Controller
             'expense_ids.*' => ['required', 'integer', 'distinct', 'exists:petty_cash_expenses,id'],
             'observation' => ['nullable', 'string', 'max:1000'],
             'documents' => ['nullable', 'array'],
-            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
             'expense_ids.required' => 'Seleccione al menos un recibo para canjear.',
             'expense_ids.min' => 'Seleccione al menos un recibo para canjear.',
@@ -142,7 +142,7 @@ class PettyCashExpenseExchangeController extends Controller
                 }
 
                 $issuer = DocumentIssuer::firstOrNew(['ruc' => $validated['issuer_ruc']]);
-                if (!$issuer->exists) {
+                if (! $issuer->exists) {
                     $issuer->fill([
                         'business_name' => mb_strtoupper(trim($validated['issuer_business_name'])),
                         'source' => 'manual',
