@@ -7,6 +7,7 @@ use App\Models\CustomerPurchaseOrder;
 use App\Models\WarehouseEntryExpense;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CustomerOrderProfitabilityService
 {
@@ -17,6 +18,8 @@ class CustomerOrderProfitabilityService
     public const IGV_RATE = WarehouseEntryExpense::IGV_RATE;
 
     public const INCOME_TAX_RATE = 29.5;
+
+    private ?bool $warehouseExpenseApprovalColumnAvailable = null;
 
     public function calculate(CustomerPurchaseOrder $order, string $mode = self::MODE_WITHOUT_IGV): array
     {
@@ -99,17 +102,30 @@ class CustomerOrderProfitabilityService
                     ->orWhereIn('entries.supplier_purchase_order_id', $supplierOrderIds);
             })->whereNull('entries.deleted_at')->where('entries.status', 'registered')
             ->pluck('entries.id')->unique();
-        $costs = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
+        $approvalColumnAvailable = $this->warehouseExpenseApprovalColumnAvailable();
+        $costsQuery = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
             ->whereIn('warehouse_entry_id', $entryIds)
-            ->where('status', 'ACTIVE')
-            ->where(function ($query) {
+            ->where('status', 'ACTIVE');
+
+        if ($approvalColumnAvailable) {
+            $costsQuery->where(function ($query) {
                 $query->whereNull('approval_status')
                     ->orWhereNotIn('approval_status', [
                         WarehouseEntryExpense::APPROVAL_REJECTED,
                         'rechazado',
                     ]);
-            })
-            ->get();
+            });
+        }
+
+        $costs = $costsQuery->get();
+
+        if (! $approvalColumnAvailable) {
+            // Antes del flujo de aprobación todos los costos existentes eran definitivos.
+            $costs->each(fn (WarehouseEntryExpense $cost) => $cost->setAttribute(
+                'approval_status',
+                WarehouseEntryExpense::APPROVAL_APPROVED
+            ));
+        }
 
         $activeSaleItems = $order->items->where('status', '!=', 'deleted');
         [
@@ -201,6 +217,14 @@ class CustomerOrderProfitabilityService
             'igvLinkedCosts' => $igvOfficialCosts,
             'igvDifference' => $igvPayable,
         ];
+    }
+
+    private function warehouseExpenseApprovalColumnAvailable(): bool
+    {
+        return $this->warehouseExpenseApprovalColumnAvailable ??= Schema::hasColumn(
+            'warehouse_entry_expenses',
+            'approval_status'
+        );
     }
 
     public function saveSnapshot(array $data): CustomerOrderProfitabilityAnalysis

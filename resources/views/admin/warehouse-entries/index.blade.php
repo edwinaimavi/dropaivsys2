@@ -1586,6 +1586,123 @@
             font-size: 22px;
         }
 
+        .warehouse-entry-advance-summary {
+            color: #56635f;
+            text-align: left;
+        }
+
+        .warehouse-entry-advance-summary > p {
+            margin-bottom: 14px;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .warehouse-entry-advance-summary-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            color: #5a4930;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: .045em;
+            text-transform: uppercase;
+        }
+
+        .warehouse-entry-advance-summary-title i {
+            color: #c28a28;
+        }
+
+        .warehouse-entry-advance-currency {
+            margin-top: 8px;
+            overflow: hidden;
+            border: 1px solid #ead9b4;
+            border-left: 3px solid #d39b38;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #fffaf0, #fffdf9);
+            box-shadow: 0 3px 12px rgba(116, 83, 28, .06);
+        }
+
+        .warehouse-entry-advance-currency-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 11px;
+            border-bottom: 1px solid #f0e4ca;
+        }
+
+        .warehouse-entry-advance-currency-heading strong {
+            color: #775518;
+            font-size: 12px;
+        }
+
+        .warehouse-entry-advance-currency-heading small {
+            color: #9a7e4d;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .035em;
+            text-transform: uppercase;
+        }
+
+        .warehouse-entry-advance-values {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .warehouse-entry-advance-values > div {
+            padding: 10px 11px;
+            border-right: 1px solid #f0e4ca;
+        }
+
+        .warehouse-entry-advance-values > div:last-child {
+            border-right: 0;
+        }
+
+        .warehouse-entry-advance-values span,
+        .warehouse-entry-advance-values strong {
+            display: block;
+        }
+
+        .warehouse-entry-advance-values span {
+            color: #8b7c64;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .warehouse-entry-advance-values strong {
+            margin-top: 3px;
+            color: #4e463a;
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-advance-values .is-balance {
+            background: rgba(222, 164, 58, .1);
+        }
+
+        .warehouse-entry-advance-values .is-balance strong {
+            color: #a26800;
+            font-size: 14px;
+        }
+
+        .warehouse-entry-advance-payment-detail {
+            display: flex;
+            gap: 7px;
+            margin-top: 9px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            color: #65736e;
+            background: #f4f7f6;
+            font-size: 10px;
+        }
+
+        .warehouse-entry-advance-payment-detail i {
+            margin-top: 2px;
+            color: #69897e;
+        }
+
         @media (max-width: 991.98px) {
             .warehouse-entry-view-heading,
             .warehouse-entry-view-facts {
@@ -1617,6 +1734,10 @@
             .warehouse-entry-view-facts { grid-template-columns: 1fr; }
             .warehouse-entry-view-modal .warehouse-entry-detail-table-wrap,
             .warehouse-entry-view-modal .warehouse-entry-documents-table-wrap { max-width: 100%; overflow-x: auto; }
+            .warehouse-entry-advance-values { grid-template-columns: 1fr; }
+            .warehouse-entry-advance-values > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-right: 0; border-bottom: 1px solid #f0e4ca; }
+            .warehouse-entry-advance-values > div:last-child { border-bottom: 0; }
+            .warehouse-entry-advance-values strong { margin-top: 0; }
         }
 
         @media (min-width: 1200px) {

@@ -17,6 +17,7 @@ use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItem;
 use App\Services\CustomerOrderProfitabilityService;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -100,6 +101,35 @@ function profitabilityAttachmentCost(array $attributes = []): WarehouseEntryExpe
     ], $attributes));
 }
 
+it('devuelve JSON válido para DataTables aunque la migración de aprobación esté pendiente', function () {
+    Permission::findOrCreate('admin.customer-order-profitability.index', 'web');
+    $this->user->givePermissionTo('admin.customer-order-profitability.index');
+
+    Schema::shouldReceive('hasColumn')
+        ->once()
+        ->with('warehouse_entry_expenses', 'approval_status')
+        ->andReturnFalse();
+
+    $this->getJson(route('admin.customer-order-profitability.list', [
+        'draw' => 1,
+        'start' => 0,
+        'length' => 10,
+    ]))
+        ->assertOk()
+        ->assertJsonStructure([
+            'draw',
+            'recordsTotal',
+            'recordsFiltered',
+            'data' => [[
+                'DT_RowIndex',
+                'id',
+                'code',
+                'profitability_base',
+                'profitability_percentage',
+            ]],
+        ]);
+});
+
 it('incluye la base corregida en la respuesta AJAX del modal', function () {
     $response = $this->getJson(route('admin.customer-order-profitability.show', $this->order));
 
@@ -111,6 +141,11 @@ it('incluye la base corregida en la respuesta AJAX del modal', function () {
         ])
         ->assertJsonPath('metrics.profitability_base', 0)
         ->assertJsonPath('metrics.profitability_percentage', 0);
+
+    expect($response->json('html'))
+        ->toContain('cop-tax-deduction')
+        ->toContain('fa-file-invoice-dollar')
+        ->toContain('Deducción tributaria estimada');
 });
 
 it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo perdido', function () {
@@ -379,7 +414,7 @@ it('muestra completos los costos vinculados de la OC 4505460426', function () {
         ->toContain('1,429.87')
         ->toContain('2,267.13')
         ->toContain('29.32%')
-        ->toContain('Base total para rentabilidad')
+        ->toContain('Costo total de esta Operación/Inversión')
         ->toContain('7,732.87')
         ->not->toContain('Usado en cálculo <strong>129.66</strong>');
 });
@@ -535,7 +570,7 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->toContain('S/ 550.46')
         ->toContain('Total impuestos')
         ->toContain('S/ 1,452.59')
-        ->toContain('Base total para rentabilidad')
+        ->toContain('Costo total de esta Operación/Inversión')
         ->toContain('S/ 16,928.93')
         ->toContain('4.47%');
 

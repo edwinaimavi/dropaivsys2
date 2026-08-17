@@ -52,3 +52,21 @@ it('presenta los costos vinculados como tarjetas responsivas sin perder sus acci
         ->toContain('btnEditWarehouseEntryExpense')
         ->toContain('btnRemoveWarehouseEntryExpense');
 });
+
+it('presenta el resumen real del anticipo sin completar saldos faltantes con cero', function () {
+    $root = dirname(__DIR__, 2);
+    $styles = file_get_contents($root.'/resources/views/admin/warehouse-entries/index.blade.php');
+    $javascript = file_get_contents($root.'/resources/js/pages/warehouse-entry.js');
+
+    expect($javascript)
+        ->toContain('response.payment_summary')
+        ->toContain('Total de la orden')
+        ->toContain('Anticipo pagado')
+        ->toContain('Saldo pendiente')
+        ->toContain('payments_by_currency')
+        ->not->toContain('formatWarehouseEntryMoney(response.advance_balance || 0)')
+        ->and($styles)
+        ->toContain('.warehouse-entry-advance-summary')
+        ->toContain('.warehouse-entry-advance-values')
+        ->toContain('grid-template-columns: 1fr');
+});

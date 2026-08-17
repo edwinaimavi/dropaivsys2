@@ -1141,18 +1141,49 @@ function continueWarehouseEntrySelectionValidation(response, orderId) {
 }
 
 function showWarehouseEntryBlockedAdvanceAlert(response, orderId) {
-    const currency = escapeWarehouseEntryHtml(response.payment_currency || '');
-    const balance = formatWarehouseEntryMoney(response.advance_balance || 0);
+    const summary = response.payment_summary || {};
+    const fallbackBreakdown = [{
+        currency: response.payment_currency,
+        order_total: response.order_total,
+        paid_total: response.advance_paid,
+        balance: response.advance_balance,
+        label: 'Moneda de pago'
+    }];
+    const breakdown = Array.isArray(summary.breakdown) && summary.breakdown.length
+        ? summary.breakdown
+        : fallbackBreakdown;
+    const money = value => value === null || value === undefined || !Number.isFinite(Number(value))
+        ? 'No disponible'
+        : formatWarehouseEntryMoney(value);
+    const summaryCards = breakdown.map(item => {
+        const currency = escapeWarehouseEntryHtml(item.currency || '');
+        const label = escapeWarehouseEntryHtml(item.label || 'Resumen del pago');
+
+        return `<div class="warehouse-entry-advance-currency">
+            <div class="warehouse-entry-advance-currency-heading"><strong>${currency}</strong><small>${label}</small></div>
+            <div class="warehouse-entry-advance-values">
+                <div><span>Total de la orden</span><strong>${currency} ${money(item.order_total)}</strong></div>
+                <div><span>Anticipo pagado</span><strong>${currency} ${money(item.paid_total)}</strong></div>
+                <div class="is-balance"><span>Saldo pendiente</span><strong>${currency} ${money(item.balance)}</strong></div>
+            </div>
+        </div>`;
+    }).join('');
+    const registeredPayments = Array.isArray(summary.payments_by_currency)
+        && summary.payments_by_currency.length > 1
+        ? `<div class="warehouse-entry-advance-payment-detail"><i class="fas fa-exchange-alt"></i><span>Pagos registrados: ${summary.payments_by_currency.map(item => `${escapeWarehouseEntryHtml(item.currency || '')} ${money(item.amount)}`).join(' · ')}</span></div>`
+        : '';
+
     Swal.fire({
         icon: 'error',
         title: 'Anticipo pendiente',
-        html: `<p>Esta orden de compra requiere anticipo y todavía no se encuentra pagado completamente. Para ingresar la mercadería al almacén debe completar el anticipo, pagar el total correspondiente o cambiar la condición de pago a crédito si corresponde.</p><div class="alert alert-warning mb-0"><strong>Saldo pendiente:</strong> ${currency} ${balance}</div>`,
+        html: `<div class="warehouse-entry-advance-summary"><p>Esta orden requiere anticipo y todavía no se encuentra pagada completamente. Para ingresar la mercadería al almacén debe completar el anticipo, pagar el total correspondiente o cambiar la condición de pago a crédito si corresponde.</p><div class="warehouse-entry-advance-summary-title"><i class="fas fa-receipt"></i><span>Resumen del pago</span></div>${summaryCards}${registeredPayments}</div>`,
         showCancelButton: true,
         allowOutsideClick: false,
         confirmButtonText: 'Ir a la orden',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#1684a7',
-        cancelButtonColor: '#6c757d'
+        cancelButtonColor: '#6c757d',
+        width: 680
     }).then(function (result) {
         if (String($('#warehouse_entry_supplier_purchase_order_id').val() || '') !== String(orderId)) return;
         if (result.isConfirmed) {
