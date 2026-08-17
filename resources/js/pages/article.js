@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', function () {
             );
 
             formData.append(
+                'code_mode',
+                $('#code_mode').val()
+            );
+
+            formData.append(
                 'code_type',
                 $('#code_type').val()
             );
@@ -329,6 +334,8 @@ document.addEventListener('DOMContentLoaded', function () {
         $('#article_id').val('');
 
         $('#code').val('');
+
+        $('#code_mode').val('automatic');
 
         clearArticleValidationErrors();
 
@@ -673,6 +680,8 @@ document.addEventListener('DOMContentLoaded', function () {
         $('#articleForm')[0].reset();
 
         $('#article_id').val('');
+
+        $('#code_mode').val('automatic');
 
         generateArticleCode();
 
@@ -1403,6 +1412,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     $('#code')
                         .val(article.code);
+
+                    $('#code_mode')
+                        .val('manual');
 
                     $('#code_type')
                         .val(article.code_type);

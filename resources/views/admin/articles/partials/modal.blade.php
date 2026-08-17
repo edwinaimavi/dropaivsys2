@@ -244,8 +244,14 @@
 
                                             <label>Código</label>
 
+                                            <input type="hidden" id="code_mode" name="code_mode" value="automatic">
+
                                             <input type="text" id="code" name="code" readonly
                                                 class="form-control form-control-sm">
+
+                                            <small class="form-text text-muted">
+                                                El código se confirmará automáticamente al guardar.
+                                            </small>
 
                                         </div>
 

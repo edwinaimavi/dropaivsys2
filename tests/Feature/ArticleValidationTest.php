@@ -6,6 +6,7 @@ use App\Models\DocumentType;
 use App\Models\Presentation;
 use App\Models\Subcategory;
 use App\Models\Unit;
+use App\Services\ArticleCodeGenerator;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -157,4 +158,103 @@ it('edita los datos de un documento existente sin exigir un archivo nuevo', func
         ->and($document->issue_date->format('Y-m-d'))->toBe('2026-08-04')
         ->and($document->original_name)->toBe('documento-original.pdf');
     Storage::disk('public')->assertExists('articles/documento-original.pdf');
+});
+
+it('calcula el siguiente codigo desde el mayor correlativo ART sin alterar codigos existentes', function () {
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest('ART00298', null, 'ARTÍCULO HISTÓRICO')
+    )->assertCreated();
+
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest('LEGACY999999', null, 'ARTÍCULO LEGACY')
+    )->assertCreated();
+
+    $this->getJson(route('admin.articles.generateCode'))
+        ->assertOk()
+        ->assertJsonPath('code', 'ART000299');
+
+    expect(Article::where('code', 'ART00298')->exists())->toBeTrue()
+        ->and(Article::where('code', 'LEGACY999999')->exists())->toBeTrue();
+});
+
+it('confirma un codigo nuevo al guardar aunque la sugerencia automatica este vencida', function () {
+    $suggestedCode = $this->getJson(route('admin.articles.generateCode'))
+        ->assertOk()
+        ->json('code');
+
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest($suggestedCode, null, 'ARTÍCULO QUE OCUPÓ LA SUGERENCIA')
+    )->assertCreated();
+
+    $payload = articlePayloadForValidationTest($suggestedCode, null, 'ARTÍCULO AUTOMÁTICO');
+    $payload['code_mode'] = 'automatic';
+
+    $this->postJson(route('admin.articles.store'), $payload)
+        ->assertCreated()
+        ->assertJsonPath('data.code', 'ART000002');
+
+    expect(Article::pluck('code')->all())->toContain('ART000001', 'ART000002');
+});
+
+it('genera codigos distintos en dos altas automaticas consecutivas', function () {
+    $payloadA = articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO AUTOMÁTICO A');
+    $payloadA['code_mode'] = 'automatic';
+    $payloadB = articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO AUTOMÁTICO B');
+    $payloadB['code_mode'] = 'automatic';
+
+    $this->postJson(route('admin.articles.store'), $payloadA)
+        ->assertCreated()
+        ->assertJsonPath('data.code', 'ART000001');
+
+    $this->postJson(route('admin.articles.store'), $payloadB)
+        ->assertCreated()
+        ->assertJsonPath('data.code', 'ART000002');
+
+    expect(Article::distinct()->count('code'))->toBe(2);
+});
+
+it('muestra un error claro cuando un codigo manual esta duplicado', function () {
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest('ART-MANUAL', null, 'ARTÍCULO MANUAL A')
+    )->assertCreated();
+
+    $payload = articlePayloadForValidationTest('art-manual', null, 'ARTÍCULO MANUAL B');
+    $payload['code_mode'] = 'manual';
+
+    $this->postJson(route('admin.articles.store'), $payload)
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.code.0', 'El código del artículo ya está registrado.');
+});
+
+it('reintenta el correlativo cuando el indice unico detecta una colision', function () {
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO EXISTENTE')
+    )->assertCreated();
+
+    $generator = Mockery::mock(ArticleCodeGenerator::class)->makePartial();
+    $generator->shouldReceive('next')->once()->andReturn('ART000001');
+
+    $article = $generator->create([
+        'code_type' => 'SIGA/SISMED',
+        'category_id' => $this->category->id,
+        'subcategory_id' => $this->subcategory->id,
+        'presentation_id' => $this->presentation->id,
+        'unit_id' => $this->unit->id,
+        'legal_name' => 'ARTÍCULO EN COLISIÓN',
+        'commercial_name' => 'ARTÍCULO EN COLISIÓN',
+        'billing_name' => 'ARTÍCULO EN COLISIÓN',
+        'minimum_stock' => 0,
+        'is_taxable' => 1,
+        'has_batch' => 0,
+        'has_expiration' => 0,
+        'status' => 'ACTIVE',
+    ]);
+
+    expect($article->code)->toBe('ART000002')
+        ->and(Article::distinct()->count('code'))->toBe(2);
 });

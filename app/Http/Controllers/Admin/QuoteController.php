@@ -23,14 +23,19 @@ use App\Models\MarketStudy;
 use App\Models\Unit;
 use App\Models\Presentation;
 use App\Models\Brand;
+use App\Services\ArticleCodeGenerator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Validation\ValidationException;
 
 class QuoteController extends Controller
 {
-    public function __construct()
+    private readonly ArticleCodeGenerator $articleCodeGenerator;
+
+    public function __construct(?ArticleCodeGenerator $articleCodeGenerator = null)
     {
+        $this->articleCodeGenerator = $articleCodeGenerator ?? app(ArticleCodeGenerator::class);
+
         $this->middleware('can:admin.quotes.index')->only([
             'index',
             'list',
@@ -548,6 +553,7 @@ class QuoteController extends Controller
     }
 
     public function searchMarketStudies(Request $request)
+
     {
         $term = trim((string) $request->get('q', ''));
 
@@ -600,10 +606,23 @@ class QuoteController extends Controller
 
     public function quickStoreArticle(Request $request)
     {
+        $automaticCode = $request->input('code_mode', 'automatic') !== 'manual';
         $this->normalizeQuoteArticleNames($request);
 
+        if (! $automaticCode) {
+            $request->merge([
+                'code' => mb_strtoupper(trim((string) $request->input('code')), 'UTF-8'),
+            ]);
+        }
+
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:articles,code'],
+            'code' => [
+                $automaticCode ? 'nullable' : 'required',
+                'string',
+                'max:20',
+                ...($automaticCode ? [] : [Rule::unique('articles', 'code')]),
+            ],
+            'code_mode' => ['nullable', 'in:automatic,manual'],
             'code_type' => ['nullable', 'in:SIGA/SISMED,SAP/IETSI'],
             'institutional_code' => ['nullable', 'string', 'max:100'],
             'legal_name' => ['required', 'string', 'max:255'],
@@ -617,6 +636,8 @@ class QuoteController extends Controller
             'legal_name.required' => 'El nombre legal es obligatorio.',
             'billing_name.required' => 'El nombre de facturación es obligatorio.',
         ]);
+
+        unset($validated['code_mode']);
 
         $this->validateDuplicateQuoteArticleName($validated);
 
@@ -632,8 +653,7 @@ class QuoteController extends Controller
         try {
             DB::beginTransaction();
 
-            $article = Article::create([
-                'code' => mb_strtoupper($validated['code'], 'UTF-8'),
+            $articleAttributes = [
                 'code_type' => $validated['code_type'] ?? 'SIGA/SISMED',
                 'institutional_code' => !empty($validated['institutional_code'])
                     ? mb_strtoupper($validated['institutional_code'], 'UTF-8')
@@ -654,7 +674,16 @@ class QuoteController extends Controller
                 'status' => 'ACTIVE',
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
-            ])->fresh(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
+            ];
+
+            if (! $automaticCode) {
+                $articleAttributes['code'] = $validated['code'];
+            }
+
+            $article = ($automaticCode
+                ? $this->articleCodeGenerator->create($articleAttributes)
+                : Article::create($articleAttributes))
+                ->fresh(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
 
             DB::commit();
 
@@ -1083,21 +1112,10 @@ class QuoteController extends Controller
         return $quoteNumber;
     }
 
-    private function nextQuoteArticleCode(): string
-    {
-        $nextNumber = (Article::withTrashed()->max('id') ?? 0) + 1;
-
-        do {
-            $code = 'ART' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
-            $nextNumber++;
-        } while (Article::withTrashed()->where('code', $code)->exists());
-
-        return $code;
-    }
-
     private function nextQuoteBrandCode(): string
     {
         $nextNumber = (Brand::withTrashed()->max('id') ?? 0) + 1;
+
 
         do {
             $code = 'BRA' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
@@ -1110,7 +1128,7 @@ class QuoteController extends Controller
     public function generateArticleCode()
     {
         return response()->json([
-            'code' => $this->nextQuoteArticleCode(),
+            'code' => $this->articleCodeGenerator->next(),
         ]);
     }
 

@@ -24,11 +24,16 @@ use App\Models\DocumentType;
 use App\Models\Document;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Image;
+use App\Services\ArticleCodeGenerator;
 
 class ArticleController extends Controller
 {
-    public function __construct()
+    private readonly ArticleCodeGenerator $articleCodeGenerator;
+
+    public function __construct(?ArticleCodeGenerator $articleCodeGenerator = null)
     {
+        $this->articleCodeGenerator = $articleCodeGenerator ?? app(ArticleCodeGenerator::class);
+
         $this->middleware('can:admin.articles.index')->only(['index', 'list', 'generateCode', 'getSubcategories', 'listPicker']);
         $this->middleware('can:admin.articles.store')->only(['store', 'quickStore']);
         $this->middleware('can:admin.articles.update')->only(['update']);
@@ -209,14 +214,29 @@ class ArticleController extends Controller
      */
     public function store(Request $request)
     {
+        $automaticCode = $request->input('code_mode') === 'automatic';
+
         $this->normalizeArticleNames($request);
         $this->normalizeInstitutionalCode($request);
+
+        if (! $automaticCode) {
+            $request->merge([
+                'code' => mb_strtoupper(trim((string) $request->input('code')), 'UTF-8'),
+            ]);
+        }
 
         $validated = $request->validate([
 
             'code' => [
-                'required',
-                'unique:articles,code'
+                $automaticCode ? 'nullable' : 'required',
+                'string',
+                'max:20',
+                ...($automaticCode ? [] : [Rule::unique('articles', 'code')]),
+            ],
+
+            'code_mode' => [
+                'nullable',
+                'in:automatic,manual',
             ],
 
             'code_type' => [
@@ -310,6 +330,7 @@ class ArticleController extends Controller
         ], $this->articleValidationMessages());
 
         $documentsData = $this->validatedDocumentData($request);
+        unset($validated['code_mode']);
 
         try {
 
@@ -348,7 +369,9 @@ class ArticleController extends Controller
                 (int) $request->boolean('has_expiration');
 
 
-            $article = Article::create($validated);
+            $article = $automaticCode
+                ? $this->articleCodeGenerator->create($validated)
+                : Article::create($validated);
 
             if ($request->hasFile('images')) {
 
@@ -519,6 +542,7 @@ class ArticleController extends Controller
 
     public function quickStore(Request $request)
     {
+        $automaticCode = $request->input('code_mode', 'automatic') !== 'manual';
         $requiresClassification = $request->input('quick_context') === 'customer_purchase_order';
         $baseName = $this->normalizeArticleText(
             $request->input('legal_name')
@@ -528,7 +552,7 @@ class ArticleController extends Controller
         );
 
         $request->merge([
-            'code' => $request->input('code') ?: $this->nextArticleCode(),
+            'code' => $request->input('code'),
             'code_type' => $request->input('code_type') ?: 'SIGA/SISMED',
             'legal_name' => $request->input('legal_name') ?: $baseName,
             'commercial_name' => $request->input('commercial_name') ?: $baseName,
@@ -540,18 +564,23 @@ class ArticleController extends Controller
             'minimum_stock' => $request->input('minimum_stock', 0),
         ]);
 
-        $code = mb_strtoupper((string) $request->input('code'), 'UTF-8');
-        if (Article::withTrashed()->where('code', $code)->exists()) {
-            $code = $this->nextArticleCode();
+        if (! $automaticCode) {
+            $request->merge([
+                'code' => mb_strtoupper(trim((string) $request->input('code')), 'UTF-8'),
+            ]);
         }
-
-        $request->merge(['code' => $code]);
 
         $this->normalizeArticleNames($request);
         $this->normalizeInstitutionalCode($request);
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:articles,code'],
+            'code' => [
+                $automaticCode ? 'nullable' : 'required',
+                'string',
+                'max:20',
+                ...($automaticCode ? [] : [Rule::unique('articles', 'code')]),
+            ],
+            'code_mode' => ['nullable', 'in:automatic,manual'],
             'code_type' => ['nullable', 'in:SIGA/SISMED,SAP/IETSI'],
             'institutional_code' => [
                 'nullable',
@@ -569,7 +598,7 @@ class ArticleController extends Controller
             'subcategory_id' => ['nullable', 'exists:subcategories,id'],
         ], [
             'code.required' => 'El código del artículo es obligatorio.',
-            'code.unique' => 'El código del artículo ya existe.',
+            'code.unique' => 'El código del artículo ya está registrado.',
             'code_type.in' => 'El tipo de código seleccionado no es válido.',
             'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
             'institutional_code.unique' => 'El código institucional ya está registrado en otro artículo.',
@@ -582,6 +611,8 @@ class ArticleController extends Controller
             'unit_id.required' => 'La unidad es obligatoria.',
             'unit_id.exists' => 'La unidad seleccionada no es válida.',
         ]);
+
+        unset($validated['code_mode']);
 
         $defaultCategory = Category::where('status', 'ACTIVE')
             ->orderBy('id')
@@ -599,7 +630,6 @@ class ArticleController extends Controller
         try {
             DB::beginTransaction();
 
-            $validated['code'] = mb_strtoupper($validated['code'], 'UTF-8');
             $validated['institutional_code'] = !empty($validated['institutional_code'])
                 ? mb_strtoupper($validated['institutional_code'], 'UTF-8')
                 : null;
@@ -617,7 +647,9 @@ class ArticleController extends Controller
             $validated['created_by'] = Auth::id();
             $validated['updated_by'] = Auth::id();
 
-            $article = Article::create($validated)->fresh([
+            $article = ($automaticCode
+                ? $this->articleCodeGenerator->create($validated)
+                : Article::create($validated))->fresh([
                 'category',
                 'subcategory',
                 'unit',
@@ -1226,6 +1258,7 @@ class ArticleController extends Controller
     private function articleValidationMessages(): array
     {
         return [
+            'code.unique' => 'El código del artículo ya está registrado.',
             'institutional_code.unique' => 'El código institucional ya está registrado en otro artículo.',
             'institutional_code.max' => 'El código institucional no debe superar 100 caracteres.',
             'legal_name.required' => 'El nombre legal es obligatorio.',
@@ -1288,33 +1321,9 @@ class ArticleController extends Controller
         return response()->json([
 
             'code' =>
-            $this->nextArticleCode()
+            $this->articleCodeGenerator->next()
 
         ]);
-    }
-
-    private function nextArticleCode(): string
-    {
-        $lastArticle = Article::withTrashed()
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $nextNumber = $lastArticle
-            ? $lastArticle->id + 1
-            : 1;
-
-        do {
-            $code = 'ART' . str_pad(
-                $nextNumber,
-                5,
-                '0',
-                STR_PAD_LEFT
-            );
-
-            $nextNumber++;
-        } while (Article::withTrashed()->where('code', $code)->exists());
-
-        return $code;
     }
 
     public function getSubcategories($categoryId)
