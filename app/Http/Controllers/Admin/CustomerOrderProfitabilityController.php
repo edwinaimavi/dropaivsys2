@@ -141,14 +141,24 @@ class CustomerOrderProfitabilityController extends Controller
 
     public function pdf(Request $request, CustomerPurchaseOrder $customerPurchaseOrder)
     {
-        $data = $this->service->calculate($customerPurchaseOrder, $request->input('mode'));
+        $data = $this->service->calculate(
+            $customerPurchaseOrder,
+            $request->input('mode', CustomerOrderProfitabilityService::MODE_WITHOUT_IGV)
+        );
+        $this->appendLinkedExpenseAttachments($customerPurchaseOrder, $data['costs']);
 
         return Pdf::loadView('admin.customer-order-profitability.pdf', $data)->setPaper('a4', 'landscape')->stream('rentabilidad_'.$customerPurchaseOrder->code.'.pdf');
     }
 
     public function print(Request $request, CustomerPurchaseOrder $customerPurchaseOrder)
     {
-        return view('admin.customer-order-profitability.pdf', $this->service->calculate($customerPurchaseOrder, $request->input('mode')) + ['printMode' => true]);
+        $data = $this->service->calculate(
+            $customerPurchaseOrder,
+            $request->input('mode', CustomerOrderProfitabilityService::MODE_WITHOUT_IGV)
+        );
+        $this->appendLinkedExpenseAttachments($customerPurchaseOrder, $data['costs']);
+
+        return view('admin.customer-order-profitability.pdf', $data + ['printMode' => true]);
     }
 
     private function payload(CustomerPurchaseOrder $order, ?string $mode, bool $save = false): array

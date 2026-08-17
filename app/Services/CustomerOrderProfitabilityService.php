@@ -102,7 +102,13 @@ class CustomerOrderProfitabilityService
         $costs = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
             ->whereIn('warehouse_entry_id', $entryIds)
             ->where('status', 'ACTIVE')
-            ->where('approval_status', WarehouseEntryExpense::APPROVAL_APPROVED)
+            ->where(function ($query) {
+                $query->whereNull('approval_status')
+                    ->orWhereNotIn('approval_status', [
+                        WarehouseEntryExpense::APPROVAL_REJECTED,
+                        'rechazado',
+                    ]);
+            })
             ->get();
 
         $activeSaleItems = $order->items->where('status', '!=', 'deleted');

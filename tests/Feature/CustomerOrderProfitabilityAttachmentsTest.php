@@ -116,6 +116,7 @@ it('incluye la base corregida en la respuesta AJAX del modal', function () {
 it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo perdido', function () {
     Storage::disk('public')->put('costos/factura.pdf', '%PDF-1.4');
     Storage::disk('public')->put('costos/pago.png', 'imagen');
+    Storage::disk('public')->put('costos/factura-adicional.pdf', '%PDF-1.4');
     Storage::disk('public')->put('costos/recibo.webp', 'imagen');
 
     $official = profitabilityAttachmentCost([
@@ -137,6 +138,13 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         'mime_type' => 'image/png',
         'status' => 'ACTIVE',
     ]);
+    $official->documents()->create([
+        'document_type' => 'invoice',
+        'file_path' => 'costos/factura-adicional.pdf',
+        'original_name' => 'factura-adicional.pdf',
+        'mime_type' => 'application/pdf',
+        'status' => 'ACTIVE',
+    ]);
     $internal = profitabilityAttachmentCost(['document_type' => 'RECIBO_INTERNO']);
     $internal->documents()->create([
         'document_type' => 'invoice',
@@ -154,7 +162,7 @@ it('prepara acciones para comprobante, pago, recibo interno, ausencia y archivo 
         ->invoke($controller, $this->order, $costs);
 
     expect(collect($official->profitability_attachments)->pluck('label')->all())
-        ->toBe(['Ver comprobante', 'Ver pago'])
+        ->toBe(['Ver comprobante', 'Ver pago', 'Ver comprobante'])
         ->and(collect($official->profitability_attachments)->pluck('status')->unique()->all())
         ->toBe(['available'])
         ->and(collect($official->profitability_attachments)->firstWhere('label', 'Ver pago')['is_image'])
@@ -491,7 +499,7 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'amount' => 999.00,
         'taxable_amount' => 999.00,
         'total_amount' => 999.00,
-        'description' => 'NO DEBE AFECTAR LA RENTABILIDAD',
+        'description' => 'PENDIENTE QUE DEBE AFECTAR LA RENTABILIDAD',
     ]);
 
     $data = app(CustomerOrderProfitabilityService::class)->calculate(
@@ -509,13 +517,13 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->and(round($data['freightValue'], 2))->toBe(23.31)
         ->and($data['operating'])->toBe(3058.08)
         ->and($data['incomeTax'])->toBe(902.13)
-        ->and($data['otherTotal'])->toBe(400.00)
-        ->and($data['net'])->toBe(1755.94)
-        ->and($data['profitabilityBase'])->toBe(15929.93)
-        ->and($data['percentage'])->toBe(11.02)
-        ->and($data['linkedTotal'])->toBe(427.50)
-        ->and(round($data['linkedProfitValue'], 2))->toBe(423.31)
-        ->and($data['costs'])->toHaveCount(2)
+        ->and($data['otherTotal'])->toBe(1399.00)
+        ->and($data['net'])->toBe(756.94)
+        ->and($data['profitabilityBase'])->toBe(16928.93)
+        ->and($data['percentage'])->toBe(4.47)
+        ->and($data['linkedTotal'])->toBe(1426.50)
+        ->and(round($data['linkedProfitValue'], 2))->toBe(1422.31)
+        ->and($data['costs'])->toHaveCount(3)
         ->and($data['igvPayable'])->toBe(550.46)
         ->and($data['totalTaxes'])->toBe(1452.59)
         ->and($data['gross'])->not->toBe(3636.03);
@@ -528,8 +536,8 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->toContain('Total impuestos')
         ->toContain('S/ 1,452.59')
         ->toContain('Base total para rentabilidad')
-        ->toContain('S/ 15,929.93')
-        ->toContain('11.02%');
+        ->toContain('S/ 16,928.93')
+        ->toContain('4.47%');
 
     $this->order->update(['affect_igv' => false]);
     $exonerated = app(CustomerOrderProfitabilityService::class)->calculate(
@@ -545,10 +553,216 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->and($exonerated['freightValue'])->toBe(27.50)
         ->and($exonerated['operating'])->toBe(3608.53)
         ->and($exonerated['incomeTax'])->toBe(1064.52)
-        ->and($exonerated['otherTotal'])->toBe(400.00)
-        ->and($exonerated['net'])->toBe(2144.01)
-        ->and($exonerated['profitabilityBase'])->toBe(15379.47)
-        ->and($exonerated['percentage'])->toBe(13.94)
+        ->and($exonerated['otherTotal'])->toBe(1399.00)
+        ->and($exonerated['net'])->toBe(1145.01)
+        ->and($exonerated['profitabilityBase'])->toBe(16378.47)
+        ->and($exonerated['percentage'])->toBe(6.99)
         ->and($exonerated['igvPayable'])->toBe(0.0)
         ->and($exonerated['totalTaxes'])->toBe(1064.52);
+});
+
+it('incluye los cinco costos del caso reportado desde otro ingreso y excluye rechazados o anulados', function () {
+    $category = Category::create([
+        'description' => 'CATEGORÍA PARA COSTOS VINCULADOS',
+        'code' => 'CAT-COSTOS-OC',
+        'type' => 'PRODUCTO COMERCIAL',
+        'status' => 'ACTIVE',
+    ]);
+    $unit = Unit::create([
+        'abbreviation' => 'UND-COSTOS',
+        'description' => 'UNIDAD PARA COSTOS',
+        'status' => 'ACTIVE',
+    ]);
+    $article = Article::create([
+        'code' => 'ART-COSTOS-OC',
+        'category_id' => $category->id,
+        'unit_id' => $unit->id,
+        'legal_name' => 'ARTÍCULO PARA COSTOS VINCULADOS',
+        'billing_name' => 'ARTÍCULO PARA COSTOS VINCULADOS',
+        'status' => 'ACTIVE',
+    ]);
+    $customerItem = $this->order->items()->create([
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 2,
+        'unit_price' => 500,
+        'subtotal' => 1000,
+        'tax_amount' => 0,
+        'line_total' => 1000,
+        'status' => 'active',
+    ]);
+    $supplierOrder = SupplierPurchaseOrder::create([
+        'code' => 'OCP-COSTOS-001',
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->currency->id,
+        'payment_currency_id' => $this->currency->id,
+        'customer_purchase_order_id' => $this->order->id,
+        'order_type' => 'local',
+        'affect_igv' => false,
+        'subtotal' => 600,
+        'igv' => 0,
+        'grand_total' => 600,
+        'total_purchase_currency' => 600,
+        'total_payment_currency' => 600,
+        'total_pen' => 600,
+        'status' => 'registered',
+    ]);
+    $supplierItem = SupplierPurchaseOrderItem::create([
+        'supplier_purchase_order_id' => $supplierOrder->id,
+        'customer_purchase_order_item_id' => $customerItem->id,
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 2,
+        'unit_price' => 300,
+        'subtotal' => 600,
+        'tax_amount' => 0,
+        'line_total' => 600,
+        'status' => 'active',
+    ]);
+    $this->entry->update(['supplier_purchase_order_id' => $supplierOrder->id]);
+    WarehouseEntryItem::create([
+        'warehouse_entry_id' => $this->entry->id,
+        'supplier_purchase_order_item_id' => $supplierItem->id,
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 1,
+        'unit_price' => 300,
+        'subtotal' => 300,
+        'tax_amount' => 0,
+        'line_total' => 300,
+        'status' => 'active',
+    ]);
+    $secondEntry = WarehouseEntry::create([
+        'entry_number' => 'ING-ATT-002',
+        'supplier_purchase_order_id' => $supplierOrder->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'customer_id' => $this->customer->id,
+        'currency_id' => $this->currency->id,
+        'status' => 'registered',
+    ]);
+    WarehouseEntryItem::create([
+        'warehouse_entry_id' => $secondEntry->id,
+        'supplier_purchase_order_item_id' => $supplierItem->id,
+        'article_id' => $article->id,
+        'billing_name_snapshot' => $article->billing_name,
+        'quantity' => 1,
+        'unit_price' => 300,
+        'subtotal' => 300,
+        'tax_amount' => 0,
+        'line_total' => 300,
+        'status' => 'active',
+    ]);
+
+    $caseCosts = collect([
+        profitabilityAttachmentCost([
+            'warehouse_entry_id' => $this->entry->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_MANUAL,
+            'approval_status' => WarehouseEntryExpense::APPROVAL_PENDING,
+            'expense_category' => 'freight_transport',
+            'expense_type' => 'agency_freight',
+            'document_type' => 'FACTURA',
+            'document_series' => 'FF01',
+            'document_number' => '2420',
+            'amount' => 65.50,
+            'taxable_amount' => 55.51,
+            'igv_amount' => 9.99,
+            'total_amount' => 65.50,
+            'affects_igv' => true,
+        ]),
+        profitabilityAttachmentCost([
+            'warehouse_entry_id' => $this->entry->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_MANUAL,
+            'approval_status' => WarehouseEntryExpense::APPROVAL_PENDING,
+            'amount' => 150,
+            'taxable_amount' => 150,
+            'total_amount' => 150,
+        ]),
+        profitabilityAttachmentCost([
+            'warehouse_entry_id' => $secondEntry->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+            'document_type' => 'RECIBO_INTERNO',
+            'document_series' => 'R001',
+            'document_number' => '000262',
+            'amount' => 21,
+            'taxable_amount' => 21,
+            'total_amount' => 21,
+        ]),
+        profitabilityAttachmentCost([
+            'warehouse_entry_id' => $secondEntry->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+            'document_type' => 'FACTURA',
+            'document_series' => 'E001',
+            'document_number' => '1943',
+            'amount' => 60,
+            'taxable_amount' => 60,
+            'total_amount' => 60,
+        ]),
+        profitabilityAttachmentCost([
+            'warehouse_entry_id' => $secondEntry->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+            'document_type' => 'FACTURA',
+            'document_series' => 'E001',
+            'document_number' => '1943',
+            'amount' => 13,
+            'taxable_amount' => 13,
+            'total_amount' => 13,
+        ]),
+    ]);
+    $manualOfficial = $caseCosts->first();
+    foreach (['factura.pdf', 'guia.pdf', 'pago.pdf'] as $index => $fileName) {
+        Storage::disk('public')->put('costos/'.$fileName, '%PDF-1.4');
+        $manualOfficial->documents()->create([
+            'document_type' => $index === 2 ? 'payment_proof' : 'invoice',
+            'file_path' => 'costos/'.$fileName,
+            'original_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'status' => 'ACTIVE',
+        ]);
+    }
+    $rejected = profitabilityAttachmentCost([
+        'warehouse_entry_id' => $secondEntry->id,
+        'approval_status' => WarehouseEntryExpense::APPROVAL_REJECTED,
+        'amount' => 500,
+        'taxable_amount' => 500,
+        'total_amount' => 500,
+    ]);
+    $cancelled = profitabilityAttachmentCost([
+        'warehouse_entry_id' => $secondEntry->id,
+        'status' => 'CANCELLED',
+        'amount' => 700,
+        'taxable_amount' => 700,
+        'total_amount' => 700,
+    ]);
+
+    $data = app(CustomerOrderProfitabilityService::class)->calculate($this->order->fresh());
+    $includedCaseCosts = $data['costs']->whereIn('id', $caseCosts->pluck('id'));
+
+    expect($includedCaseCosts)->toHaveCount(5)
+        ->and($includedCaseCosts->whereIn('document_type', ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'])->sum('total_amount'))->toEqual(138.50)
+        ->and($includedCaseCosts->whereIn('document_type', ['RECIBO_INTERNO', 'SIN_COMPROBANTE'])->sum('total_amount'))->toEqual(171.00)
+        ->and($includedCaseCosts->sum('total_amount'))->toEqual(309.50)
+        ->and($data['entryIds']->map(fn ($id) => (int) $id)->all())->toContain($this->entry->id, $secondEntry->id)
+        ->and($data['costs']->pluck('id')->all())->not->toContain($rejected->id, $cancelled->id);
+
+    $controller = app(CustomerOrderProfitabilityController::class);
+    (new ReflectionMethod($controller, 'appendLinkedExpenseAttachments'))
+        ->invoke($controller, $this->order, $data['costs']);
+
+    expect($manualOfficial->fresh()->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_PENDING)
+        ->and(collect($data['costs']->firstWhere('id', $manualOfficial->id)->profitability_attachments))->toHaveCount(3);
+
+    $response = $this->getJson(route('admin.customer-order-profitability.show', $this->order));
+    $response->assertOk();
+    expect($response->json('html'))->toContain('Pendiente de aprobación')
+        ->toContain('Manual / pendiente')
+        ->toContain('Ver comprobante')
+        ->toContain('Ver pago');
+
+    $printHtml = $controller->print(new \Illuminate\Http\Request, $this->order)->render();
+    expect($printHtml)->toContain('Pendiente de aprobación')
+        ->toContain('Manual / pendiente')
+        ->toContain('Ver pago');
+    expect(substr_count($printHtml, 'Ver comprobante'))->toBeGreaterThanOrEqual(2);
 });
