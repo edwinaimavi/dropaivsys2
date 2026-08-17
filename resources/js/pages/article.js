@@ -329,6 +329,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('#articleModal').on('hidden.bs.modal', function () {
 
+        if (articleCodeRequest) {
+            articleCodeRequest.abort();
+            articleCodeRequest = null;
+        }
+
         $('#articleForm')[0].reset();
 
         $('#article_id').val('');
@@ -625,14 +630,24 @@ document.addEventListener('DOMContentLoaded', function () {
     );
 
 
+    let articleCodeRequest = null;
+
     //FUNCION PARA GENERAR CODIGO DE ARTICULO
     function generateArticleCode() {
 
-        $.ajax({
+        if (articleCodeRequest) {
+            articleCodeRequest.abort();
+        }
+
+        $('#code').val('');
+
+        articleCodeRequest = $.ajax({
 
             url: window.routes.generateArticleCode,
 
             type: 'GET',
+
+            cache: false,
 
             success: function (response) {
 
@@ -640,12 +655,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
             },
 
-            error: function () {
+            error: function (xhr) {
+
+                if (xhr.statusText === 'abort') {
+                    return;
+                }
 
                 console.error(
                     'Error al generar código'
                 );
 
+            },
+
+            complete: function () {
+                articleCodeRequest = null;
             }
 
         });

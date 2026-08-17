@@ -693,6 +693,8 @@ class QuoteController extends Controller
                 'data' => $this->quoteArticlePayload($article),
             ], 201);
         } catch (ValidationException $e) {
+            DB::rollBack();
+
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -1129,7 +1131,10 @@ class QuoteController extends Controller
     {
         return response()->json([
             'code' => $this->articleCodeGenerator->next(),
-        ]);
+        ])->header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, max-age=0'
+        );
     }
 
     private function quoteNumberExists(?string $quoteNumber): bool

@@ -214,7 +214,7 @@ class ArticleController extends Controller
      */
     public function store(Request $request)
     {
-        $automaticCode = $request->input('code_mode') === 'automatic';
+        $automaticCode = $request->input('code_mode', 'automatic') !== 'manual';
 
         $this->normalizeArticleNames($request);
         $this->normalizeInstitutionalCode($request);
@@ -518,6 +518,11 @@ class ArticleController extends Controller
                 'data' => $article
 
             ], 201);
+        } catch (ValidationException $e) {
+
+            DB::rollBack();
+
+            throw $e;
         } catch (\Throwable $e) {
 
             DB::rollBack();
@@ -689,6 +694,8 @@ class ArticleController extends Controller
                 'data' => $articlePayload,
             ], 201);
         } catch (ValidationException $e) {
+            DB::rollBack();
+
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -768,12 +775,17 @@ class ArticleController extends Controller
 
         $this->normalizeArticleNames($request);
         $this->normalizeInstitutionalCode($request);
+        $request->merge([
+            'code' => mb_strtoupper(trim((string) $request->input('code')), 'UTF-8'),
+        ]);
 
         $validated = $request->validate([
 
             'code' => [
                 'required',
-                'unique:articles,code,' . $article->id
+                'string',
+                'max:20',
+                Rule::unique('articles', 'code')->ignore($article->id),
             ],
 
             'code_type' => [
@@ -1323,7 +1335,10 @@ class ArticleController extends Controller
             'code' =>
             $this->articleCodeGenerator->next()
 
-        ]);
+        ])->header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, max-age=0'
+        );
     }
 
     public function getSubcategories($categoryId)

@@ -2222,7 +2222,11 @@ function resetQuickQuoteArticleForm() {
     $('#quick_quote_article_code').val('Cargando...');
     $('#quick_quote_article_code_type').val('SIGA/SISMED');
 
-    $.get(window.routes.quoteArticleGenerateCode)
+    $.ajax({
+        url: window.routes.quoteArticleGenerateCode,
+        type: 'GET',
+        cache: false
+    })
         .done(function (response) {
             $('#quick_quote_article_code').val(response.code || '');
         })

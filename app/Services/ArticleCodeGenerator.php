@@ -4,19 +4,27 @@ namespace App\Services;
 
 use App\Models\Article;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ArticleCodeGenerator
 {
     private const PREFIX = 'ART';
 
-    private const PADDING = 6;
+    private const PADDING = 5;
 
-    private const MAX_CREATE_ATTEMPTS = 10;
+    private const MAX_CREATE_ATTEMPTS = 3;
 
-    public function next(): string
+    public function next(bool $lockForUpdate = false): string
     {
-        $highestNumber = Article::withTrashed()
-            ->where('code', 'like', self::PREFIX.'%')
+        $query = Article::withTrashed()
+            ->where('code', 'like', self::PREFIX.'%');
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        $highestNumber = $query
             ->pluck('code')
             ->reduce(function (int $highest, ?string $code): int {
                 if (! preg_match('/^'.self::PREFIX.'(\d+)$/i', (string) $code, $matches)) {
@@ -37,34 +45,31 @@ class ArticleCodeGenerator
      */
     public function create(array $attributes): Article
     {
-        $code = $this->next();
-
         for ($attempt = 1; $attempt <= self::MAX_CREATE_ATTEMPTS; $attempt++) {
             try {
-                return Article::create([
-                    ...$attributes,
-                    'code' => $code,
-                ]);
+                return DB::transaction(function () use ($attributes): Article {
+                    $code = $this->next(lockForUpdate: true);
+
+                    return Article::create([
+                        ...$attributes,
+                        'code' => $code,
+                    ]);
+                });
             } catch (UniqueConstraintViolationException $exception) {
-                if (! $this->isArticleCodeCollision($exception) || $attempt === self::MAX_CREATE_ATTEMPTS) {
+                if (! $this->isArticleCodeCollision($exception)) {
                     throw $exception;
                 }
-
-                $code = $this->format($this->numberFrom($code) + 1);
             }
         }
 
-        throw new \RuntimeException('No se pudo confirmar un código automático para el artículo.');
+        throw ValidationException::withMessages([
+            'code' => 'El código automático estaba desactualizado. Intente nuevamente o recargue el código.',
+        ]);
     }
 
     private function format(int $number): string
     {
         return self::PREFIX.str_pad((string) $number, self::PADDING, '0', STR_PAD_LEFT);
-    }
-
-    private function numberFrom(string $code): int
-    {
-        return (int) substr($code, strlen(self::PREFIX));
     }
 
     private function isArticleCodeCollision(UniqueConstraintViolationException $exception): bool

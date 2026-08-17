@@ -8,6 +8,7 @@ use App\Models\Subcategory;
 use App\Models\Unit;
 use App\Services\ArticleCodeGenerator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 beforeEach(function () {
     $this->withoutMiddleware();
@@ -41,6 +42,7 @@ function articlePayloadForValidationTest(string $code, ?string $institutionalCod
 {
     return [
         'code' => $code,
+        'code_mode' => 'manual',
         'code_type' => 'SIGA/SISMED',
         'institutional_code' => $institutionalCode,
         'category_id' => test()->category->id,
@@ -171,11 +173,14 @@ it('calcula el siguiente codigo desde el mayor correlativo ART sin alterar codig
         articlePayloadForValidationTest('LEGACY999999', null, 'ARTÍCULO LEGACY')
     )->assertCreated();
 
-    $this->getJson(route('admin.articles.generateCode'))
-        ->assertOk()
-        ->assertJsonPath('code', 'ART000299');
+    $response = $this->getJson(route('admin.articles.generateCode'));
 
-    expect(Article::where('code', 'ART00298')->exists())->toBeTrue()
+    $response
+        ->assertOk()
+        ->assertJsonPath('code', 'ART00299');
+
+    expect($response->headers->get('Cache-Control'))->toContain('no-store')
+        ->and(Article::where('code', 'ART00298')->exists())->toBeTrue()
         ->and(Article::where('code', 'LEGACY999999')->exists())->toBeTrue();
 });
 
@@ -194,24 +199,24 @@ it('confirma un codigo nuevo al guardar aunque la sugerencia automatica este ven
 
     $this->postJson(route('admin.articles.store'), $payload)
         ->assertCreated()
-        ->assertJsonPath('data.code', 'ART000002');
+        ->assertJsonPath('data.code', 'ART00002');
 
-    expect(Article::pluck('code')->all())->toContain('ART000001', 'ART000002');
+    expect(Article::pluck('code')->all())->toContain('ART00001', 'ART00002');
 });
 
 it('genera codigos distintos en dos altas automaticas consecutivas', function () {
-    $payloadA = articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO AUTOMÁTICO A');
+    $payloadA = articlePayloadForValidationTest('ART00001', null, 'ARTÍCULO AUTOMÁTICO A');
     $payloadA['code_mode'] = 'automatic';
-    $payloadB = articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO AUTOMÁTICO B');
+    $payloadB = articlePayloadForValidationTest('ART00001', null, 'ARTÍCULO AUTOMÁTICO B');
     $payloadB['code_mode'] = 'automatic';
 
     $this->postJson(route('admin.articles.store'), $payloadA)
         ->assertCreated()
-        ->assertJsonPath('data.code', 'ART000001');
+        ->assertJsonPath('data.code', 'ART00001');
 
     $this->postJson(route('admin.articles.store'), $payloadB)
         ->assertCreated()
-        ->assertJsonPath('data.code', 'ART000002');
+        ->assertJsonPath('data.code', 'ART00002');
 
     expect(Article::distinct()->count('code'))->toBe(2);
 });
@@ -233,11 +238,14 @@ it('muestra un error claro cuando un codigo manual esta duplicado', function () 
 it('reintenta el correlativo cuando el indice unico detecta una colision', function () {
     $this->postJson(
         route('admin.articles.store'),
-        articlePayloadForValidationTest('ART000001', null, 'ARTÍCULO EXISTENTE')
+        articlePayloadForValidationTest('ART00001', null, 'ARTÍCULO EXISTENTE')
     )->assertCreated();
 
     $generator = Mockery::mock(ArticleCodeGenerator::class)->makePartial();
-    $generator->shouldReceive('next')->once()->andReturn('ART000001');
+    $generator->shouldReceive('next')
+        ->twice()
+        ->with(true)
+        ->andReturn('ART00001', 'ART00002');
 
     $article = $generator->create([
         'code_type' => 'SIGA/SISMED',
@@ -255,6 +263,45 @@ it('reintenta el correlativo cuando el indice unico detecta una colision', funct
         'status' => 'ACTIVE',
     ]);
 
-    expect($article->code)->toBe('ART000002')
+    expect($article->code)->toBe('ART00002')
         ->and(Article::distinct()->count('code'))->toBe(2);
+});
+
+it('limita a tres los reintentos y devuelve el mensaje de codigo automatico desactualizado', function () {
+    $this->postJson(
+        route('admin.articles.store'),
+        articlePayloadForValidationTest('ART00001', null, 'ARTÍCULO EXISTENTE')
+    )->assertCreated();
+
+    $generator = Mockery::mock(ArticleCodeGenerator::class)->makePartial();
+    $generator->shouldReceive('next')
+        ->times(3)
+        ->with(true)
+        ->andReturn('ART00001');
+
+    try {
+        $generator->create([
+            'code_type' => 'SIGA/SISMED',
+            'category_id' => $this->category->id,
+            'subcategory_id' => $this->subcategory->id,
+            'presentation_id' => $this->presentation->id,
+            'unit_id' => $this->unit->id,
+            'legal_name' => 'ARTÍCULO EN COLISIÓN PERSISTENTE',
+            'commercial_name' => 'ARTÍCULO EN COLISIÓN PERSISTENTE',
+            'billing_name' => 'ARTÍCULO EN COLISIÓN PERSISTENTE',
+            'minimum_stock' => 0,
+            'is_taxable' => 1,
+            'has_batch' => 0,
+            'has_expiration' => 0,
+            'status' => 'ACTIVE',
+        ]);
+
+        $this->fail('Se esperaba una excepción de validación después de tres colisiones.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors()['code'][0])->toBe(
+            'El código automático estaba desactualizado. Intente nuevamente o recargue el código.'
+        );
+    }
+
+    expect(Article::count())->toBe(1);
 });
