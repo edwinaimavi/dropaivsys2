@@ -26,3 +26,29 @@ it('valida por javascript, cambia de pestaña y controla el estado de guardado',
         ->toContain('.always(() => setWarehouseEntrySaving(false))')
         ->toContain('.warehouse-entry-form-tabs a[href=');
 });
+
+it('presenta los costos vinculados como tarjetas responsivas sin perder sus acciones', function () {
+    $root = dirname(__DIR__, 2);
+    $blade = file_get_contents($root.'/resources/views/admin/warehouse-entries/partials/modal.blade.php');
+    $styles = file_get_contents($root.'/resources/views/admin/warehouse-entries/index.blade.php');
+    $javascript = file_get_contents($root.'/resources/js/pages/warehouse-entry.js');
+
+    expect($blade)
+        ->toContain('warehouse-entry-expense-list-summary')
+        ->toContain('id="warehouseEntryExpenseCount"')
+        ->toContain('id="warehouseEntryFreightTotal"')
+        ->toContain('id="warehouseEntryOtherExpenseTotal"')
+        ->toContain('id="warehouseEntryExpenseLinkedTotal"')
+        ->toContain('id="warehouseEntryExpensesBody" class="warehouse-entry-expense-cards"')
+        ->not->toContain('warehouse-entry-expenses-table')
+        ->and($styles)
+        ->toContain('.warehouse-entry-expense-card-main')
+        ->toContain('.warehouse-entry-expense-card.is-pending')
+        ->toContain('@media (max-width: 767.98px)')
+        ->and($javascript)
+        ->toContain('warehouse-entry-expense-doc-dropdown')
+        ->toContain('btnViewWarehouseEntryExpenseObservation')
+        ->toContain('btnReviewWarehouseEntryExpense')
+        ->toContain('btnEditWarehouseEntryExpense')
+        ->toContain('btnRemoveWarehouseEntryExpense');
+});

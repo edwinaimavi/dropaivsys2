@@ -504,8 +504,8 @@
         }
 
         #warehouseEntryModal .modal-dialog {
-            width: calc(100vw - 120px);
-            max-width: 1700px;
+            width: 96vw;
+            max-width: 1600px;
             margin: 12px auto;
         }
 
@@ -539,14 +539,31 @@
         #warehouseEntryModal .warehouse-entry-form-tabs .nav-link.active { border-color: #b9dfda; color: #0c756a; background: linear-gradient(135deg, #e8f7f5, #d9f0ed); box-shadow: 0 4px 11px rgba(17, 134, 122, .12); }
         #warehouseEntryModal .warehouse-entry-form-tab-content { padding-top: 8px; }
         #warehouseEntryModal .warehouse-entry-form-tab-content > .tab-pane > .card { margin-bottom: 0; }
-        #warehouseEntryOriginalExpensesCard{border:1px solid #e1ecea!important;overflow:hidden}
-        #warehouseEntryOriginalExpensesCard .card-header{padding:13px 15px!important;background:linear-gradient(135deg,#f7fbfa,#eef7f5)}
-        .warehouse-entry-expense-body{padding:14px!important;background:#f7f9f9}
-        .warehouse-entry-delivery-help{display:flex;padding:12px 14px;gap:11px;align-items:flex-start;border:1px solid #cfe5e1;border-left:4px solid #159484;border-radius:10px;background:#f1faf8;color:#385d55}.warehouse-entry-delivery-help>i{margin-top:2px;color:#11897b;font-size:18px}.warehouse-entry-delivery-help strong,.warehouse-entry-delivery-help span{display:block}.warehouse-entry-delivery-help strong{font-size:11px}.warehouse-entry-delivery-help span{margin-top:2px;color:#68817b;font-size:10px}
-        @media (max-width:575.98px){.warehouse-entry-expenses-table tbody td:nth-child(1):before{content:'Tipo'!important}.warehouse-entry-expenses-table tbody td:nth-child(2):before{content:'Responsable'!important}.warehouse-entry-expenses-table tbody td:nth-child(3):before{content:'Documento'!important}.warehouse-entry-expenses-table tbody td:nth-child(4):before{content:'Importe'!important}.warehouse-entry-expenses-table tbody td:nth-child(5):before{content:'IGV'!important}.warehouse-entry-expenses-table tbody td:nth-child(6):before{content:'Clasificación'!important}.warehouse-entry-expenses-table tbody td:nth-child(7):before{content:'Origen'!important}.warehouse-entry-expenses-table tbody td:nth-child(8):before{content:'Estado'!important}.warehouse-entry-expenses-table tbody td:nth-child(9):before{content:'Observación'!important}.warehouse-entry-expenses-table tbody td:nth-child(10):before{content:'Documentos'!important}.warehouse-entry-expenses-table tbody td:nth-child(11):before{content:'Acciones'!important}}
-        .warehouse-entry-expense-kpis{margin:0 -5px 10px}.warehouse-entry-expense-kpis>div{padding:0 5px;margin-bottom:6px}.warehouse-entry-expense-kpi{display:flex;min-height:68px;padding:11px 12px;gap:10px;align-items:center;border:1px solid #deebe8;border-radius:11px;background:#fff;box-shadow:0 4px 13px rgba(37,62,54,.04)}.warehouse-entry-expense-kpi>i{display:flex;width:34px;height:34px;align-items:center;justify-content:center;flex:0 0 auto;border-radius:9px;background:#e4f5f2;color:#138478}.warehouse-entry-expense-kpi span{color:#74827e;font-size:9px;font-weight:700;text-transform:uppercase}.warehouse-entry-expense-kpi strong{display:block;margin-top:2px;color:#25483f;font-size:15px;letter-spacing:0;text-transform:none}
-        .warehouse-entry-expense-form{padding:14px 14px 12px;border:1px solid #e3ecea;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(37,62,54,.045)}
-        .warehouse-entry-expense-form .row{margin-right:-5px;margin-left:-5px}.warehouse-entry-expense-form .form-group{margin-bottom:10px;padding-right:5px;padding-left:5px}.warehouse-entry-expense-form label{margin-bottom:4px;color:#697773;font-size:9px;font-weight:800;letter-spacing:.035em}
+        #warehouseEntryOriginalExpensesCard { border: 1px solid #dce9e6 !important; overflow: hidden; }
+        #warehouseEntryOriginalExpensesCard .card-header { padding: 14px 17px !important; background: linear-gradient(135deg, #f7fbfa, #edf7f4); }
+        .warehouse-entry-expense-body { padding: 16px !important; background: #f5f8f7; }
+        .warehouse-entry-delivery-help { display: flex; padding: 12px 14px; gap: 11px; align-items: flex-start; border: 1px solid #cfe5e1; border-left: 4px solid #159484; border-radius: 11px; background: #f1faf8; color: #385d55; }
+        .warehouse-entry-delivery-help > i { margin-top: 2px; color: #11897b; font-size: 18px; }
+        .warehouse-entry-delivery-help strong, .warehouse-entry-delivery-help span { display: block; }
+        .warehouse-entry-delivery-help strong { font-size: 11px; }
+        .warehouse-entry-delivery-help span { margin-top: 2px; color: #68817b; font-size: 10px; }
+        .warehouse-entry-expense-form { padding: 16px; border: 1px solid #dde9e6; border-radius: 14px; background: #fff; box-shadow: 0 7px 22px rgba(37, 62, 54, .055); }
+        .warehouse-entry-expense-editor-heading { display: flex; margin-bottom: 14px; gap: 14px; align-items: center; justify-content: space-between; }
+        .warehouse-entry-expense-editor-heading > div:first-child { display: flex; min-width: 0; gap: 10px; align-items: center; }
+        .warehouse-entry-expense-editor-icon { display: grid; width: 38px; height: 38px; place-items: center; flex: 0 0 auto; border-radius: 11px; background: #e3f4f0; color: #11867a; }
+        .warehouse-entry-expense-editor-heading h6, .warehouse-entry-expense-editor-heading small { display: block; margin: 0; }
+        .warehouse-entry-expense-editor-heading h6 { color: #2f4c46; font-size: 13px; font-weight: 800; }
+        .warehouse-entry-expense-editor-heading small { margin-top: 2px; color: #7a8a85; font-size: 10px; }
+        .warehouse-entry-expense-editor-actions { display: flex; gap: 7px; }
+        .warehouse-entry-expense-editor-actions .btn { border-radius: 8px; font-size: 10px; font-weight: 700; }
+        .warehouse-entry-expense-form .row { margin-right: -6px; margin-left: -6px; }
+        .warehouse-entry-expense-form .form-group { margin-bottom: 10px; padding-right: 6px; padding-left: 6px; }
+        .warehouse-entry-expense-form label { margin-bottom: 4px; color: #697773; font-size: 9px; font-weight: 800; letter-spacing: .035em; }
+        .warehouse-entry-expense-subsection-title { display: flex; margin: 5px 0 11px; padding: 9px 11px; gap: 9px; align-items: center; border: 1px solid #e5eeec; border-radius: 10px; background: #f8fbfa; }
+        .warehouse-entry-expense-subsection-title > span { display: grid; width: 29px; height: 29px; place-items: center; flex: 0 0 auto; border-radius: 8px; background: #e5f4f1; color: #17867b; font-size: 11px; }
+        .warehouse-entry-expense-subsection-title strong, .warehouse-entry-expense-subsection-title small { display: block; }
+        .warehouse-entry-expense-subsection-title strong { color: #405b55; font-size: 10px; }
+        .warehouse-entry-expense-subsection-title small { margin-top: 1px; color: #81908c; font-size: 8px; }
         .warehouse-entry-expense-document-card{height:100%;padding:11px;border:1px solid #dfeae8;border-radius:11px;background:#fbfdfc}.warehouse-entry-expense-document-card.is-invoice{border-top:3px solid #168b78}.warehouse-entry-expense-document-card.is-payment{border-top:3px solid #4d7fa8}.warehouse-entry-expense-document-heading{display:flex;gap:9px;margin-bottom:8px;align-items:center}.warehouse-entry-expense-document-heading>span{display:grid;width:32px;height:32px;place-items:center;flex:0 0 auto;border-radius:9px;background:#e1f3ef;color:#138478}.warehouse-entry-expense-document-card.is-payment .warehouse-entry-expense-document-heading>span{background:#e8f0f7;color:#47789f}.warehouse-entry-expense-document-heading strong,.warehouse-entry-expense-document-heading small{display:block}.warehouse-entry-expense-document-heading strong{color:#31534c;font-size:10px}.warehouse-entry-expense-document-heading small{margin-top:1px;color:#788984;font-size:8px}.warehouse-entry-expense-document-help{display:block;margin-top:7px;color:#788984;font-size:8px;line-height:1.35}
         .warehouse-entry-expense-file-picker{position:relative;min-height:58px;border:1px dashed #bcd7d2;border-radius:10px;background:linear-gradient(145deg,#f9fcfb,#f0f8f6);transition:border-color .18s,box-shadow .18s,transform .18s}
         .warehouse-entry-expense-file-picker:hover{border-color:#54a99e;box-shadow:0 5px 14px rgba(17,134,122,.09);transform:translateY(-1px)}
@@ -557,10 +574,86 @@
         .warehouse-entry-expense-file-empty>span:nth-child(2),.warehouse-entry-expense-file-info{display:block;min-width:0;flex:1}.warehouse-entry-expense-file-empty strong,.warehouse-entry-expense-file-empty small,.warehouse-entry-expense-file-info strong,.warehouse-entry-expense-file-info small{display:block}
         .warehouse-entry-expense-file-empty strong,.warehouse-entry-expense-file-info strong{overflow:hidden;color:#31534c;font-size:11px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.warehouse-entry-expense-file-empty small,.warehouse-entry-expense-file-info small{margin-top:2px;color:#7d8e89;font-size:9px}
         .warehouse-entry-expense-file-arrow{color:#78aaa2;font-size:10px}.warehouse-entry-expense-file-selected{cursor:default}.warehouse-entry-expense-file-selected .btn{padding:4px 8px;font-size:9px;font-weight:700}.warehouse-entry-expense-file-selected .btn-light{border:1px solid #d9e5e2;color:#667873}
-        .warehouse-entry-expense-document-links{display:flex;gap:4px;flex-direction:column;align-items:flex-start}.warehouse-entry-expense-document-links span,.warehouse-entry-expense-document-links a{font-size:8px}.warehouse-entry-expense-document-links .text-muted{padding:2px 0}
         .warehouse-entry-expense-action{display:flex;gap:12px;margin-top:2px;padding-top:11px;align-items:center;justify-content:flex-end;border-top:1px solid #edf2f0}.warehouse-entry-expense-action small{margin-right:auto;color:#81908c;font-size:9px}.warehouse-entry-expense-action .btn{min-width:135px;padding:7px 14px;border-radius:8px;font-weight:700;box-shadow:0 5px 12px rgba(23,162,184,.16)}
-        .warehouse-entry-expenses-table-wrap{margin-top:12px;border:1px solid #e2ebe9;border-radius:11px;overflow:hidden;background:#fff}.warehouse-entry-expenses-table{width:100%;margin:0;table-layout:fixed}.warehouse-entry-expenses-table thead th{padding:8px 7px;border:0;border-bottom:1px solid #dfe9e7;background:#edf5f3;color:#61716d;font-size:8px;font-weight:900;letter-spacing:.03em;text-transform:uppercase;white-space:normal}.warehouse-entry-expenses-table tbody td{padding:9px 7px;vertical-align:middle;border-color:#edf2f1;color:#44534f;font-size:10px;overflow-wrap:anywhere}.warehouse-entry-expenses-table .badge{padding:4px 7px;border-radius:999px;font-size:8px}
-        .warehouse-entry-expense-summary{display:flex;gap:9px;justify-content:flex-end;margin-top:10px}.warehouse-entry-expense-summary span{min-width:170px;padding:9px 12px;border:1px solid #d7eae6;border-radius:9px;background:#eef8f6;color:#5b706a;font-size:10px}.warehouse-entry-expense-summary strong{float:right;color:#08766a;font-size:13px}
+        .warehouse-entry-expense-list-panel { margin-top: 16px; border: 1px solid #dce9e6; border-radius: 14px; overflow: visible; background: #f9fbfa; box-shadow: 0 7px 22px rgba(37, 62, 54, .045); }
+        .warehouse-entry-expense-list-summary { display: flex; padding: 13px 15px; gap: 15px; align-items: center; justify-content: space-between; border-bottom: 1px solid #deebe8; border-radius: 14px 14px 0 0; background: linear-gradient(135deg, #f6fbf9, #eaf6f2); }
+        .warehouse-entry-expense-list-title { display: flex; min-width: 220px; gap: 10px; align-items: center; }
+        .warehouse-entry-expense-list-title > span { display: grid; width: 38px; height: 38px; place-items: center; flex: 0 0 auto; border-radius: 11px; background: #dcefeb; color: #11796f; }
+        .warehouse-entry-expense-list-title h6, .warehouse-entry-expense-list-title small { display: block; margin: 0; }
+        .warehouse-entry-expense-list-title h6 { color: #2e5048; font-size: 12px; font-weight: 800; }
+        .warehouse-entry-expense-list-title small { margin-top: 2px; color: #748780; font-size: 9px; }
+        .warehouse-entry-expense-kpis { display: grid; width: min(100%, 650px); grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 7px; }
+        .warehouse-entry-expense-kpi { display: flex; min-height: 49px; padding: 7px 9px; gap: 8px; align-items: center; border: 1px solid #dbe9e6; border-radius: 10px; background: rgba(255, 255, 255, .88); }
+        .warehouse-entry-expense-kpi > i { display: grid; width: 29px; height: 29px; place-items: center; flex: 0 0 auto; border-radius: 8px; background: #e5f3f0; color: #168478; font-size: 11px; }
+        .warehouse-entry-expense-kpi span, .warehouse-entry-expense-kpi strong { display: block; }
+        .warehouse-entry-expense-kpi span { color: #788781; font-size: 7px; font-weight: 800; letter-spacing: .025em; text-transform: uppercase; }
+        .warehouse-entry-expense-kpi strong { margin-top: 1px; color: #35564e; font-size: 12px; letter-spacing: 0; text-transform: none; }
+        .warehouse-entry-expense-kpi.is-total { border-color: #bcded7; background: #eaf8f5; }
+        .warehouse-entry-expense-kpi.is-total strong { color: #08766a; }
+        .warehouse-entry-expense-cards { display: grid; padding: 12px; gap: 9px; }
+        .warehouse-entry-expense-card { position: relative; border: 1px solid #e0eae8; border-left: 4px solid #91c6bd; border-radius: 12px; background: #fff; box-shadow: 0 3px 11px rgba(38, 63, 55, .035); transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+        .warehouse-entry-expense-card:hover { border-color: #b9d9d3; box-shadow: 0 9px 24px rgba(31, 78, 68, .09); transform: translateY(-1px); }
+        .warehouse-entry-expense-card.is-pending { border-left-color: #dfb651; background: linear-gradient(90deg, #fffaf0 0, #fff 14%); }
+        .warehouse-entry-expense-card.is-observed { border-left-color: #de8b46; background: linear-gradient(90deg, #fff6ed 0, #fff 14%); }
+        .warehouse-entry-expense-card.is-rejected { border-left-color: #cd6c6c; background: linear-gradient(90deg, #fff3f3 0, #fff 14%); }
+        .warehouse-entry-expense-card-main { display: grid; padding: 12px 13px 10px; grid-template-columns: minmax(210px, 1.2fr) minmax(180px, .9fr) minmax(190px, 1fr) minmax(150px, .75fr) auto; gap: 14px; align-items: center; }
+        .warehouse-entry-expense-card-main section { min-width: 0; }
+        .warehouse-entry-expense-block-label { display: block; margin-bottom: 5px; color: #91a09b; font-size: 7px; font-weight: 900; letter-spacing: .075em; text-transform: uppercase; }
+        .warehouse-entry-soft-badge, .warehouse-entry-status-badge, .warehouse-entry-meta-status { display: inline-flex; width: fit-content; padding: 4px 7px; align-items: center; border-radius: 999px; font-size: 8px; font-weight: 800; line-height: 1.2; }
+        .warehouse-entry-soft-badge.is-transport { color: #15766e; background: #e1f3ef; }
+        .warehouse-entry-soft-badge.is-other { color: #68727a; background: #edf0f2; }
+        .warehouse-entry-soft-badge.is-tax, .warehouse-entry-soft-badge.is-official { color: #357154; background: #e7f4eb; }
+        .warehouse-entry-soft-badge.is-no-tax { color: #66747a; background: #eff2f3; }
+        .warehouse-entry-soft-badge.is-unofficial { color: #8b6923; background: #fff3d8; }
+        .warehouse-entry-expense-identity > strong { display: block; margin-top: 7px; overflow: hidden; color: #304a44; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+        .warehouse-entry-expense-identity > small { display: flex; margin-top: 3px; gap: 5px; align-items: center; overflow: hidden; color: #7a8884; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+        .warehouse-entry-expense-finance > strong { display: flex; gap: 4px; align-items: baseline; color: #173f36; font-size: 18px; line-height: 1.1; }
+        .warehouse-entry-expense-finance > strong small { color: #6a7c76; font-size: 9px; }
+        .warehouse-entry-expense-finance > div { display: flex; margin-top: 7px; gap: 5px; flex-wrap: wrap; }
+        .warehouse-entry-expense-source { display: flex; flex-direction: column; align-items: flex-start; }
+        .warehouse-entry-source-reference { display: block; margin-top: 3px; max-width: 100%; overflow: hidden; color: #75847f; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+        .warehouse-entry-meta-status { margin-top: 4px; }
+        .warehouse-entry-meta-status.is-approved { color: #367558; background: #e5f3e9; }
+        .warehouse-entry-meta-status.is-pending { color: #8a681f; background: #fff1ce; }
+        .warehouse-entry-meta-status.is-info { color: #3f6f8f; background: #e8f1f7; }
+        .warehouse-entry-expense-approval { margin-top: 6px; }
+        .warehouse-entry-status-badge.is-approved { color: #2f7553; background: #e3f3e8; }
+        .warehouse-entry-status-badge.is-pending { color: #89651b; background: #fff0c9; }
+        .warehouse-entry-status-badge.is-observed { color: #9a5b22; background: #ffead8; }
+        .warehouse-entry-status-badge.is-rejected { color: #a24949; background: #f9e1e1; }
+        .warehouse-entry-expense-documents { display: flex; flex-direction: column; align-items: flex-start; }
+        .warehouse-entry-expense-doc-button, .warehouse-entry-expense-doc-ready, .warehouse-entry-expense-doc-muted, .warehouse-entry-expense-doc-missing { display: inline-flex; max-width: 100%; padding: 6px 8px; gap: 5px; align-items: center; border-radius: 8px; font-size: 8px; font-weight: 700; line-height: 1.2; }
+        .warehouse-entry-expense-doc-button { border: 1px solid #bcdcd6; color: #16796f; background: #f0faf8; cursor: pointer; }
+        .warehouse-entry-expense-doc-button:hover, .warehouse-entry-expense-doc-button:focus { outline: 0; color: #fff; background: #16877b; text-decoration: none; }
+        .warehouse-entry-expense-doc-button > span { display: grid; min-width: 17px; height: 17px; place-items: center; border-radius: 999px; background: rgba(22, 135, 123, .12); }
+        .warehouse-entry-expense-doc-ready { color: #347356; background: #e7f4eb; }
+        .warehouse-entry-expense-doc-muted { color: #7b8985; background: #f1f3f3; }
+        .warehouse-entry-expense-doc-missing { color: #a34c4c; background: #f9e7e7; }
+        .warehouse-entry-expense-doc-dropdown .dropdown-menu { width: 270px; max-width: 80vw; padding: 5px; border: 1px solid #dce7e5; border-radius: 10px; box-shadow: 0 12px 30px rgba(33, 61, 53, .16); }
+        .warehouse-entry-expense-doc-dropdown .dropdown-item { display: flex; padding: 7px 8px; gap: 8px; align-items: center; border-radius: 7px; color: #465b55; font-size: 9px; white-space: normal; }
+        .warehouse-entry-expense-doc-dropdown .dropdown-item:hover { background: #edf7f4; }
+        .warehouse-entry-expense-doc-dropdown .dropdown-item > i { width: 18px; color: #16877b; text-align: center; }
+        .warehouse-entry-expense-doc-dropdown .dropdown-item span { min-width: 0; overflow-wrap: anywhere; }
+        .warehouse-entry-expense-doc-dropdown .dropdown-item small { display: block; margin-top: 1px; color: #8b9894; font-size: 7px; }
+        .warehouse-entry-expense-card-actions { justify-self: end; }
+        .warehouse-entry-expense-card-actions > div { display: flex; gap: 5px; }
+        .warehouse-entry-expense-action-button { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; border: 1px solid; border-radius: 8px; background: #fff; font-size: 10px; transition: background .18s ease, color .18s ease, transform .18s ease; }
+        .warehouse-entry-expense-action-button:hover { transform: translateY(-1px); }
+        .warehouse-entry-expense-action-button.is-review { border-color: #b8dac9; color: #367c5c; }
+        .warehouse-entry-expense-action-button.is-edit { border-color: #b8d9dc; color: #26818a; }
+        .warehouse-entry-expense-action-button.is-remove { border-color: #eccaca; color: #b05252; }
+        .warehouse-entry-expense-action-button.is-review:hover { color: #fff; background: #418867; }
+        .warehouse-entry-expense-action-button.is-edit:hover { color: #fff; background: #2c8790; }
+        .warehouse-entry-expense-action-button.is-remove:hover { color: #fff; background: #bd5c5c; }
+        .warehouse-entry-expense-observation { display: grid; padding: 8px 13px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: start; border-top: 1px solid #eef3f2; background: rgba(248, 251, 250, .75); }
+        .warehouse-entry-expense-observation > span { display: flex; gap: 5px; align-items: center; color: #7f8f89; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+        .warehouse-entry-expense-observation p { display: -webkit-box; margin: 0; overflow: hidden; color: #63736e; font-size: 9px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+        .warehouse-entry-expense-observation button { padding: 0; border: 0; color: #147f74; background: transparent; font-size: 8px; font-weight: 800; white-space: nowrap; }
+        .warehouse-entry-expense-empty { display: flex; min-height: 150px; padding: 25px; align-items: center; justify-content: center; flex-direction: column; color: #7d8c87; text-align: center; }
+        .warehouse-entry-expense-empty > span { display: grid; width: 48px; height: 48px; margin-bottom: 8px; place-items: center; border-radius: 14px; background: #e8f3f0; color: #5c968a; font-size: 18px; }
+        .warehouse-entry-expense-empty strong, .warehouse-entry-expense-empty small { display: block; }
+        .warehouse-entry-expense-empty strong { color: #51635e; font-size: 11px; }
+        .warehouse-entry-expense-empty small { margin-top: 3px; font-size: 9px; }
         #warehouseEntryModal #warehouse_entry_tab_data .card-body { padding: 12px 14px 6px; }
         #warehouseEntryModal #warehouse_entry_tab_data .row { margin-right: -5px; margin-left: -5px; }
         #warehouseEntryModal #warehouse_entry_tab_data .form-group { margin-bottom: 9px; padding-right: 5px; padding-left: 5px; }
@@ -654,13 +747,43 @@
             #warehouseEntryModal .modal-dialog { width: calc(100vw - 20px); max-width: calc(100vw - 20px); margin: 10px auto; }
             #warehouseEntryModal .modal-content { max-height: calc(100vh - 12px); }
             #warehouseEntryModal .warehouse-entry-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .warehouse-entry-expense-list-summary { align-items: stretch; flex-direction: column; }
+            .warehouse-entry-expense-kpis { width: 100%; }
+            .warehouse-entry-expense-card-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .warehouse-entry-expense-card-actions { justify-self: start; }
+        }
+
+        @media (max-width: 767.98px) {
+            .warehouse-entry-expense-editor-heading { align-items: stretch; flex-direction: column; }
+            .warehouse-entry-expense-editor-actions { width: 100%; }
+            .warehouse-entry-expense-editor-actions .btn { flex: 1; }
+            .warehouse-entry-expense-card-main { grid-template-columns: 1fr; gap: 0; }
+            .warehouse-entry-expense-card-main section { padding: 9px 0; border-bottom: 1px solid #eef3f2; }
+            .warehouse-entry-expense-card-main section:first-child { padding-top: 0; }
+            .warehouse-entry-expense-card-main section:last-child { padding-bottom: 0; border-bottom: 0; }
+            .warehouse-entry-expense-card-actions { width: 100%; }
+            .warehouse-entry-expense-card-actions > div { justify-content: flex-start; }
+            .warehouse-entry-expense-observation { grid-template-columns: 1fr auto; }
+            .warehouse-entry-expense-observation > span { grid-column: 1 / -1; }
         }
 
         @media (max-width: 575.98px) {
             #warehouseEntryModal .warehouse-entry-review-grid { grid-template-columns: 1fr; }
             #warehouseEntryModal .warehouse-entry-modal-footer .btn { flex: 1; }
-            .warehouse-entry-expense-body{padding:8px!important}.warehouse-entry-expense-form{padding:10px}.warehouse-entry-expense-file-selected{flex-wrap:wrap}.warehouse-entry-expense-file-info{flex-basis:calc(100% - 46px)}.warehouse-entry-expense-file-selected .btn{flex:1}.warehouse-entry-expense-action{align-items:stretch;flex-direction:column}.warehouse-entry-expense-action small{margin-right:0}.warehouse-entry-expense-action .btn{width:100%}.warehouse-entry-expense-summary{flex-direction:column}.warehouse-entry-expense-summary span{width:100%;min-width:0}
-            .warehouse-entry-expenses-table-wrap{border:0;overflow:visible;background:transparent}.warehouse-entry-expenses-table,.warehouse-entry-expenses-table tbody,.warehouse-entry-expenses-table tr,.warehouse-entry-expenses-table td{display:block;width:100%}.warehouse-entry-expenses-table thead{display:none}.warehouse-entry-expenses-table tbody tr{margin-bottom:9px;padding:8px 10px;border:1px solid #e1ebe9;border-radius:10px;background:#fff;box-shadow:0 3px 10px rgba(37,62,54,.04)}.warehouse-entry-expenses-table tbody td{display:flex;padding:5px 0;justify-content:space-between;border:0;text-align:right!important}.warehouse-entry-expenses-table tbody td:before{margin-right:10px;color:#7b8985;font-size:8px;font-weight:900;text-transform:uppercase}.warehouse-entry-expenses-table tbody td:nth-child(1):before{content:'Tipo'}.warehouse-entry-expenses-table tbody td:nth-child(2):before{content:'Agencia / Responsable'}.warehouse-entry-expenses-table tbody td:nth-child(3):before{content:'Documento'}.warehouse-entry-expenses-table tbody td:nth-child(4):before{content:'Importe'}.warehouse-entry-expenses-table tbody td:nth-child(5):before{content:'IGV'}.warehouse-entry-expenses-table tbody td:nth-child(6):before{content:'Observación'}.warehouse-entry-expenses-table tbody td:nth-child(7):before{content:'Documentos'}.warehouse-entry-expenses-table tbody td:nth-child(8):before{content:'Acciones'}
+            .warehouse-entry-expense-body { padding: 8px !important; }
+            .warehouse-entry-expense-form { padding: 10px; }
+            .warehouse-entry-expense-editor-actions { flex-direction: column; }
+            .warehouse-entry-expense-file-selected { flex-wrap: wrap; }
+            .warehouse-entry-expense-file-info { flex-basis: calc(100% - 46px); }
+            .warehouse-entry-expense-file-selected .btn { flex: 1; }
+            .warehouse-entry-expense-action { align-items: stretch; flex-direction: column; }
+            .warehouse-entry-expense-action small { margin-right: 0; }
+            .warehouse-entry-expense-action .btn { width: 100%; }
+            .warehouse-entry-expense-list-summary { padding: 11px; }
+            .warehouse-entry-expense-kpis { grid-template-columns: 1fr; }
+            .warehouse-entry-expense-cards { padding: 8px; }
+            .warehouse-entry-expense-card-main { padding: 11px; }
+            .warehouse-entry-expense-observation { padding: 8px 11px; }
         }
 
         .warehouse-entry-modal .modal-header {

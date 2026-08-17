@@ -462,17 +462,13 @@
                             <div class="card-header border-0 py-2 warehouse-entry-section-header"><h6 class="mb-0 font-weight-bold"><i class="fas fa-truck-loading text-info mr-1"></i>Costos vinculados al ingreso</h6><small class="text-muted">Registra fletes, recojos u otros gastos relacionados con la llegada de la mercader&iacute;a.</small></div>
                             <div class="card-body warehouse-entry-expense-body">
                                 <div id="warehouseEntryDeliveryCostHelp" class="warehouse-entry-delivery-help mb-3" role="status"></div>
-                                <div class="row warehouse-entry-expense-kpis">
-                                    <div class="col-6 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-truck"></i><span>Total flete / transporte<strong id="warehouseEntryFreightTotal">0.00</strong></span></div></div>
-                                    <div class="col-6 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-receipt"></i><span>Total otros gastos<strong id="warehouseEntryOtherExpenseTotal">0.00</strong></span></div></div>
-                                    <div class="col-12 col-xl-4"><div class="warehouse-entry-expense-kpi"><i class="fas fa-coins"></i><span>Total vinculado<strong id="warehouseEntryExpenseLinkedTotal">0.00</strong></span></div></div>
-                                </div>
                                 <div class="warehouse-entry-expense-form">
-                                <div class="d-flex align-items-center justify-content-between flex-wrap mb-3"><h6 class="font-weight-bold mb-2 mb-md-0"><i class="fas fa-plus-circle text-info mr-1"></i>Registrar costo vinculado</h6><div class="btn-group btn-group-sm"><button type="button" id="btnFocusManualWarehouseEntryExpense" class="btn btn-outline-secondary"><i class="fas fa-plus mr-1"></i>Agregar costo manual</button><button type="button" id="btnPullPettyCashExpenses" class="btn btn-outline-info"><i class="fas fa-cash-register mr-1"></i>Jalar de Caja Chica</button></div></div>
+                                <div class="warehouse-entry-expense-editor-heading"><div><span class="warehouse-entry-expense-editor-icon"><i class="fas fa-plus-circle"></i></span><span><h6>Registrar costo vinculado</h6><small>Completa el origen, importe y sustento del gasto.</small></span></div><div class="warehouse-entry-expense-editor-actions"><button type="button" id="btnFocusManualWarehouseEntryExpense" class="btn btn-outline-secondary btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo manual</button><button type="button" id="btnPullPettyCashExpenses" class="btn btn-outline-info btn-sm"><i class="fas fa-cash-register mr-1"></i>Jalar de Caja Chica</button></div></div>
                                 <div class="row">
                                     <input type="hidden" id="warehouse_entry_expense_edit_index">
                                     <select id="warehouse_entry_expense_category" class="d-none"><option value="freight_transport">Transporte</option><option value="other_expense">Otros</option></select>
                                     <select id="warehouse_entry_expense_cost_origin" class="d-none"><option value="third_party">Tercero</option></select>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-wallet"></i></span><div><strong>Fuente y tipo de gasto</strong><small>Identifica de dónde proviene el pago y quién realizó el servicio.</small></div></div></div>
                                     <div class="form-group col-md-3"><label>FUENTE DE PAGO *</label><select id="warehouse_entry_expense_payment_source" class="form-control form-control-sm"><option value="manual">No registrado / pendiente</option><option value="general_cash">Caja General</option><option value="bank">Banco</option><option value="petty_cash" disabled>Caja Chica (usar botón Jalar)</option></select><small class="form-text text-muted">Los registros directos quedan pendientes de aprobación.</small></div>
                                     <div id="warehouseEntryExpenseGeneralCashGroup" class="form-group col-md-4 d-none"><label>CAJA GENERAL *</label><select id="warehouse_entry_expense_general_cash_box_id" class="form-control form-control-sm"><option value="">Seleccione Caja General</option>@foreach($generalCashBoxes as $box)<option value="{{ $box->id }}" data-company-id="{{ $box->company_id }}" data-currency-id="{{ $box->currency_id }}" data-code="{{ $box->code }}" data-responsible="{{ trim(($box->responsible?->name ?? '').' '.($box->responsible?->lastname ?? '')) }}">{{ $box->code }} | {{ $box->name }} | {{ $box->currency?->code }}</option>@endforeach</select></div>
                                     <div id="warehouseEntryExpenseBankGroup" class="form-group col-md-4 d-none"><label>CUENTA BANCARIA *</label><select id="warehouse_entry_expense_company_bank_account_id" class="form-control form-control-sm"><option value="">Seleccione cuenta bancaria</option></select></div>
@@ -481,8 +477,10 @@
                                     <div id="warehouseEntryExpenseResponsibleGroup" class="form-group col-md-4 d-none"><label>RESPONSABLE / PERSONA QUE COBRÓ *</label><input id="warehouse_entry_expense_provider_name" class="form-control form-control-sm text-uppercase" placeholder="Nombre de persona, motorizado, taxi, personal o responsable"></div>
                                     <select id="warehouse_entry_expense_provider_id" class="d-none"><option value=""></option></select>
                                     <input type="hidden" id="warehouse_entry_expense_provider_ruc">
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-calculator"></i></span><div><strong>Importe e IGV</strong><small>Registra el total pagado y su tratamiento tributario.</small></div></div></div>
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
                                     <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-file-invoice"></i></span><div><strong>Documento</strong><small>Detalla el comprobante o sustento que identifica el gasto.</small></div></div></div>
                                     <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><optgroup label="DOCUMENTOS OFICIALES"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option></optgroup><optgroup label="DOCUMENTOS NO OFICIALES"><option value="RECIBO_INTERNO">Recibo interno</option><option value="SIN_COMPROBANTE">Sin comprobante</option></optgroup></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>NÚMERO</label><input id="warehouse_entry_expense_document_number" class="form-control form-control-sm text-uppercase"></div>
@@ -490,6 +488,7 @@
                                     <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="1">Sí</option></select>
                                     <select id="warehouse_entry_expense_distribution_method" class="d-none"><option value="quantity">Por cantidad</option></select>
                                     <div class="form-group col-12"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria sin comprobante oficial adjunto"><small class="text-muted">Si no cuenta con un comprobante oficial adjunto, describa el motivo y responsable.</small></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-paperclip"></i></span><div><strong>Sustentos</strong><small>Adjunta el comprobante y la constancia de pago cuando corresponda.</small></div></div></div>
                                     <div class="col-lg-6 mb-2">
                                         <div class="warehouse-entry-expense-document-card is-invoice">
                                             <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-file-invoice-dollar"></i></span><div><strong>Comprobante oficial</strong><small>Factura, boleta o recibo por honorarios.</small></div></div>
@@ -536,7 +535,20 @@
                                 <div id="warehouseEntryExpenseManualDistribution" class="d-none mb-3"></div>
                                 <div class="warehouse-entry-expense-action"><small><i class="fas fa-info-circle mr-1"></i>El costo se incorporar&aacute; a la lista antes de guardar el ingreso.</small><button type="button" id="btnAddWarehouseEntryExpense" class="btn btn-info btn-sm"><i class="fas fa-plus mr-1"></i>Agregar costo</button></div>
                                 </div>
-                                <div class="warehouse-entry-expenses-table-wrap"><table class="table table-sm table-hover warehouse-entry-expenses-table"><thead><tr><th>Tipo de costo</th><th>Responsable / proveedor</th><th>Documento</th><th class="text-right">Importe</th><th>IGV</th><th>Clasificación</th><th>Origen de pago</th><th>Estado</th><th>Observación</th><th>Documentos</th><th class="text-center">Acciones</th></tr></thead><tbody id="warehouseEntryExpensesBody"></tbody></table></div>
+                                <section class="warehouse-entry-expense-list-panel" aria-labelledby="warehouseEntryExpenseListTitle">
+                                    <div class="warehouse-entry-expense-list-summary">
+                                        <div class="warehouse-entry-expense-list-title">
+                                            <span><i class="fas fa-layer-group"></i></span>
+                                            <div><h6 id="warehouseEntryExpenseListTitle">Costos vinculados registrados</h6><small id="warehouseEntryExpenseCount">0 costos vinculados a este ingreso</small></div>
+                                        </div>
+                                        <div class="warehouse-entry-expense-kpis">
+                                            <div class="warehouse-entry-expense-kpi"><i class="fas fa-truck"></i><span>Flete / transporte<strong id="warehouseEntryFreightTotal">0.00</strong></span></div>
+                                            <div class="warehouse-entry-expense-kpi"><i class="fas fa-receipt"></i><span>Otros gastos<strong id="warehouseEntryOtherExpenseTotal">0.00</strong></span></div>
+                                            <div class="warehouse-entry-expense-kpi is-total"><i class="fas fa-coins"></i><span>Total vinculado<strong id="warehouseEntryExpenseLinkedTotal">0.00</strong></span></div>
+                                        </div>
+                                    </div>
+                                    <div id="warehouseEntryExpensesBody" class="warehouse-entry-expense-cards" aria-live="polite"></div>
+                                </section>
                             </div>
                         </div>
                         @endcanany

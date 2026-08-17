@@ -223,6 +223,18 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '.btnEditWarehouseEntryExpense', function () { editWarehouseEntryExpense(Number($(this).data('index'))); });
     $(document).on('click', '.btnRemoveWarehouseEntryExpense', function () { removeWarehouseEntryExpense(Number($(this).data('index'))); });
     $(document).on('click', '.btnReviewWarehouseEntryExpense', function () { reviewWarehouseEntryExpense(Number($(this).data('index'))); });
+    $(document).on('click', '.btnViewWarehouseEntryExpenseObservation', function () {
+        const expense = warehouseEntryExpenses[Number($(this).data('index'))];
+        if (!expense?.description) return;
+
+        Swal.fire({
+            title: 'Observación del costo',
+            text: expense.description,
+            icon: 'info',
+            confirmButtonText: 'Cerrar',
+            customClass: { popup: 'warehouse-entry-expense-observation-modal' }
+        });
+    });
 
     $(document).on(
         'input change',
@@ -2492,37 +2504,75 @@ function reviewWarehouseEntryExpense(index) {
 }
 
 function renderWarehouseEntryExpenseDocumentLinks(expense) {
-    const line = (type, label, missingLabel) => {
+    const documents = [];
+    let unavailableCount = 0;
+
+    const collect = (type, label) => {
         const config = warehouseEntryExpenseDocumentConfig(type);
         const pendingFile = expense?.[config.fileField];
         const storedDocuments = warehouseEntryExpenseStoredDocuments(expense, type);
+
         if (pendingFile) {
-            return `<span title="${escapeWarehouseEntryHtml(pendingFile.name)}"><strong>${label}:</strong> <span class="badge badge-info">Listo</span></span>`;
+            documents.push({
+                label: `${label}: ${pendingFile.name}`,
+                pending: true,
+                type
+            });
+            return;
         }
-        const availableDocuments = storedDocuments.filter(document => document.view_url);
-        if (availableDocuments.length) {
-            const links = availableDocuments.map((document, index) => `<a href="${document.view_url}" target="_blank" class="btn btn-outline-info btn-xs mr-1 mb-1" title="${escapeWarehouseEntryHtml(document.original_name || `Documento ${index + 1}`)}"><i class="fas fa-eye mr-1"></i>${availableDocuments.length > 1 ? `Ver ${index + 1}` : 'Ver'}</a>`).join('');
-            const multipleLabel = availableDocuments.length > 1
-                ? `<small class="text-muted d-block">Ver documentos · ${availableDocuments.length} archivos</small>`
-                : '';
-            const missingCount = storedDocuments.length - availableDocuments.length;
-            const unavailableLabel = missingCount > 0
-                ? `<small class="text-danger">${missingCount} no disponible(s)</small>`
-                : '';
-            return `<span><strong>${label}:</strong> ${links}${multipleLabel}${unavailableLabel}</span>`;
-        }
-        if (storedDocuments.length) {
-            return `<span class="text-danger"><strong>${label}:</strong> Documento no disponible o archivo no encontrado</span>`;
-        }
-        return `<span class="text-muted"><strong>${label}:</strong> ${missingLabel}</span>`;
+
+        storedDocuments.forEach((document, index) => {
+            if (!document.view_url) {
+                unavailableCount++;
+                return;
+            }
+
+            documents.push({
+                label: document.original_name || `${label} ${index + 1}`,
+                url: document.view_url,
+                type
+            });
+        });
     };
+
+    collect('invoice', 'Comprobante');
+    collect('payment_proof', 'Constancia de pago');
 
     const pettyCashPendingDocuments = expense.source_type === 'petty_cash'
         && !(expense.documents || []).length
         && Number(expense.petty_cash_documents_count || expense.petty_cash_expense?.documents_count || 0) > 0
-            ? `<span class="text-info"><strong>Caja Chica:</strong> ${Number(expense.petty_cash_documents_count || expense.petty_cash_expense?.documents_count)} adjunto(s)</span>`
-            : '';
-    return `<div class="warehouse-entry-expense-document-links">${line('invoice', 'Comprobante', 'Sin adjunto')}${line('payment_proof', 'Pago', 'Sin constancia')}${pettyCashPendingDocuments}</div>`;
+            ? Number(expense.petty_cash_documents_count || expense.petty_cash_expense?.documents_count)
+            : 0;
+
+    if (!documents.length) {
+        if (pettyCashPendingDocuments) {
+            return `<span class="warehouse-entry-expense-doc-muted"><i class="fas fa-paperclip"></i>${pettyCashPendingDocuments} adjunto(s) en Caja Chica</span>`;
+        }
+        if (unavailableCount) {
+            return '<span class="warehouse-entry-expense-doc-missing"><i class="fas fa-exclamation-circle"></i>Archivo no disponible</span>';
+        }
+        return '<span class="warehouse-entry-expense-doc-muted"><i class="far fa-file"></i>Sin adjunto</span>';
+    }
+
+    if (documents.length === 1 && documents[0].url) {
+        const document = documents[0];
+        const label = document.type === 'payment_proof' ? 'Ver constancia' : 'Ver comprobante';
+        return `<a href="${escapeWarehouseEntryHtml(document.url)}" target="_blank" rel="noopener" class="warehouse-entry-expense-doc-button"><i class="fas fa-eye"></i>${label}</a>`;
+    }
+
+    if (documents.length === 1 && documents[0].pending) {
+        return `<span class="warehouse-entry-expense-doc-ready" title="${escapeWarehouseEntryHtml(documents[0].label)}"><i class="fas fa-check-circle"></i>Sustento listo</span>`;
+    }
+
+    const items = documents.map(document => document.url
+        ? `<a class="dropdown-item" href="${escapeWarehouseEntryHtml(document.url)}" target="_blank" rel="noopener"><i class="far fa-file-alt"></i><span>${escapeWarehouseEntryHtml(document.label)}</span></a>`
+        : `<span class="dropdown-item disabled"><i class="fas fa-clock"></i><span>${escapeWarehouseEntryHtml(document.label)}<small>Listo para guardar</small></span></span>`
+    ).join('');
+    const unavailable = unavailableCount
+        ? `<span class="dropdown-item disabled text-danger"><i class="fas fa-exclamation-circle"></i><span>${unavailableCount} archivo(s) no disponible(s)</span></span>`
+        : '';
+
+    return `<div class="dropdown warehouse-entry-expense-doc-dropdown"><button type="button" class="warehouse-entry-expense-doc-button dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fas fa-folder-open"></i>Ver documentos <span>${documents.length}</span></button><div class="dropdown-menu dropdown-menu-right">${items}${unavailable}</div></div>`;
 }
 
 function warehouseEntryExpenseSourceHtml(expense) {
@@ -2532,22 +2582,22 @@ function warehouseEntryExpenseSourceHtml(expense) {
         const reference = expense.source_reference || `${petty.petty_cash_box?.code || 'Caja Chica'} · ${sourceDocumentLabel} ${petty.document_full_number || petty.document_number || petty.item_number || expense.petty_cash_expense_id}`;
         const exchangeStatus = petty.exchange_status || '';
         const statusLabel = exchangeStatus === 'CANJEADO' ? `Canjeado con ${warehouseEntryExpenseDocumentLabel(expense.document_type)}` : (exchangeStatus === 'PENDIENTE_CANJE' ? 'Pendiente de canje' : 'Documento directo');
-        const statusClass = exchangeStatus === 'CANJEADO' ? 'text-success' : (exchangeStatus === 'PENDIENTE_CANJE' ? 'text-warning' : 'text-info');
-        return `<span class="warehouse-entry-source-badge is-petty-cash"><i class="fas fa-cash-register"></i>Caja Chica</span><small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml(reference)}</small><small class="d-block ${statusClass}">${escapeWarehouseEntryHtml(statusLabel)}</small>`;
+        const statusClass = exchangeStatus === 'CANJEADO' ? 'is-approved' : (exchangeStatus === 'PENDIENTE_CANJE' ? 'is-pending' : 'is-info');
+        return `<span class="warehouse-entry-source-badge is-petty-cash"><i class="fas fa-cash-register"></i>Caja Chica</span><small class="warehouse-entry-source-reference">${escapeWarehouseEntryHtml(reference)}</small><span class="warehouse-entry-meta-status ${statusClass}">${escapeWarehouseEntryHtml(statusLabel)}</span>`;
     }
     if (expense.source_type === 'general_cash') {
         const box = expense.general_cash_box || {};
         const responsible = box.responsible ? [box.responsible.name, box.responsible.lastname].filter(Boolean).join(' ') : (box.responsible_name || 'Pendiente de aprobación');
         const movement = expense.general_cash_movement;
-        return `<span class="warehouse-entry-source-badge is-general-cash"><i class="fas fa-coins"></i>Caja General</span><small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml(box.code || 'Caja seleccionada')}</small><small class="d-block text-muted">${escapeWarehouseEntryHtml(movement?.operation_number || movement?.code || responsible)}</small>`;
+        return `<span class="warehouse-entry-source-badge is-general-cash"><i class="fas fa-coins"></i>Caja General</span><small class="warehouse-entry-source-reference">${escapeWarehouseEntryHtml(box.code || 'Caja seleccionada')}</small><small class="warehouse-entry-source-reference">${escapeWarehouseEntryHtml(movement?.operation_number || movement?.code || responsible)}</small>`;
     }
     if (expense.source_type === 'bank') {
         const account = expense.company_bank_account || {};
         const bank = account.bank?.short_name || account.bank?.description || account.bank_name || 'Banco';
         const operation = expense.bank_movement?.operation_number || 'Movimiento pendiente';
-        return `<span class="warehouse-entry-source-badge is-bank"><i class="fas fa-university"></i>Banco</span><small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml(bank)} · ${escapeWarehouseEntryHtml(account.account_number || '-')}</small><small class="d-block text-muted">${escapeWarehouseEntryHtml(operation)}</small>`;
+        return `<span class="warehouse-entry-source-badge is-bank"><i class="fas fa-university"></i>Banco</span><small class="warehouse-entry-source-reference">${escapeWarehouseEntryHtml(bank)} · ${escapeWarehouseEntryHtml(account.account_number || '-')}</small><small class="warehouse-entry-source-reference">${escapeWarehouseEntryHtml(operation)}</small>`;
     }
-    return '<span class="warehouse-entry-source-badge is-manual"><i class="fas fa-pen"></i>Manual / pendiente</span><small class="d-block text-muted mt-1">Registrado desde almacén</small>';
+    return '<span class="warehouse-entry-source-badge is-manual"><i class="fas fa-pen"></i>Manual / pendiente</span><small class="warehouse-entry-source-reference">Registrado desde almacén</small>';
 }
 
 function warehouseEntryExpenseIsApproved(expense) {
@@ -2557,13 +2607,13 @@ function warehouseEntryExpenseIsApproved(expense) {
 function warehouseEntryExpenseApprovalHtml(expense) {
     const status = expense.source_type === 'petty_cash' ? 'approved' : (expense.approval_status || 'pending');
     const config = {
-        approved: ['success', 'Aprobado'], pending: ['warning', 'Pendiente de aprobación'],
-        observed: ['info', 'Observado'], rejected: ['danger', 'Rechazado']
-    }[status] || ['warning', 'Pendiente de aprobación'];
+        approved: ['is-approved', 'Aprobado'], pending: ['is-pending', 'Pendiente de aprobación'],
+        observed: ['is-observed', 'Observado'], rejected: ['is-rejected', 'Rechazado']
+    }[status] || ['is-pending', 'Pendiente de aprobación'];
     const audit = status === 'approved' && expense.approver
         ? `<small class="d-block text-muted mt-1">${escapeWarehouseEntryHtml([expense.approver.name, expense.approver.lastname].filter(Boolean).join(' '))}</small>`
         : '';
-    return `<span class="badge badge-${config[0]}">${config[1]}</span>${audit}`;
+    return `<span class="warehouse-entry-status-badge ${config[0]}">${config[1]}</span>${audit}`;
 }
 
 function renderWarehouseEntryExpenses() {
@@ -2573,11 +2623,47 @@ function renderWarehouseEntryExpenses() {
         const officialDocument = isWarehouseEntryOfficialExpenseDocument(expense.document_type);
         const classification = warehouseEntryExpenseClassification(expense);
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
-        const igvBadge = expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>';
+        const igvBadge = expense.affects_igv ? '<span class="warehouse-entry-soft-badge is-tax">Afecto IGV</span>' : '<span class="warehouse-entry-soft-badge is-no-tax">Sin IGV</span>';
         const canReview = Boolean(expense.id) && expense.source_type !== 'petty_cash' && Boolean(Number($('#warehouseEntryOriginalExpensesCard').data('can-approve')));
-        const reviewButton = canReview ? `<button type="button" class="btn btn-outline-success btn-xs btnReviewWarehouseEntryExpense" data-index="${index}" title="Revisar aprobación"><i class="fas fa-user-check"></i></button> ` : '';
-        return `<tr><td><span class="badge badge-${expense.expense_category === 'freight_transport' ? 'info' : 'secondary'}">${type}</span></td><td>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${igvBadge}</td><td><span class="badge badge-${officialDocument ? 'success' : 'warning'}">${classification}</span></td><td>${warehouseEntryExpenseSourceHtml(expense)}</td><td>${warehouseEntryExpenseApprovalHtml(expense)}</td><td>${escapeWarehouseEntryHtml(expense.description || '-')}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td><td class="text-nowrap">${reviewButton}<button type="button" class="btn btn-outline-info btn-xs btnEditWarehouseEntryExpense" data-index="${index}"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryExpense" data-index="${index}"><i class="fas fa-ban"></i></button></td></tr>`;
-    }).join('') : '<tr><td colspan="11" class="text-center text-muted py-3">No hay costos vinculados.</td></tr>');
+        const reviewButton = canReview ? `<button type="button" class="warehouse-entry-expense-action-button is-review btnReviewWarehouseEntryExpense" data-index="${index}" title="Revisar aprobación" aria-label="Revisar aprobación"><i class="fas fa-user-check"></i></button>` : '';
+        const approvalStatus = expense.source_type === 'petty_cash' ? 'approved' : (expense.approval_status || 'pending');
+        const attentionClass = approvalStatus === 'pending' ? 'is-pending' : (approvalStatus === 'observed' ? 'is-observed' : (approvalStatus === 'rejected' ? 'is-rejected' : ''));
+        const description = String(expense.description || '').trim();
+        const viewMore = description.length > 115
+            ? `<button type="button" class="btnViewWarehouseEntryExpenseObservation" data-index="${index}">Ver más</button>`
+            : '';
+        const currencySymbol = $('.warehouse-entry-currency-symbol').first().text().trim() || 'S/';
+        return `<article class="warehouse-entry-expense-card ${attentionClass}">
+            <div class="warehouse-entry-expense-card-main">
+                <section class="warehouse-entry-expense-identity">
+                    <span class="warehouse-entry-expense-block-label">Tipo de costo</span>
+                    <span class="warehouse-entry-soft-badge ${expense.expense_category === 'freight_transport' ? 'is-transport' : 'is-other'}">${escapeWarehouseEntryHtml(type)}</span>
+                    <strong>${escapeWarehouseEntryHtml(expense.provider_name || 'Sin responsable indicado')}</strong>
+                    <small><i class="far fa-file-alt"></i>${escapeWarehouseEntryHtml(document || 'Sin documento')}</small>
+                </section>
+                <section class="warehouse-entry-expense-finance" title="${escapeWarehouseEntryHtml(igvTitle)}">
+                    <span class="warehouse-entry-expense-block-label">Importe registrado</span>
+                    <strong><small>${escapeWarehouseEntryHtml(currencySymbol)}</small>${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</strong>
+                    <div>${igvBadge}<span class="warehouse-entry-soft-badge ${officialDocument ? 'is-official' : 'is-unofficial'}">${escapeWarehouseEntryHtml(classification)}</span></div>
+                </section>
+                <section class="warehouse-entry-expense-source">
+                    <span class="warehouse-entry-expense-block-label">Origen de pago</span>
+                    ${warehouseEntryExpenseSourceHtml(expense)}
+                    <div class="warehouse-entry-expense-approval">${warehouseEntryExpenseApprovalHtml(expense)}</div>
+                </section>
+                <section class="warehouse-entry-expense-documents">
+                    <span class="warehouse-entry-expense-block-label">Documentos</span>
+                    ${renderWarehouseEntryExpenseDocumentLinks(expense)}
+                </section>
+                <section class="warehouse-entry-expense-card-actions">
+                    <span class="warehouse-entry-expense-block-label">Acciones</span>
+                    <div>${reviewButton}<button type="button" class="warehouse-entry-expense-action-button is-edit btnEditWarehouseEntryExpense" data-index="${index}" title="Editar costo" aria-label="Editar costo"><i class="fas fa-edit"></i></button><button type="button" class="warehouse-entry-expense-action-button is-remove btnRemoveWarehouseEntryExpense" data-index="${index}" title="Anular o quitar vínculo" aria-label="Anular o quitar vínculo"><i class="fas fa-ban"></i></button></div>
+                </section>
+            </div>
+            <div class="warehouse-entry-expense-observation"><span><i class="far fa-comment-alt"></i>Observación</span><p>${escapeWarehouseEntryHtml(description || 'Sin observación registrada.')}</p>${viewMore}</div>
+        </article>`;
+    }).join('') : '<div class="warehouse-entry-expense-empty"><span><i class="fas fa-receipt"></i></span><strong>Aún no hay costos vinculados</strong><small>Agrega un costo manual o jálalo desde Caja Chica.</small></div>');
+    $('#warehouseEntryExpenseCount').text(`${warehouseEntryExpenses.length} ${warehouseEntryExpenses.length === 1 ? 'costo vinculado' : 'costos vinculados'} a este ingreso`);
     const approvedExpenses = warehouseEntryExpenses.filter(warehouseEntryExpenseIsApproved);
     const freight = approvedExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const other = approvedExpenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
