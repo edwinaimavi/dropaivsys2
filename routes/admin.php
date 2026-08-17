@@ -681,6 +681,10 @@ Route::get(
     'warehouse-entries/{warehouseEntry}/expense-documents/{expenseDocument}/view',
     [WarehouseEntryController::class, 'viewExpenseDocument']
 )->name('warehouse-entries.expenses.documents.view');
+Route::post(
+    'warehouse-entries/{warehouseEntry}/expenses/{expense}/approval',
+    [WarehouseEntryController::class, 'updateExpenseApproval']
+)->name('warehouse-entries.expenses.approval');
 
 Route::get(
     'warehouse-entries/{warehouseEntry}/pdf',

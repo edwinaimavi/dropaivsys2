@@ -11,21 +11,104 @@
     </div></div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button><button class="btn btn-success" type="submit"><i class="fas fa-save mr-1"></i>Guardar</button></div>
 </form></div></div></div>
 
-<div class="modal fade general-cash-modal" id="generalCashFundingModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><form id="generalCashFundingForm" enctype="multipart/form-data">
-    @csrf<input type="hidden" name="idempotency_key" id="general_cash_funding_key">
-    <div class="modal-header"><div class="d-flex align-items-center"><span class="general-cash-modal-title-icon is-bank"><i class="fas fa-university"></i></span><div><h5 class="modal-title mb-0">Ingresar efectivo desde banco</h5><small>Genera un egreso bancario y un ingreso relacionado en Caja General.</small></div></div><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-    <div class="modal-body"><div class="alert alert-info py-2"><i class="fas fa-link mr-1"></i>Banco y caja se actualizarán dentro de una sola transacción.</div><div class="form-row">
-        <div class="form-group col-md-6"><label>CAJA GENERAL *</label><select name="general_cash_box_id" id="general_cash_funding_box_id" class="form-control general-cash-box-select"><option value="">Seleccione</option>@foreach($boxes as $box)<option value="{{ $box->id }}" data-company="{{ $box->company_id }}" data-currency="{{ $box->currency_id }}">{{ $box->code }} · {{ $box->name }} · {{ $box->currency?->code }}</option>@endforeach</select></div>
-        <div class="form-group col-md-6"><label>CUENTA BANCARIA ORIGEN *</label><select name="company_bank_account_id" id="general_cash_bank_account_id" class="form-control"><option value="">Seleccione primero una caja</option></select><small id="generalCashBankBalance" class="form-text text-muted"></small></div>
-        <div class="form-group col-md-4"><label>FECHA *</label><input type="date" name="movement_date" class="form-control" value="{{ now()->toDateString() }}"></div>
-        <div class="form-group col-md-4"><label>MONTO RETIRADO *</label><input type="number" name="amount" min="0.01" step="0.01" class="form-control"></div>
-        <div class="form-group col-md-4"><label>NRO. OPERACIÓN *</label><input name="operation_number" maxlength="100" class="form-control"></div>
-        <div class="form-group col-md-6"><label>RESPONSABLE</label><select name="responsible_user_id" class="form-control"><option value="">Seleccione</option>@foreach($users as $user)<option value="{{ $user->id }}">{{ trim($user->name.' '.$user->lastname) }}</option>@endforeach</select></div>
-        <div class="form-group col-md-6"><label>RESPONSABLE EXTERNO / REFERENCIA</label><input name="responsible_name" maxlength="150" class="form-control"></div>
-        <div class="form-group col-md-6"><label>SUSTENTO OPCIONAL</label><input type="file" name="support_file" class="form-control-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx"></div>
-        <div class="form-group col-12 mb-0"><label>OBSERVACIÓN</label><textarea name="observation" class="form-control" rows="3"></textarea></div>
-    </div></div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="submit"><i class="fas fa-exchange-alt mr-1"></i>Ingresar efectivo</button></div>
-</form></div></div></div>
+<div class="modal fade general-cash-modal general-cash-funding-modal" id="generalCashFundingModal" tabindex="-1" aria-labelledby="generalCashFundingModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable general-cash-funding-dialog">
+        <div class="modal-content">
+            <form id="generalCashFundingForm" enctype="multipart/form-data">
+                @csrf
+                <input type="hidden" name="idempotency_key" id="general_cash_funding_key">
+
+                <div class="modal-header general-cash-funding-header">
+                    <div class="general-cash-funding-heading">
+                        <span class="general-cash-funding-title-icon"><i class="fas fa-university"></i></span>
+                        <div>
+                            <span class="general-cash-funding-eyebrow">MOVIMIENTO DE EFECTIVO</span>
+                            <h5 class="modal-title" id="generalCashFundingModalTitle">Ingresar efectivo desde banco</h5>
+                            <p>Registra el retiro desde una cuenta bancaria y su ingreso a Caja General.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="close general-cash-funding-close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+                <div class="modal-body general-cash-funding-body">
+                    <div class="general-cash-funding-notice" role="note">
+                        <span><i class="fas fa-shield-alt"></i></span>
+                        <div>
+                            <strong>Movimiento seguro y sincronizado</strong>
+                            <p>Banco y Caja General se actualizarán dentro de una sola transacción.</p>
+                        </div>
+                        <small><i class="fas fa-link mr-1"></i>Trazabilidad automática</small>
+                    </div>
+
+                    <section class="general-cash-funding-section">
+                        <header><span><i class="fas fa-exchange-alt"></i></span><div><h6>Origen y destino</h6><p>Selecciona la caja que recibirá el efectivo y la cuenta bancaria de origen.</p></div></header>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label for="general_cash_funding_box_id">Caja General <b>*</b></label>
+                                <select name="general_cash_box_id" id="general_cash_funding_box_id" class="form-control general-cash-box-select" required>
+                                    <option value="">Seleccione una caja</option>
+                                    @foreach($boxes as $box)<option value="{{ $box->id }}" data-company="{{ $box->company_id }}" data-currency="{{ $box->currency_id }}">{{ $box->code }} · {{ $box->name }} · {{ $box->currency?->code }}</option>@endforeach
+                                </select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label for="general_cash_bank_account_id">Cuenta bancaria origen <b>*</b></label>
+                                <select name="company_bank_account_id" id="general_cash_bank_account_id" class="form-control" required><option value="">Seleccione primero una caja</option></select>
+                                <small id="generalCashBankBalance" class="general-cash-funding-help"><i class="fas fa-info-circle mr-1"></i>El saldo disponible aparecerá al seleccionar una cuenta.</small>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="general-cash-funding-section">
+                        <header><span><i class="fas fa-file-invoice-dollar"></i></span><div><h6>Datos de la operación</h6><p>Identifica el retiro tal como figura en el movimiento bancario.</p></div></header>
+                        <div class="form-row">
+                            <div class="form-group col-md-4"><label>Fecha <b>*</b></label><input type="date" name="movement_date" class="form-control" value="{{ now()->toDateString() }}" required></div>
+                            <div class="form-group col-md-4"><label>Monto retirado <b>*</b></label><div class="general-cash-funding-amount"><span><i class="fas fa-coins"></i></span><input type="number" name="amount" min="0.01" step="0.01" class="form-control" placeholder="0.00" required></div></div>
+                            <div class="form-group col-md-4"><label>Nro. de operación <b>*</b></label><input name="operation_number" maxlength="100" class="form-control" placeholder="Ej. OP-0001458" autocomplete="off" required></div>
+                        </div>
+                    </section>
+
+                    <section class="general-cash-funding-section">
+                        <header><span><i class="fas fa-user-check"></i></span><div><h6>Responsables</h6><p>Registra quién recibe o gestiona el efectivo.</p></div></header>
+                        <div class="form-row">
+                            <div class="form-group col-md-6"><label>Responsable del sistema</label><select name="responsible_user_id" class="form-control"><option value="">Seleccione un responsable</option>@foreach($users as $user)<option value="{{ $user->id }}">{{ trim($user->name.' '.$user->lastname) }}</option>@endforeach</select></div>
+                            <div class="form-group col-md-6"><label>Responsable externo / referencia</label><input name="responsible_name" maxlength="150" class="form-control" placeholder="Nombre o referencia adicional"></div>
+                        </div>
+                    </section>
+
+                    <section class="general-cash-funding-section mb-0">
+                        <header><span><i class="fas fa-paperclip"></i></span><div><h6>Sustento y observación</h6><p>Adjunta evidencia de la operación y agrega información complementaria.</p></div></header>
+                        <div class="form-row align-items-stretch">
+                            <div class="form-group col-lg-5 mb-lg-0">
+                                <label>Sustento <em>Opcional</em></label>
+                                <label class="general-cash-funding-upload" for="general_cash_funding_support_file">
+                                    <input type="file" name="support_file" id="general_cash_funding_support_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx">
+                                    <span class="general-cash-funding-upload-icon"><i class="fas fa-cloud-upload-alt"></i></span>
+                                    <span class="general-cash-funding-upload-copy"><strong>Seleccionar comprobante</strong><small>PDF, imagen o Excel · máximo 15 MB</small></span>
+                                    <span class="general-cash-funding-upload-action">Examinar</span>
+                                </label>
+                                <div id="generalCashFundingFileName" class="general-cash-funding-file-name"><i class="far fa-file mr-1"></i>Ningún archivo seleccionado</div>
+                            </div>
+                            <div class="form-group col-lg-7 mb-0">
+                                <div class="d-flex justify-content-between align-items-center"><label for="general_cash_funding_observation">Observación</label><small id="generalCashFundingObservationCount" class="general-cash-funding-counter">0 / 1500</small></div>
+                                <textarea name="observation" id="general_cash_funding_observation" class="form-control general-cash-funding-observation" rows="4" maxlength="1500" placeholder="Añade una referencia, detalle del retiro o indicación para auditoría."></textarea>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="modal-footer general-cash-funding-footer">
+                    <small><i class="fas fa-lock mr-1"></i>La operación quedará registrada con fecha, usuario y trazabilidad.</small>
+                    <div>
+                        <button type="button" class="btn general-cash-funding-cancel" data-dismiss="modal"><i class="fas fa-times mr-1"></i>Cancelar</button>
+                        <button class="btn general-cash-funding-submit" type="submit"><i class="fas fa-arrow-right mr-1"></i><span>Ingresar efectivo</span></button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <div class="modal fade general-cash-modal" id="generalCashExpenseModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content"><form id="generalCashExpenseForm" enctype="multipart/form-data">
     @csrf<input type="hidden" name="idempotency_key" id="general_cash_expense_key">

@@ -96,6 +96,7 @@ function profitabilityAttachmentCost(array $attributes = []): WarehouseEntryExpe
         'affects_inventory_cost' => false,
         'description' => 'COSTO DE PRUEBA',
         'status' => 'ACTIVE',
+        'approval_status' => WarehouseEntryExpense::APPROVAL_APPROVED,
     ], $attributes));
 }
 
@@ -484,6 +485,14 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         'igv_amount' => 0,
         'total_amount' => 400.00,
     ]);
+    profitabilityAttachmentCost([
+        'source_type' => WarehouseEntryExpense::SOURCE_BANK,
+        'approval_status' => WarehouseEntryExpense::APPROVAL_PENDING,
+        'amount' => 999.00,
+        'taxable_amount' => 999.00,
+        'total_amount' => 999.00,
+        'description' => 'NO DEBE AFECTAR LA RENTABILIDAD',
+    ]);
 
     $data = app(CustomerOrderProfitabilityService::class)->calculate(
         $this->order->fresh(),
@@ -506,6 +515,7 @@ it('calcula el modal con bases sin IGV y conserva visibles los totales registrad
         ->and($data['percentage'])->toBe(11.02)
         ->and($data['linkedTotal'])->toBe(427.50)
         ->and(round($data['linkedProfitValue'], 2))->toBe(423.31)
+        ->and($data['costs'])->toHaveCount(2)
         ->and($data['igvPayable'])->toBe(550.46)
         ->and($data['totalTaxes'])->toBe(1452.59)
         ->and($data['gross'])->not->toBe(3636.03);

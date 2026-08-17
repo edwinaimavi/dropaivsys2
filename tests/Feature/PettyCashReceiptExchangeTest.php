@@ -103,7 +103,7 @@ it('dispone de todas las columnas seguras para integrar caja chica con almacén'
     }
 });
 
-it('solo lista para almacén gastos aprobados que pertenecen a cajas abiertas', function () {
+it('lista para almacén gastos aprobados de cajas abiertas o cerradas y excluye cajas anuladas', function () {
     $receipt = createReceiptExpense(48.50, '000-open-box');
     $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
 
@@ -122,6 +122,12 @@ it('solo lista para almacén gastos aprobados que pertenecen a cajas abiertas', 
         'closed_at' => now(),
     ]);
 
+    $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
+        'company_id' => $this->company->id,
+        'currency_id' => $this->currency->id,
+    ]))->assertOk()->assertJsonPath('data.0.id', $receipt->id);
+
+    PettyCashBox::whereKey($this->boxId)->update(['status' => PettyCashBox::STATUS_CANCELLED]);
     $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
         'company_id' => $this->company->id,
         'currency_id' => $this->currency->id,
@@ -381,7 +387,7 @@ it('revierte la vinculación cuando un adjunto de caja chica ya no existe', func
     expect(WarehouseEntryExpense::where('warehouse_entry_id', $entry->id)->exists())->toBeFalse();
 });
 
-it('rechaza en backend una vinculación nueva proveniente de una caja cerrada', function () {
+it('permite en backend una vinculación nueva proveniente de una caja cerrada', function () {
     $receipt = createReceiptExpense(52.00, '000-closed-box');
     $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
     PettyCashBox::whereKey($this->boxId)->update([
@@ -405,29 +411,22 @@ it('rechaza en backend una vinculación nueva proveniente de una caja cerrada', 
     ]);
     $syncExpenses = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
 
-    try {
-        $syncExpenses->invoke(app(WarehouseEntryController::class), $entry, [[
-            'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
-            'petty_cash_expense_id' => $receipt->id,
-            'expense_type' => 'pickup_transfer',
-            'expense_category' => 'freight_transport',
-            'cost_origin' => 'third_party',
-            'document_type' => 'RECIBO_INTERNO',
-            'document_date' => '2026-07-02',
-            'amount' => 52,
-            'affects_igv' => false,
-            'affects_inventory_cost' => false,
-            'description' => 'INTENTO DESDE CAJA CERRADA',
-        ]], [], []);
+    $syncExpenses->invoke(app(WarehouseEntryController::class), $entry, [[
+        'source_type' => WarehouseEntryExpense::SOURCE_PETTY_CASH,
+        'petty_cash_expense_id' => $receipt->id,
+        'expense_type' => 'pickup_transfer',
+        'expense_category' => 'freight_transport',
+        'cost_origin' => 'third_party',
+        'document_type' => 'RECIBO_INTERNO',
+        'document_date' => '2026-07-02',
+        'amount' => 52,
+        'affects_igv' => false,
+        'affects_inventory_cost' => false,
+        'description' => 'INTENTO DESDE CAJA CERRADA',
+    ]], [], []);
 
-        $this->fail('La vinculación desde una caja cerrada debió ser rechazada.');
-    } catch (ValidationException $exception) {
-        expect($exception->errors()['expenses.0.petty_cash_expense_id'][0])->toBe(
-            'Este gasto pertenece a una caja chica cerrada y no puede vincularse a un ingreso de almacén.'
-        );
-    }
-
-    expect(WarehouseEntryExpense::where('warehouse_entry_id', $entry->id)->exists())->toBeFalse();
+    expect(WarehouseEntryExpense::where('warehouse_entry_id', $entry->id)
+        ->where('petty_cash_expense_id', $receipt->id)->exists())->toBeTrue();
 });
 
 it('canjea conjuntamente recibos de diferentes proveedores y conserva su trazabilidad', function () {
@@ -580,7 +579,7 @@ it('vincula una sola vez el recibo a almacén y sincroniza el comprobante oficia
     $this->getJson(route('admin.warehouse-entries.petty-cash-expenses.available', [
         'company_id' => $this->company->id,
         'currency_id' => $this->currency->id,
-    ]))->assertOk()->assertJsonCount(0, 'data');
+    ]))->assertOk()->assertJsonPath('data.0.id', $receipt->id);
     $linkedCost->update(['status' => 'ACTIVE']);
 
     $this->post(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [

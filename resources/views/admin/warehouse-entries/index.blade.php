@@ -543,7 +543,7 @@
         #warehouseEntryOriginalExpensesCard .card-header{padding:13px 15px!important;background:linear-gradient(135deg,#f7fbfa,#eef7f5)}
         .warehouse-entry-expense-body{padding:14px!important;background:#f7f9f9}
         .warehouse-entry-delivery-help{display:flex;padding:12px 14px;gap:11px;align-items:flex-start;border:1px solid #cfe5e1;border-left:4px solid #159484;border-radius:10px;background:#f1faf8;color:#385d55}.warehouse-entry-delivery-help>i{margin-top:2px;color:#11897b;font-size:18px}.warehouse-entry-delivery-help strong,.warehouse-entry-delivery-help span{display:block}.warehouse-entry-delivery-help strong{font-size:11px}.warehouse-entry-delivery-help span{margin-top:2px;color:#68817b;font-size:10px}
-        @media (max-width:575.98px){.warehouse-entry-expenses-table tbody td:nth-child(1):before{content:'Tipo'!important}.warehouse-entry-expenses-table tbody td:nth-child(2):before{content:'Agencia / Responsable'!important}.warehouse-entry-expenses-table tbody td:nth-child(3):before{content:'Documento'!important}.warehouse-entry-expenses-table tbody td:nth-child(4):before{content:'Importe'!important}.warehouse-entry-expenses-table tbody td:nth-child(5):before{content:'IGV'!important}.warehouse-entry-expenses-table tbody td:nth-child(6):before{content:'Observación'!important}.warehouse-entry-expenses-table tbody td:nth-child(7):before{content:'Documentos'!important}.warehouse-entry-expenses-table tbody td:nth-child(8):before{content:'Acciones'!important}}
+        @media (max-width:575.98px){.warehouse-entry-expenses-table tbody td:nth-child(1):before{content:'Tipo'!important}.warehouse-entry-expenses-table tbody td:nth-child(2):before{content:'Responsable'!important}.warehouse-entry-expenses-table tbody td:nth-child(3):before{content:'Documento'!important}.warehouse-entry-expenses-table tbody td:nth-child(4):before{content:'Importe'!important}.warehouse-entry-expenses-table tbody td:nth-child(5):before{content:'IGV'!important}.warehouse-entry-expenses-table tbody td:nth-child(6):before{content:'Clasificación'!important}.warehouse-entry-expenses-table tbody td:nth-child(7):before{content:'Origen'!important}.warehouse-entry-expenses-table tbody td:nth-child(8):before{content:'Estado'!important}.warehouse-entry-expenses-table tbody td:nth-child(9):before{content:'Observación'!important}.warehouse-entry-expenses-table tbody td:nth-child(10):before{content:'Documentos'!important}.warehouse-entry-expenses-table tbody td:nth-child(11):before{content:'Acciones'!important}}
         .warehouse-entry-expense-kpis{margin:0 -5px 10px}.warehouse-entry-expense-kpis>div{padding:0 5px;margin-bottom:6px}.warehouse-entry-expense-kpi{display:flex;min-height:68px;padding:11px 12px;gap:10px;align-items:center;border:1px solid #deebe8;border-radius:11px;background:#fff;box-shadow:0 4px 13px rgba(37,62,54,.04)}.warehouse-entry-expense-kpi>i{display:flex;width:34px;height:34px;align-items:center;justify-content:center;flex:0 0 auto;border-radius:9px;background:#e4f5f2;color:#138478}.warehouse-entry-expense-kpi span{color:#74827e;font-size:9px;font-weight:700;text-transform:uppercase}.warehouse-entry-expense-kpi strong{display:block;margin-top:2px;color:#25483f;font-size:15px;letter-spacing:0;text-transform:none}
         .warehouse-entry-expense-form{padding:14px 14px 12px;border:1px solid #e3ecea;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(37,62,54,.045)}
         .warehouse-entry-expense-form .row{margin-right:-5px;margin-left:-5px}.warehouse-entry-expense-form .form-group{margin-bottom:10px;padding-right:5px;padding-left:5px}.warehouse-entry-expense-form label{margin-bottom:4px;color:#697773;font-size:9px;font-weight:800;letter-spacing:.035em}
@@ -575,6 +575,8 @@
         .warehouse-entry-petty-cash-table tbody td { vertical-align: middle; font-size: 12px; }
         .warehouse-entry-source-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .warehouse-entry-source-badge.is-petty-cash { background: #e2f3ec; color: #167154; }
+        .warehouse-entry-source-badge.is-general-cash { background: #fff2d9; color: #8a6114; }
+        .warehouse-entry-source-badge.is-bank { background: #e5eef8; color: #35658d; }
         .warehouse-entry-source-badge.is-manual { background: #eef1f3; color: #66747a; }
 
         @media (min-width: 1200px) {
@@ -1520,6 +1522,7 @@
             warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}",
             warehouseEntryCompanyBankAccounts: "{{ url('admin/warehouse-entries/company') }}",
             warehouseEntryAvailablePettyCashExpenses: "{{ route('admin.warehouse-entries.petty-cash-expenses.available') }}",
+            warehouseEntryExpenseApproval: "{{ url('admin/warehouse-entries') }}",
             supplierPurchaseOrderLogisticsStatus: "{{ url('admin/supplier-purchase-orders') }}"
         });
     </script>

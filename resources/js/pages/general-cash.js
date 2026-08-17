@@ -21,7 +21,13 @@ $(function () {
     }
 
     function setBusy(form, busy) {
-        $(form).find('button[type="submit"]').prop('disabled', busy);
+        const button = $(form).find('button[type="submit"]').prop('disabled', busy);
+        if (form.id === 'generalCashFundingForm') {
+            button.find('i')
+                .toggleClass('fa-arrow-right', !busy)
+                .toggleClass('fa-spinner fa-spin', busy);
+            button.find('span').text(busy ? 'Procesando...' : 'Ingresar efectivo');
+        }
     }
 
     function submitForm(form, url, method, success) {
@@ -91,8 +97,17 @@ $(function () {
         }).fail(notifyError);
     });
 
+    function resetFundingVisuals() {
+        $('#generalCashFundingFileName')
+            .removeClass('has-file')
+            .html('<i class="far fa-file mr-1"></i>Ningún archivo seleccionado');
+        $('.general-cash-funding-upload').removeClass('has-file is-dragging');
+        $('#generalCashFundingObservationCount').text('0 / 1500');
+    }
+
     function openFunding(boxId='') {
         document.getElementById('generalCashFundingForm').reset();
+        resetFundingVisuals();
         $('#general_cash_funding_key').val(uuid('funding'));
         $('#general_cash_funding_box_id').val(boxId).trigger('change');
         $('#generalCashFundingModal').modal('show');
@@ -101,15 +116,40 @@ $(function () {
     $(document).on('click','.btn-general-cash-fund',function(){openFunding($(this).data('id'));});
     $('#general_cash_funding_box_id').on('change',function(){
         const option=$(this).find(':selected'); const account=$('#general_cash_bank_account_id');
-        account.html('<option value="">Cargando cuentas...</option>'); $('#generalCashBankBalance').text('');
-        if(!this.value) return account.html('<option value="">Seleccione primero una caja</option>');
+        account.html('<option value="">Cargando cuentas...</option>');
+        $('#generalCashBankBalance').html('<i class="fas fa-circle-notch fa-spin mr-1"></i>Consultando cuentas disponibles...');
+        if(!this.value) {
+            $('#generalCashBankBalance').html('<i class="fas fa-info-circle mr-1"></i>El saldo disponible aparecerá al seleccionar una cuenta.');
+            return account.html('<option value="">Seleccione primero una caja</option>');
+        }
         $.get(routes.bankAccounts,{company_id:option.data('company'),currency_id:option.data('currency')}).done(response=>{
             const rows=response.data||[];
             account.html(rows.length?'<option value="">Seleccione</option>':'<option value="">No hay cuentas activas disponibles</option>');
             rows.forEach(row=>account.append(`<option value="${row.id}" data-balance="${row.current_balance}">${escapeHtml(row.bank?.short_name||row.bank?.description)} · ${escapeHtml(row.account_number)} · Saldo ${money(row.current_balance)}</option>`));
+            $('#generalCashBankBalance').html(rows.length
+                ? '<i class="fas fa-info-circle mr-1"></i>Selecciona una cuenta para consultar su saldo.'
+                : '<i class="fas fa-exclamation-circle mr-1"></i>No hay cuentas activas para esta caja y moneda.');
         }).fail(notifyError);
     });
-    $('#general_cash_bank_account_id').on('change',function(){const balance=$(this).find(':selected').data('balance');$('#generalCashBankBalance').text(balance===undefined?'':`Saldo bancario disponible: ${money(balance)}`);});
+    $('#general_cash_bank_account_id').on('change',function(){
+        const balance=$(this).find(':selected').data('balance');
+        $('#generalCashBankBalance').html(balance===undefined
+            ? '<i class="fas fa-info-circle mr-1"></i>Selecciona una cuenta para consultar su saldo.'
+            : `<i class="fas fa-wallet mr-1"></i>Saldo bancario disponible: <strong>${money(balance)}</strong>`);
+    });
+    $('#general_cash_funding_support_file').on('change',function(){
+        const file=this.files?.[0];
+        $('.general-cash-funding-upload').toggleClass('has-file', Boolean(file));
+        $('#generalCashFundingFileName')
+            .toggleClass('has-file', Boolean(file))
+            .html(file
+                ? `<i class="fas fa-check-circle mr-1"></i>${escapeHtml(file.name)}`
+                : '<i class="far fa-file mr-1"></i>Ningún archivo seleccionado');
+    }).on('dragenter dragover',function(){$('.general-cash-funding-upload').addClass('is-dragging');})
+        .on('dragleave drop',function(){$('.general-cash-funding-upload').removeClass('is-dragging');});
+    $('#general_cash_funding_observation').on('input',function(){
+        $('#generalCashFundingObservationCount').text(`${this.value.length} / 1500`);
+    });
     $('#generalCashFundingForm').on('submit',function(e){e.preventDefault();submitForm(this,routes.funding,'POST');});
 
     function openExpense(boxId='') {

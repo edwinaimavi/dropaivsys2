@@ -11,6 +11,18 @@ class WarehouseEntryExpense extends Model
 
     public const SOURCE_PETTY_CASH = 'petty_cash';
 
+    public const SOURCE_GENERAL_CASH = 'general_cash';
+
+    public const SOURCE_BANK = 'bank';
+
+    public const APPROVAL_PENDING = 'pending';
+
+    public const APPROVAL_APPROVED = 'approved';
+
+    public const APPROVAL_OBSERVED = 'observed';
+
+    public const APPROVAL_REJECTED = 'rejected';
+
     public const DOCUMENT_CLASSIFICATION_OFFICIAL = 'official';
 
     public const DOCUMENT_CLASSIFICATION_NON_OFFICIAL = 'non_official';
@@ -31,7 +43,7 @@ class WarehouseEntryExpense extends Model
         'SIN_COMPROBANTE' => 'Sin comprobante',
     ];
 
-    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'source_type', 'petty_cash_expense_id', 'petty_cash_replenishment_id', 'document_classification', 'official_document_type', 'internal_document_type', 'exchanged_document_id', 'exchanged_at', 'payment_proof_path', 'official_document_path', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'created_by', 'updated_by'];
+    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'source_type', 'petty_cash_expense_id', 'petty_cash_replenishment_id', 'general_cash_box_id', 'general_cash_movement_id', 'company_bank_account_id', 'bank_movement_id', 'document_classification', 'official_document_type', 'internal_document_type', 'exchanged_document_id', 'exchanged_at', 'payment_proof_path', 'official_document_path', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'approval_status', 'approval_observation', 'created_by', 'updated_by', 'approved_by', 'approved_at'];
 
     protected $casts = [
         'document_date' => 'date',
@@ -43,6 +55,7 @@ class WarehouseEntryExpense extends Model
         'igv_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'affects_inventory_cost' => 'boolean',
+        'approved_at' => 'datetime',
     ];
 
     public static function supportsIgv(?string $documentType): bool
@@ -162,6 +175,56 @@ class WarehouseEntryExpense extends Model
     public function pettyCashReplenishment()
     {
         return $this->belongsTo(PettyCashReplenishment::class);
+    }
+
+    public function generalCashBox()
+    {
+        return $this->belongsTo(GeneralCashBox::class);
+    }
+
+    public function generalCashMovement()
+    {
+        return $this->belongsTo(GeneralCashMovement::class);
+    }
+
+    public function companyBankAccount()
+    {
+        return $this->belongsTo(CompanyBankAccount::class);
+    }
+
+    public function bankMovement()
+    {
+        return $this->belongsTo(BankMovement::class);
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public static function sourceLabel(?string $source): string
+    {
+        return match ($source) {
+            self::SOURCE_PETTY_CASH => 'Caja Chica',
+            self::SOURCE_GENERAL_CASH => 'Caja General',
+            self::SOURCE_BANK => 'Banco',
+            default => 'Manual / pendiente',
+        };
+    }
+
+    public static function approvalLabel(?string $status): string
+    {
+        return match ($status) {
+            self::APPROVAL_APPROVED => 'Aprobado',
+            self::APPROVAL_OBSERVED => 'Observado',
+            self::APPROVAL_REJECTED => 'Rechazado',
+            default => 'Pendiente de aprobación',
+        };
     }
 
     public function exchangedDocument()

@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\Document;
 use App\Models\DocumentType;
+use App\Models\GeneralCashBox;
 use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
@@ -78,6 +79,7 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.index')->only(['downloadLotDocument']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
+        $this->middleware('can:admin.warehouse-entries.expenses.approve')->only(['updateExpenseApproval']);
     }
 
     public function index(Request $request)
@@ -121,6 +123,11 @@ class WarehouseEntryController extends Controller
             ->orderBy('trade_name')
             ->orderBy('business_name')
             ->get(['id', 'ruc', 'business_name', 'trade_name']);
+        $generalCashBoxes = GeneralCashBox::query()
+            ->with(['currency:id,code,symbol', 'responsible:id,name,lastname'])
+            ->where('status', GeneralCashBox::STATUS_ACTIVE)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'company_id', 'currency_id', 'responsible_user_id', 'current_balance']);
 
         return view('admin.warehouse-entries.index', compact(
             'supplierPurchaseOrders',
@@ -134,6 +141,7 @@ class WarehouseEntryController extends Controller
             'brands',
             'warehouses',
             'shippingAgencies',
+            'generalCashBoxes',
             'warehouseEntryDeepLink'
         ));
     }
@@ -537,6 +545,59 @@ class WarehouseEntryController extends Controller
         return $this->saveEntry($request);
     }
 
+    public function updateExpenseApproval(Request $request, WarehouseEntry $warehouseEntry, WarehouseEntryExpense $expense)
+    {
+        abort_unless($expense->warehouse_entry_id === $warehouseEntry->id && $expense->status === 'ACTIVE', 404);
+        abort_if($expense->source_type === WarehouseEntryExpense::SOURCE_PETTY_CASH, 422, 'La aprobación de este gasto se gestiona desde Caja Chica.');
+
+        $validated = $request->validate([
+            'approval_status' => ['required', Rule::in([
+                WarehouseEntryExpense::APPROVAL_APPROVED,
+                WarehouseEntryExpense::APPROVAL_OBSERVED,
+                WarehouseEntryExpense::APPROVAL_REJECTED,
+            ])],
+            'approval_observation' => [
+                Rule::requiredIf(in_array($request->input('approval_status'), [
+                    WarehouseEntryExpense::APPROVAL_OBSERVED,
+                    WarehouseEntryExpense::APPROVAL_REJECTED,
+                ], true)),
+                'nullable', 'string', 'max:1000',
+            ],
+        ]);
+
+        if (! in_array($expense->source_type, [
+            WarehouseEntryExpense::SOURCE_MANUAL,
+            WarehouseEntryExpense::SOURCE_GENERAL_CASH,
+            WarehouseEntryExpense::SOURCE_BANK,
+        ], true)) {
+            throw ValidationException::withMessages(['source_type' => 'El gasto no tiene una fuente de pago válida.']);
+        }
+        if ($expense->source_type === WarehouseEntryExpense::SOURCE_GENERAL_CASH && ! $expense->general_cash_box_id) {
+            throw ValidationException::withMessages(['general_cash_box_id' => 'El gasto no tiene una Caja General vinculada.']);
+        }
+        if ($expense->source_type === WarehouseEntryExpense::SOURCE_BANK && ! $expense->company_bank_account_id) {
+            throw ValidationException::withMessages(['company_bank_account_id' => 'El gasto no tiene una cuenta bancaria vinculada.']);
+        }
+
+        DB::transaction(function () use ($expense, $validated) {
+            $approved = $validated['approval_status'] === WarehouseEntryExpense::APPROVAL_APPROVED;
+            $expense->update([
+                'approval_status' => $validated['approval_status'],
+                'approval_observation' => $this->upperOrNull($validated['approval_observation'] ?? null),
+                'approved_by' => $approved ? Auth::id() : null,
+                'approved_at' => $approved ? now() : null,
+                'updated_by' => Auth::id(),
+            ]);
+            $this->recalculateEntryExpenseCosts($expense->warehouseEntry);
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'El estado de aprobación del gasto fue actualizado.',
+            'data' => $expense->fresh(['creator:id,name,lastname', 'approver:id,name,lastname']),
+        ]);
+    }
+
     public function show(WarehouseEntry $warehouseEntry)
     {
         $warehouseEntry->load([
@@ -569,6 +630,14 @@ class WarehouseEntryController extends Controller
             'expenses.currency:id,code,symbol',
             'expenses.pettyCashExpense.pettyCashBox:id,code,company_id,currency_id',
             'expenses.pettyCashExpense.exchange:id,document_type,document_series,document_correlative,exchange_date,status',
+            'expenses.generalCashBox:id,code,name,responsible_user_id',
+            'expenses.generalCashBox.responsible:id,name,lastname',
+            'expenses.generalCashMovement:id,code,operation_number,responsible_name',
+            'expenses.companyBankAccount:id,bank_id,account_number,cci',
+            'expenses.companyBankAccount.bank:id,description,short_name',
+            'expenses.bankMovement:id,code,operation_number',
+            'expenses.creator:id,name,lastname',
+            'expenses.approver:id,name,lastname',
             'expenses.distributions.item:id,warehouse_entry_id,billing_name_snapshot,quantity,unit_price',
             'expenses.documents',
             'documents' => function ($query) {
@@ -963,12 +1032,18 @@ class WarehouseEntryController extends Controller
             'expenses.*.source_type' => ['nullable', Rule::in([
                 WarehouseEntryExpense::SOURCE_MANUAL,
                 WarehouseEntryExpense::SOURCE_PETTY_CASH,
+                WarehouseEntryExpense::SOURCE_GENERAL_CASH,
+                WarehouseEntryExpense::SOURCE_BANK,
             ])],
             'expenses.*.petty_cash_expense_id' => [
                 'nullable',
                 'integer',
                 'exists:petty_cash_expenses,id',
             ],
+            'expenses.*.general_cash_box_id' => ['nullable', 'integer', 'exists:general_cash_boxes,id'],
+            'expenses.*.general_cash_movement_id' => ['nullable', 'integer', 'exists:general_cash_movements,id'],
+            'expenses.*.company_bank_account_id' => ['nullable', 'integer', 'exists:company_bank_accounts,id'],
+            'expenses.*.bank_movement_id' => ['nullable', 'integer', 'exists:bank_movements,id'],
             'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
             'expenses.*.cost_origin' => ['required', Rule::in(['included_in_purchase_price', 'same_purchase_document', 'third_party', 'internal_without_document'])],
             'expenses.*.expense_type' => ['required', Rule::in(['agency_freight', 'pickup_transfer', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse', 'supplier_warehouse_pickup', 'transfer_to_agency', 'transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
@@ -1384,9 +1459,12 @@ class WarehouseEntryController extends Controller
             $existingExpense = ! empty($data['id'])
                 ? $entry->expenses()->with('documents')->whereKey($data['id'])->firstOrFail()
                 : null;
-            $sourceType = ($data['source_type'] ?? WarehouseEntryExpense::SOURCE_MANUAL) === WarehouseEntryExpense::SOURCE_PETTY_CASH
-                ? WarehouseEntryExpense::SOURCE_PETTY_CASH
-                : WarehouseEntryExpense::SOURCE_MANUAL;
+            $sourceType = in_array($data['source_type'] ?? null, [
+                WarehouseEntryExpense::SOURCE_PETTY_CASH,
+                WarehouseEntryExpense::SOURCE_GENERAL_CASH,
+                WarehouseEntryExpense::SOURCE_BANK,
+                WarehouseEntryExpense::SOURCE_MANUAL,
+            ], true) ? $data['source_type'] : WarehouseEntryExpense::SOURCE_MANUAL;
             if ($existingExpense?->source_type === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
                 $sourceType = WarehouseEntryExpense::SOURCE_PETTY_CASH;
                 $data['petty_cash_expense_id'] = $existingExpense->petty_cash_expense_id;
@@ -1420,13 +1498,9 @@ class WarehouseEntryController extends Controller
                     ]);
                 }
                 if (! $keepsExistingPettyCashLink
-                    && $pettyCashExpense->pettyCashBox?->status !== PettyCashBox::STATUS_OPEN) {
-                    $message = $pettyCashExpense->pettyCashBox?->status === PettyCashBox::STATUS_CLOSED
-                        ? 'Este gasto pertenece a una caja chica cerrada y no puede vincularse a un ingreso de almacén.'
-                        : 'Este gasto no pertenece a una caja chica abierta y no puede vincularse a un ingreso de almacén.';
-
+                    && $pettyCashExpense->pettyCashBox?->status === PettyCashBox::STATUS_CANCELLED) {
                     throw ValidationException::withMessages([
-                        "expenses.$index.petty_cash_expense_id" => $message,
+                        "expenses.$index.petty_cash_expense_id" => 'No se puede vincular un gasto proveniente de una caja chica anulada.',
                     ]);
                 }
                 if ((int) $pettyCashExpense->pettyCashBox?->company_id !== (int) $entry->company_id
@@ -1436,6 +1510,7 @@ class WarehouseEntryController extends Controller
                     ]);
                 }
                 $alreadyLinked = $pettyCashExpense->warehouseEntryExpenses()
+                    ->where('status', 'ACTIVE')
                     ->when($existingExpense, fn ($query) => $query->where('id', '!=', $existingExpense->id))
                     ->exists();
                 if ($alreadyLinked) {
@@ -1446,12 +1521,33 @@ class WarehouseEntryController extends Controller
 
                 $data = $this->pettyCashWarehouseExpenseService->applyPettyCashData($data, $pettyCashExpense);
             } else {
-                $data['source_type'] = WarehouseEntryExpense::SOURCE_MANUAL;
+                $data['source_type'] = $sourceType;
                 $data['petty_cash_expense_id'] = null;
                 $data['petty_cash_replenishment_id'] = null;
                 $data['exchanged_document_id'] = null;
                 $data['exchanged_at'] = null;
                 $data = array_merge($data, WarehouseEntryExpense::documentMetadata($data['document_type'] ?? null));
+
+                if ($sourceType === WarehouseEntryExpense::SOURCE_GENERAL_CASH) {
+                    $box = GeneralCashBox::query()->where('status', GeneralCashBox::STATUS_ACTIVE)
+                        ->find($data['general_cash_box_id'] ?? null);
+                    if (! $box || (int) $box->company_id !== (int) $entry->company_id
+                        || (int) $box->currency_id !== (int) $entry->currency_id) {
+                        throw ValidationException::withMessages([
+                            "expenses.$index.general_cash_box_id" => 'Seleccione una Caja General activa de la misma empresa y moneda.',
+                        ]);
+                    }
+                }
+                if ($sourceType === WarehouseEntryExpense::SOURCE_BANK) {
+                    $account = CompanyBankAccount::query()->where('status', 'ACTIVE')
+                        ->find($data['company_bank_account_id'] ?? null);
+                    if (! $account || (int) $account->company_id !== (int) $entry->company_id
+                        || (int) $account->currency_id !== (int) $entry->currency_id) {
+                        throw ValidationException::withMessages([
+                            "expenses.$index.company_bank_account_id" => 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.',
+                        ]);
+                    }
+                }
             }
 
             $data = $this->prepareLinkedExpense($data, $index);
@@ -1522,7 +1618,7 @@ class WarehouseEntryController extends Controller
             if (! $data['provider_ruc'] && ! empty($data['provider_id'])) {
                 $data['provider_ruc'] = $this->upperOrNull(Supplier::query()->whereKey($data['provider_id'])->value('ruc'));
             }
-            if ($sourceType === WarehouseEntryExpense::SOURCE_MANUAL
+            if ($sourceType !== WarehouseEntryExpense::SOURCE_PETTY_CASH
                 && $data['document_type'] && $data['document_series'] && $data['document_number']) {
                 $duplicate = WarehouseEntryExpense::query()
                     ->where('status', 'ACTIVE')
@@ -1584,6 +1680,20 @@ class WarehouseEntryController extends Controller
                     'source_type' => $sourceType,
                     'petty_cash_expense_id' => $pettyCashExpense?->id,
                     'petty_cash_replenishment_id' => $data['petty_cash_replenishment_id'] ?? null,
+                    'general_cash_box_id' => $sourceType === WarehouseEntryExpense::SOURCE_GENERAL_CASH
+                        ? ($data['general_cash_box_id'] ?? null)
+                        : null,
+                    'general_cash_movement_id' => $sourceType === WarehouseEntryExpense::SOURCE_GENERAL_CASH
+                        && $existingExpense?->source_type === WarehouseEntryExpense::SOURCE_GENERAL_CASH
+                            ? $existingExpense->general_cash_movement_id
+                            : null,
+                    'company_bank_account_id' => $sourceType === WarehouseEntryExpense::SOURCE_BANK
+                        ? ($data['company_bank_account_id'] ?? null)
+                        : null,
+                    'bank_movement_id' => $sourceType === WarehouseEntryExpense::SOURCE_BANK
+                        && $existingExpense?->source_type === WarehouseEntryExpense::SOURCE_BANK
+                            ? $existingExpense->bank_movement_id
+                            : null,
                     'document_classification' => $data['document_classification'],
                     'official_document_type' => $data['official_document_type'],
                     'internal_document_type' => $data['internal_document_type'],
@@ -1593,7 +1703,25 @@ class WarehouseEntryController extends Controller
                     'official_document_path' => $data['official_document_path'] ?? null,
                 ]);
             }
-            $expense->fill($expenseData)->save();
+            $expense->fill($expenseData);
+            $requiresNewApproval = ! $expense->exists || $expense->isDirty([
+                'source_type', 'general_cash_box_id', 'company_bank_account_id', 'expense_type',
+                'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series',
+                'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv',
+                'affects_inventory_cost', 'distribution_method', 'description',
+            ]);
+            if ($sourceType === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
+                $expense->approval_status = WarehouseEntryExpense::APPROVAL_APPROVED;
+                $expense->approved_by = $pettyCashExpense?->approved_by_user_id;
+                $expense->approved_at = $pettyCashExpense?->approved_at;
+                $expense->approval_observation = $pettyCashExpense?->approval_observation;
+            } elseif ($requiresNewApproval || blank($expense->approval_status)) {
+                $expense->approval_status = WarehouseEntryExpense::APPROVAL_PENDING;
+                $expense->approved_by = null;
+                $expense->approved_at = null;
+                $expense->approval_observation = null;
+            }
+            $expense->save();
             $retainedExpenseIds[] = $expense->id;
 
             $allocations = $affectsCost
@@ -1650,19 +1778,27 @@ class WarehouseEntryController extends Controller
             WarehouseEntryExpense::query()->whereIn('id', $removedExpenseIds)
                 ->update(['status' => 'INACTIVE', 'updated_by' => Auth::id()]);
         }
+        $this->recalculateEntryExpenseCosts($entry);
+    }
+
+    private function recalculateEntryExpenseCosts(WarehouseEntry $entry): void
+    {
         $costs = DB::table('warehouse_entry_expense_distributions as distributions')
             ->join('warehouse_entry_expenses as expenses', 'expenses.id', '=', 'distributions.warehouse_entry_expense_id')
-            ->where('expenses.warehouse_entry_id', $entry->id)->where('expenses.status', 'ACTIVE')
+            ->where('expenses.warehouse_entry_id', $entry->id)
+            ->where('expenses.status', 'ACTIVE')
+            ->where('expenses.approval_status', WarehouseEntryExpense::APPROVAL_APPROVED)
             ->groupBy('distributions.warehouse_entry_item_id')
             ->selectRaw('distributions.warehouse_entry_item_id, SUM(distributions.distributed_amount) as distributed_amount')
             ->pluck('distributed_amount', 'warehouse_entry_item_id');
-        foreach ($items as $item) {
+
+        $entry->items()->get()->each(function ($item) use ($costs) {
             $additional = round((float) ($costs[$item->id] ?? 0), 2);
             $item->update([
                 'additional_cost' => $additional,
                 'real_unit_cost' => round((float) $item->unit_price + ($additional / (float) $item->quantity), 6),
             ]);
-        }
+        });
     }
 
     private function syncExpenseDocument(
@@ -1749,9 +1885,12 @@ class WarehouseEntryController extends Controller
 
     private function normalizeLinkedExpenseFields(array $data): array
     {
-        $data['source_type'] = ($data['source_type'] ?? null) === WarehouseEntryExpense::SOURCE_PETTY_CASH
-            ? WarehouseEntryExpense::SOURCE_PETTY_CASH
-            : WarehouseEntryExpense::SOURCE_MANUAL;
+        $data['source_type'] = in_array($data['source_type'] ?? null, [
+            WarehouseEntryExpense::SOURCE_PETTY_CASH,
+            WarehouseEntryExpense::SOURCE_GENERAL_CASH,
+            WarehouseEntryExpense::SOURCE_BANK,
+            WarehouseEntryExpense::SOURCE_MANUAL,
+        ], true) ? $data['source_type'] : WarehouseEntryExpense::SOURCE_MANUAL;
         $data['petty_cash_expense_id'] = $data['source_type'] === WarehouseEntryExpense::SOURCE_PETTY_CASH
             ? ($data['petty_cash_expense_id'] ?? null)
             : null;

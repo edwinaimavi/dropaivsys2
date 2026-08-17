@@ -225,6 +225,7 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.expenses.store' => 'Registrar gastos vinculados de ingresos de almacén',
             'admin.warehouse-entries.expenses.update' => 'Actualizar gastos vinculados de ingresos de almacén',
             'admin.warehouse-entries.expenses.destroy' => 'Eliminar gastos vinculados de ingresos de almacén',
+            'admin.warehouse-entries.expenses.approve' => 'Aprobar, observar o rechazar gastos vinculados de ingresos de almacén',
             'admin.warehouse-entries.expenses.documents.index' => 'Ver documentos de gastos vinculados de ingresos de almacén',
 
             'admin.labelings.index' => 'Ver rotulaciones',

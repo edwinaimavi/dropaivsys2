@@ -1949,7 +1949,7 @@ $(function () {
                 '<i class="fas fa-ban mr-1"></i> No se puede cerrar la caja chica porque existen gastos pendientes de aprobación. Apruebe o rechace los gastos antes de cerrar.'
             );
             $('#pcc_pending_link_warning').toggleClass('d-none', !hasPendingOperationalLinks).html(
-                '<i class="fas fa-exclamation-triangle mr-1"></i> Esta caja tiene gastos pendientes de canje o vinculación. Si la cierra, ya no podrán jalarse desde almacén. ¿Desea continuar?'
+                '<i class="fas fa-exclamation-triangle mr-1"></i> Esta caja tiene gastos pendientes de canje o vinculación. El cierre no anula los gastos aprobados y estos seguirán disponibles para vincularlos desde almacén.'
             );
             $('#btnConfirmClosePettyCash').prop('disabled', unresolvedExpenses > 0)
                 .attr('title', pendingExpenses > 0 ? 'Tiene gastos pendientes de aprobación.' : '');

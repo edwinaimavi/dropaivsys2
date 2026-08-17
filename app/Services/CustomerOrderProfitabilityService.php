@@ -100,7 +100,10 @@ class CustomerOrderProfitabilityService
             })->whereNull('entries.deleted_at')->where('entries.status', 'registered')
             ->pluck('entries.id')->unique();
         $costs = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
-            ->whereIn('warehouse_entry_id', $entryIds)->where('status', 'ACTIVE')->get();
+            ->whereIn('warehouse_entry_id', $entryIds)
+            ->where('status', 'ACTIVE')
+            ->where('approval_status', WarehouseEntryExpense::APPROVAL_APPROVED)
+            ->get();
 
         $activeSaleItems = $order->items->where('status', '!=', 'deleted');
         [

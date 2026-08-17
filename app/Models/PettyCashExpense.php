@@ -176,9 +176,10 @@ class PettyCashExpense extends Model
             ->where('status', 'ACTIVE')
             ->whereIn('document_type', self::WAREHOUSE_LINKABLE_DOCUMENT_TYPES)
             ->approved()
-            ->whereDoesntHave('warehouseEntryExpenses')
+            ->whereDoesntHave('warehouseEntryExpenses', fn (Builder $warehouseQuery) => $warehouseQuery
+                ->where('status', 'ACTIVE'))
             ->whereHas('pettyCashBox', fn (Builder $boxQuery) => $boxQuery
-                ->where('status', PettyCashBox::STATUS_OPEN));
+                ->where('status', '!=', PettyCashBox::STATUS_CANCELLED));
     }
 
     public function warehouseDocumentType(): ?string

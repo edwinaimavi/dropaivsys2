@@ -2,7 +2,7 @@
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header warehouse-entry-section-header align-items-center">
-                <div class="d-flex align-items-center"><span class="warehouse-entry-petty-cash-icon"><i class="fas fa-cash-register"></i></span><div><h5 class="modal-title mb-0">Jalar gastos desde Caja Chica</h5><small class="text-muted">Solo gastos activos, aprobados, no vinculados y provenientes de cajas abiertas.</small></div></div>
+                <div class="d-flex align-items-center"><span class="warehouse-entry-petty-cash-icon"><i class="fas fa-cash-register"></i></span><div><h5 class="modal-title mb-0">Jalar gastos desde Caja Chica</h5><small class="text-muted">Gastos activos, aprobados, no vinculados y provenientes de cajas no anuladas, incluidas abiertas y cerradas.</small></div></div>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="modal-body">
