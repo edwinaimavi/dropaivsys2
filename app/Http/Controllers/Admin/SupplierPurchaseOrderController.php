@@ -531,12 +531,18 @@ class SupplierPurchaseOrderController extends Controller
                     'id' => $account->id,
                     'company_id' => $account->company_id,
                     'currency_id' => $account->currency_id,
+                    'company_name' => $company ?: 'Empresa sin nombre',
+                    'bank_name' => $bank ?: 'Banco sin nombre',
+                    'currency_code' => $currency,
+                    'currency_symbol' => $symbol,
+                    'account_number' => $account->account_number,
+                    'balance' => (float) $account->current_balance,
                     'label' => collect([
-                        $bank ?: 'Banco sin nombre',
-                        $account->account_number,
-                        $currency,
                         $company ?: 'Empresa sin nombre',
-                        'Saldo '.$symbol.' '.number_format((float) $account->current_balance, 2),
+                        $bank ?: 'Banco sin nombre',
+                        $currency,
+                        $account->account_number,
+                        'Saldo: '.$symbol.' '.number_format((float) $account->current_balance, 2),
                     ])->filter()->join(' · '),
                 ];
             })
@@ -1996,13 +2002,13 @@ class SupplierPurchaseOrderController extends Controller
 
             if ((int) $account->company_id !== $companyId) {
                 throw ValidationException::withMessages([
-                    $field => 'La cuenta bancaria seleccionada no pertenece a la empresa de la orden.',
+                    $field => 'La cuenta bancaria seleccionada no pertenece a la empresa de la orden o no corresponde a la moneda seleccionada.',
                 ]);
             }
 
             if ((int) $account->currency_id !== $currencyId) {
                 throw ValidationException::withMessages([
-                    $field => 'La moneda de la cuenta bancaria debe coincidir con la moneda de pago del anticipo.',
+                    $field => 'La cuenta bancaria seleccionada no pertenece a la empresa de la orden o no corresponde a la moneda seleccionada.',
                 ]);
             }
         }

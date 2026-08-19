@@ -45,6 +45,9 @@ it('carga las cuentas bancarias de origen por empresa y moneda sin precargar cue
         ->not->toContain('@foreach ($companyBankAccounts as $account)')
         ->and($javascript)
         ->toContain('loadSupplierOrderAdvanceBankAccounts')
+        ->toContain('ensureSupplierOrderAdvanceBankAccountsLoaded')
         ->toContain('supplierPurchaseOrderCompanyBankAccounts')
-        ->toContain('No hay cuentas bancarias activas para la empresa y moneda seleccionadas.');
+        ->toContain("'is-negative'")
+        ->toContain('No hay cuentas bancarias activas para esta empresa y moneda.')
+        ->not->toContain("$('#supplier_order_code').val('Seleccione cuenta bancaria')");
 });

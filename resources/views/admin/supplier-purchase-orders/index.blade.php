@@ -1013,6 +1013,19 @@
         #supplierOrderAdvanceAccountHelp { display: inline-flex; align-items: center; min-height: 18px; margin-top: 4px; transition: color .15s ease; }
         #supplierOrderAdvanceAccountHelp.is-empty { color: #9a6717 !important; font-weight: 600; }
         #supplierOrderAdvanceAccountHelp.is-ready { color: #287359 !important; }
+        .supplier-order-bank-option { padding: 3px 1px; line-height: 1.25; }
+        .supplier-order-bank-option-heading,.supplier-order-bank-option-details { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; }
+        .supplier-order-bank-option-heading strong { color: #294d42; font-size: 11px; }
+        .supplier-order-bank-option-heading span { color: #63766f; font-size: 10px; font-weight: 700; }
+        .supplier-order-bank-option-details { margin-top: 3px; color: #76867f; font-size: 10px; }
+        .supplier-order-bank-option-details span+span::before { content: '\2022'; margin-right: 9px; color: #afbbb7; }
+        .supplier-order-bank-balance { margin-left: auto; padding: 3px 7px; border-radius: 999px; font-size: 9px; white-space: nowrap; }
+        .supplier-order-bank-balance.is-positive { color: #08734d; background: #e4f5ed; }
+        .supplier-order-bank-balance.is-zero { color: #65736e; background: #edf1ef; }
+        .supplier-order-bank-balance.is-negative { color: #b73542; background: #fde9ec; }
+        .supplier-order-bank-selection { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; }
+        .supplier-order-bank-selection>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .supplier-order-bank-selection .supplier-order-bank-balance { flex: 0 0 auto; }
         .supplier-order-advance-payments-table { margin-bottom: 0; font-size: 10px; }
         .supplier-order-financial-chip { display: block; margin-top: 3px; color: #24725a; font-size: 9px; font-weight: 800; }
         .supplier-order-advance-chip { display: inline-block; margin-top: 3px; padding: 2px 6px; border-radius: 999px; background: #eef4f2; color: #667a73; font-size: 8px; font-weight: 800; }

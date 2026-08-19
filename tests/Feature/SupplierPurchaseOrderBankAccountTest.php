@@ -64,7 +64,7 @@ it('lista solo cuentas activas de la empresa y moneda seleccionadas', function (
         'company_id' => $this->praga->id,
         'currency_id' => $this->pen->id,
         'account_number' => '456464646',
-        'current_balance' => 150000,
+        'current_balance' => -68800,
     ]);
     $dropaivPen = supplierOrderCompanyAccount([
         'company_id' => $this->dropaiv->id,
@@ -92,7 +92,8 @@ it('lista solo cuentas activas de la empresa y moneda seleccionadas', function (
         ->assertJsonPath('accounts.0.id', $pragaPen->id)
         ->assertJsonPath('accounts.0.company_id', $this->praga->id)
         ->assertJsonPath('accounts.0.currency_id', $this->pen->id)
-        ->assertJsonPath('accounts.0.label', 'BBVA · 456464646 · PEN · PRAGA MEDICAL · Saldo S/ 150,000.00');
+        ->assertJsonPath('accounts.0.balance', -68800)
+        ->assertJsonPath('accounts.0.label', 'PRAGA MEDICAL · BBVA · PEN · 456464646 · Saldo: S/ -68,800.00');
 
     $this->getJson(route('admin.supplier-purchase-orders.companyBankAccounts', [
         'company_id' => $this->dropaiv->id,
@@ -133,5 +134,5 @@ it('bloquea una cuenta bancaria que pertenece a otra empresa', function () {
 
     expect($exception)->not->toBeNull()
         ->and($exception->errors()['advance_payments.0.company_bank_account_id'][0])
-        ->toBe('La cuenta bancaria seleccionada no pertenece a la empresa de la orden.');
+        ->toBe('La cuenta bancaria seleccionada no pertenece a la empresa de la orden o no corresponde a la moneda seleccionada.');
 });
