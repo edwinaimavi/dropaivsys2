@@ -33,3 +33,18 @@ it('mantiene los contenedores funcionales que el diseño distribuye entre las pe
         ->toContain("showSupplierOrderTab('finance')")
         ->toContain("showSupplierOrderTab('items')");
 });
+
+it('carga las cuentas bancarias de origen por empresa y moneda sin precargar cuentas globales', function () {
+    $root = dirname(__DIR__, 2);
+    $blade = file_get_contents($root.'/resources/views/admin/supplier-purchase-orders/partials/modal.blade.php');
+    $javascript = file_get_contents($root.'/resources/js/pages/supplier-purchase-order.js');
+
+    expect($blade)
+        ->toContain('id="supplier_order_new_advance_bank_account_id"')
+        ->toContain('Seleccione empresa y moneda de pago')
+        ->not->toContain('@foreach ($companyBankAccounts as $account)')
+        ->and($javascript)
+        ->toContain('loadSupplierOrderAdvanceBankAccounts')
+        ->toContain('supplierPurchaseOrderCompanyBankAccounts')
+        ->toContain('No hay cuentas bancarias activas para la empresa y moneda seleccionadas.');
+});

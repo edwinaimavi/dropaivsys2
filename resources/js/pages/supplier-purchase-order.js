@@ -3,6 +3,7 @@ let supplierOrderDocumentIndex = 0;
 let supplierOrderItemIndex = 0;
 let supplierOrderSourceLoadRequest = null;
 let supplierOrderSourceLoadTimer = null;
+let supplierOrderAdvanceBankAccountsRequest = null;
 const supplierOrderExpandedGroups = new Set();
 let supplierOrderEditDeepLinkHandled = false;
 let supplierOrderEditDeepLinkSearchApplied = false;
@@ -128,9 +129,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
     $(document).on('change input', '#supplier_order_payment_currency_id,#supplier_order_apply_exchange_rate,#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount', function () {
-        filterSupplierOrderAdvanceBankAccounts();
         updateSupplierOrderFinancialSummary();
     });
+    $(document).on('change', '#supplier_order_payment_currency_id', loadSupplierOrderAdvanceBankAccounts);
     $(document).on('change input', '#supplierPurchaseOrderForm', updateSupplierOrderFormSummary);
     $(document).on('shown.bs.tab', '#supplierPurchaseOrderModal .supplier-order-form-tabs a[data-toggle="pill"]', updateSupplierOrderFormSummary);
     $(document).on('change', '#supplier_order_new_advance_proof', function () {
@@ -139,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('change', '#supplier_order_company_id', function () {
         applySupplierOrderCompanyDefaults();
-        filterSupplierOrderAdvanceBankAccounts();
+        loadSupplierOrderAdvanceBankAccounts();
     });
 
     $(document).on('input', '#supplierPurchaseOrderForm .text-uppercase', function () {
@@ -767,7 +768,7 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_exchange_rate,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount').val('');
     $('#supplier_order_advance_type,#supplier_order_new_advance_method').val('');
     $('#supplier_order_new_advance_date').val(new Date().toISOString().slice(0, 10));
-    $('#supplier_order_new_advance_bank_account_id').val('');
+    resetSupplierOrderAdvanceBankAccountSelect('Seleccione empresa y moneda de pago.');
     $('#supplier_order_new_advance_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
     $('#supplierOrderExistingAdvancePayments').empty().data('paid-amount', 0);
     $('#supplier_order_document_type').val('').trigger('change.select2');
@@ -782,6 +783,7 @@ function resetSupplierPurchaseOrderForm() {
 
     setDefaultSupplierOrderCurrency();
     syncSupplierOrderPaymentCurrency();
+    loadSupplierOrderAdvanceBankAccounts();
     $('#supplierOrderSideSupplier').text('Seleccione proveedor');
     toggleSupplierOrderShippingAgencySection();
     calculateSupplierOrderTotals();
@@ -2007,6 +2009,7 @@ function fillSupplierPurchaseOrderForm(order) {
     showEmptySupplierOrderItemsRow();
     calculateSupplierOrderTotals();
     updateSupplierOrderFinancialSummary();
+    loadSupplierOrderAdvanceBankAccounts();
 
     if (supplierAccountsRequest && typeof supplierAccountsRequest.always === 'function') {
         supplierAccountsRequest.always(function () {
@@ -2317,21 +2320,83 @@ function supplierOrderFinancialCurrency(selector) {
     };
 }
 
-function filterSupplierOrderAdvanceBankAccounts() {
+function resetSupplierOrderAdvanceBankAccountSelect(message, helpClass = '') {
+    const select = $('#supplier_order_new_advance_bank_account_id');
+    if (!select.length) return;
+    select
+        .empty()
+        .append(new Option(message, ''))
+        .val('')
+        .prop('disabled', true)
+        .trigger('change.select2');
+    $('#supplierOrderAdvanceAccountHelp')
+        .removeClass('is-empty is-ready')
+        .addClass(helpClass)
+        .text(message);
+}
+
+function loadSupplierOrderAdvanceBankAccounts() {
     const select = $('#supplier_order_new_advance_bank_account_id');
     if (!select.length) return;
     const companyId = String($('#supplier_order_company_id').val() || '');
     const currencyId = String($('#supplier_order_payment_currency_id').val() || '');
-    let selectedIsVisible = false;
-    select.find('option').each(function () {
-        const option = $(this);
-        if (!option.val()) return;
-        const visible = String(option.data('company-id')) === companyId
-            && String(option.data('currency-id')) === currencyId;
-        option.prop('hidden', !visible).prop('disabled', !visible);
-        if (visible && option.prop('selected')) selectedIsVisible = true;
+    if (supplierOrderAdvanceBankAccountsRequest) {
+        supplierOrderAdvanceBankAccountsRequest.abort();
+        supplierOrderAdvanceBankAccountsRequest = null;
+    }
+
+    if (!companyId || !currencyId) {
+        resetSupplierOrderAdvanceBankAccountSelect('Seleccione primero una empresa y moneda de pago.');
+        return;
+    }
+
+    resetSupplierOrderAdvanceBankAccountSelect('Cargando cuentas bancarias...');
+    const request = $.get(window.routes.supplierPurchaseOrderCompanyBankAccounts, {
+        company_id: companyId,
+        currency_id: currencyId
     });
-    if (select.val() && !selectedIsVisible) select.val('');
+    supplierOrderAdvanceBankAccountsRequest = request;
+
+    request.done(function (response) {
+        const accounts = Array.isArray(response.accounts) ? response.accounts : [];
+        const seenAccountIds = new Set();
+        select.empty().append(new Option('Seleccione cuenta bancaria', ''));
+
+        accounts.forEach(function (account) {
+            const accountId = String(account.id || '');
+            if (!accountId || seenAccountIds.has(accountId)) return;
+            seenAccountIds.add(accountId);
+            const option = new Option(account.label || `Cuenta ${accountId}`, accountId);
+            $(option)
+                .attr('data-company-id', account.company_id)
+                .attr('data-currency-id', account.currency_id);
+            select.append(option);
+        });
+
+        if (!seenAccountIds.size) {
+            resetSupplierOrderAdvanceBankAccountSelect(
+                'No hay cuentas bancarias activas para la empresa y moneda seleccionadas.',
+                'is-empty'
+            );
+            return;
+        }
+
+        select.prop('disabled', false).val('').trigger('change.select2');
+        $('#supplierOrderAdvanceAccountHelp')
+            .removeClass('is-empty')
+            .addClass('is-ready')
+            .text(`${seenAccountIds.size} cuenta${seenAccountIds.size === 1 ? '' : 's'} disponible${seenAccountIds.size === 1 ? '' : 's'} para la empresa y moneda seleccionadas.`);
+    }).fail(function (_xhr, status) {
+        if (status === 'abort') return;
+        resetSupplierOrderAdvanceBankAccountSelect(
+            'No se pudieron cargar las cuentas bancarias. Intente nuevamente.',
+            'is-empty'
+        );
+    }).always(function () {
+        if (supplierOrderAdvanceBankAccountsRequest === request) {
+            supplierOrderAdvanceBankAccountsRequest = null;
+        }
+    });
 }
 
 function updateSupplierOrderFinancialSummary() {

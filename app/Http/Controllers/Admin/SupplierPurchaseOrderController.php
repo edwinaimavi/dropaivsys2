@@ -63,7 +63,10 @@ class SupplierPurchaseOrderController extends Controller
 
     public function __construct()
     {
-        $this->middleware('can:admin.supplier-purchase-orders.index')->only(['index', 'list', 'generateCode', 'supplierAccounts', 'customerPurchaseOrderItems']);
+        $this->middleware('can:admin.supplier-purchase-orders.index')->only([
+            'index', 'list', 'generateCode', 'supplierAccounts', 'companyBankAccounts',
+            'customerPurchaseOrderItems',
+        ]);
         $this->middleware('can:admin.supplier-purchase-orders.load-items')->only(['loadCustomerOrderItems']);
         $this->middleware('can:admin.supplier-purchase-orders.store')->only(['store']);
         $this->middleware('can:admin.supplier-purchase-orders.update')->only(['update', 'destroyDocument']);
@@ -89,13 +92,6 @@ class SupplierPurchaseOrderController extends Controller
             ->with('bank:id,description,short_name', 'currency:id,code')
             ->where('status', 'ACTIVE')
             ->orderBy('account_number')
-            ->get();
-
-        $companyBankAccounts = CompanyBankAccount::query()
-            ->with(['company:id,business_name,trade_name', 'bank:id,description,short_name', 'currency:id,code,symbol'])
-            ->where('status', 'ACTIVE')
-            ->orderBy('company_id')
-            ->orderBy('bank_id')
             ->get();
 
         $currencies = Currency::query()
@@ -172,7 +168,6 @@ class SupplierPurchaseOrderController extends Controller
             'companies',
             'suppliers',
             'supplierAccounts',
-            'companyBankAccounts',
             'currencies',
             'banks',
             'customerPurchaseOrders',
@@ -498,6 +493,55 @@ class SupplierPurchaseOrderController extends Controller
             ->where('status', 'ACTIVE')
             ->orderBy('account_number')
             ->get();
+
+        return response()->json(['accounts' => $accounts]);
+    }
+
+    public function companyBankAccounts(Request $request)
+    {
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+        ], [
+            'company_id.required' => 'Seleccione la empresa de la orden.',
+            'company_id.exists' => 'La empresa seleccionada no existe.',
+            'currency_id.required' => 'Seleccione la moneda de pago.',
+            'currency_id.exists' => 'La moneda de pago seleccionada no existe.',
+        ]);
+
+        $accounts = CompanyBankAccount::query()
+            ->with([
+                'company:id,business_name,trade_name',
+                'bank:id,description,short_name',
+                'currency:id,code,symbol',
+            ])
+            ->where('company_id', $validated['company_id'])
+            ->where('currency_id', $validated['currency_id'])
+            ->where('status', 'ACTIVE')
+            ->orderBy('bank_id')
+            ->orderBy('account_number')
+            ->get()
+            ->map(function (CompanyBankAccount $account) {
+                $company = $account->company?->trade_name ?: $account->company?->business_name;
+                $bank = $account->bank?->short_name ?: $account->bank?->description;
+                $currency = $account->currency?->code ?: '-';
+                $symbol = $account->currency?->symbol ?: $currency;
+
+                return [
+                    'id' => $account->id,
+                    'company_id' => $account->company_id,
+                    'currency_id' => $account->currency_id,
+                    'label' => collect([
+                        $bank ?: 'Banco sin nombre',
+                        $account->account_number,
+                        $currency,
+                        $company ?: 'Empresa sin nombre',
+                        'Saldo '.$symbol.' '.number_format((float) $account->current_balance, 2),
+                    ])->filter()->join(' · '),
+                ];
+            })
+            ->unique('id')
+            ->values();
 
         return response()->json(['accounts' => $accounts]);
     }
@@ -943,27 +987,19 @@ class SupplierPurchaseOrderController extends Controller
                 if ($newAdvancePayments->isNotEmpty()) {
                     abort_unless(Auth::user()?->can('admin.banks.movements.create'), 403);
 
-                    $bankAccounts = CompanyBankAccount::query()
-                        ->whereIn('id', $newAdvancePayments->pluck('company_bank_account_id')->filter()->unique())
-                        ->where('status', 'ACTIVE')
-                        ->get()
-                        ->keyBy('id');
-
-                    foreach ($newAdvancePayments as $index => $payment) {
-                        $account = $bankAccounts->get((int) ($payment['company_bank_account_id'] ?? 0));
-                        if (! $account || (int) $account->company_id !== (int) $validated['company_id']) {
-                            throw ValidationException::withMessages([
-                                "advance_payments.{$index}.company_bank_account_id" => 'La cuenta bancaria debe estar activa y pertenecer a la empresa de la orden.',
-                            ]);
-                        }
-                        if ((int) $account->currency_id !== (int) $paymentCurrency->id) {
-                            throw ValidationException::withMessages([
-                                "advance_payments.{$index}.company_bank_account_id" => 'La moneda de la cuenta bancaria debe coincidir con la moneda de pago del anticipo.',
-                            ]);
-                        }
-                    }
+                    $this->validateAdvancePaymentBankAccounts(
+                        $newAdvancePayments,
+                        (int) $validated['company_id'],
+                        (int) $paymentCurrency->id
+                    );
                 }
 
+                if ($existingAdvancePayments->isNotEmpty()
+                    && (int) $order->company_id !== (int) $validated['company_id']) {
+                    throw ValidationException::withMessages([
+                        'company_id' => 'No puede cambiar la empresa porque la orden ya tiene anticipos registrados.',
+                    ]);
+                }
                 if ($existingAdvancePayments->isNotEmpty()
                     && (int) $order->payment_currency_id !== (int) $paymentCurrency->id) {
                     throw ValidationException::withMessages([
@@ -1930,6 +1966,46 @@ class SupplierPurchaseOrderController extends Controller
         }
 
         return $storedPaths;
+    }
+
+    private function validateAdvancePaymentBankAccounts(
+        $payments,
+        int $companyId,
+        int $currencyId
+    ): void {
+        $accounts = CompanyBankAccount::query()
+            ->whereIn('id', collect($payments)->pluck('company_bank_account_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+
+        foreach (collect($payments)->values() as $index => $payment) {
+            $field = "advance_payments.{$index}.company_bank_account_id";
+            $account = $accounts->get((int) ($payment['company_bank_account_id'] ?? 0));
+
+            if (! $account) {
+                throw ValidationException::withMessages([
+                    $field => 'La cuenta bancaria de origen seleccionada no existe.',
+                ]);
+            }
+
+            if ($account->status !== 'ACTIVE') {
+                throw ValidationException::withMessages([
+                    $field => 'La cuenta bancaria seleccionada no se encuentra activa.',
+                ]);
+            }
+
+            if ((int) $account->company_id !== $companyId) {
+                throw ValidationException::withMessages([
+                    $field => 'La cuenta bancaria seleccionada no pertenece a la empresa de la orden.',
+                ]);
+            }
+
+            if ((int) $account->currency_id !== $currencyId) {
+                throw ValidationException::withMessages([
+                    $field => 'La moneda de la cuenta bancaria debe coincidir con la moneda de pago del anticipo.',
+                ]);
+            }
+        }
     }
 
     private function storeSupplierOrderDocuments(SupplierPurchaseOrder $order, array $documents): array

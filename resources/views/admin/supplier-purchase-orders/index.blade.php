@@ -1010,6 +1010,9 @@
         .supplier-order-financial-summary strong,.supplier-order-advance-summary strong { margin-top: 2px; color: #294f43; font-size: 12px; }
         .supplier-order-financial-summary .is-pen { border-color: #bce2d2; background: #edf9f4; }
         .supplier-order-new-advance-payment { padding: 10px 11px 2px; border: 1px dashed #b9d8cc; border-radius: 10px; background: #f8fcfa; }
+        #supplierOrderAdvanceAccountHelp { display: inline-flex; align-items: center; min-height: 18px; margin-top: 4px; transition: color .15s ease; }
+        #supplierOrderAdvanceAccountHelp.is-empty { color: #9a6717 !important; font-weight: 600; }
+        #supplierOrderAdvanceAccountHelp.is-ready { color: #287359 !important; }
         .supplier-order-advance-payments-table { margin-bottom: 0; font-size: 10px; }
         .supplier-order-financial-chip { display: block; margin-top: 3px; color: #24725a; font-size: 9px; font-weight: 800; }
         .supplier-order-advance-chip { display: inline-block; margin-top: 3px; padding: 2px 6px; border-radius: 999px; background: #eef4f2; color: #667a73; font-size: 8px; font-weight: 800; }
@@ -1034,6 +1037,7 @@
             supplierPurchaseOrderShow: "{{ url('admin/supplier-purchase-orders') }}",
             supplierPurchaseOrderGenerateCode: "{{ route('admin.supplier-purchase-orders.generateCode') }}",
             supplierPurchaseOrderSupplierAccounts: "{{ url('admin/supplier-purchase-orders/supplier/:id/accounts') }}",
+            supplierPurchaseOrderCompanyBankAccounts: "{{ route('admin.supplier-purchase-orders.companyBankAccounts') }}",
             supplierPurchaseOrderLoadCustomerItems: "{{ route('admin.supplier-purchase-orders.customerOrderItems') }}",
             supplierOrderShippingAgencyBranches: "{{ url('admin/shipping-agencies/:id/branches') }}",
             supplierOrderShippingAgencyContacts: "{{ url('admin/shipping-agencies/:id/contacts') }}",

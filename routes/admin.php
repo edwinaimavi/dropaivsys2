@@ -583,6 +583,11 @@ Route::get(
 )->name('supplier-purchase-orders.supplierAccounts');
 
 Route::get(
+    'supplier-purchase-orders/company-bank-accounts',
+    [SupplierPurchaseOrderController::class, 'companyBankAccounts']
+)->name('supplier-purchase-orders.companyBankAccounts');
+
+Route::get(
     'supplier-purchase-orders/customer-purchase-order/{customerPurchaseOrder}/items',
     [SupplierPurchaseOrderController::class, 'customerPurchaseOrderItems']
 )->name('supplier-purchase-orders.customerPurchaseOrderItems');
