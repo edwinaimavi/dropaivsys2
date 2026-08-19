@@ -2363,7 +2363,7 @@ class WarehouseEntryController extends Controller
     private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
     {
         app(CustomerPurchaseOrderStatusService::class)
-            ->recalculateMany($customerPurchaseOrderIds);
+            ->syncMany($customerPurchaseOrderIds);
     }
 
     private function warehouseEntryForPdf(WarehouseEntry $entry): WarehouseEntry

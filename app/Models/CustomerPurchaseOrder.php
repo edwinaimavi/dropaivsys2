@@ -11,11 +11,17 @@ class CustomerPurchaseOrder extends Model
     use SoftDeletes;
 
     public const STATUS_REGISTERED = 'registered';
+
     public const STATUS_ENTERED = 'entered';
+
     public const STATUS_ATTENDED = 'attended';
+
     public const STATUS_NOT_ATTENDED = 'not_attended';
+
     public const STATUS_IN_PURCHASE = 'in_purchase';
+
     public const STATUS_PARTIAL_PURCHASE = 'partial_purchase';
+
     public const STATUS_PARTIAL_ENTERED = 'partial_entered';
 
     public static function statusPresentation(?string $status): array
@@ -197,7 +203,7 @@ class CustomerPurchaseOrder extends Model
     public function refreshSupplyStatus(): bool
     {
         return app(CustomerPurchaseOrderStatusService::class)
-            ->recalculate($this)['changed'];
+            ->syncStatus($this)['changed'];
     }
 
     public static function supplyStatusFromQuantities(
@@ -206,19 +212,19 @@ class CustomerPurchaseOrder extends Model
         array $entered,
         bool $hasAttentionClosureDocument = false,
         bool $hasSupplierPurchaseOrder = false
-    ): string
-    {
-        $allEntered = collect($requested)->every(fn ($quantity, $itemId) =>
-            round((float) ($entered[$itemId] ?? 0), 2) >= round((float) $quantity, 2));
+    ): string {
+        $allEntered = collect($requested)->every(fn ($quantity, $itemId) => round((float) ($entered[$itemId] ?? 0), 4) >= round((float) $quantity, 4));
         if ($allEntered) {
             return $hasAttentionClosureDocument
                 ? self::STATUS_ATTENDED
                 : self::STATUS_ENTERED;
         }
 
-        if (round((float) collect($entered)->sum(), 2) > 0) return self::STATUS_PARTIAL_ENTERED;
+        if (round((float) collect($entered)->sum(), 4) > 0) {
+            return self::STATUS_PARTIAL_ENTERED;
+        }
 
-        return $hasSupplierPurchaseOrder || round((float) collect($purchased)->sum(), 2) > 0
+        return $hasSupplierPurchaseOrder || round((float) collect($purchased)->sum(), 4) > 0
             ? self::STATUS_IN_PURCHASE
             : self::STATUS_REGISTERED;
     }

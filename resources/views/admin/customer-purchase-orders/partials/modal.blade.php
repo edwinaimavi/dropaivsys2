@@ -553,6 +553,8 @@
                         <tr class="purchase-order-item-row">
                             <td class="purchase-order-item-index align-middle"></td>
                             <td>
+                                <input type="hidden" class="item-id"
+                                    name="items[__INDEX__][id]">
                                 <input type="hidden" class="item-quote-item-id"
                                     name="items[__INDEX__][quote_item_id]">
                                 <input type="hidden" class="item-market-study-item-id"

@@ -3,6 +3,7 @@
 use App\Models\CustomerPurchaseOrder;
 use App\Models\User;
 use App\Services\CustomerPurchaseOrderStatusService;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -89,6 +90,18 @@ beforeEach(function () {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+    $this->secondArticleId = DB::table('articles')->insertGetId([
+        'code' => 'STATUS-ART-2',
+        'category_id' => $categoryId,
+        'presentation_id' => $presentationId,
+        'unit_id' => $unitId,
+        'brand_id' => $brandId,
+        'legal_name' => 'SEGUNDO ARTÍCULO STATUS',
+        'billing_name' => 'SEGUNDO ARTÍCULO STATUS',
+        'status' => 'ACTIVE',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
 });
 
 it('mantiene registrada una OC cliente sin compra proveedor ni ingreso', function () {
@@ -147,6 +160,60 @@ it('suma varios ingresos y varias OC proveedor por cada línea de la OC cliente'
     expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
 });
 
+it('no abastece una OC con varios artículos hasta que todos estén completos', function () {
+    [$order, $firstCustomerItemId] = statusTestCustomerOrder($this, 10, 'registered');
+    $secondCustomerItemId = DB::table('customer_purchase_order_items')->insertGetId([
+        'customer_purchase_order_id' => $order->id,
+        'article_id' => $this->secondArticleId,
+        'billing_name_snapshot' => 'SEGUNDO ARTÍCULO STATUS',
+        'quantity' => 5,
+        'status' => 'active',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    [$firstSupplierOrderId, $firstSupplierItemId] = statusTestSupplierOrder($this, $order->id, $firstCustomerItemId, 10);
+    [$secondSupplierOrderId, $secondSupplierItemId] = statusTestSupplierOrder(
+        $this,
+        $order->id,
+        $secondCustomerItemId,
+        5,
+        $this->secondArticleId
+    );
+    statusTestWarehouseEntry($this, $firstSupplierOrderId, $firstSupplierItemId, 10);
+
+    $service = app(CustomerPurchaseOrderStatusService::class);
+    $service->syncStatus($order);
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_ENTERED);
+
+    statusTestWarehouseEntry($this, $secondSupplierOrderId, $secondSupplierItemId, 5);
+    $service->syncStatus($order);
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+});
+
+it('suma varios ingresos de almacén asociados a una misma compra proveedor', function () {
+    [$order, $customerItemId] = statusTestCustomerOrder($this, 10, 'in_purchase');
+    [$supplierOrderId, $supplierItemId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
+    statusTestWarehouseEntry($this, $supplierOrderId, $supplierItemId, 4);
+    statusTestWarehouseEntry($this, $supplierOrderId, $supplierItemId, 6);
+
+    app(CustomerPurchaseOrderStatusService::class)->syncStatus($order);
+
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+});
+
+it('regresa a registrada cuando se anula la única compra proveedor sin ingresos', function () {
+    [$order, $customerItemId] = statusTestCustomerOrder($this, 10, 'registered');
+    [$supplierOrderId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
+    $service = app(CustomerPurchaseOrderStatusService::class);
+
+    $service->syncStatus($order);
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_IN_PURCHASE);
+
+    DB::table('supplier_purchase_orders')->where('id', $supplierOrderId)->update(['status' => 'cancelled']);
+    $service->syncStatus($order);
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_REGISTERED);
+});
+
 it('recupera ingresos históricos cuya línea perdió el vínculo con la línea proveedor', function () {
     [$order, $customerItemId] = statusTestCustomerOrder($this, 10, 'in_purchase', '4505463671');
     [$supplierOrderId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
@@ -156,6 +223,44 @@ it('recupera ingresos históricos cuya línea perdió el vínculo con la línea 
 
     expect($result['changed'])->toBeTrue()
         ->and($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+});
+
+it('conserva el vínculo de detalle y recalcula al editar cantidades de la OC cliente', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.customer-purchase-orders.update', 'web');
+    $this->user->givePermissionTo('admin.customer-purchase-orders.update');
+    [$order, $customerItemId] = statusTestCustomerOrder($this, 10, 'in_purchase');
+    [$supplierOrderId, $supplierItemId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
+    statusTestWarehouseEntry($this, $supplierOrderId, $supplierItemId, 10);
+    app(CustomerPurchaseOrderStatusService::class)->syncStatus($order);
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+
+    $this->actingAs($this->user)->putJson(
+        route('admin.customer-purchase-orders.update', $order),
+        [
+            'company_id' => $this->companyId,
+            'customer_id' => $this->customerId,
+            'order_type' => 'articles',
+            'purchase_order_number' => $order->purchase_order_number,
+            'currency_id' => $this->currencyId,
+            'billing_type' => 'local',
+            'affect_igv' => false,
+            'items' => [[
+                'id' => $customerItemId,
+                'article_id' => $this->articleId,
+                'billing_name_snapshot' => 'ARTÍCULO STATUS',
+                'quantity' => 12,
+                'unit_price' => 1,
+                'line_total' => 12,
+                'status' => 'active',
+            ]],
+        ]
+    )->assertOk();
+
+    expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_ENTERED)
+        ->and(DB::table('customer_purchase_order_items')->where('id', $customerItemId)->value('quantity'))->toBe(12)
+        ->and(DB::table('supplier_purchase_order_items')->where('id', $supplierItemId)->value('customer_purchase_order_item_id'))
+        ->toBe($customerItemId);
 });
 
 it('recalcula automáticamente al crear editar y anular un ingreso de almacén', function () {
@@ -216,11 +321,25 @@ it('repara una OC específica mediante el comando seguro y muestra el cambio', f
     [$supplierOrderId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
     statusTestWarehouseEntry($this, $supplierOrderId, null, 10);
 
-    $this->artisan('customer-orders:recalculate-statuses', ['--order' => '4505463671'])
-        ->expectsOutputToContain('4505463671: En compra (in_purchase) → Abastecida (entered)')
-        ->assertSuccessful();
+    $exitCode = Artisan::call('customer-orders:sync-statuses', ['--order' => '4505463671']);
+
+    expect($exitCode)->toBe(0)
+        ->and(Artisan::output())->toContain('P-STATUS-')
+        ->toContain('4505463671')
+        ->toContain('En compra (in_purchase)')
+        ->toContain('Abastecida (entered)');
 
     expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
+});
+
+it('el comando conserva el estado atendida cuando la orden completa tiene documento de cierre', function () {
+    [$order, $customerItemId] = statusTestCustomerOrder($this, 10, 'registered');
+    $order->update(['attention_document_path' => 'customer-purchase-orders/attention/cierre.pdf']);
+    [$supplierOrderId, $supplierItemId] = statusTestSupplierOrder($this, $order->id, $customerItemId, 10);
+    statusTestWarehouseEntry($this, $supplierOrderId, $supplierItemId, 10);
+
+    expect(Artisan::call('customer-orders:sync-statuses', ['--order' => $order->code]))->toBe(0)
+        ->and($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
 });
 
 it('el listado y el filtro abastecidas usan el estado sincronizado', function () {
@@ -270,8 +389,13 @@ function statusTestCustomerOrder(object $test, float $quantity, string $status, 
     return [CustomerPurchaseOrder::query()->findOrFail($orderId), $itemId];
 }
 
-function statusTestSupplierOrder(object $test, int $customerOrderId, int $customerItemId, float $quantity): array
-{
+function statusTestSupplierOrder(
+    object $test,
+    int $customerOrderId,
+    int $customerItemId,
+    float $quantity,
+    ?int $articleId = null
+): array {
     static $sequence = 0;
     $sequence++;
     $supplierOrderId = DB::table('supplier_purchase_orders')->insertGetId([
@@ -293,7 +417,7 @@ function statusTestSupplierOrder(object $test, int $customerOrderId, int $custom
     ]);
     $supplierItemId = DB::table('supplier_purchase_order_items')->insertGetId([
         'supplier_purchase_order_id' => $supplierOrderId,
-        'article_id' => $test->articleId,
+        'article_id' => $articleId ?? $test->articleId,
         'customer_purchase_order_item_id' => $customerItemId,
         'billing_name_snapshot' => 'ARTÍCULO STATUS',
         'quantity' => $quantity,

@@ -11,15 +11,17 @@ class CustomerPurchaseOrderStatusService
 {
     private const ACTIVE_ENTRY_STATUS = 'registered';
 
+    private const QUANTITY_SCALE = 4;
+
     /**
      * Recalculate one customer order from its actual purchase and warehouse progress.
      *
      * @return array{changed: bool, skipped: bool, previous_status: string, status: string}
      */
-    public function recalculate(CustomerPurchaseOrder|int $order): array
+    public function syncStatus(CustomerPurchaseOrder|int $order): array
     {
         $order = $order instanceof CustomerPurchaseOrder
-            ? $order
+            ? $order->refresh()
             : CustomerPurchaseOrder::query()->findOrFail($order);
 
         $previousStatus = (string) $order->status;
@@ -30,7 +32,7 @@ class CustomerPurchaseOrderStatusService
 
         $requestedItems = $order->items()
             ->where('status', '!=', 'deleted')
-            ->get(['id', 'article_id', 'quantity'])
+            ->get(['id', 'article_id', 'quote_item_id', 'market_study_item_id', 'quantity'])
             ->keyBy('id');
 
         if ($requestedItems->isEmpty()) {
@@ -38,7 +40,7 @@ class CustomerPurchaseOrderStatusService
         }
 
         $requestedByItem = $requestedItems
-            ->map(fn ($item) => round((float) $item->quantity, 2))
+            ->map(fn ($item) => round((float) $item->quantity, self::QUANTITY_SCALE))
             ->all();
         $customerItemIds = $requestedItems->keys()->map(fn ($id) => (int) $id)->all();
 
@@ -69,6 +71,8 @@ class CustomerPurchaseOrderStatusService
                 'supplier_purchase_order_id',
                 'customer_purchase_order_item_id',
                 'article_id',
+                'quote_item_id',
+                'market_study_item_id',
                 'quantity',
                 'status',
             ]);
@@ -82,12 +86,7 @@ class CustomerPurchaseOrderStatusService
                 $customerItemId = (int) ($supplierItem->customer_purchase_order_item_id ?? 0);
 
                 if (! $requestedItems->has($customerItemId)) {
-                    $customerItemId = (int) ($fallbackMap[
-                        $this->fallbackKey(
-                            (int) $supplierItem->supplier_purchase_order_id,
-                            (int) $supplierItem->article_id
-                        )
-                    ] ?? 0);
+                    $customerItemId = $this->fallbackCustomerItemId($supplierItem, $fallbackMap);
                 }
 
                 return $customerItemId > 0
@@ -109,7 +108,7 @@ class CustomerPurchaseOrderStatusService
 
             $purchasedByItem[$customerItemId] = round(
                 (float) ($purchasedByItem[$customerItemId] ?? 0) + (float) $supplierItem->quantity,
-                2
+                self::QUANTITY_SCALE
             );
         }
 
@@ -130,8 +129,17 @@ class CustomerPurchaseOrderStatusService
         return $this->apply($order, $status);
     }
 
+    /**
+     * Backward-compatible alias for integrations created before syncStatus became
+     * the canonical entry point.
+     */
+    public function recalculate(CustomerPurchaseOrder|int $order): array
+    {
+        return $this->syncStatus($order);
+    }
+
     /** @return Collection<int, array{changed: bool, skipped: bool, previous_status: string, status: string, order: CustomerPurchaseOrder}> */
-    public function recalculateMany(iterable $customerPurchaseOrderIds): Collection
+    public function syncMany(iterable $customerPurchaseOrderIds): Collection
     {
         $ids = collect($customerPurchaseOrderIds)
             ->filter()
@@ -147,8 +155,13 @@ class CustomerPurchaseOrderStatusService
             ->whereIn('id', $ids->all())
             ->get()
             ->map(function (CustomerPurchaseOrder $order) {
-                return $this->recalculate($order) + ['order' => $order];
+                return $this->syncStatus($order) + ['order' => $order];
             });
+    }
+
+    public function recalculateMany(iterable $customerPurchaseOrderIds): Collection
+    {
+        return $this->syncMany($customerPurchaseOrderIds);
     }
 
     public function customerOrderIdsForSupplierOrder(int $supplierPurchaseOrderId): Collection
@@ -248,6 +261,7 @@ class CustomerPurchaseOrderStatusService
             if (! $customerItemId) {
                 $customerItemId = $fallbackMap->get($this->fallbackKey(
                     (int) $entryItem->supplier_purchase_order_id,
+                    'article',
                     (int) $entryItem->article_id
                 ));
             }
@@ -258,7 +272,7 @@ class CustomerPurchaseOrderStatusService
 
             $entered[$customerItemId] = round(
                 (float) ($entered[$customerItemId] ?? 0) + (float) $entryItem->quantity,
-                2
+                self::QUANTITY_SCALE
             );
         }
 
@@ -314,23 +328,36 @@ class CustomerPurchaseOrderStatusService
         $candidateItems = DB::table('customer_purchase_order_items')
             ->whereIn('customer_purchase_order_id', $relatedCustomerOrderIds->unique()->all())
             ->where('status', '!=', 'deleted')
-            ->get(['id', 'customer_purchase_order_id', 'article_id']);
+            ->get([
+                'id',
+                'customer_purchase_order_id',
+                'article_id',
+                'quote_item_id',
+                'market_study_item_id',
+            ]);
 
         $map = collect();
         foreach ($supplierOrderIds as $supplierOrderId) {
             $orderIds = $this->customerOrderIdsForSupplierOrder((int) $supplierOrderId);
-            $itemsByArticle = $candidateItems
-                ->whereIn('customer_purchase_order_id', $orderIds->all())
-                ->groupBy(fn ($item) => (int) $item->article_id);
+            $items = $candidateItems->whereIn('customer_purchase_order_id', $orderIds->all());
 
-            foreach ($itemsByArticle as $articleId => $items) {
-                if ($items->count() !== 1) {
-                    continue;
-                }
+            foreach ([
+                'quote_item_id' => 'quote',
+                'market_study_item_id' => 'market',
+                'article_id' => 'article',
+            ] as $column => $type) {
+                foreach ($items->filter(fn ($item) => filled($item->{$column}))->groupBy($column) as $value => $matches) {
+                    if ($matches->count() !== 1) {
+                        continue;
+                    }
 
-                $customerItemId = (int) $items->first()->id;
-                if ($requestedItems->has($customerItemId)) {
-                    $map->put($this->fallbackKey((int) $supplierOrderId, (int) $articleId), $customerItemId);
+                    $customerItemId = (int) $matches->first()->id;
+                    if ($requestedItems->has($customerItemId)) {
+                        $map->put(
+                            $this->fallbackKey((int) $supplierOrderId, $type, (int) $value),
+                            $customerItemId
+                        );
+                    }
                 }
             }
         }
@@ -338,9 +365,34 @@ class CustomerPurchaseOrderStatusService
         return $map;
     }
 
-    private function fallbackKey(int $supplierOrderId, int $articleId): string
+    private function fallbackCustomerItemId(object $supplierItem, Collection $fallbackMap): int
     {
-        return $supplierOrderId.':'.$articleId;
+        foreach ([
+            'quote' => $supplierItem->quote_item_id ?? null,
+            'market' => $supplierItem->market_study_item_id ?? null,
+            'article' => $supplierItem->article_id ?? null,
+        ] as $type => $value) {
+            if (! $value) {
+                continue;
+            }
+
+            $customerItemId = (int) $fallbackMap->get($this->fallbackKey(
+                (int) $supplierItem->supplier_purchase_order_id,
+                $type,
+                (int) $value
+            ), 0);
+
+            if ($customerItemId > 0) {
+                return $customerItemId;
+            }
+        }
+
+        return 0;
+    }
+
+    private function fallbackKey(int $supplierOrderId, string $type, int $value): string
+    {
+        return $supplierOrderId.':'.$type.':'.$value;
     }
 
     private function isProtectedFinalStatus(string $status): bool

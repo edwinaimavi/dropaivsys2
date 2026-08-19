@@ -20,12 +20,11 @@ use App\Models\SupplierAccount;
 use App\Models\SupplierPurchaseOrder;
 use App\Models\SupplierPurchaseOrderAdvancePayment;
 use App\Models\SupplierPurchaseOrderItem;
-use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Ubigeo;
 use App\Models\Unit;
+use App\Services\BankMovementService;
 use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\SupplierPurchaseOrderFinancialService;
-use App\Services\BankMovementService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -53,12 +52,19 @@ class SupplierPurchaseOrderController extends Controller
     ];
 
     private const STATUS_REGISTERED = 'registered';
+
     private const STATUS_SENT = 'sent';
+
     private const STATUS_APPROVED = 'approved';
+
     private const STATUS_RECEIVED = 'received';
+
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
+
     private const STATUS_ENTERED = 'entered';
+
     private const STATUS_CANCELLED = 'cancelled';
+
     private const STATUS_INVOICED = 'invoiced';
 
     public function __construct()
@@ -235,7 +241,7 @@ class SupplierPurchaseOrderController extends Controller
                     $customer = $customerOrder->customer;
                     $customerName = $customer?->business_name
                         ?? $customer?->full_name
-                        ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                        ?? trim(($customer?->first_name ?? '').' '.($customer?->last_name ?? ''))
                         ?: 'Sin cliente';
                     $branchName = $customerOrder->customerBranch?->branch_name ?: 'Sin sede registrada';
 
@@ -260,7 +266,7 @@ class SupplierPurchaseOrderController extends Controller
 
                 return $customer?->business_name
                     ?? $customer?->full_name
-                    ?? trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''))
+                    ?? trim(($customer?->first_name ?? '').' '.($customer?->last_name ?? ''))
                     ?: 'Sin cliente relacionado';
             })
             ->addColumn('customer_order_branch', function (SupplierPurchaseOrder $order) {
@@ -275,15 +281,17 @@ class SupplierPurchaseOrderController extends Controller
                 $purchase = $order->currency?->code ?? '-';
                 $payment = $order->paymentCurrency?->code ?? $purchase;
                 $rate = $order->apply_exchange_rate && $order->exchange_rate
-                    ? ' | TC ' . number_format((float) $order->exchange_rate, 4)
+                    ? ' | TC '.number_format((float) $order->exchange_rate, 4)
                     : '';
 
                 return "{$purchase} → {$payment}{$rate}";
             })
             ->addColumn('advance_summary', function (SupplierPurchaseOrder $order) {
-                if (! $order->apply_advance) return 'Sin anticipo';
+                if (! $order->apply_advance) {
+                    return 'Sin anticipo';
+                }
 
-                return 'Anticipo: ' . match ($order->advance_status) {
+                return 'Anticipo: '.match ($order->advance_status) {
                     SupplierPurchaseOrder::ADVANCE_PAID => 'Pagado',
                     SupplierPurchaseOrder::ADVANCE_PARTIAL => 'Parcial',
                     default => 'Pendiente',
@@ -291,8 +299,7 @@ class SupplierPurchaseOrderController extends Controller
             })
             ->addColumn('supplier_id_value', fn (SupplierPurchaseOrder $order) => $order->supplier_id)
             ->addColumn('status_code', fn (SupplierPurchaseOrder $order) => strtolower((string) $order->status))
-            ->addColumn('group_date', fn (SupplierPurchaseOrder $order) =>
-                $order->updated_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
+            ->addColumn('group_date', fn (SupplierPurchaseOrder $order) => $order->updated_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-')
             ->addColumn('supplier_name', function (SupplierPurchaseOrder $order) {
                 return $order->supplier?->business_name
                     ?? $order->supplier?->short_name
@@ -328,7 +335,7 @@ class SupplierPurchaseOrderController extends Controller
 
                 return sprintf(
                     '<span class="supplier-order-total">%s</span>',
-                    e(trim($symbol . ' ' . number_format((float) $order->grand_total, 2)))
+                    e(trim($symbol.' '.number_format((float) $order->grand_total, 2)))
                 );
             })
             ->editColumn('status', function (SupplierPurchaseOrder $order) {
@@ -407,7 +414,7 @@ class SupplierPurchaseOrderController extends Controller
                     'facturado' => self::STATUS_INVOICED,
                 ];
 
-                $query->where('status', 'like', '%' . ($aliases[$normalized] ?? $keyword) . '%');
+                $query->where('status', 'like', '%'.($aliases[$normalized] ?? $keyword).'%');
             })
             ->rawColumns(['code', 'customer_order', 'grand_total', 'status', 'acciones'])
             ->make(true);
@@ -434,7 +441,7 @@ class SupplierPurchaseOrderController extends Controller
 
         return $pdfDocument
             ? Storage::disk('public')->url($pdfDocument->file_path)
-                . '?v=' . $pdfDocument->updated_at?->timestamp
+                .'?v='.$pdfDocument->updated_at?->timestamp
             : null;
     }
 
@@ -459,7 +466,7 @@ class SupplierPurchaseOrderController extends Controller
     {
         $supplierAccountId = $request->input('supplier_account_id');
 
-        if (!$supplierAccountId) {
+        if (! $supplierAccountId) {
             return response()->json([
                 'code' => '',
                 'message' => 'Seleccione una cuenta bancaria para generar el numero de orden.',
@@ -470,7 +477,7 @@ class SupplierPurchaseOrderController extends Controller
             ->with('bank')
             ->find($supplierAccountId);
 
-        if (!$account) {
+        if (! $account) {
             return response()->json([
                 'message' => 'La cuenta bancaria seleccionada no existe.',
             ], 422);
@@ -687,7 +694,7 @@ class SupplierPurchaseOrderController extends Controller
             ?? $supplierPurchaseOrder->supplier?->short_name
             ?? 'DOCUMENTO_PROVEEDOR';
         $responseName = $this->sanitizeSupplierDocumentFileName($supplierName)
-            . ($extension !== '' ? '.' . $extension : '');
+            .($extension !== '' ? '.'.$extension : '');
 
         return Storage::disk('public')->response($document->file_path, $responseName, [
             'Content-Type' => $document->mime_type ?: 'application/octet-stream',
@@ -751,7 +758,7 @@ class SupplierPurchaseOrderController extends Controller
                 'message' => 'Orden de compra a proveedor eliminada correctamente.',
             ]);
         } catch (\Throwable $e) {
-            Log::error('Error deleting supplier purchase order: ' . $e->getMessage());
+            Log::error('Error deleting supplier purchase order: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -1220,7 +1227,7 @@ class SupplierPurchaseOrderController extends Controller
                 } catch (\Throwable $pdfException) {
                     $pdfError = 'La orden se guardo, pero no se pudo generar el PDF.';
 
-                    Log::error('Error generating supplier purchase order PDF: ' . $pdfException->getMessage());
+                    Log::error('Error generating supplier purchase order PDF: '.$pdfException->getMessage());
                 }
 
                 return response()->json([
@@ -1248,7 +1255,7 @@ class SupplierPurchaseOrderController extends Controller
                 }
             }
 
-            Log::error('Error saving supplier purchase order: ' . $e->getMessage());
+            Log::error('Error saving supplier purchase order: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -1350,7 +1357,7 @@ class SupplierPurchaseOrderController extends Controller
                     'El precio de compra del artículo %s no puede ser mayor al precio de la Orden de Compra del Cliente. Precio cliente: %s %s.',
                     $articleName,
                     $currency,
-                rtrim(rtrim(number_format($maximumPrice, 6, '.', ''), '0'), '.')
+                    rtrim(rtrim(number_format($maximumPrice, 6, '.', ''), '0'), '.')
                 ),
             ]);
         }
@@ -1373,8 +1380,7 @@ class SupplierPurchaseOrderController extends Controller
         $orders,
         ?int $supplierId = null,
         $supplierPurchaseOrderId = null
-    )
-    {
+    ) {
         $orders->each(function (CustomerPurchaseOrder $order) {
             $order->load([
                 'customer:id,business_name,full_name,first_name,last_name',
@@ -1402,7 +1408,7 @@ class SupplierPurchaseOrderController extends Controller
             $customerName = $order->customer?->business_name
                 ?? $order->customer?->full_name
                 ?? trim(
-                    ($order->customer?->first_name ?? '') . ' ' .
+                    ($order->customer?->first_name ?? '').' '.
                     ($order->customer?->last_name ?? '')
                 )
                 ?: null;
@@ -1423,7 +1429,7 @@ class SupplierPurchaseOrderController extends Controller
                     return false;
                 }
 
-                if (!$supplierId) {
+                if (! $supplierId) {
                     return true;
                 }
 
@@ -1698,17 +1704,15 @@ class SupplierPurchaseOrderController extends Controller
             if ($customerItemId) {
                 $customerItem = $customerOrderItems->get($customerItemId);
 
-                if (!$customerItem) {
+                if (! $customerItem) {
                     throw ValidationException::withMessages([
-                        "items.$index.customer_purchase_order_item_id" =>
-                        'El item de orden cliente no existe.',
+                        "items.$index.customer_purchase_order_item_id" => 'El item de orden cliente no existe.',
                     ]);
                 }
 
-                if (!in_array((int) $customerItem->customer_purchase_order_id, $customerOrderIds, true)) {
+                if (! in_array((int) $customerItem->customer_purchase_order_id, $customerOrderIds, true)) {
                     throw ValidationException::withMessages([
-                        "items.$index.customer_purchase_order_item_id" =>
-                        'El item no pertenece a las ordenes cliente seleccionadas.',
+                        "items.$index.customer_purchase_order_item_id" => 'El item no pertenece a las ordenes cliente seleccionadas.',
                     ]);
                 }
             }
@@ -1717,18 +1721,17 @@ class SupplierPurchaseOrderController extends Controller
                 ?? $customerItem?->market_study_item_id
                 ?? $customerItem?->quoteItem?->market_study_item_id;
 
-            if (!$customerItemId && !$marketStudyItemId) {
+            if (! $customerItemId && ! $marketStudyItemId) {
                 continue;
             }
 
-            if (!$marketStudyItemId) {
+            if (! $marketStudyItemId) {
                 continue;
             }
 
-            if (!$awardMap->has((int) $marketStudyItemId)) {
+            if (! $awardMap->has((int) $marketStudyItemId)) {
                 throw ValidationException::withMessages([
-                    "items.$index.article_id" =>
-                    'El item no esta adjudicado al proveedor seleccionado.',
+                    "items.$index.article_id" => 'El item no esta adjudicado al proveedor seleccionado.',
                 ]);
             }
 
@@ -1742,7 +1745,7 @@ class SupplierPurchaseOrderController extends Controller
             );
             $items[$index]['reference_purchase_price'] = $winnerPrice;
 
-            if (!empty($award->article_id)) {
+            if (! empty($award->article_id)) {
                 $items[$index]['article_id'] = $award->article_id;
             }
 
@@ -1760,8 +1763,7 @@ class SupplierPurchaseOrderController extends Controller
         Model $item,
         string $sourceKey,
         ?object $award = null
-    ): array
-    {
+    ): array {
         $article = $item->article;
         $quantity = round((float) ($item->quantity ?? 1), 2);
         $unitPrice = round(
@@ -1813,7 +1815,7 @@ class SupplierPurchaseOrderController extends Controller
 
         do {
             $lastSequence++;
-            $code = str_pad((string) $lastSequence, 5, '0', STR_PAD_LEFT) . '-' . $year . '-' . $bankCode;
+            $code = str_pad((string) $lastSequence, 5, '0', STR_PAD_LEFT).'-'.$year.'-'.$bankCode;
         } while (SupplierPurchaseOrder::withTrashed()->where('code', $code)->exists());
 
         return [
@@ -1829,7 +1831,7 @@ class SupplierPurchaseOrderController extends Controller
         $bank = $account->bank;
         $rawCode = $bank?->short_name ?: $bank?->description;
 
-        if (!$rawCode) {
+        if (! $rawCode) {
             throw ValidationException::withMessages([
                 'supplier_account_id' => 'El banco seleccionado no tiene codigo configurado.',
             ]);
@@ -1861,8 +1863,8 @@ class SupplierPurchaseOrderController extends Controller
 
     private function generateSupplierPurchaseOrderPdf(SupplierPurchaseOrder $order): array
     {
-        $fileName = 'orden_compra_proveedor_' . $this->sanitizeFileName($order->code) . '.pdf';
-        $storedPath = 'supplier-purchase-orders/' . $fileName;
+        $fileName = 'orden_compra_proveedor_'.$this->sanitizeFileName($order->code).'.pdf';
+        $storedPath = 'supplier-purchase-orders/'.$fileName;
 
         $pdf = Pdf::loadView('admin.supplier-purchase-orders.pdf', [
             'order' => $order,
@@ -1896,7 +1898,7 @@ class SupplierPurchaseOrderController extends Controller
         return [
             'path' => $storedPath,
             'url' => Storage::disk('public')->url($storedPath)
-                . '?v=' . now()->format('YmdHisv'),
+                .'?v='.now()->format('YmdHisv'),
             'document' => $document,
         ];
     }
@@ -2027,7 +2029,7 @@ class SupplierPurchaseOrderController extends Controller
 
             $type = $this->resolveSupplierOrderDocumentType($documentData['type'] ?? 'other');
             $storedPath = $file->store(
-                'supplier-purchase-orders/documents/' . $order->id,
+                'supplier-purchase-orders/documents/'.$order->id,
                 'public'
             );
             $storedPaths[] = $storedPath;
@@ -2144,7 +2146,7 @@ class SupplierPurchaseOrderController extends Controller
         }
 
         $companyName = mb_strtoupper(Str::ascii(trim(
-            ($company->business_name ?? '') . ' ' . ($company->trade_name ?? '')
+            ($company->business_name ?? '').' '.($company->trade_name ?? '')
         )));
 
         return (string) $company->ruc === '20612701904'
@@ -2380,6 +2382,6 @@ class SupplierPurchaseOrderController extends Controller
     private function refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds): void
     {
         app(CustomerPurchaseOrderStatusService::class)
-            ->recalculateMany($customerPurchaseOrderIds);
+            ->syncMany($customerPurchaseOrderIds);
     }
 }

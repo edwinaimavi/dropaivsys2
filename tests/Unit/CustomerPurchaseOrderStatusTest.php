@@ -89,3 +89,16 @@ it('only marks a fully supplied order as attended when it has a closure document
         ->and(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered, true))
         ->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
 });
+
+it('compares supplied quantities with four decimal precision', function () {
+    expect(CustomerPurchaseOrder::supplyStatusFromQuantities(
+        [1 => 10.0000],
+        [1 => 10.0000],
+        [1 => 9.99996]
+    ))->toBe(CustomerPurchaseOrder::STATUS_ENTERED)
+        ->and(CustomerPurchaseOrder::supplyStatusFromQuantities(
+            [1 => 10.0000],
+            [1 => 10.0000],
+            [1 => 9.99994]
+        ))->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_ENTERED);
+});

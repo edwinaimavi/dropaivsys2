@@ -8,17 +8,21 @@ use Illuminate\Console\Command;
 
 class RecalculateCustomerPurchaseOrderStatuses extends Command
 {
-    protected $signature = 'customer-orders:recalculate-statuses
+    protected $signature = 'customer-orders:sync-statuses
         {--order= : ID, código interno o número de OC cliente}';
 
-    protected $aliases = ['customer-orders:recalculate-status'];
+    protected $aliases = [
+        'customer-orders:recalculate-statuses',
+        'customer-orders:recalculate-status',
+    ];
 
-    protected $description = 'Recalcula los estados de las órdenes de compra de clientes según sus ingresos reales de almacén';
+    protected $description = 'Sincroniza los estados de las órdenes de compra de clientes según sus ingresos reales de almacén';
 
     public function handle(CustomerPurchaseOrderStatusService $statusService): int
     {
         $query = CustomerPurchaseOrder::query()
-            ->select(['id', 'code', 'purchase_order_number', 'status']);
+            ->select(['id', 'code', 'purchase_order_number', 'status'])
+            ->where('status', '!=', 'cancelled');
 
         if (filled($orderReference = $this->option('order'))) {
             $query->where(function ($orderQuery) use ($orderReference) {
@@ -34,8 +38,8 @@ class RecalculateCustomerPurchaseOrderStatuses extends Command
 
         if (! $query->exists()) {
             $this->warn(filled($orderReference)
-                ? "No se encontró una OC cliente con la referencia {$orderReference}."
-                : 'No existen órdenes de compra de clientes para revisar.');
+                ? "No se encontró una OC cliente activa con la referencia {$orderReference}."
+                : 'No existen órdenes de compra de clientes activas para revisar.');
 
             return self::FAILURE;
         }
@@ -49,16 +53,16 @@ class RecalculateCustomerPurchaseOrderStatuses extends Command
                 $reviewed++;
 
                 try {
-                    $result = $statusService->recalculate($order);
+                    $result = $statusService->syncStatus($order);
                     if (! $result['changed']) {
                         continue;
                     }
 
                     $updated++;
-                    $reference = $order->purchase_order_number ?: $order->code ?: "#{$order->id}";
                     $this->line(sprintf(
-                        '%s: %s → %s',
-                        $reference,
+                        '%s | %s | %s -> %s',
+                        $order->code ?: "#{$order->id}",
+                        $order->purchase_order_number ?: '-',
                         $this->statusLabel($result['previous_status']),
                         $this->statusLabel($result['status'])
                     ));
@@ -71,7 +75,7 @@ class RecalculateCustomerPurchaseOrderStatuses extends Command
 
         $this->newLine();
         $this->table(
-            ['Revisadas', 'Actualizadas', 'Con error'],
+            ['Total revisadas', 'Total corregidas', 'Con error'],
             [[$reviewed, $updated, $errors]]
         );
 

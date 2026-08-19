@@ -19,6 +19,7 @@ use App\Models\QuoteItem;
 use App\Models\Subcategory;
 use App\Models\Unit;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -29,7 +30,6 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class CustomerPurchaseOrderController extends Controller
 {
@@ -40,6 +40,7 @@ class CustomerPurchaseOrderController extends Controller
         self::STATUS_IN_PURCHASE,
         self::STATUS_PARTIAL_ENTERED,
     ];
+
     private const FINAL_STATUSES = [
         self::STATUS_ENTERED,
         self::STATUS_ATTENDED,
@@ -48,15 +49,25 @@ class CustomerPurchaseOrderController extends Controller
         self::STATUS_DELIVERED,
         self::STATUS_INVOICED,
     ];
+
     private const STATUS_REGISTERED = 'registered';
+
     private const STATUS_IN_PURCHASE = 'in_purchase';
+
     private const STATUS_PARTIAL_PURCHASE = CustomerPurchaseOrder::STATUS_PARTIAL_PURCHASE;
+
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
+
     private const STATUS_ENTERED = CustomerPurchaseOrder::STATUS_ENTERED;
+
     private const STATUS_CANCELLED = 'cancelled';
+
     private const STATUS_DELIVERED = 'delivered';
+
     private const STATUS_INVOICED = 'invoiced';
+
     private const STATUS_ATTENDED = CustomerPurchaseOrder::STATUS_ATTENDED;
+
     private const STATUS_NOT_ATTENDED = CustomerPurchaseOrder::STATUS_NOT_ATTENDED;
 
     public function __construct()
@@ -218,7 +229,7 @@ class CustomerPurchaseOrderController extends Controller
             ->addColumn('customer', function (CustomerPurchaseOrder $order) {
                 $customer = $order->customer?->business_name
                     ?? $order->customer?->full_name
-                    ?? trim(($order->customer?->first_name ?? '') . ' ' . ($order->customer?->last_name ?? ''))
+                    ?? trim(($order->customer?->first_name ?? '').' '.($order->customer?->last_name ?? ''))
                     ?: '-';
 
                 $branch = $order->customerBranch?->branch_name;
@@ -242,11 +253,11 @@ class CustomerPurchaseOrderController extends Controller
             ->addColumn('customer_text', function (CustomerPurchaseOrder $order) {
                 $customer = $order->customer?->business_name
                     ?? $order->customer?->full_name
-                    ?? trim(($order->customer?->first_name ?? '') . ' ' . ($order->customer?->last_name ?? ''))
+                    ?? trim(($order->customer?->first_name ?? '').' '.($order->customer?->last_name ?? ''))
                     ?: '-';
                 $branch = $order->customerBranch?->branch_name;
 
-                return $branch ? $customer . ' | ' . $branch : $customer;
+                return $branch ? $customer.' | '.$branch : $customer;
             })
             ->filterColumn('customer', function ($query, string $keyword) {
                 $query->where(function ($customerQuery) use ($keyword) {
@@ -296,7 +307,7 @@ class CustomerPurchaseOrderController extends Controller
             ->editColumn('grand_total', function (CustomerPurchaseOrder $order) {
                 $symbol = $order->currency?->symbol ?? '';
 
-                return trim($symbol . ' ' . $this->formatDecimal($order->grand_total));
+                return trim($symbol.' '.$this->formatDecimal($order->grand_total));
             })
             ->addColumn('delivery_period', fn (CustomerPurchaseOrder $order) => $this->deliveryPeriodHtml($order))
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
@@ -395,7 +406,7 @@ class CustomerPurchaseOrderController extends Controller
         $start = $order->delivery_start_date;
         $end = $order->delivery_end_date;
 
-        if (!$start || !$end) {
+        if (! $start || ! $end) {
             return '<div class="delivery-period-card delivery-period-muted">
                 <span class="delivery-period-badge">Sin plazo definido</span>
             </div>';
@@ -471,7 +482,7 @@ class CustomerPurchaseOrderController extends Controller
             $configuredDays,
             $dayLabel($configuredDays),
             e($message),
-            $note !== '' ? '<small class="delivery-period-note">' . e($note) . '</small>' : ''
+            $note !== '' ? '<small class="delivery-period-note">'.e($note).'</small>' : ''
         );
     }
 
@@ -569,13 +580,15 @@ class CustomerPurchaseOrderController extends Controller
                 function ($attribute, $value, $fail) use ($request) {
                     $documentType = mb_strtoupper((string) $request->input('document_type'));
 
-                    if ($documentType === 'RUC' && !preg_match('/^\d{11}$/', (string) $value)) {
+                    if ($documentType === 'RUC' && ! preg_match('/^\d{11}$/', (string) $value)) {
                         $fail('El RUC debe tener 11 dígitos.');
+
                         return;
                     }
 
-                    if ($documentType === 'DNI' && !preg_match('/^\d{8}$/', (string) $value)) {
+                    if ($documentType === 'DNI' && ! preg_match('/^\d{8}$/', (string) $value)) {
                         $fail('El DNI debe tener 8 dígitos.');
+
                         return;
                     }
 
@@ -668,7 +681,7 @@ class CustomerPurchaseOrderController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            Log::error('Error quick storing customer from customer purchase order: ' . $e->getMessage());
+            Log::error('Error quick storing customer from customer purchase order: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -679,7 +692,7 @@ class CustomerPurchaseOrderController extends Controller
 
     public function quoteItems(Quote $quote)
     {
-        if (!in_array($quote->status, [
+        if (! in_array($quote->status, [
             Quote::STATUS_SENT,
             Quote::STATUS_APPROVED,
         ], true)) {
@@ -762,7 +775,7 @@ class CustomerPurchaseOrderController extends Controller
                 'dni' => $user->dni,
                 'names' => $user->name,
                 'lastnames' => $user->lastname,
-                'full_name' => trim($user->name . ' ' . $user->lastname),
+                'full_name' => trim($user->name.' '.$user->lastname),
                 'phone' => $user->phone,
                 'email' => $user->email,
             ] : null,
@@ -820,7 +833,7 @@ class CustomerPurchaseOrderController extends Controller
 
         return Pdf::loadView('admin.customer-purchase-orders.pdf', [
             'order' => $customerPurchaseOrder,
-        ])->setPaper('a4')->stream('orden_cliente_' . $customerPurchaseOrder->code . '.pdf');
+        ])->setPaper('a4')->stream('orden_cliente_'.$customerPurchaseOrder->code.'.pdf');
     }
 
     public function update(
@@ -857,7 +870,7 @@ class CustomerPurchaseOrderController extends Controller
         try {
             if ($request->hasFile('file')) {
                 $file = $request->file('file');
-                $storedName = Str::uuid() . '.' . $file->getClientOriginalExtension();
+                $storedName = Str::uuid().'.'.$file->getClientOriginalExtension();
                 $storedPath = $file->storeAs(
                     'customer-purchase-orders/attention-closures',
                     $storedName,
@@ -926,7 +939,7 @@ class CustomerPurchaseOrderController extends Controller
 
                 $order->delete();
 
-                if (!$quoteId) {
+                if (! $quoteId) {
                     return;
                 }
 
@@ -935,7 +948,7 @@ class CustomerPurchaseOrderController extends Controller
                     ->lockForUpdate()
                     ->first();
 
-                if (!$quote || $quote->status !== Quote::STATUS_APPROVED) {
+                if (! $quote || $quote->status !== Quote::STATUS_APPROVED) {
                     return;
                 }
 
@@ -963,7 +976,7 @@ class CustomerPurchaseOrderController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error(
-                'Error deleting customer purchase order: ' . $e->getMessage()
+                'Error deleting customer purchase order: '.$e->getMessage()
             );
 
             return response()->json([
@@ -1043,6 +1056,12 @@ class CustomerPurchaseOrderController extends Controller
                 Rule::in($this->customerPurchaseOrderStatuses()),
             ],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => [
+                'nullable',
+                'integer',
+                Rule::exists('customer_purchase_order_items', 'id')
+                    ->where('customer_purchase_order_id', $order?->id ?? 0),
+            ],
             'items.*.quote_item_id' => [
                 'nullable',
                 Rule::exists('quote_items', 'id')
@@ -1096,17 +1115,17 @@ class CustomerPurchaseOrderController extends Controller
                 $deliveryStartDate = null;
                 $deliveryEndDate = null;
 
-                if (!empty($validated['notification_date'])) {
+                if (! empty($validated['notification_date'])) {
                     $notificationDate = Carbon::parse($validated['notification_date']);
                     $deliveryStartDate = $notificationDate->copy()->addDay()->toDateString();
-                    $deliveryEndDate = !empty($validated['delivery_days'])
+                    $deliveryEndDate = ! empty($validated['delivery_days'])
                         ? $notificationDate->copy()->addDays((int) $validated['delivery_days'])->toDateString()
                         : null;
                 }
 
                 $relatedQuote = null;
 
-                if ($isCreating && !empty($validated['quote_id'])) {
+                if ($isCreating && ! empty($validated['quote_id'])) {
                     $relatedQuote = Quote::query()
                         ->whereKey($validated['quote_id'])
                         ->whereIn('status', [
@@ -1116,7 +1135,7 @@ class CustomerPurchaseOrderController extends Controller
                         ->lockForUpdate()
                         ->first();
 
-                    if (!$relatedQuote) {
+                    if (! $relatedQuote) {
                         throw ValidationException::withMessages([
                             'quote_id' => 'La cotización ya no está disponible para generar una orden de compra.',
                         ]);
@@ -1176,15 +1195,26 @@ class CustomerPurchaseOrderController extends Controller
 
                 if ($order) {
                     $order->update($orderData);
-                    $order->items()->delete();
                 } else {
                     $orderData['code'] = $this->nextCode();
                     $orderData['created_by'] = Auth::id();
                     $order = CustomerPurchaseOrder::create($orderData);
                 }
 
+                $retainedItemIds = [];
                 foreach ($preparedItems as $item) {
-                    $order->items()->create($item);
+                    $itemId = $item['_item_id'] ?? null;
+                    unset($item['_item_id']);
+
+                    $orderItem = $itemId
+                        ? $order->items()->whereKey($itemId)->firstOrFail()
+                        : $order->items()->make();
+                    $orderItem->fill($item)->save();
+                    $retainedItemIds[] = $orderItem->id;
+                }
+
+                if (! $isCreating) {
+                    $order->items()->whereNotIn('id', $retainedItemIds)->delete();
                 }
 
                 $this->deleteOrderDocuments(
@@ -1204,6 +1234,8 @@ class CustomerPurchaseOrderController extends Controller
                     ]);
                 }
 
+                $order->refresh()->refreshSupplyStatus();
+
                 return response()->json([
                     'status' => 'success',
                     'message' => $order->wasRecentlyCreated
@@ -1219,7 +1251,7 @@ class CustomerPurchaseOrderController extends Controller
                 Storage::disk('public')->delete($path);
             }
 
-            Log::error('Error saving customer purchase order: ' . $e->getMessage());
+            Log::error('Error saving customer purchase order: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
@@ -1237,11 +1269,11 @@ class CustomerPurchaseOrderController extends Controller
         foreach ($uploadedDocuments as $index => $upload) {
             $file = is_array($upload) ? ($upload['file'] ?? null) : null;
 
-            if (!$file) {
+            if (! $file) {
                 continue;
             }
 
-            $storedName = Str::uuid() . '.' . strtolower($file->getClientOriginalExtension());
+            $storedName = Str::uuid().'.'.strtolower($file->getClientOriginalExtension());
             $path = $file->storeAs('customer-purchase-orders/documents', $storedName, 'public');
             $storedPaths[] = $path;
             $meta = $documentData[$index] ?? [];
@@ -1308,6 +1340,7 @@ class CustomerPurchaseOrderController extends Controller
                 $taxAmount = $affectIgv ? bcsub($lineTotal, $subtotal, 10) : '0';
 
                 return [
+                    '_item_id' => $item['id'] ?? null,
                     'quote_item_id' => $item['quote_item_id'] ?? null,
                     'market_study_item_id' => $item['market_study_item_id']
                         ?? $quoteItem?->market_study_item_id,
@@ -1386,7 +1419,7 @@ class CustomerPurchaseOrderController extends Controller
 
         do {
             $lastNumber++;
-            $code = 'P' . str_pad($lastNumber, 5, '0', STR_PAD_LEFT);
+            $code = 'P'.str_pad($lastNumber, 5, '0', STR_PAD_LEFT);
         } while (
             CustomerPurchaseOrder::withTrashed()
                 ->where('code', $code)
@@ -1450,13 +1483,13 @@ class CustomerPurchaseOrderController extends Controller
     {
         $name = $customer->business_name
             ?? $customer->full_name
-            ?? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''))
+            ?? trim(($customer->first_name ?? '').' '.($customer->last_name ?? ''))
             ?: 'Cliente';
         $document = $customer->document_number ?? $customer->ruc;
 
         return [
             'id' => $customer->id,
-            'text' => trim(($document ? $document . ' | ' : '') . $name),
+            'text' => trim(($document ? $document.' | ' : '').$name),
         ];
     }
 

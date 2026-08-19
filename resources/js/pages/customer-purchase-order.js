@@ -1009,6 +1009,7 @@ function addPurchaseOrderItemRow(data = {}) {
         appendOptionIfMissing(row.find('.item-presentation-id'), id, text);
     });
 
+    row.find('.item-id').val(data.id || '');
     row.find('.item-quote-item-id').val(data.quote_item_id || '');
     row.find('.item-market-study-item-id').val(data.market_study_item_id || '');
     row.find('.item-article-id').val(data.article_id || '');
