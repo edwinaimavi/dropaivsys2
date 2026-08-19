@@ -120,6 +120,12 @@ it('devuelve JSON válido para DataTables aunque la migración de aprobación es
             'draw',
             'recordsTotal',
             'recordsFiltered',
+            'totals' => [
+                'sale_total',
+                'purchase_total',
+                'cost_total',
+                'net_profit_total',
+            ],
             'data' => [[
                 'DT_RowIndex',
                 'id',
@@ -127,7 +133,68 @@ it('devuelve JSON válido para DataTables aunque la migración de aprobación es
                 'profitability_base',
                 'profitability_percentage',
             ]],
-        ]);
+        ])
+        ->assertJsonPath('totals.sale_total', 0)
+        ->assertJsonPath('totals.purchase_total', 0)
+        ->assertJsonPath('totals.cost_total', 0)
+        ->assertJsonPath('totals.net_profit_total', 0);
+});
+
+it('acumula los totales de todas las ordenes que cumplen los filtros del listado', function () {
+    Permission::findOrCreate('admin.customer-order-profitability.index', 'web');
+    $this->user->givePermissionTo('admin.customer-order-profitability.index');
+
+    $includedOrder = CustomerPurchaseOrder::create([
+        'code' => 'OCC-TEST-002',
+        'company_id' => $this->company->id,
+        'customer_id' => $this->customer->id,
+        'order_type' => 'local',
+        'purchase_order_number' => 'OC-002',
+        'currency_id' => $this->currency->id,
+        'affect_igv' => true,
+        'status' => 'registered',
+        'created_by' => $this->user->id,
+    ]);
+    CustomerPurchaseOrder::create([
+        'code' => 'OCC-CANCELLED-003',
+        'company_id' => $this->company->id,
+        'customer_id' => $this->customer->id,
+        'order_type' => 'local',
+        'purchase_order_number' => 'OC-003',
+        'currency_id' => $this->currency->id,
+        'affect_igv' => true,
+        'status' => 'cancelled',
+        'created_by' => $this->user->id,
+    ]);
+
+    $values = [
+        $this->order->id => [100.25, 55.10, 10.05, 25.10],
+        $includedOrder->id => [300.30, 120.20, 20.15, 90.35],
+    ];
+    $service = \Mockery::mock(CustomerOrderProfitabilityService::class);
+    $service->shouldReceive('calculate')->twice()->andReturnUsing(function ($order) use ($values) {
+        [$sale, $purchase, $cost, $net] = $values[$order->id];
+
+        return [
+            'saleValue' => $sale,
+            'purchaseValue' => $purchase,
+            'linkedTotal' => $cost,
+            'net' => $net,
+            'profitabilityBase' => $purchase + $cost,
+            'percentage' => 0,
+        ];
+    });
+    $this->app->instance(CustomerOrderProfitabilityService::class, $service);
+
+    $this->getJson(route('admin.customer-order-profitability.list', [
+        'status' => 'registered',
+    ]))
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('totals.sale_total', 400.55)
+        ->assertJsonPath('totals.purchase_total', 175.30)
+        ->assertJsonPath('totals.cost_total', 30.20)
+        ->assertJsonPath('totals.net_profit_total', 115.45);
 });
 
 it('incluye la base corregida en la respuesta AJAX del modal', function () {

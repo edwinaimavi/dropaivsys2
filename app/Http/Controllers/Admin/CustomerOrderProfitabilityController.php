@@ -59,7 +59,17 @@ class CustomerOrderProfitabilityController extends Controller
             return ['id' => $order->id, 'code' => $order->code, 'purchase_order_number' => $order->purchase_order_number, 'customer' => $order->customer?->business_name ?: $order->customer?->full_name, 'company' => $order->company?->trade_name ?: $order->company?->business_name, 'currency' => 'S/', 'sale_total' => $data['saleValue'], 'purchase_total' => $data['purchaseValue'], 'linked_costs_total' => $data['linkedTotal'], 'net_profit' => $data['net'], 'profitability_base' => $data['profitabilityBase'], 'profitability_percentage' => $data['percentage'], 'status_label' => $status['label'], 'status_class' => $status['class'], 'status_icon' => $status['icon']];
         });
 
-        return DataTables::of($rows)->addIndexColumn()->make(true);
+        $totals = [
+            'sale_total' => round((float) $rows->sum('sale_total'), 2),
+            'purchase_total' => round((float) $rows->sum('purchase_total'), 2),
+            'cost_total' => round((float) $rows->sum('linked_costs_total'), 2),
+            'net_profit_total' => round((float) $rows->sum('net_profit'), 2),
+        ];
+
+        return DataTables::of($rows)
+            ->addIndexColumn()
+            ->with(['totals' => $totals])
+            ->make(true);
     }
 
     public function show(Request $request, CustomerPurchaseOrder $customerPurchaseOrder)

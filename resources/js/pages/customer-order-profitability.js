@@ -1,5 +1,6 @@
 let customerOrderProfitabilityTable;
 let currentProfitabilityOrderId = null;
+let customerOrderProfitabilityTotals = emptyProfitabilityTotals();
 
 document.addEventListener('DOMContentLoaded', () => {
     $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
@@ -7,7 +8,15 @@ document.addEventListener('DOMContentLoaded', () => {
     customerOrderProfitabilityTable = $('#tableCustomerOrderProfitability').DataTable({
         processing: true,
         serverSide: false,
-        ajax: { url: window.customerOrderProfitabilityRoutes.list, data: data => Object.assign(data, filters()) },
+        ajax: {
+            url: window.customerOrderProfitabilityRoutes.list,
+            data: data => Object.assign(data, filters()),
+            dataSrc: response => {
+                customerOrderProfitabilityTotals = normalizeProfitabilityTotals(response.totals);
+
+                return response.data || [];
+            }
+        },
         columns: [
             { data: 'DT_RowIndex', className: 'text-muted' },
             { data: 'code', render: value => `<strong class="text-dark">${escapeHtml(value || '-')}</strong>` },
@@ -26,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         responsive: false,
         autoWidth: false,
         pageLength: 10,
+        footerCallback: function () { updateProfitabilityFooter(this.api()); },
         dom: "<'row align-items-center mb-3'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>><'row'<'col-sm-12'tr>><'row align-items-center mt-3'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7 d-flex justify-content-center justify-content-md-end'p>>",
         language: {
             processing: 'Procesando...',
@@ -84,6 +94,44 @@ function openProfitabilityTab(tabTarget) {
 }
 function showError() { $('#copDetailBody').html('<div class="alert alert-danger m-4">No se pudo calcular la rentabilidad de esta orden.</div>'); }
 function money(value) { return Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function emptyProfitabilityTotals() { return { sale_total: 0, purchase_total: 0, cost_total: 0, net_profit_total: 0 }; }
+function normalizeProfitabilityTotals(totals) {
+    const values = totals || {};
+
+    return {
+        sale_total: Number(values.sale_total || 0),
+        purchase_total: Number(values.purchase_total || 0),
+        cost_total: Number(values.cost_total || 0),
+        net_profit_total: Number(values.net_profit_total || 0)
+    };
+}
+function hasInternalProfitabilitySearch(api) {
+    return String(api.search() || '').trim() !== ''
+        || api.columns().search().toArray().some(value => String(value || '').trim() !== '');
+}
+function internalSearchProfitabilityTotals(api) {
+    return api.rows({ search: 'applied' }).data().toArray().reduce((totals, row) => {
+        totals.sale_total += Number(row.sale_total || 0);
+        totals.purchase_total += Number(row.purchase_total || 0);
+        totals.cost_total += Number(row.linked_costs_total || 0);
+        totals.net_profit_total += Number(row.net_profit || 0);
+
+        return totals;
+    }, emptyProfitabilityTotals());
+}
+function updateProfitabilityFooter(api) {
+    const totals = hasInternalProfitabilitySearch(api)
+        ? internalSearchProfitabilityTotals(api)
+        : customerOrderProfitabilityTotals;
+
+    $('#cop_total_sale').text(`S/ ${money(totals.sale_total)}`);
+    $('#cop_total_purchase').text(`S/ ${money(totals.purchase_total)}`);
+    $('#cop_total_cost').text(`S/ ${money(totals.cost_total)}`);
+    $('#cop_total_net_profit')
+        .removeClass('cop-total-positive cop-total-negative')
+        .addClass(totals.net_profit_total > 0 ? 'cop-total-positive' : totals.net_profit_total < 0 ? 'cop-total-negative' : '')
+        .text(`S/ ${money(totals.net_profit_total)}`);
+}
 function renderMoney(value, type, row) { if (type !== 'display') return Number(value || 0); return `<span class="cop-money">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`; }
 function renderNetProfit(value, type, row) { if (type !== 'display') return Number(value || 0); const css = Number(value) < 0 ? 'cop-money-profit-negative' : 'cop-money-profit-positive'; return `<span class="cop-money ${css}">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`; }
 function renderProfitability(value, type) { const amount = Number(value || 0); if (type !== 'display') return amount; const css = amount < 0 ? 'cop-profit-negative' : amount <= 5 ? 'cop-profit-low' : amount <= 15 ? 'cop-profit-medium' : 'cop-profit-high'; const icon = amount < 0 ? 'fa-arrow-down' : amount <= 5 ? 'fa-minus' : 'fa-arrow-up'; return `<span class="cop-profit-pill ${css}"><i class="fas ${icon}"></i>${amount.toFixed(2)}%</span>`; }
