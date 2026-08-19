@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { data: 'sale_total', className: 'text-right', render: renderMoney },
             { data: 'purchase_total', className: 'text-right', render: renderMoney },
             { data: 'linked_costs_total', className: 'text-right', render: renderMoney },
+            { data: 'igv_payable', className: 'text-right', render: renderIgvPayable },
+            { data: 'income_tax', className: 'text-right', render: renderIncomeTax },
             { data: 'net_profit', className: 'text-right', render: renderNetProfit },
             { data: 'profitability_percentage', className: 'text-center', render: renderProfitability },
             { data: 'status_label', render: (value, type, row) => renderStatus(value, row) },
@@ -94,7 +96,16 @@ function openProfitabilityTab(tabTarget) {
 }
 function showError() { $('#copDetailBody').html('<div class="alert alert-danger m-4">No se pudo calcular la rentabilidad de esta orden.</div>'); }
 function money(value) { return Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function emptyProfitabilityTotals() { return { sale_total: 0, purchase_total: 0, cost_total: 0, net_profit_total: 0 }; }
+function emptyProfitabilityTotals() {
+    return {
+        sale_total: 0,
+        purchase_total: 0,
+        cost_total: 0,
+        igv_payable_total: 0,
+        income_tax_total: 0,
+        net_profit_total: 0
+    };
+}
 function normalizeProfitabilityTotals(totals) {
     const values = totals || {};
 
@@ -102,6 +113,8 @@ function normalizeProfitabilityTotals(totals) {
         sale_total: Number(values.sale_total || 0),
         purchase_total: Number(values.purchase_total || 0),
         cost_total: Number(values.cost_total || 0),
+        igv_payable_total: Number(values.igv_payable_total || 0),
+        income_tax_total: Number(values.income_tax_total || 0),
         net_profit_total: Number(values.net_profit_total || 0)
     };
 }
@@ -114,6 +127,8 @@ function internalSearchProfitabilityTotals(api) {
         totals.sale_total += Number(row.sale_total || 0);
         totals.purchase_total += Number(row.purchase_total || 0);
         totals.cost_total += Number(row.linked_costs_total || 0);
+        totals.igv_payable_total += Number(row.igv_payable || 0);
+        totals.income_tax_total += Number(row.income_tax || 0);
         totals.net_profit_total += Number(row.net_profit || 0);
 
         return totals;
@@ -127,12 +142,34 @@ function updateProfitabilityFooter(api) {
     $('#cop_total_sale').text(`S/ ${money(totals.sale_total)}`);
     $('#cop_total_purchase').text(`S/ ${money(totals.purchase_total)}`);
     $('#cop_total_cost').text(`S/ ${money(totals.cost_total)}`);
+
+    $('#cop_total_igv_payable')
+        .removeClass('cop-total-igv')
+        .addClass('cop-total-igv')
+        .text(`S/ ${money(totals.igv_payable_total)}`);
+
+    $('#cop_total_income_tax')
+        .removeClass('cop-total-tax')
+        .addClass('cop-total-tax')
+        .text(`S/ ${money(totals.income_tax_total)}`);
+
     $('#cop_total_net_profit')
         .removeClass('cop-total-positive cop-total-negative')
         .addClass(totals.net_profit_total > 0 ? 'cop-total-positive' : totals.net_profit_total < 0 ? 'cop-total-negative' : '')
         .text(`S/ ${money(totals.net_profit_total)}`);
 }
 function renderMoney(value, type, row) { if (type !== 'display') return Number(value || 0); return `<span class="cop-money">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`; }
+function renderIgvPayable(value, type, row) {
+    if (type !== 'display') return Number(value || 0);
+
+    return `<span class="cop-money cop-money-igv">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`;
+}
+
+function renderIncomeTax(value, type, row) {
+    if (type !== 'display') return Number(value || 0);
+
+    return `<span class="cop-money cop-money-tax">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`;
+}
 function renderNetProfit(value, type, row) { if (type !== 'display') return Number(value || 0); const css = Number(value) < 0 ? 'cop-money-profit-negative' : 'cop-money-profit-positive'; return `<span class="cop-money ${css}">${escapeHtml(row.currency || 'S/')} ${money(value)}</span>`; }
 function renderProfitability(value, type) { const amount = Number(value || 0); if (type !== 'display') return amount; const css = amount < 0 ? 'cop-profit-negative' : amount <= 5 ? 'cop-profit-low' : amount <= 15 ? 'cop-profit-medium' : 'cop-profit-high'; const icon = amount < 0 ? 'fa-arrow-down' : amount <= 5 ? 'fa-minus' : 'fa-arrow-up'; return `<span class="cop-profit-pill ${css}"><i class="fas ${icon}"></i>${amount.toFixed(2)}%</span>`; }
 function renderStatus(value, row) { return `<span class="cop-status-pill ${escapeHtml(row.status_class || 'cop-status-unknown')}"><i class="fas ${escapeHtml(row.status_icon || 'fa-minus')}"></i>${escapeHtml(value || 'Sin estado')}</span>`; }

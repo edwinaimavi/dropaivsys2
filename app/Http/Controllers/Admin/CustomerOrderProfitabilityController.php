@@ -21,7 +21,10 @@ class CustomerOrderProfitabilityController extends Controller
     {
         $this->middleware('can:admin.customer-order-profitability.index')->only(['index', 'list']);
         $this->middleware('can:admin.customer-order-profitability.show')->only([
-            'show', 'viewDocument', 'viewExpenseDocument', 'viewLegacyExpenseDocument',
+            'show',
+            'viewDocument',
+            'viewExpenseDocument',
+            'viewLegacyExpenseDocument',
         ]);
         $this->middleware('can:admin.customer-order-profitability.calculate')->only('calculate');
         $this->middleware('can:admin.customer-order-profitability.recalculate')->only('recalculate');
@@ -41,28 +44,70 @@ class CustomerOrderProfitabilityController extends Controller
     {
         $mode = $request->input('mode', CustomerOrderProfitabilityService::MODE_WITHOUT_IGV);
         $orders = CustomerPurchaseOrder::query()->with(['customer:id,business_name,full_name', 'company:id,business_name,trade_name', 'currency:id,code,symbol'])
-            ->when($request->filled('company_id'), fn ($q) => $q->where('company_id', $request->company_id))
-            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('created_at', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('created_at', '<=', $request->date_to))
-            ->when($request->filled('search_order'), fn ($q) => $q->where(
-                fn ($search) => $search
-                    ->where('code', 'like', '%'.$request->search_order.'%')
-                    ->orWhere('purchase_order_number', 'like', '%'.$request->search_order.'%')
+            ->when($request->filled('company_id'), fn($q) => $q->where('company_id', $request->company_id))
+            ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->customer_id))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('date_from'), fn($q) => $q->whereDate('created_at', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn($q) => $q->whereDate('created_at', '<=', $request->date_to))
+            ->when($request->filled('search_order'), fn($q) => $q->where(
+                fn($search) => $search
+                    ->where('code', 'like', '%' . $request->search_order . '%')
+                    ->orWhere('purchase_order_number', 'like', '%' . $request->search_order . '%')
             ))
             ->latest()->get();
         $rows = $orders->map(function ($order) use ($mode) {
             $data = $this->service->calculate($order, $mode);
             $status = CustomerPurchaseOrder::statusPresentation($order->status);
 
-            return ['id' => $order->id, 'code' => $order->code, 'purchase_order_number' => $order->purchase_order_number, 'customer' => $order->customer?->business_name ?: $order->customer?->full_name, 'company' => $order->company?->trade_name ?: $order->company?->business_name, 'currency' => 'S/', 'sale_total' => $data['saleValue'], 'purchase_total' => $data['purchaseValue'], 'linked_costs_total' => $data['linkedTotal'], 'net_profit' => $data['net'], 'profitability_base' => $data['profitabilityBase'], 'profitability_percentage' => $data['percentage'], 'status_label' => $status['label'], 'status_class' => $status['class'], 'status_icon' => $status['icon']];
+            return [
+                'id' => $order->id,
+                'code' => $order->code,
+                'purchase_order_number' => $order->purchase_order_number,
+                'customer' => $order->customer?->business_name ?: $order->customer?->full_name,
+                'company' => $order->company?->trade_name ?: $order->company?->business_name,
+                'currency' => 'S/',
+                'sale_total' => $data['saleValue'],
+                'purchase_total' => $data['purchaseValue'],
+                'linked_costs_total' => $data['linkedTotal'],
+
+                // Nuevas columnas para la tabla principal.
+                // Se toman desde el cálculo existente del servicio, sin cambiar fórmulas.
+                'igv_payable' => $this->profitabilityNumber($data, [
+                    'igvToPay',
+                    'igv_to_pay',
+                    'igvPayable',
+                    'igv_payable',
+                    'taxes.igv_to_pay',
+                    'taxes.igvPayable',
+                    'taxes.igv_payable',
+                ]),
+                'income_tax' => $this->profitabilityNumber($data, [
+                    'incomeTax',
+                    'income_tax',
+                    'incomeTaxEstimated',
+                    'income_tax_estimated',
+                    'estimatedIncomeTax',
+                    'estimated_income_tax',
+                    'taxes.income_tax',
+                    'taxes.incomeTax',
+                    'taxes.income_tax_estimated',
+                ]),
+
+                'net_profit' => $data['net'],
+                'profitability_base' => $data['profitabilityBase'],
+                'profitability_percentage' => $data['percentage'],
+                'status_label' => $status['label'],
+                'status_class' => $status['class'],
+                'status_icon' => $status['icon'],
+            ];
         });
 
         $totals = [
             'sale_total' => round((float) $rows->sum('sale_total'), 2),
             'purchase_total' => round((float) $rows->sum('purchase_total'), 2),
             'cost_total' => round((float) $rows->sum('linked_costs_total'), 2),
+            'igv_payable_total' => round((float) $rows->sum('igv_payable'), 2),
+            'income_tax_total' => round((float) $rows->sum('income_tax'), 2),
             'net_profit_total' => round((float) $rows->sum('net_profit'), 2),
         ];
 
@@ -81,7 +126,7 @@ class CustomerOrderProfitabilityController extends Controller
     {
         abort_unless(
             $document->documentable_type === CustomerPurchaseOrder::class
-            && (int) $document->documentable_id === (int) $customerPurchaseOrder->id,
+                && (int) $document->documentable_id === (int) $customerPurchaseOrder->id,
             404
         );
 
@@ -91,7 +136,7 @@ class CustomerOrderProfitabilityController extends Controller
 
         return response()->file(Storage::disk('public')->path($document->file_path), [
             'Content-Type' => $document->mime_type ?: 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="'.$fileName.'"',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
         ]);
     }
 
@@ -104,8 +149,8 @@ class CustomerOrderProfitabilityController extends Controller
         $this->assertLinkedExpense($customerPurchaseOrder, $expenseDocument->expense);
         abort_unless(
             $expenseDocument->status === 'ACTIVE'
-            && filled($expenseDocument->file_path)
-            && Storage::disk('public')->exists($expenseDocument->file_path),
+                && filled($expenseDocument->file_path)
+                && Storage::disk('public')->exists($expenseDocument->file_path),
             404
         );
 
@@ -157,7 +202,7 @@ class CustomerOrderProfitabilityController extends Controller
         );
         $this->appendLinkedExpenseAttachments($customerPurchaseOrder, $data['costs']);
 
-        return Pdf::loadView('admin.customer-order-profitability.pdf', $data)->setPaper('a4', 'landscape')->stream('rentabilidad_'.$customerPurchaseOrder->code.'.pdf');
+        return Pdf::loadView('admin.customer-order-profitability.pdf', $data)->setPaper('a4', 'landscape')->stream('rentabilidad_' . $customerPurchaseOrder->code . '.pdf');
     }
 
     public function print(Request $request, CustomerPurchaseOrder $customerPurchaseOrder)
@@ -175,7 +220,7 @@ class CustomerOrderProfitabilityController extends Controller
     {
         $data = $this->service->calculate($order, $mode ?: CustomerOrderProfitabilityService::MODE_WITHOUT_IGV);
         $this->appendLinkedExpenseAttachments($order, $data['costs']);
-        $data['orderDocuments'] = $order->documents->where('status', 'ACTIVE')->map(fn (Document $document) => [
+        $data['orderDocuments'] = $order->documents->where('status', 'ACTIVE')->map(fn(Document $document) => [
             'type' => $document->documentType?->description ?: $document->documentType?->code ?: 'Documento',
             'file' => $document->original_name ?: basename((string) $document->file_path),
             'date' => ($document->issue_date ?: $document->created_at)?->format('d/m/Y'),
@@ -185,15 +230,26 @@ class CustomerOrderProfitabilityController extends Controller
 
         return ['html' => view('admin.customer-order-profitability.partials.detail', $data + compact('snapshot'))->render(), 'metrics' => ['net_profit' => $data['net'], 'profitability_base' => $data['profitabilityBase'], 'profitability_percentage' => $data['percentage']], 'warnings' => $data['warnings']];
     }
+    private function profitabilityNumber(array $data, array $keys): float
+    {
+        foreach ($keys as $key) {
+            $value = data_get($data, $key);
 
+            if ($value !== null && $value !== '') {
+                return round((float) $value, 2);
+            }
+        }
+
+        return 0.00;
+    }
     private function appendLinkedExpenseAttachments(CustomerPurchaseOrder $order, $costs): void
     {
         collect($costs)->each(function (WarehouseEntryExpense $expense) use ($order) {
             $expense->loadMissing('documents');
             $attachments = $expense->documents
-                ->filter(fn (WarehouseEntryExpenseDocument $document) => filled($document->file_path))
+                ->filter(fn(WarehouseEntryExpenseDocument $document) => filled($document->file_path))
                 ->sortBy('id')
-                ->map(fn (WarehouseEntryExpenseDocument $document) => $this->expenseDocumentMetadata(
+                ->map(fn(WarehouseEntryExpenseDocument $document) => $this->expenseDocumentMetadata(
                     $expense,
                     WarehouseEntryExpenseDocument::normalizeType($document->document_type),
                     $document->file_path,
@@ -201,11 +257,13 @@ class CustomerOrderProfitabilityController extends Controller
                     route('admin.customer-order-profitability.expense-documents.view', [$order, $document])
                 ));
 
-            foreach ([
-                WarehouseEntryExpenseDocument::TYPE_INVOICE => $expense->official_document_path,
-                WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF => $expense->payment_proof_path,
-            ] as $type => $path) {
-                if (blank($path) || $attachments->contains(fn (array $item) => $item['path_key'] === $path)) {
+            foreach (
+                [
+                    WarehouseEntryExpenseDocument::TYPE_INVOICE => $expense->official_document_path,
+                    WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF => $expense->payment_proof_path,
+                ] as $type => $path
+            ) {
+                if (blank($path) || $attachments->contains(fn(array $item) => $item['path_key'] === $path)) {
                     continue;
                 }
                 $attachments->push($this->expenseDocumentMetadata(
@@ -218,7 +276,7 @@ class CustomerOrderProfitabilityController extends Controller
             }
 
             $expense->setAttribute('profitability_attachments', $attachments
-                ->map(fn (array $item) => collect($item)->except('path_key')->all())
+                ->map(fn(array $item) => collect($item)->except('path_key')->all())
                 ->values()
                 ->all());
         });
@@ -263,7 +321,7 @@ class CustomerOrderProfitabilityController extends Controller
         WarehouseEntryExpense $expense
     ): void {
         $costs = $this->service->calculate($customerPurchaseOrder)['costs'];
-        abort_unless(collect($costs)->contains(fn ($cost) => (int) $cost->id === (int) $expense->id), 404);
+        abort_unless(collect($costs)->contains(fn($cost) => (int) $cost->id === (int) $expense->id), 404);
     }
 
     private function publicFileMimeType(string $path, bool $exists = true): ?string
@@ -285,7 +343,7 @@ class CustomerOrderProfitabilityController extends Controller
 
         return response()->file(Storage::disk('public')->path($path), [
             'Content-Type' => $mimeType ?: $this->publicFileMimeType($path) ?: 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="'.$fileName.'"',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
         ]);
     }
 }

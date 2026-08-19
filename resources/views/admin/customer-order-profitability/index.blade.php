@@ -3,99 +3,1588 @@
 @section('subtitle', 'Rentabilidad de OC del Cliente')
 
 @section('header')
-<div class="container-fluid cop-header">
-    <div class="d-flex align-items-center">
-        <span class="cop-header-icon"><i class="fas fa-chart-line"></i></span>
-        <div>
-            <h1 class="mb-1 font-weight-bold">Rentabilidad de OC del Cliente</h1>
-            <p class="mb-0 text-muted">Analiza compra, venta, costos vinculados y utilidad real por orden.</p>
+    <div class="container-fluid cop-header">
+        <div class="d-flex align-items-center">
+            <span class="cop-header-icon"><i class="fas fa-chart-line"></i></span>
+            <div>
+                <h1 class="mb-1 font-weight-bold">Rentabilidad de OC del Cliente</h1>
+                <p class="mb-0 text-muted">Analiza compra, venta, costos vinculados y utilidad real por orden.</p>
+            </div>
         </div>
     </div>
-</div>
 
 @stop
 
 @section('content_body')
-<div class="card border-0 shadow-sm cop-filter-card">
-    <div class="card-header border-0 bg-white pb-0">
-        <div class="d-flex align-items-center justify-content-between flex-wrap">
-            <div><h6 class="mb-1 font-weight-bold"><i class="fas fa-sliders-h text-success mr-2"></i>Filtros de análisis</h6><small class="text-muted">Delimita las órdenes que deseas evaluar.</small></div>
-            <button id="cop_clear" type="button" class="btn btn-link btn-sm text-muted"><i class="fas fa-eraser mr-1"></i>Limpiar filtros</button>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="row align-items-end">
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_company">Empresa</label><select id="cop_company" class="form-control form-control-sm"><option value="">Todas</option>@foreach($companies as $item)<option value="{{$item->id}}">{{$item->trade_name ?: $item->business_name}}</option>@endforeach</select></div>
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_customer">Cliente</label><select id="cop_customer" class="form-control form-control-sm"><option value="">Todos</option>@foreach($customers as $item)<option value="{{$item->id}}">{{$item->business_name ?: $item->full_name}}</option>@endforeach</select></div>
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_status">Estado</label><select id="cop_status" class="form-control form-control-sm"><option value="">Todos</option><option value="registered">Registrada</option><option value="in_purchase">En compra</option><option value="partial_purchase">Compra parcial</option><option value="partial_entered">Ingreso parcial</option><option value="entered">Ingresada</option><option value="attended">Atendida</option><option value="completed">Completada</option><option value="cancelled">Anulada</option></select></div>
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_from">Desde</label><input id="cop_from" type="date" class="form-control form-control-sm"></div>
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_to">Hasta</label><input id="cop_to" type="date" class="form-control form-control-sm"></div>
-            <div class="form-group col-xl-2 col-md-4"><label for="cop_mode">Estructura de cálculo</label><select id="cop_mode" class="form-control form-control-sm" disabled><option value="without_igv">Automática según OC cliente</option></select></div>
-            <div class="form-group col-xl-5 col-md-8 mb-md-0"><label for="cop_search">Buscar orden de compra</label><div class="input-group input-group-sm"><div class="input-group-prepend"><span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span></div><input id="cop_search" class="form-control" placeholder="Código o número de OC"></div></div>
-            <div class="form-group col-xl-2 col-md-4 mb-0"><button id="cop_filter" class="btn btn-success btn-sm btn-block cop-filter-button"><i class="fas fa-filter mr-2"></i>Aplicar filtros</button></div>
-        </div>
-    </div>
-</div>
-
-<div class="card border-0 shadow-sm cop-table-card">
-    <div class="card-header bg-white border-0"><h6 class="mb-1 font-weight-bold">Resultados</h6><small class="text-muted">Resumen financiero por orden de compra del cliente.</small></div>
-    <div class="card-body pt-2">
-        <div class="table-responsive">
-            <table id="tableCustomerOrderProfitability" class="table table-hover w-100">
-                <thead><tr><th>#</th><th>Código</th><th>Nro. OC</th><th>Cliente</th><th>Empresa</th><th>Venta</th><th>Compra</th><th>Costos</th><th>Utilidad neta</th><th>Rentabilidad</th><th>Estado</th><th>Acciones</th></tr></thead>
-                <tfoot><tr><th colspan="5" scope="row"><span class="cop-total-label"><i class="fas fa-calculator" aria-hidden="true"></i>Totales filtrados</span></th><th id="cop_total_sale" class="text-right">S/ 0.00</th><th id="cop_total_purchase" class="text-right">S/ 0.00</th><th id="cop_total_cost" class="text-right">S/ 0.00</th><th id="cop_total_net_profit" class="text-right">S/ 0.00</th><th class="text-center text-muted">&mdash;</th><th class="text-center text-muted">&mdash;</th><th class="text-center text-muted">&mdash;</th></tr></tfoot>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="copDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content cop-modal-content">
-            <div class="modal-header cop-modal-header">
-                <div class="d-flex align-items-center"><span class="cop-modal-title-icon"><i class="fas fa-chart-pie"></i></span><div><h5 class="modal-title">Análisis de rentabilidad</h5><small>Evaluación de venta, compra, costos vinculados e indicadores de utilidad.</small></div></div>
-                <button class="close cop-modal-close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+    <div class="card border-0 shadow-sm cop-filter-card">
+        <div class="card-header border-0 bg-white pb-0">
+            <div class="d-flex align-items-center justify-content-between flex-wrap">
+                <div>
+                    <h6 class="mb-1 font-weight-bold"><i class="fas fa-sliders-h text-success mr-2"></i>Filtros de análisis
+                    </h6><small class="text-muted">Delimita las órdenes que deseas evaluar.</small>
+                </div>
+                <button id="cop_clear" type="button" class="btn btn-link btn-sm text-muted"><i
+                        class="fas fa-eraser mr-1"></i>Limpiar filtros</button>
             </div>
-            <div id="copDetailBody" class="modal-body p-0"></div>
-            <div class="modal-footer cop-modal-footer"><div class="cop-footer-exports"><a id="copPdf" target="_blank" class="btn btn-outline-danger btn-sm"><i class="fas fa-file-pdf mr-1"></i>Exportar PDF</a><a id="copPrint" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="fas fa-print mr-1"></i>Imprimir</a></div><div><button id="copRecalculate" class="btn btn-success btn-sm"><i class="fas fa-sync-alt mr-1"></i>Recalcular</button><button class="btn btn-light btn-sm ml-1" data-dismiss="modal">Cerrar</button></div></div>
+        </div>
+        <div class="card-body">
+            <div class="row align-items-end">
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_company">Empresa</label><select id="cop_company"
+                        class="form-control form-control-sm">
+                        <option value="">Todas</option>
+                        @foreach ($companies as $item)
+                            <option value="{{ $item->id }}">{{ $item->trade_name ?: $item->business_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_customer">Cliente</label><select id="cop_customer"
+                        class="form-control form-control-sm">
+                        <option value="">Todos</option>
+                        @foreach ($customers as $item)
+                            <option value="{{ $item->id }}">{{ $item->business_name ?: $item->full_name }}</option>
+                        @endforeach
+                    </select></div>
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_status">Estado</label><select id="cop_status"
+                        class="form-control form-control-sm">
+                        <option value="">Todos</option>
+                        <option value="registered">Registrada</option>
+                        <option value="in_purchase">En compra</option>
+                        <option value="partial_purchase">Compra parcial</option>
+                        <option value="partial_entered">Ingreso parcial</option>
+                        <option value="entered">Ingresada</option>
+                        <option value="attended">Atendida</option>
+                        <option value="completed">Completada</option>
+                        <option value="cancelled">Anulada</option>
+                    </select></div>
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_from">Desde</label><input id="cop_from"
+                        type="date" class="form-control form-control-sm"></div>
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_to">Hasta</label><input id="cop_to"
+                        type="date" class="form-control form-control-sm"></div>
+                <div class="form-group col-xl-2 col-md-4"><label for="cop_mode">Estructura de cálculo</label><select
+                        id="cop_mode" class="form-control form-control-sm" disabled>
+                        <option value="without_igv">Automática según OC cliente</option>
+                    </select></div>
+                <div class="form-group col-xl-5 col-md-8 mb-md-0"><label for="cop_search">Buscar orden de compra</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text bg-white"><i
+                                    class="fas fa-search text-muted"></i></span></div><input id="cop_search"
+                            class="form-control" placeholder="Código o número de OC">
+                    </div>
+                </div>
+                <div class="form-group col-xl-2 col-md-4 mb-0"><button id="cop_filter"
+                        class="btn btn-success btn-sm btn-block cop-filter-button"><i class="fas fa-filter mr-2"></i>Aplicar
+                        filtros</button></div>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="modal fade" id="copOrderDocumentsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header"><div><h5 class="modal-title"><i class="fas fa-folder-open text-info mr-2"></i>Documentos de la orden del cliente</h5><small class="text-muted">Cotizaciones y archivos vinculados a la orden.</small></div><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-            <div class="modal-body"><div id="copOrderDocumentsBody" class="table-responsive"></div></div>
-            <div class="modal-footer"><button type="button" class="btn btn-light btn-sm" data-dismiss="modal">Cerrar</button></div>
+    <div class="card border-0 shadow-sm cop-table-card">
+        <div class="card-header bg-white border-0">
+            <h6 class="mb-1 font-weight-bold">Resultados</h6><small class="text-muted">Resumen financiero por orden de
+                compra del cliente.</small>
+        </div>
+        <div class="card-body pt-2">
+            <div class="table-responsive">
+                <table id="tableCustomerOrderProfitability" class="table table-hover w-100">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Código</th>
+                            <th>Nro. OC</th>
+                            <th>Cliente</th>
+                            <th>Empresa</th>
+                            <th>Venta</th>
+                            <th>Compra</th>
+                            <th>Costos</th>
+                            <th>IGV a pagar</th>
+                            <th>Imp. renta</th>
+                            <th>Utilidad neta</th>
+                            <th>Rentabilidad</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr>
+                            <th colspan="5" scope="row">
+                                <span class="cop-total-label">
+                                    <i class="fas fa-calculator" aria-hidden="true"></i>Totales filtrados
+                                </span>
+                            </th>
+                            <th id="cop_total_sale" class="text-right">S/ 0.00</th>
+                            <th id="cop_total_purchase" class="text-right">S/ 0.00</th>
+                            <th id="cop_total_cost" class="text-right">S/ 0.00</th>
+                            <th id="cop_total_igv_payable" class="text-right">S/ 0.00</th>
+                            <th id="cop_total_income_tax" class="text-right">S/ 0.00</th>
+                            <th id="cop_total_net_profit" class="text-right">S/ 0.00</th>
+                            <th class="text-center text-muted">&mdash;</th>
+                            <th class="text-center text-muted">&mdash;</th>
+                            <th class="text-center text-muted">&mdash;</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="modal fade cop-linked-preview-modal" id="copLinkedDocumentPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header"><div><h5 class="modal-title"><i class="fas fa-image text-info mr-2"></i><span id="copLinkedDocumentPreviewTitle">Vista previa</span></h5><small class="text-muted">Sustento del costo vinculado</small></div><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-            <div class="modal-body cop-linked-preview-body"><img id="copLinkedDocumentPreviewImage" src="" alt="Vista previa del documento"><div id="copLinkedDocumentPreviewError" class="alert alert-warning d-none mb-0">El archivo adjunto no se encuentra disponible.</div></div>
-            <div class="modal-footer"><a id="copLinkedDocumentOpenTab" href="#" target="_blank" rel="noopener" class="btn btn-outline-info btn-sm"><i class="fas fa-external-link-alt mr-1"></i>Abrir en nueva pestaña</a><button type="button" class="btn btn-light btn-sm" data-dismiss="modal">Cerrar</button></div>
+    <div class="modal fade" id="copDetailModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content cop-modal-content">
+                <div class="modal-header cop-modal-header">
+                    <div class="d-flex align-items-center"><span class="cop-modal-title-icon"><i
+                                class="fas fa-chart-pie"></i></span>
+                        <div>
+                            <h5 class="modal-title">Análisis de rentabilidad</h5><small>Evaluación de venta, compra, costos
+                                vinculados e indicadores de utilidad.</small>
+                        </div>
+                    </div>
+                    <button class="close cop-modal-close" data-dismiss="modal" aria-label="Cerrar"><span
+                            aria-hidden="true">&times;</span></button>
+                </div>
+                <div id="copDetailBody" class="modal-body p-0"></div>
+                <div class="modal-footer cop-modal-footer">
+                    <div class="cop-footer-exports"><a id="copPdf" target="_blank"
+                            class="btn btn-outline-danger btn-sm"><i class="fas fa-file-pdf mr-1"></i>Exportar PDF</a><a
+                            id="copPrint" target="_blank" class="btn btn-outline-secondary btn-sm"><i
+                                class="fas fa-print mr-1"></i>Imprimir</a></div>
+                    <div><button id="copRecalculate" class="btn btn-success btn-sm"><i
+                                class="fas fa-sync-alt mr-1"></i>Recalcular</button><button
+                            class="btn btn-light btn-sm ml-1" data-dismiss="modal">Cerrar</button></div>
+                </div>
+            </div>
         </div>
     </div>
-</div>
+
+    <div class="modal fade" id="copOrderDocumentsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title"><i class="fas fa-folder-open text-info mr-2"></i>Documentos de la orden
+                            del cliente</h5><small class="text-muted">Cotizaciones y archivos vinculados a la
+                            orden.</small>
+                    </div><button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="copOrderDocumentsBody" class="table-responsive"></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-light btn-sm"
+                        data-dismiss="modal">Cerrar</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade cop-linked-preview-modal" id="copLinkedDocumentPreviewModal" tabindex="-1"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title"><i class="fas fa-image text-info mr-2"></i><span
+                                id="copLinkedDocumentPreviewTitle">Vista previa</span></h5><small
+                            class="text-muted">Sustento del costo vinculado</small>
+                    </div><button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body cop-linked-preview-body"><img id="copLinkedDocumentPreviewImage" src=""
+                        alt="Vista previa del documento">
+                    <div id="copLinkedDocumentPreviewError" class="alert alert-warning d-none mb-0">El archivo adjunto no
+                        se encuentra disponible.</div>
+                </div>
+                <div class="modal-footer"><a id="copLinkedDocumentOpenTab" href="#" target="_blank"
+                        rel="noopener" class="btn btn-outline-info btn-sm"><i
+                            class="fas fa-external-link-alt mr-1"></i>Abrir en nueva pestaña</a><button type="button"
+                        class="btn btn-light btn-sm" data-dismiss="modal">Cerrar</button></div>
+            </div>
+        </div>
+    </div>
 @stop
 
 @push('css')
-<style>
-.cop-header-icon{width:48px;height:48px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;background:#eaf7f1;color:#198754;font-size:20px;margin-right:14px}.cop-header h1{font-size:1.65rem;color:#243b35}.cop-filter-card,.cop-table-card{border-radius:12px;overflow:hidden}.cop-filter-card label{font-size:11px;text-transform:uppercase;letter-spacing:.045em;color:#61736d;font-weight:700;margin-bottom:6px}.cop-filter-card .form-control,.cop-filter-card .input-group-text{border-color:#dce6e2}.cop-filter-card .form-control:focus{border-color:#63b995;box-shadow:0 0 0 .12rem rgba(25,135,84,.12)}.cop-filter-button{height:31px;border-radius:6px}.cop-table-card table{font-size:13px}.cop-table-card thead th{border-top:0;border-bottom:1px solid #dfe9e5;background:#f6f9f8;color:#52645e;font-size:11px;text-transform:uppercase;letter-spacing:.035em;white-space:nowrap;padding:12px 10px}.cop-table-card tbody td{padding:12px 10px;vertical-align:middle;border-color:#edf2f0}.cop-table-card tbody tr:hover{background:#f7fbf9}.cop-money{display:block;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#40534d}.cop-money-profit-positive{color:#128154;font-weight:700}.cop-money-profit-negative{color:#cf3f4b;font-weight:700}.cop-status-pill,.cop-profit-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid transparent}.cop-status-registered{color:#52677e;background:#edf3f8;border-color:#dce7ef}.cop-status-in-purchase{color:#8a6500;background:#fff5d6;border-color:#f4df9a}.cop-status-partial-purchase{color:#a85813;background:#fff0e2;border-color:#f5d2b2}.cop-status-entered{color:#087a71;background:#e3f7f4;border-color:#bde8e2}.cop-status-partial-entered{color:#207394;background:#e7f6fc;border-color:#c6e8f5}.cop-status-attended{color:#167744;background:#e8f7ee;border-color:#c6e9d3}.cop-status-cancelled,.cop-status-not-attended{color:#b83b47;background:#fdebed;border-color:#f4c7cc}.cop-status-completed{color:#087354;background:#ddf5eb;border-color:#b5e5d2}.cop-status-unknown{color:#6c757d;background:#f1f3f4;border-color:#e1e5e7}.cop-profit-high{color:#087354;background:#ddf5eb;border-color:#b5e5d2}.cop-profit-medium{color:#8a6500;background:#fff5d6;border-color:#f4df9a}.cop-profit-low{color:#9a5b19;background:#fff0e2;border-color:#f5d2b2}.cop-profit-negative{color:#b83b47;background:#fdebed;border-color:#f4c7cc}.cop-view{border-radius:6px;font-weight:600;white-space:nowrap}.cop-table-card .dataTables_wrapper .dataTables_length,.cop-table-card .dataTables_wrapper .dataTables_filter{color:#65766f;font-size:12px}.cop-table-card .dataTables_filter input{border:1px solid #dce6e2;border-radius:6px;padding:5px 9px;margin-left:7px}.cop-table-card .dataTables_length select{border:1px solid #dce6e2;border-radius:6px;padding:4px 22px 4px 8px}.cop-table-card .dataTables_info{color:#74837e;font-size:12px}.cop-table-card .page-link{border-color:#e0e8e5;color:#39725e;font-size:12px}.cop-table-card .page-item.active .page-link{background:#198754;border-color:#198754}.cop-metric{height:100%;padding:14px;border:1px solid #e1ece8;border-radius:12px;background:#fff}.cop-metric small{display:block;color:#75847f;font-weight:700}.cop-metric strong{font-size:20px;color:#264c42}.cop-profit-positive{color:#198754!important}.cop-tabs{padding:12px 18px 0;background:#f7faf9}.cop-tab-content{padding:18px}.cop-statement{max-width:620px;margin:auto}.cop-statement div{display:flex;padding:9px 12px;justify-content:space-between;border-bottom:1px solid #edf1ef}.cop-statement .total{font-weight:800;background:#eff8f5}@media(max-width:767.98px){.cop-header h1{font-size:1.35rem}.cop-filter-card .form-group{margin-bottom:12px}.cop-table-card .card-body{padding:10px}.cop-table-card .dataTables_filter{text-align:left!important;margin-top:10px}}
-.cop-modal-content{border:0;border-radius:16px;overflow:hidden;box-shadow:0 24px 70px rgba(28,55,47,.22)}.cop-modal-header{padding:18px 22px;border-bottom:1px solid #e5eeea;background:linear-gradient(135deg,#fff 0%,#f2faf6 100%)}.cop-modal-title-icon{width:44px;height:44px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;background:#dff3e9;color:#168054;font-size:19px;margin-right:12px}.cop-modal-header h5{font-weight:800;color:#263d36;margin-bottom:2px}.cop-modal-header small{color:#71817b}.cop-modal-close{width:34px;height:34px;border-radius:50%;background:#fff!important;border:1px solid #dfe8e4!important;opacity:1!important;color:#6b7b75!important;line-height:26px}.cop-modal-footer{position:sticky;bottom:0;z-index:3;justify-content:space-between;padding:12px 20px;background:#fff;border-top:1px solid #e5ece9;box-shadow:0 -5px 18px rgba(38,61,54,.04)}.cop-tabs{padding:13px 18px;background:#f5f9f7;border-bottom:1px solid #e2ebe7;overflow-x:auto}.cop-modal-nav{display:flex;flex-wrap:nowrap;gap:7px;min-width:max-content}.cop-modal-nav .nav-link{display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:9px;color:#61716b;font-size:12px;font-weight:700;background:transparent;transition:.18s ease}.cop-modal-nav .nav-link:hover{background:#e8f3ee;color:#247356}.cop-modal-nav .nav-link.active{background:#fff;color:#168054;box-shadow:0 3px 12px rgba(36,87,69,.11)}.cop-tab-content{padding:22px;background:#fbfcfc;min-height:480px;max-height:calc(100vh - 250px);overflow-y:auto}.cop-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:18px}.cop-section-heading h6{font-size:16px;font-weight:800;color:#2c423b;margin:2px 0}.cop-section-heading small{color:#7b8984}.cop-eyebrow{display:block;text-transform:uppercase;letter-spacing:.08em;color:#25815f;font-size:10px;font-weight:800}.cop-order-chip,.cop-profit-level{display:inline-flex;align-items:center;gap:6px;border:1px solid #dce8e3;background:#fff;border-radius:999px;padding:7px 11px;color:#526760;font-size:11px;font-weight:700;white-space:nowrap}.cop-metrics-grid .cop-metric{display:flex;align-items:center;gap:12px;padding:15px;border-radius:13px;box-shadow:0 5px 16px rgba(36,67,57,.045)}.cop-metric-icon{width:38px;height:38px;flex:0 0 38px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center}.cop-metric small{font-size:10px;text-transform:uppercase;letter-spacing:.045em;margin-bottom:3px}.cop-metric strong{display:block;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums}.cop-metric-sale .cop-metric-icon{background:#e3f5f4;color:#16827c}.cop-metric-purchase .cop-metric-icon{background:#edf2f7;color:#526b82}.cop-metric-gross .cop-metric-icon{background:#e6f1fb;color:#3479ae}.cop-metric-freight .cop-metric-icon{background:#fff0e3;color:#b86620}.cop-metric-other .cop-metric-icon{background:#fff4de;color:#a16b0b}.cop-metric-operating .cop-metric-icon{background:#e1f4f2;color:#167c70}.cop-metric-tax .cop-metric-icon{background:#f1eafa;color:#7655a3}.cop-metric-net .cop-metric-icon{background:#e2f6eb;color:#16804d}.cop-metric-negative .cop-metric-icon{background:#fde8eb;color:#b53c48}.cop-profit-hero{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-radius:14px;border:1px solid}.cop-profit-hero>div span{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.cop-profit-hero>div strong{font-size:27px}.cop-profit-high{color:#087354;background:#e5f7ef;border-color:#bce6d4}.cop-profit-medium{color:#876300;background:#fff6dd;border-color:#ecd997}.cop-profit-low{color:#9a5b19;background:#fff0e2;border-color:#f1cfaf}.cop-profit-negative{color:#b23945;background:#fdebed;border-color:#efc4c9}.cop-formula-panel{border:1px solid #e1eae6;border-radius:14px;background:#fff;padding:8px 16px;margin-bottom:18px}.cop-formula-row{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px}.formula-value,.formula-result{min-width:150px;text-align:center}.formula-value small,.formula-result small{display:block;color:#788680;font-size:10px;text-transform:uppercase;font-weight:700}.formula-value strong,.formula-result strong{font-size:16px;color:#344a43}.formula-result{padding:8px 15px;border-radius:9px;background:#edf7f3}.formula-result strong{color:#147752}.formula-net{background:#e5f7ed}.formula-operator{color:#a0ada8;font-size:11px}.cop-formula-divider{height:1px;background:#edf1ef}.cop-calculation-meta{display:flex;flex-wrap:wrap;gap:10px 20px;padding:11px 14px;border-radius:10px;background:#eef4f1;color:#667771;font-size:11px}.cop-calculation-meta i{color:#2d8464;margin-right:5px}.cop-alert{border-radius:10px;padding:9px 13px;font-size:12px}.cop-section-total{min-width:145px;text-align:right;padding:9px 13px;border-radius:10px;background:#eef7f3}.cop-section-total small{display:block;font-size:10px;text-transform:uppercase}.cop-section-total strong{font-size:19px;color:#147752}.cop-mini-summary{margin-bottom:17px}.cop-mini-summary>div>span{display:flex;justify-content:space-between;padding:10px 13px;background:#fff;border:1px solid #e2eae7;border-radius:9px;color:#71807a;font-size:11px}.cop-mini-summary strong{color:#344b43;font-size:14px}.cop-inner-table{border:1px solid #e2eae7;border-radius:11px;background:#fff}.cop-inner-table table{font-size:12px}.cop-inner-table thead th{border:0;background:#f3f7f5;color:#61726c;text-transform:uppercase;font-size:10px;letter-spacing:.04em;white-space:nowrap;padding:10px}.cop-inner-table tbody td{padding:10px;vertical-align:middle;border-color:#edf2ef}.cop-empty{text-align:center!important;color:#8b9893;padding:28px!important}.cop-empty i{display:block;font-size:19px;margin-bottom:7px}.cop-cost-block{border:1px solid #e1eae6;border-radius:13px;background:#fff;overflow:hidden;margin-bottom:16px}.cop-cost-block-header{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;background:#f8faf9}.cop-cost-block-header>div{display:flex;align-items:center}.cop-cost-block-header h6{font-weight:800;margin:0;color:#344b43}.cop-cost-block-header small{color:#7a8983}.cop-cost-icon{width:36px;height:36px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#e8f4ef;color:#25805f;margin-right:10px}.cop-cost-subtotal{font-size:11px;color:#71817b}.cop-cost-subtotal strong{font-size:16px;color:#324940;margin-left:5px}.cop-document-ok{color:#168054;font-weight:700}.cop-mode-notice{display:flex;gap:12px;align-items:center;padding:18px;border-radius:12px;background:#eaf5fb;color:#347491;margin-bottom:18px}.cop-mode-notice i{font-size:22px}.cop-mode-notice span{display:block;font-size:12px}.cop-tax-grid>div{margin-bottom:15px}.cop-tax-grid>div>div{padding:16px;border:1px solid #e2e9e6;border-radius:11px;background:#fff}.cop-tax-grid small,.cop-income-tax small{display:block;color:#798780;text-transform:uppercase;font-size:10px;font-weight:700}.cop-tax-grid strong{font-size:20px;color:#334a42}.cop-tax-highlight{background:#edf8f3!important}.cop-income-tax{display:grid;grid-template-columns:1fr auto;gap:2px 15px;align-items:center;padding:15px 17px;border-radius:11px;background:#f3eef9;color:#634c82}.cop-income-tax strong{font-size:20px}.cop-income-tax small{grid-column:1/-1}.cop-executive-results>div>div{padding:19px;border:1px solid #e1e9e6;border-radius:12px;background:#fff;margin-bottom:18px}.cop-executive-results small,.cop-executive-results span{display:block;color:#7a8883}.cop-executive-results strong{display:block;font-size:23px;color:#315047;margin:4px 0}.cop-executive-net{background:#eaf7f1!important}.cop-profit-gauge{max-width:700px;margin:5px auto 20px;padding:18px;border-radius:13px;background:#fff;border:1px solid #e1e9e6}.cop-profit-gauge-head,.cop-gauge-scale{display:flex;justify-content:space-between}.cop-profit-gauge-head{margin-bottom:9px;color:#53665f;font-weight:700}.cop-profit-gauge-head strong{font-size:19px;color:#168054}.cop-profit-gauge .progress{height:9px;border-radius:10px;background:#edf1ef}.cop-gauge-high{background:#1e9b67}.cop-gauge-medium{background:#d2a52a}.cop-gauge-low{background:#df873e}.cop-gauge-negative{background:#d4525e}.cop-gauge-scale{font-size:9px;color:#98a39f;margin-top:5px}.cop-statement{background:#fff;border:1px solid #e1e9e6;border-radius:12px;overflow:hidden}.cop-statement .cop-tax-deduction{align-items:center;gap:14px;padding:12px 14px 12px 16px;background:linear-gradient(90deg,#fff8e8 0%,#fffdf8 100%);border-bottom-color:#f1e1b5;box-shadow:inset 3px 0 0 #d5a13a;transition:background .18s ease,box-shadow .18s ease}.cop-statement .cop-tax-deduction:hover{background:linear-gradient(90deg,#fff5dd 0%,#fffcf5 100%);box-shadow:inset 4px 0 0 #c99024,0 2px 10px rgba(138,96,19,.07)}.cop-tax-label{display:flex;align-items:center;gap:10px;min-width:0;color:#70531c}.cop-tax-icon{width:32px;height:32px;flex:0 0 32px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:#f5e3b8;color:#956915;font-size:13px}.cop-tax-copy{display:flex;flex-direction:column;min-width:0}.cop-tax-copy b{color:#60491d;font-size:12px;font-weight:800;line-height:1.25}.cop-tax-copy small{margin-top:2px;color:#9a7b3f;font-size:9px;font-weight:600;letter-spacing:.025em}.cop-statement .cop-tax-deduction>strong{flex:0 0 auto;margin-left:auto;padding:5px 9px;border:1px solid #ead49d;border-radius:8px;background:rgba(255,255,255,.72);color:#845d12;font-variant-numeric:tabular-nums}.cop-statement .cop-final-total{background:#e5f6ed;color:#126e47}@media(max-width:767.98px){#copDetailModal .modal-dialog{margin:6px}.cop-modal-header{padding:14px}.cop-modal-header small{display:none}.cop-modal-footer{flex-wrap:wrap;gap:8px}.cop-tab-content{padding:14px;max-height:calc(100vh - 215px)}.cop-section-heading{flex-direction:column}.cop-section-total{text-align:left;width:100%}.cop-formula-row{flex-wrap:wrap;gap:8px}.formula-value,.formula-result{min-width:120px;flex:1}.cop-formula-row .formula-operator{display:none}.cop-cost-block-header{align-items:flex-start;gap:8px}.cop-cost-block-header small{display:block}.cop-statement .cop-tax-deduction{gap:9px;padding:11px 10px 11px 12px}.cop-tax-icon{width:29px;height:29px;flex-basis:29px}.cop-tax-copy b{font-size:11px}.cop-tax-copy small{font-size:8px}.cop-statement .cop-tax-deduction>strong{padding:4px 7px;font-size:12px}.cop-footer-exports{display:flex;gap:5px}}
-.cop-classification-note{display:flex;align-items:center;gap:8px;margin:-5px 0 18px;padding:9px 12px;border-radius:9px;background:#fff7e5;border:1px solid #f0dfad;color:#7d651f;font-size:11px}.cop-classification-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}.cop-classification-badge.is-operational{background:#e4f5ed;color:#14734e}.cop-classification-badge.is-other{background:#fff0e2;color:#9a5b19}
-.cop-attachment-actions{display:flex;flex-wrap:wrap;gap:5px;min-width:132px}.cop-attachment-action{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #b9d9ce;border-radius:7px;background:#f4faf7;color:#237356!important;font-size:10px;font-weight:800;white-space:nowrap;transition:.15s ease}.cop-attachment-action:hover{background:#e5f4ed;border-color:#8fc6b1;text-decoration:none}.cop-attachment-missing,.cop-no-attachments{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;font-size:10px;white-space:nowrap}.cop-attachment-missing{background:#fff3dd;color:#966518}.cop-no-attachments{background:#f0f3f2;color:#7a8883}.cop-linked-preview-modal{z-index:1070}.cop-linked-preview-modal .modal-content{border-radius:14px;overflow:hidden;box-shadow:0 24px 70px rgba(28,55,47,.25)}.cop-linked-preview-body{min-height:260px;max-height:70vh;display:flex;align-items:center;justify-content:center;background:#f4f7f6}.cop-linked-preview-body img{display:block;max-width:100%;max-height:64vh;object-fit:contain;border-radius:6px;box-shadow:0 3px 14px rgba(0,0,0,.1)}
-.cop-purchase-mode-note{display:flex;align-items:center;gap:7px;margin:-5px 0 14px;padding:8px 11px;border:1px solid #d9e9e3;border-radius:9px;background:#f3f9f6;color:#5d7169;font-size:11px}.cop-purchase-mode-note i{color:#25815f}.cop-purchase-considered{color:#176f51;font-size:13px;white-space:nowrap}.cop-purchase-source{display:block;margin-top:5px;color:#7b8984;font-size:9px;white-space:nowrap}
-.cop-summary-tab-link{position:relative;cursor:pointer;outline:0;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease,background-color .2s ease}.cop-summary-tab-link:hover,.cop-summary-tab-link:focus-visible{border-color:#b9ddce;box-shadow:0 10px 24px rgba(27,103,76,.12);transform:translateY(-2px)}.cop-summary-tab-link:focus-visible{box-shadow:0 0 0 3px rgba(25,135,84,.13),0 10px 24px rgba(27,103,76,.1)}.cop-summary-link-cue{position:absolute;right:10px;bottom:8px;display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;background:#edf6f2;color:#2c7b60;font-size:8px;opacity:.55;transform:translateX(-2px);transition:opacity .2s ease,transform .2s ease,background-color .2s ease}.cop-summary-tab-link:hover .cop-summary-link-cue,.cop-summary-tab-link:focus-visible .cop-summary-link-cue{background:#dff1e9;opacity:1;transform:translateX(0)}.cop-profit-hero.cop-summary-tab-link{padding-right:54px}@media(max-width:575.98px){.cop-summary-link-cue{right:7px;bottom:7px}.cop-metrics-grid .cop-metric{padding:13px 29px 13px 11px}.cop-metric strong{font-size:15px}}
-.cop-table-card tfoot th{padding:13px 10px;border-top:2px solid #b9d9cd;border-bottom:0;background:linear-gradient(180deg,#f1f8f5 0%,#e8f3ee 100%);color:#304b42;font-size:12px;font-weight:800;white-space:nowrap;vertical-align:middle;box-shadow:inset 0 1px 0 rgba(255,255,255,.72)}.cop-table-card tfoot th:first-child{border-bottom-left-radius:9px}.cop-table-card tfoot th:last-child{border-bottom-right-radius:9px}.cop-total-label{display:inline-flex;align-items:center;gap:7px;color:#31584b;text-transform:uppercase;letter-spacing:.045em}.cop-total-label i{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;border-radius:7px;background:#d5ebe1;color:#177451;font-size:10px}.cop-table-card tfoot th[id^="cop_total_"]{font-variant-numeric:tabular-nums;color:#284a3e}.cop-table-card tfoot .cop-total-positive{color:#08734d!important}.cop-table-card tfoot .cop-total-negative{color:#bd3543!important}
-</style>
+    <style>
+        .cop-header-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #eaf7f1;
+            color: #198754;
+            font-size: 20px;
+            margin-right: 14px
+        }
+
+        .cop-header h1 {
+            font-size: 1.65rem;
+            color: #243b35
+        }
+
+        .cop-filter-card,
+        .cop-table-card {
+            border-radius: 12px;
+            overflow: hidden
+        }
+
+        .cop-filter-card label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .045em;
+            color: #61736d;
+            font-weight: 700;
+            margin-bottom: 6px
+        }
+
+        .cop-filter-card .form-control,
+        .cop-filter-card .input-group-text {
+            border-color: #dce6e2
+        }
+
+        .cop-filter-card .form-control:focus {
+            border-color: #63b995;
+            box-shadow: 0 0 0 .12rem rgba(25, 135, 84, .12)
+        }
+
+        .cop-filter-button {
+            height: 31px;
+            border-radius: 6px
+        }
+
+        .cop-table-card table {
+            font-size: 13px
+        }
+
+        .cop-table-card thead th {
+            border-top: 0;
+            border-bottom: 1px solid #dfe9e5;
+            background: #f6f9f8;
+            color: #52645e;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .035em;
+            white-space: nowrap;
+            padding: 12px 10px
+        }
+
+        .cop-table-card tbody td {
+            padding: 12px 10px;
+            vertical-align: middle;
+            border-color: #edf2f0
+        }
+
+        .cop-table-card tbody tr:hover {
+            background: #f7fbf9
+        }
+
+        .cop-money {
+            display: block;
+            text-align: right;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            color: #40534d
+        }
+
+        .cop-money-profit-positive {
+            color: #128154;
+            font-weight: 700
+        }
+
+        .cop-money-profit-negative {
+            color: #cf3f4b;
+            font-weight: 700
+        }
+
+        .cop-status-pill,
+        .cop-profit-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid transparent
+        }
+
+        .cop-status-registered {
+            color: #52677e;
+            background: #edf3f8;
+            border-color: #dce7ef
+        }
+
+        .cop-status-in-purchase {
+            color: #8a6500;
+            background: #fff5d6;
+            border-color: #f4df9a
+        }
+
+        .cop-status-partial-purchase {
+            color: #a85813;
+            background: #fff0e2;
+            border-color: #f5d2b2
+        }
+
+        .cop-status-entered {
+            color: #087a71;
+            background: #e3f7f4;
+            border-color: #bde8e2
+        }
+
+        .cop-status-partial-entered {
+            color: #207394;
+            background: #e7f6fc;
+            border-color: #c6e8f5
+        }
+
+        .cop-status-attended {
+            color: #167744;
+            background: #e8f7ee;
+            border-color: #c6e9d3
+        }
+
+        .cop-status-cancelled,
+        .cop-status-not-attended {
+            color: #b83b47;
+            background: #fdebed;
+            border-color: #f4c7cc
+        }
+
+        .cop-status-completed {
+            color: #087354;
+            background: #ddf5eb;
+            border-color: #b5e5d2
+        }
+
+        .cop-status-unknown {
+            color: #6c757d;
+            background: #f1f3f4;
+            border-color: #e1e5e7
+        }
+
+        .cop-profit-high {
+            color: #087354;
+            background: #ddf5eb;
+            border-color: #b5e5d2
+        }
+
+        .cop-profit-medium {
+            color: #8a6500;
+            background: #fff5d6;
+            border-color: #f4df9a
+        }
+
+        .cop-profit-low {
+            color: #9a5b19;
+            background: #fff0e2;
+            border-color: #f5d2b2
+        }
+
+        .cop-profit-negative {
+            color: #b83b47;
+            background: #fdebed;
+            border-color: #f4c7cc
+        }
+
+        .cop-view {
+            border-radius: 6px;
+            font-weight: 600;
+            white-space: nowrap
+        }
+
+        .cop-table-card .dataTables_wrapper .dataTables_length,
+        .cop-table-card .dataTables_wrapper .dataTables_filter {
+            color: #65766f;
+            font-size: 12px
+        }
+
+        .cop-table-card .dataTables_filter input {
+            border: 1px solid #dce6e2;
+            border-radius: 6px;
+            padding: 5px 9px;
+            margin-left: 7px
+        }
+
+        .cop-table-card .dataTables_length select {
+            border: 1px solid #dce6e2;
+            border-radius: 6px;
+            padding: 4px 22px 4px 8px
+        }
+
+        .cop-table-card .dataTables_info {
+            color: #74837e;
+            font-size: 12px
+        }
+
+        .cop-table-card .page-link {
+            border-color: #e0e8e5;
+            color: #39725e;
+            font-size: 12px
+        }
+
+        .cop-table-card .page-item.active .page-link {
+            background: #198754;
+            border-color: #198754
+        }
+
+        .cop-metric {
+            height: 100%;
+            padding: 14px;
+            border: 1px solid #e1ece8;
+            border-radius: 12px;
+            background: #fff
+        }
+
+        .cop-metric small {
+            display: block;
+            color: #75847f;
+            font-weight: 700
+        }
+
+        .cop-metric strong {
+            font-size: 20px;
+            color: #264c42
+        }
+
+        .cop-profit-positive {
+            color: #198754 !important
+        }
+
+        .cop-tabs {
+            padding: 12px 18px 0;
+            background: #f7faf9
+        }
+
+        .cop-tab-content {
+            padding: 18px
+        }
+
+        .cop-statement {
+            max-width: 620px;
+            margin: auto
+        }
+
+        .cop-statement div {
+            display: flex;
+            padding: 9px 12px;
+            justify-content: space-between;
+            border-bottom: 1px solid #edf1ef
+        }
+
+        .cop-statement .total {
+            font-weight: 800;
+            background: #eff8f5
+        }
+
+        @media(max-width:767.98px) {
+            .cop-header h1 {
+                font-size: 1.35rem
+            }
+
+            .cop-filter-card .form-group {
+                margin-bottom: 12px
+            }
+
+            .cop-table-card .card-body {
+                padding: 10px
+            }
+
+            .cop-table-card .dataTables_filter {
+                text-align: left !important;
+                margin-top: 10px
+            }
+        }
+
+        .cop-modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 70px rgba(28, 55, 47, .22)
+        }
+
+        .cop-modal-header {
+            padding: 18px 22px;
+            border-bottom: 1px solid #e5eeea;
+            background: linear-gradient(135deg, #fff 0%, #f2faf6 100%)
+        }
+
+        .cop-modal-title-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 13px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #dff3e9;
+            color: #168054;
+            font-size: 19px;
+            margin-right: 12px
+        }
+
+        .cop-modal-header h5 {
+            font-weight: 800;
+            color: #263d36;
+            margin-bottom: 2px
+        }
+
+        .cop-modal-header small {
+            color: #71817b
+        }
+
+        .cop-modal-close {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: #fff !important;
+            border: 1px solid #dfe8e4 !important;
+            opacity: 1 !important;
+            color: #6b7b75 !important;
+            line-height: 26px
+        }
+
+        .cop-modal-footer {
+            position: sticky;
+            bottom: 0;
+            z-index: 3;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: #fff;
+            border-top: 1px solid #e5ece9;
+            box-shadow: 0 -5px 18px rgba(38, 61, 54, .04)
+        }
+
+        .cop-tabs {
+            padding: 13px 18px;
+            background: #f5f9f7;
+            border-bottom: 1px solid #e2ebe7;
+            overflow-x: auto
+        }
+
+        .cop-modal-nav {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 7px;
+            min-width: max-content
+        }
+
+        .cop-modal-nav .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 12px;
+            border-radius: 9px;
+            color: #61716b;
+            font-size: 12px;
+            font-weight: 700;
+            background: transparent;
+            transition: .18s ease
+        }
+
+        .cop-modal-nav .nav-link:hover {
+            background: #e8f3ee;
+            color: #247356
+        }
+
+        .cop-modal-nav .nav-link.active {
+            background: #fff;
+            color: #168054;
+            box-shadow: 0 3px 12px rgba(36, 87, 69, .11)
+        }
+
+        .cop-tab-content {
+            padding: 22px;
+            background: #fbfcfc;
+            min-height: 480px;
+            max-height: calc(100vh - 250px);
+            overflow-y: auto
+        }
+
+        .cop-section-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 18px
+        }
+
+        .cop-section-heading h6 {
+            font-size: 16px;
+            font-weight: 800;
+            color: #2c423b;
+            margin: 2px 0
+        }
+
+        .cop-section-heading small {
+            color: #7b8984
+        }
+
+        .cop-eyebrow {
+            display: block;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: #25815f;
+            font-size: 10px;
+            font-weight: 800
+        }
+
+        .cop-order-chip,
+        .cop-profit-level {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #dce8e3;
+            background: #fff;
+            border-radius: 999px;
+            padding: 7px 11px;
+            color: #526760;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap
+        }
+
+        .cop-metrics-grid .cop-metric {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            border-radius: 13px;
+            box-shadow: 0 5px 16px rgba(36, 67, 57, .045)
+        }
+
+        .cop-metric-icon {
+            width: 38px;
+            height: 38px;
+            flex: 0 0 38px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center
+        }
+
+        .cop-metric small {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .045em;
+            margin-bottom: 3px
+        }
+
+        .cop-metric strong {
+            display: block;
+            font-size: 17px;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums
+        }
+
+        .cop-metric-sale .cop-metric-icon {
+            background: #e3f5f4;
+            color: #16827c
+        }
+
+        .cop-metric-purchase .cop-metric-icon {
+            background: #edf2f7;
+            color: #526b82
+        }
+
+        .cop-metric-gross .cop-metric-icon {
+            background: #e6f1fb;
+            color: #3479ae
+        }
+
+        .cop-metric-freight .cop-metric-icon {
+            background: #fff0e3;
+            color: #b86620
+        }
+
+        .cop-metric-other .cop-metric-icon {
+            background: #fff4de;
+            color: #a16b0b
+        }
+
+        .cop-metric-operating .cop-metric-icon {
+            background: #e1f4f2;
+            color: #167c70
+        }
+
+        .cop-metric-tax .cop-metric-icon {
+            background: #f1eafa;
+            color: #7655a3
+        }
+
+        .cop-metric-net .cop-metric-icon {
+            background: #e2f6eb;
+            color: #16804d
+        }
+
+        .cop-metric-negative .cop-metric-icon {
+            background: #fde8eb;
+            color: #b53c48
+        }
+
+        .cop-profit-hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-radius: 14px;
+            border: 1px solid
+        }
+
+        .cop-profit-hero>div span {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em
+        }
+
+        .cop-profit-hero>div strong {
+            font-size: 27px
+        }
+
+        .cop-profit-high {
+            color: #087354;
+            background: #e5f7ef;
+            border-color: #bce6d4
+        }
+
+        .cop-profit-medium {
+            color: #876300;
+            background: #fff6dd;
+            border-color: #ecd997
+        }
+
+        .cop-profit-low {
+            color: #9a5b19;
+            background: #fff0e2;
+            border-color: #f1cfaf
+        }
+
+        .cop-profit-negative {
+            color: #b23945;
+            background: #fdebed;
+            border-color: #efc4c9
+        }
+
+        .cop-formula-panel {
+            border: 1px solid #e1eae6;
+            border-radius: 14px;
+            background: #fff;
+            padding: 8px 16px;
+            margin-bottom: 18px
+        }
+
+        .cop-formula-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 12px
+        }
+
+        .formula-value,
+        .formula-result {
+            min-width: 150px;
+            text-align: center
+        }
+
+        .formula-value small,
+        .formula-result small {
+            display: block;
+            color: #788680;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: 700
+        }
+
+        .formula-value strong,
+        .formula-result strong {
+            font-size: 16px;
+            color: #344a43
+        }
+
+        .formula-result {
+            padding: 8px 15px;
+            border-radius: 9px;
+            background: #edf7f3
+        }
+
+        .formula-result strong {
+            color: #147752
+        }
+
+        .formula-net {
+            background: #e5f7ed
+        }
+
+        .formula-operator {
+            color: #a0ada8;
+            font-size: 11px
+        }
+
+        .cop-formula-divider {
+            height: 1px;
+            background: #edf1ef
+        }
+
+        .cop-calculation-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 20px;
+            padding: 11px 14px;
+            border-radius: 10px;
+            background: #eef4f1;
+            color: #667771;
+            font-size: 11px
+        }
+
+        .cop-calculation-meta i {
+            color: #2d8464;
+            margin-right: 5px
+        }
+
+        .cop-alert {
+            border-radius: 10px;
+            padding: 9px 13px;
+            font-size: 12px
+        }
+
+        .cop-section-total {
+            min-width: 145px;
+            text-align: right;
+            padding: 9px 13px;
+            border-radius: 10px;
+            background: #eef7f3
+        }
+
+        .cop-section-total small {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase
+        }
+
+        .cop-section-total strong {
+            font-size: 19px;
+            color: #147752
+        }
+
+        .cop-mini-summary {
+            margin-bottom: 17px
+        }
+
+        .cop-mini-summary>div>span {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 13px;
+            background: #fff;
+            border: 1px solid #e2eae7;
+            border-radius: 9px;
+            color: #71807a;
+            font-size: 11px
+        }
+
+        .cop-mini-summary strong {
+            color: #344b43;
+            font-size: 14px
+        }
+
+        .cop-inner-table {
+            border: 1px solid #e2eae7;
+            border-radius: 11px;
+            background: #fff
+        }
+
+        .cop-inner-table table {
+            font-size: 12px
+        }
+
+        .cop-inner-table thead th {
+            border: 0;
+            background: #f3f7f5;
+            color: #61726c;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: .04em;
+            white-space: nowrap;
+            padding: 10px
+        }
+
+        .cop-inner-table tbody td {
+            padding: 10px;
+            vertical-align: middle;
+            border-color: #edf2ef
+        }
+
+        .cop-empty {
+            text-align: center !important;
+            color: #8b9893;
+            padding: 28px !important
+        }
+
+        .cop-empty i {
+            display: block;
+            font-size: 19px;
+            margin-bottom: 7px
+        }
+
+        .cop-cost-block {
+            border: 1px solid #e1eae6;
+            border-radius: 13px;
+            background: #fff;
+            overflow: hidden;
+            margin-bottom: 16px
+        }
+
+        .cop-cost-block-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 13px 15px;
+            background: #f8faf9
+        }
+
+        .cop-cost-block-header>div {
+            display: flex;
+            align-items: center
+        }
+
+        .cop-cost-block-header h6 {
+            font-weight: 800;
+            margin: 0;
+            color: #344b43
+        }
+
+        .cop-cost-block-header small {
+            color: #7a8983
+        }
+
+        .cop-cost-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #e8f4ef;
+            color: #25805f;
+            margin-right: 10px
+        }
+
+        .cop-cost-subtotal {
+            font-size: 11px;
+            color: #71817b
+        }
+
+        .cop-cost-subtotal strong {
+            font-size: 16px;
+            color: #324940;
+            margin-left: 5px
+        }
+
+        .cop-document-ok {
+            color: #168054;
+            font-weight: 700
+        }
+
+        .cop-mode-notice {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 18px;
+            border-radius: 12px;
+            background: #eaf5fb;
+            color: #347491;
+            margin-bottom: 18px
+        }
+
+        .cop-mode-notice i {
+            font-size: 22px
+        }
+
+        .cop-mode-notice span {
+            display: block;
+            font-size: 12px
+        }
+
+        .cop-tax-grid>div {
+            margin-bottom: 15px
+        }
+
+        .cop-tax-grid>div>div {
+            padding: 16px;
+            border: 1px solid #e2e9e6;
+            border-radius: 11px;
+            background: #fff
+        }
+
+        .cop-tax-grid small,
+        .cop-income-tax small {
+            display: block;
+            color: #798780;
+            text-transform: uppercase;
+            font-size: 10px;
+            font-weight: 700
+        }
+
+        .cop-tax-grid strong {
+            font-size: 20px;
+            color: #334a42
+        }
+
+        .cop-tax-highlight {
+            background: #edf8f3 !important
+        }
+
+        .cop-income-tax {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 2px 15px;
+            align-items: center;
+            padding: 15px 17px;
+            border-radius: 11px;
+            background: #f3eef9;
+            color: #634c82
+        }
+
+        .cop-income-tax strong {
+            font-size: 20px
+        }
+
+        .cop-income-tax small {
+            grid-column: 1/-1
+        }
+
+        .cop-executive-results>div>div {
+            padding: 19px;
+            border: 1px solid #e1e9e6;
+            border-radius: 12px;
+            background: #fff;
+            margin-bottom: 18px
+        }
+
+        .cop-executive-results small,
+        .cop-executive-results span {
+            display: block;
+            color: #7a8883
+        }
+
+        .cop-executive-results strong {
+            display: block;
+            font-size: 23px;
+            color: #315047;
+            margin: 4px 0
+        }
+
+        .cop-executive-net {
+            background: #eaf7f1 !important
+        }
+
+        .cop-profit-gauge {
+            max-width: 700px;
+            margin: 5px auto 20px;
+            padding: 18px;
+            border-radius: 13px;
+            background: #fff;
+            border: 1px solid #e1e9e6
+        }
+
+        .cop-profit-gauge-head,
+        .cop-gauge-scale {
+            display: flex;
+            justify-content: space-between
+        }
+
+        .cop-profit-gauge-head {
+            margin-bottom: 9px;
+            color: #53665f;
+            font-weight: 700
+        }
+
+        .cop-profit-gauge-head strong {
+            font-size: 19px;
+            color: #168054
+        }
+
+        .cop-profit-gauge .progress {
+            height: 9px;
+            border-radius: 10px;
+            background: #edf1ef
+        }
+
+        .cop-gauge-high {
+            background: #1e9b67
+        }
+
+        .cop-gauge-medium {
+            background: #d2a52a
+        }
+
+        .cop-gauge-low {
+            background: #df873e
+        }
+
+        .cop-gauge-negative {
+            background: #d4525e
+        }
+
+        .cop-gauge-scale {
+            font-size: 9px;
+            color: #98a39f;
+            margin-top: 5px
+        }
+
+        .cop-statement {
+            background: #fff;
+            border: 1px solid #e1e9e6;
+            border-radius: 12px;
+            overflow: hidden
+        }
+
+        .cop-statement .cop-tax-deduction {
+            align-items: center;
+            gap: 14px;
+            padding: 12px 14px 12px 16px;
+            background: linear-gradient(90deg, #fff8e8 0%, #fffdf8 100%);
+            border-bottom-color: #f1e1b5;
+            box-shadow: inset 3px 0 0 #d5a13a;
+            transition: background .18s ease, box-shadow .18s ease
+        }
+
+        .cop-statement .cop-tax-deduction:hover {
+            background: linear-gradient(90deg, #fff5dd 0%, #fffcf5 100%);
+            box-shadow: inset 4px 0 0 #c99024, 0 2px 10px rgba(138, 96, 19, .07)
+        }
+
+        .cop-tax-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            color: #70531c
+        }
+
+        .cop-tax-icon {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9px;
+            background: #f5e3b8;
+            color: #956915;
+            font-size: 13px
+        }
+
+        .cop-tax-copy {
+            display: flex;
+            flex-direction: column;
+            min-width: 0
+        }
+
+        .cop-tax-copy b {
+            color: #60491d;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.25
+        }
+
+        .cop-tax-copy small {
+            margin-top: 2px;
+            color: #9a7b3f;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: .025em
+        }
+
+        .cop-statement .cop-tax-deduction>strong {
+            flex: 0 0 auto;
+            margin-left: auto;
+            padding: 5px 9px;
+            border: 1px solid #ead49d;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .72);
+            color: #845d12;
+            font-variant-numeric: tabular-nums
+        }
+
+        .cop-statement .cop-final-total {
+            background: #e5f6ed;
+            color: #126e47
+        }
+
+        @media(max-width:767.98px) {
+            #copDetailModal .modal-dialog {
+                margin: 6px
+            }
+
+            .cop-modal-header {
+                padding: 14px
+            }
+
+            .cop-modal-header small {
+                display: none
+            }
+
+            .cop-modal-footer {
+                flex-wrap: wrap;
+                gap: 8px
+            }
+
+            .cop-tab-content {
+                padding: 14px;
+                max-height: calc(100vh - 215px)
+            }
+
+            .cop-section-heading {
+                flex-direction: column
+            }
+
+            .cop-section-total {
+                text-align: left;
+                width: 100%
+            }
+
+            .cop-formula-row {
+                flex-wrap: wrap;
+                gap: 8px
+            }
+
+            .formula-value,
+            .formula-result {
+                min-width: 120px;
+                flex: 1
+            }
+
+            .cop-formula-row .formula-operator {
+                display: none
+            }
+
+            .cop-cost-block-header {
+                align-items: flex-start;
+                gap: 8px
+            }
+
+            .cop-cost-block-header small {
+                display: block
+            }
+
+            .cop-statement .cop-tax-deduction {
+                gap: 9px;
+                padding: 11px 10px 11px 12px
+            }
+
+            .cop-tax-icon {
+                width: 29px;
+                height: 29px;
+                flex-basis: 29px
+            }
+
+            .cop-tax-copy b {
+                font-size: 11px
+            }
+
+            .cop-tax-copy small {
+                font-size: 8px
+            }
+
+            .cop-statement .cop-tax-deduction>strong {
+                padding: 4px 7px;
+                font-size: 12px
+            }
+
+            .cop-footer-exports {
+                display: flex;
+                gap: 5px
+            }
+        }
+
+        .cop-classification-note {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: -5px 0 18px;
+            padding: 9px 12px;
+            border-radius: 9px;
+            background: #fff7e5;
+            border: 1px solid #f0dfad;
+            color: #7d651f;
+            font-size: 11px
+        }
+
+        .cop-classification-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 800;
+            white-space: nowrap
+        }
+
+        .cop-classification-badge.is-operational {
+            background: #e4f5ed;
+            color: #14734e
+        }
+
+        .cop-classification-badge.is-other {
+            background: #fff0e2;
+            color: #9a5b19
+        }
+
+        .cop-attachment-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            min-width: 132px
+        }
+
+        .cop-attachment-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 8px;
+            border: 1px solid #b9d9ce;
+            border-radius: 7px;
+            background: #f4faf7;
+            color: #237356 !important;
+            font-size: 10px;
+            font-weight: 800;
+            white-space: nowrap;
+            transition: .15s ease
+        }
+
+        .cop-attachment-action:hover {
+            background: #e5f4ed;
+            border-color: #8fc6b1;
+            text-decoration: none
+        }
+
+        .cop-attachment-missing,
+        .cop-no-attachments {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 7px;
+            border-radius: 999px;
+            font-size: 10px;
+            white-space: nowrap
+        }
+
+        .cop-attachment-missing {
+            background: #fff3dd;
+            color: #966518
+        }
+
+        .cop-no-attachments {
+            background: #f0f3f2;
+            color: #7a8883
+        }
+
+        .cop-linked-preview-modal {
+            z-index: 1070
+        }
+
+        .cop-linked-preview-modal .modal-content {
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 24px 70px rgba(28, 55, 47, .25)
+        }
+
+        .cop-linked-preview-body {
+            min-height: 260px;
+            max-height: 70vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f4f7f6
+        }
+
+        .cop-linked-preview-body img {
+            display: block;
+            max-width: 100%;
+            max-height: 64vh;
+            object-fit: contain;
+            border-radius: 6px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, .1)
+        }
+
+        .cop-purchase-mode-note {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: -5px 0 14px;
+            padding: 8px 11px;
+            border: 1px solid #d9e9e3;
+            border-radius: 9px;
+            background: #f3f9f6;
+            color: #5d7169;
+            font-size: 11px
+        }
+
+        .cop-purchase-mode-note i {
+            color: #25815f
+        }
+
+        .cop-purchase-considered {
+            color: #176f51;
+            font-size: 13px;
+            white-space: nowrap
+        }
+
+        .cop-purchase-source {
+            display: block;
+            margin-top: 5px;
+            color: #7b8984;
+            font-size: 9px;
+            white-space: nowrap
+        }
+
+        .cop-summary-tab-link {
+            position: relative;
+            cursor: pointer;
+            outline: 0;
+            transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background-color .2s ease
+        }
+
+        .cop-summary-tab-link:hover,
+        .cop-summary-tab-link:focus-visible {
+            border-color: #b9ddce;
+            box-shadow: 0 10px 24px rgba(27, 103, 76, .12);
+            transform: translateY(-2px)
+        }
+
+        .cop-summary-tab-link:focus-visible {
+            box-shadow: 0 0 0 3px rgba(25, 135, 84, .13), 0 10px 24px rgba(27, 103, 76, .1)
+        }
+
+        .cop-summary-link-cue {
+            position: absolute;
+            right: 10px;
+            bottom: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 21px;
+            height: 21px;
+            border-radius: 50%;
+            background: #edf6f2;
+            color: #2c7b60;
+            font-size: 8px;
+            opacity: .55;
+            transform: translateX(-2px);
+            transition: opacity .2s ease, transform .2s ease, background-color .2s ease
+        }
+
+        .cop-summary-tab-link:hover .cop-summary-link-cue,
+        .cop-summary-tab-link:focus-visible .cop-summary-link-cue {
+            background: #dff1e9;
+            opacity: 1;
+            transform: translateX(0)
+        }
+
+        .cop-profit-hero.cop-summary-tab-link {
+            padding-right: 54px
+        }
+
+        @media(max-width:575.98px) {
+            .cop-summary-link-cue {
+                right: 7px;
+                bottom: 7px
+            }
+
+            .cop-metrics-grid .cop-metric {
+                padding: 13px 29px 13px 11px
+            }
+
+            .cop-metric strong {
+                font-size: 15px
+            }
+        }
+
+        .cop-table-card tfoot th {
+            padding: 13px 10px;
+            border-top: 2px solid #b9d9cd;
+            border-bottom: 0;
+            background: linear-gradient(180deg, #f1f8f5 0%, #e8f3ee 100%);
+            color: #304b42;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+            vertical-align: middle;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, .72)
+        }
+
+        .cop-table-card tfoot th:first-child {
+            border-bottom-left-radius: 9px
+        }
+
+        .cop-table-card tfoot th:last-child {
+            border-bottom-right-radius: 9px
+        }
+
+        .cop-total-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: #31584b;
+            text-transform: uppercase;
+            letter-spacing: .045em
+        }
+
+        .cop-total-label i {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 25px;
+            height: 25px;
+            border-radius: 7px;
+            background: #d5ebe1;
+            color: #177451;
+            font-size: 10px
+        }
+
+        .cop-table-card tfoot th[id^="cop_total_"] {
+            font-variant-numeric: tabular-nums;
+            color: #284a3e
+        }
+
+        .cop-table-card tfoot .cop-total-positive {
+            color: #08734d !important
+        }
+
+        .cop-table-card tfoot .cop-total-negative {
+            color: #bd3543 !important
+        }
+
+        .cop-money-tax {
+            color: #7c5c12;
+            font-weight: 700;
+        }
+
+        .cop-money-igv {
+            color: #0f766e;
+            font-weight: 700;
+        }
+
+        .cop-table-card tfoot .cop-total-tax {
+            color: #7c5c12 !important;
+        }
+
+        .cop-table-card tfoot .cop-total-igv {
+            color: #0f766e !important;
+        }
+    </style>
 @endpush
 
 @push('js')
-<script>window.customerOrderProfitabilityRoutes={list:"{{route('admin.customer-order-profitability.list')}}",show:"{{url('admin/customer-order-profitability')}}",recalculate:"{{url('admin/customer-order-profitability')}}",pdf:"{{url('admin/customer-order-profitability')}}",print:"{{url('admin/customer-order-profitability')}}"};</script>
-@vite('resources/js/pages/customer-order-profitability.js')
+    <script>
+        window.customerOrderProfitabilityRoutes = {
+            list: "{{ route('admin.customer-order-profitability.list') }}",
+            show: "{{ url('admin/customer-order-profitability') }}",
+            recalculate: "{{ url('admin/customer-order-profitability') }}",
+            pdf: "{{ url('admin/customer-order-profitability') }}",
+            print: "{{ url('admin/customer-order-profitability') }}"
+        };
+    </script>
+    @vite('resources/js/pages/customer-order-profitability.js')
 @endpush

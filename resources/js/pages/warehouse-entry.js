@@ -1920,9 +1920,9 @@ async function confirmWarehouseEntryNegativeBalance() {
     const currency = String(option.data('currency-code') || '');
     const result = await Swal.fire({
         icon: 'warning',
-        title: 'La cuenta quedarÃ¡ con saldo negativo',
-        html: `Saldo disponible para la operaciÃ³n: <strong>${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(effectiveAvailable)}</strong><br>`
-            + `DÃ©bito estimado: <strong>${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(debit)}</strong><br>`
+        title: 'La cuenta quedaría con saldo negativo',
+        html: `Saldo disponible para la operación: <strong>${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(effectiveAvailable)}</strong><br>`
+            + `Débito estimado: <strong>${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(debit)}</strong><br>`
             + `Saldo proyectado: <strong class="text-danger">${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(effectiveAvailable - debit)}</strong>`,
         showCancelButton: true,
         confirmButtonText: 'Confirmar saldo negativo',
