@@ -54,6 +54,8 @@ class WarehouseEntryController extends Controller
 
     private const PDF_OBSERVATION = 'PDF_GENERATED_WAREHOUSE_ENTRY';
 
+    private const CREDIT_DUE_WARNING_DAYS = 15;
+
     private PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService;
 
     private WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService;
@@ -75,7 +77,13 @@ class WarehouseEntryController extends Controller
             'viewExpenseDocument',
             'viewPettyCashExpenseDocument',
         ]);
-        $this->middleware('can:admin.warehouse-entries.index')->only(['index', 'list', 'generateNumber', 'bankAccounts']);
+        $this->middleware('can:admin.warehouse-entries.index')->only([
+            'index',
+            'list',
+            'creditAlerts',
+            'generateNumber',
+            'bankAccounts',
+        ]);
         $this->middleware('can:admin.warehouse-entries.load-items')->only([
             'loadSupplierPurchaseOrderItems',
             'supplierPurchaseOrderLogisticsStatus',
@@ -435,6 +443,19 @@ class WarehouseEntryController extends Controller
             ->addColumn('warehouse', fn (WarehouseEntry $entry) => $entry->warehouse?->name ?? 'SIN ALMACEN')
             ->addColumn('currency', fn (WarehouseEntry $entry) => $entry->currency?->code ?? $entry->currency?->description ?? '-')
             ->addColumn('credit_alert', fn (WarehouseEntry $entry) => $this->warehouseEntryCreditPresentation($entry)['html'])
+            ->addColumn('credit_summary', function (WarehouseEntry $entry) {
+                $presentation = $this->warehouseEntryCreditPresentation($entry);
+
+                return [
+                    'is_pending' => $presentation['is_pending'],
+                    'days_remaining' => $presentation['days_remaining'],
+                    'status' => $presentation['status'],
+                    'status_label' => $presentation['label'],
+                    'condition_label' => $this->paymentConditionLabel(
+                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition
+                    ),
+                ];
+            })
             ->editColumn('grand_total', function (WarehouseEntry $entry) {
                 $symbol = $entry->currency?->symbol ?? '';
 
@@ -523,6 +544,100 @@ class WarehouseEntryController extends Controller
             })
             ->rawColumns(['customer_order', 'credit_alert', 'status', 'acciones'])
             ->make(true);
+    }
+
+    public function creditAlerts()
+    {
+        $entries = WarehouseEntry::query()
+            ->where('status', self::STATUS_REGISTERED)
+            ->whereNotNull('supplier_purchase_order_id')
+            ->where('payable_amount', '>', 0)
+            ->with([
+                'supplier:id,business_name,short_name',
+                'company:id,business_name,trade_name',
+                'currency:id,code,symbol,description',
+                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,created_at',
+                'supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
+                'supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
+                'bankPaymentMovement' => fn ($query) => $query->select(
+                    'bank_movements.id',
+                    'bank_movements.source_id',
+                    'bank_movements.status'
+                ),
+            ])
+            ->orderBy('expected_payment_date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (WarehouseEntry $entry) {
+                $presentation = $this->warehouseEntryCreditPresentation($entry);
+                $daysRemaining = $presentation['days_remaining'];
+
+                if (! $presentation['is_pending']
+                    || $daysRemaining === null
+                    || $daysRemaining > self::CREDIT_DUE_WARNING_DAYS) {
+                    return null;
+                }
+
+                $customerOrder = $this->customerOrdersForWarehouseEntry($entry)->first();
+                $pendingAmount = max(0, (float) $entry->payable_amount);
+
+                return [
+                    'warehouse_entry_id' => $entry->id,
+                    'warehouse_entry_code' => $entry->entry_number,
+                    'customer_order_number' => $customerOrder?->purchase_order_number
+                        ?: $customerOrder?->code
+                        ?: 'Sin OC cliente',
+                    'supplier_order_code' => $entry->supplierPurchaseOrder?->code ?: '-',
+                    'supplier_name' => $entry->supplier?->short_name
+                        ?: $entry->supplier?->business_name
+                        ?: '-',
+                    'company_name' => $entry->company?->trade_name
+                        ?: $entry->company?->business_name
+                        ?: '-',
+                    'currency_code' => $entry->currency?->code ?: '',
+                    'currency_symbol' => $entry->currency?->symbol ?: $entry->currency?->code ?: '',
+                    'pending_amount' => $pendingAmount,
+                    'payment_condition_label' => $this->paymentConditionLabel(
+                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition
+                    ),
+                    'document_date' => $entry->document_date?->format('d/m/Y'),
+                    'due_date' => Carbon::parse($presentation['due_date'])->format('d/m/Y'),
+                    'due_date_iso' => $presentation['due_date'],
+                    'days_remaining' => $daysRemaining,
+                    'status_label' => $presentation['label'],
+                    'status_type' => $daysRemaining < 0
+                        ? 'overdue'
+                        : ($daysRemaining === 0 ? 'due_today' : 'due_soon'),
+                ];
+            })
+            ->filter()
+            ->sortBy([
+                ['days_remaining', 'asc'],
+                ['warehouse_entry_id', 'asc'],
+            ])
+            ->values();
+
+        $amountsByCurrency = $entries
+            ->groupBy(fn (array $entry) => $entry['currency_code'] ?: $entry['currency_symbol'] ?: 'MONEDA')
+            ->map(fn ($currencyEntries, $currencyCode) => [
+                'currency_code' => $currencyCode,
+                'currency_symbol' => $currencyEntries->first()['currency_symbol'],
+                'amount' => round($currencyEntries->sum('pending_amount'), 2),
+            ])
+            ->values();
+
+        return response()->json([
+            'warning_days' => self::CREDIT_DUE_WARNING_DAYS,
+            'total' => $entries->count(),
+            'overdue' => $entries->where('status_type', 'overdue')->count(),
+            'due_today' => $entries->where('status_type', 'due_today')->count(),
+            'due_soon' => $entries->where('status_type', 'due_soon')->count(),
+            'due_within_7' => $entries->whereBetween('days_remaining', [1, 7])->count(),
+            'due_within_15' => $entries->whereBetween('days_remaining', [1, self::CREDIT_DUE_WARNING_DAYS])->count(),
+            'total_pending' => round($entries->sum('pending_amount'), 2),
+            'total_pending_by_currency' => $amountsByCurrency,
+            'data' => $entries,
+        ]);
     }
 
     private function customerOrdersForWarehouseEntry(WarehouseEntry $entry)
@@ -2368,6 +2483,8 @@ class WarehouseEntryController extends Controller
             return [
                 'credit_days' => 0,
                 'due_date' => null,
+                'days_remaining' => null,
+                'is_pending' => false,
                 'status' => 'cash',
                 'label' => 'Pago al contado',
                 'html' => sprintf(
@@ -2378,8 +2495,17 @@ class WarehouseEntryController extends Controller
         }
 
         $dueDate = $this->warehouseEntryCreditDueDate($entry);
+        $remainingDays = $dueDate
+            ? (int) today()->diffInDays(Carbon::parse($dueDate), false)
+            : null;
         $activeMovement = $entry->bankPaymentMovement;
-        if ($activeMovement) {
+        if ($entry->status === self::STATUS_CANCELLED) {
+            $status = 'cancelled';
+            $label = 'Ingreso anulado';
+            $class = 'badge-secondary';
+            $style = '';
+            $icon = 'fas fa-ban';
+        } elseif ($activeMovement) {
             $status = 'paid';
             $label = 'Pagado';
             $class = 'badge-info';
@@ -2392,7 +2518,6 @@ class WarehouseEntryController extends Controller
             $style = '';
             $icon = 'fas fa-clock';
         } else {
-            $remainingDays = (int) today()->diffInDays(Carbon::parse($dueDate), false);
             [$status, $label, $class, $style, $icon] = match (true) {
                 $remainingDays > 15 => ['pending', "Faltan {$remainingDays} días", 'badge-success', '', 'far fa-calendar-check'],
                 $remainingDays >= 8 => ['pending', "Faltan {$remainingDays} días", 'badge-warning text-dark', '', 'far fa-calendar-alt'],
@@ -2405,6 +2530,10 @@ class WarehouseEntryController extends Controller
         return [
             'credit_days' => $creditDays,
             'due_date' => $dueDate,
+            'days_remaining' => $remainingDays,
+            'is_pending' => $entry->status === self::STATUS_REGISTERED
+                && ! $activeMovement
+                && (float) $entry->payable_amount > 0,
             'status' => $status,
             'label' => $label,
             'html' => sprintf(

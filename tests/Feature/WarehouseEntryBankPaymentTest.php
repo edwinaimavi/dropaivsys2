@@ -394,7 +394,68 @@ it('muestra en el listado la alerta de vencimiento del crédito', function () {
 
     expect($response->status())->toBe(200)
         ->and($row['credit_alert'] ?? '')->toContain('Crédito 30 días')
-        ->and($row['credit_alert'] ?? '')->toContain('Faltan 20 días');
+        ->and($row['credit_alert'] ?? '')->toContain('Faltan 20 días')
+        ->and($row['credit_summary']['is_pending'] ?? false)->toBeTrue()
+        ->and($row['credit_summary']['status_label'] ?? '')->toBe('Faltan 20 días');
+});
+
+it('devuelve créditos vencidos, que vencen hoy y próximos dentro de quince días', function () {
+    $this->travelTo(Carbon::parse('2026-08-20'));
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.index', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.index');
+
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-VENCIDA', '2026-08-16', 100);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-HOY', '2026-08-20', 200, [
+        'expected_payment_date' => null,
+    ]);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-CINCO', '2026-08-25', 300);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-DIEZ', '2026-08-30', 400);
+
+    $response = $this->actingAs($this->user)->getJson(route('admin.warehouse-entries.credit-alerts'));
+
+    $response->assertOk()
+        ->assertJsonPath('warning_days', 15)
+        ->assertJsonPath('total', 4)
+        ->assertJsonPath('overdue', 1)
+        ->assertJsonPath('due_today', 1)
+        ->assertJsonPath('due_soon', 2)
+        ->assertJsonPath('due_within_7', 1)
+        ->assertJsonPath('due_within_15', 2)
+        ->assertJsonPath('total_pending', 1000)
+        ->assertJsonPath('data.0.status_type', 'overdue')
+        ->assertJsonPath('data.0.status_label', 'Vencido hace 4 días')
+        ->assertJsonPath('data.1.status_type', 'due_today')
+        ->assertJsonPath('data.1.status_label', 'Vence hoy')
+        ->assertJsonPath('data.2.days_remaining', 5)
+        ->assertJsonPath('data.2.status_label', 'Faltan 5 días');
+});
+
+it('excluye de alertas créditos pagados, anulados, sin saldo, contado y fuera del rango', function () {
+    $this->travelTo(Carbon::parse('2026-08-20'));
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.index', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.index');
+
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-ANULADA', '2026-08-20', 100, [
+        'status' => 'cancelled',
+    ]);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-CERO', '2026-08-20', 0);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-LEJANA', '2026-09-05', 100);
+    warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-CONTADO', '2026-08-20', 100, [], 'contado');
+    $paid = warehouseCreditAlertEntry($this->company, $this->supplier, $this->pen, 'ALERTA-PAGADA', '2026-08-20', 118, [
+        'generate_account_payable' => false,
+        'payment_company_bank_account_id' => $this->account->id,
+        'bank_payment_date' => '2026-08-20',
+    ]);
+    $this->service->sync($paid, $this->user->id);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.credit-alerts'))
+        ->assertOk()
+        ->assertJsonPath('total', 0)
+        ->assertJsonPath('total_pending', 0)
+        ->assertJsonCount(0, 'data');
 });
 
 it('entrega al selector únicamente cuentas activas de la empresa solicitada', function () {
@@ -520,4 +581,39 @@ function warehousePaymentSupplierOrder(
         'total_payment_currency' => 118,
         'status' => 'registered',
     ]);
+}
+
+function warehouseCreditAlertEntry(
+    Company $company,
+    Supplier $supplier,
+    Currency $currency,
+    string $code,
+    string $dueDate,
+    float $pendingAmount,
+    array $overrides = [],
+    string $paymentCondition = 'credito_30_dias'
+): WarehouseEntry {
+    $order = warehousePaymentSupplierOrder(
+        $company,
+        $supplier,
+        $currency,
+        $paymentCondition,
+        "OCP-{$code}"
+    );
+
+    return WarehouseEntry::create(array_merge([
+        'entry_number' => "ING-{$code}",
+        'supplier_purchase_order_id' => $order->id,
+        'company_id' => $company->id,
+        'supplier_id' => $supplier->id,
+        'currency_id' => $currency->id,
+        'document_type' => 'FACTURA',
+        'document_date' => Carbon::parse($dueDate)->subDays(30)->toDateString(),
+        'payment_condition' => $paymentCondition,
+        'generate_account_payable' => true,
+        'expected_payment_date' => $dueDate,
+        'grand_total' => $pendingAmount,
+        'payable_amount' => $pendingAmount,
+        'status' => 'registered',
+    ], $overrides));
 }

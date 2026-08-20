@@ -38,11 +38,20 @@
 @section('content_body')
     <div class="card border-0 shadow-lg rounded-xl">
         <div class="card-header bg-white border-0 pt-4 pb-2">
-            <h5 class="mb-1 font-weight-bold text-dark">
-                <i class="fas fa-list text-info"></i>
-                Lista de ingresos
-            </h5>
-            <small class="text-muted">Mercader&iacute;a registrada como ingreso a almac&eacute;n</small>
+            <div class="d-flex flex-wrap align-items-center justify-content-between">
+                <div>
+                    <h5 class="mb-1 font-weight-bold text-dark">
+                        <i class="fas fa-list text-info"></i>
+                        Lista de ingresos
+                    </h5>
+                    <small class="text-muted">Mercader&iacute;a registrada como ingreso a almac&eacute;n</small>
+                </div>
+                <button type="button" id="btnWarehouseCreditAlerts" class="btn btn-outline-warning btn-sm mt-2 mt-md-0" disabled>
+                    <i class="fas fa-bell mr-1"></i>
+                    <span class="warehouse-credit-alert-button-label">Consultando cr&eacute;ditos...</span>
+                    <span id="warehouseCreditAlertCount" class="badge badge-warning ml-1 d-none">0</span>
+                </button>
+            </div>
         </div>
 
         <div class="card-body pt-2">
@@ -73,6 +82,7 @@
     </div>
 
     @include('admin.warehouse-entries.partials.modal')
+    @include('admin.warehouse-entries.partials.creditAlertsModal')
     @include('admin.warehouse-entries.partials.viewModal')
     @include('admin.warehouse-entries.partials.pettyCashExpenseModal')
 @stop
@@ -259,6 +269,39 @@
         .warehouse-entry-group-metrics i { color: #3b896d; font-size: 9px; }
         .warehouse-entry-group-metrics .warehouse-entry-group-total { color: #1c654c; font-weight: 800; }
 
+        .warehouse-entry-group-credit-alert {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 9px;
+            border: 1px solid #f0d58b;
+            border-radius: 999px;
+            background: #fff8df;
+            color: #735b18;
+            font-size: 10px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .warehouse-entry-group-credit-alert.is-overdue,
+        .warehouse-entry-group-credit-alert.is-due-today {
+            border-color: #efb6ba;
+            background: #fff0f1;
+            color: #a6242e;
+        }
+
+        .warehouse-entry-group-credit-alert.is-orange {
+            border-color: #f8c48e;
+            background: #fff3e5;
+            color: #a84f00;
+        }
+
+        .warehouse-entry-group-credit-alert.is-normal {
+            border-color: #bfe3cf;
+            background: #effaf4;
+            color: #26704a;
+        }
+
         .warehouse-entry-group-toggle {
             display: inline-flex;
             align-items: center;
@@ -280,6 +323,93 @@
             background: #198754;
             color: #fff;
             box-shadow: 0 3px 9px rgba(25, 135, 84, .2);
+        }
+
+        .warehouse-credit-alert-header {
+            border: 0;
+            background: linear-gradient(135deg, #9a3412, #dc6b19);
+        }
+
+        .warehouse-credit-alert-header small { opacity: .88; }
+
+        .warehouse-credit-alert-metrics {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 9px;
+            margin-bottom: 18px;
+        }
+
+        .warehouse-credit-alert-metrics > div {
+            min-height: 76px;
+            padding: 12px;
+            border: 1px solid #dce7e3;
+            border-radius: 11px;
+            background: #f7faf9;
+        }
+
+        .warehouse-credit-alert-metrics small,
+        .warehouse-credit-alert-metrics strong { display: block; }
+        .warehouse-credit-alert-metrics small { color: #718079; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+        .warehouse-credit-alert-metrics strong { margin-top: 7px; color: #34443e; font-size: 21px; }
+        .warehouse-credit-alert-metrics .is-danger { border-color: #f0c4c7; background: #fff4f5; }
+        .warehouse-credit-alert-metrics .is-danger strong { color: #b52d37; }
+        .warehouse-credit-alert-metrics .is-orange { border-color: #f5cfaa; background: #fff6ed; }
+        .warehouse-credit-alert-metrics .is-orange strong { color: #b85b0a; }
+        .warehouse-credit-alert-metrics .is-warning { border-color: #eadb9b; background: #fffbea; }
+        .warehouse-credit-alert-metrics .is-warning strong { color: #856b0d; }
+        .warehouse-credit-alert-metrics .is-amount { border-color: #bcded4; background: #edf9f5; }
+        .warehouse-credit-alert-metrics .is-amount strong { color: #176b53; font-size: 15px; }
+
+        .warehouse-credit-alert-table-wrap { max-height: 53vh; border: 1px solid #e2e9e6; border-radius: 11px; }
+        .warehouse-credit-alert-table thead th {
+            position: sticky;
+            z-index: 1;
+            top: 0;
+            padding: 10px 8px;
+            border: 0;
+            background: #f2f6f4;
+            color: #596a63;
+            font-size: 9px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .warehouse-credit-alert-table td { padding: 10px 8px; vertical-align: middle; font-size: 11px; }
+        .warehouse-credit-alert-table small { display: block; margin-top: 3px; color: #7a8782; }
+        .warehouse-credit-alert-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 8px;
+            border-radius: 999px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+        .warehouse-credit-alert-status.is-overdue,
+        .warehouse-credit-alert-status.is-due-today { background: #dc3545; color: #fff; }
+        .warehouse-credit-alert-status.is-orange { background: #fd7e14; color: #fff; }
+        .warehouse-credit-alert-status.is-warning { background: #ffc107; color: #453800; }
+        .warehouse-credit-alert-loading,
+        .warehouse-credit-alert-empty {
+            display: flex;
+            min-height: 210px;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 9px;
+            color: #74817c;
+            text-align: center;
+        }
+        .warehouse-credit-alert-loading i,
+        .warehouse-credit-alert-empty i { color: #25a17c; font-size: 34px; }
+        .warehouse-credit-alert-empty strong { color: #315b4e; font-size: 18px; }
+
+        @media (max-width: 1199.98px) {
+            .warehouse-credit-alert-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 575.98px) {
+            .warehouse-credit-alert-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            #btnBackToWarehouseCreditAlerts { width: 100%; margin-right: 0 !important; }
         }
 
         .warehouse-entry-group-body { padding: 0 13px 13px; border-top: 1px solid #dcebe6; }
@@ -1759,6 +1889,7 @@
         window.warehouseEntryDeepLink = @json($warehouseEntryDeepLink);
         window.routes = Object.assign(window.routes || {}, {
             warehouseEntryList: "{{ route('admin.warehouse-entries.list') }}",
+            warehouseEntryCreditAlerts: "{{ route('admin.warehouse-entries.credit-alerts') }}",
             warehouseEntryStore: "{{ route('admin.warehouse-entries.store') }}",
             warehouseEntryUpdate: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryDelete: "{{ url('admin/warehouse-entries') }}",

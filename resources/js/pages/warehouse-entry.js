@@ -17,7 +17,12 @@ let warehouseEntryDeliveryType = '';
 let warehouseEntrySourceOrderTotal = null;
 let warehouseEntryBankAccountsRequest = null;
 let warehouseEntryEditingPaymentMovement = null;
+let warehouseEntryCreditAlertsCache = null;
+let warehouseEntryCreditAlertsAutoShown = false;
+let warehouseEntryOpenedFromCreditAlert = false;
+let warehouseEntryCreditAlertScrollTop = 0;
 const warehouseEntryExpandedGroups = new Set();
+const CREDIT_DUE_WARNING_DAYS = 15;
 
 const warehouseEntryDocumentTypes = {
     purchase_invoice: { label: 'Factura', badge: 'badge-doc-green' },
@@ -76,6 +81,11 @@ document.addEventListener('DOMContentLoaded', function () {
     $('#warehouseEntryModal').modal({
         backdrop: 'static',
         keyboard: false,
+        show: false
+    });
+    $('#warehouseEntryCreditAlertsModal').modal({
+        backdrop: 'static',
+        keyboard: true,
         show: false
     });
 
@@ -325,6 +335,23 @@ document.addEventListener('DOMContentLoaded', function () {
         loadWarehouseEntryForEdit($(this).data('id'));
     });
 
+    $(document).on('click', '#btnWarehouseCreditAlerts', function () {
+        openWarehouseEntryCreditAlerts();
+    });
+
+    $(document).on('click', '.btnViewWarehouseEntryFromCreditAlert', function () {
+        openWarehouseEntryFromCreditAlert($(this).data('id'));
+    });
+
+    $(document).on('click', '#btnBackToWarehouseCreditAlerts', function () {
+        returnToWarehouseEntryCreditAlerts();
+    });
+
+    $(document).on('click', '#btnWarehouseCreditAlertsViewAll', function () {
+        $('#warehouseEntryCreditAlertsModal').modal('hide');
+        document.getElementById('tableWarehouseEntry')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
     $(document).on('click', '.viewWarehouseEntry', function () {
         loadWarehouseEntryDetail($(this).data('id'));
     });
@@ -334,12 +361,14 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     openWarehouseEntryFromDeepLink();
+    loadWarehouseEntryCreditAlerts(!window.warehouseEntryDeepLink);
 });
 
 function prepareWarehouseEntryModalLayers() {
     const mainModal = document.getElementById('warehouseEntryModal');
     const lotsModal = document.getElementById('warehouseEntryLotsModal');
     const pettyCashModal = document.getElementById('warehouseEntryPettyCashModal');
+    const creditAlertsModal = document.getElementById('warehouseEntryCreditAlertsModal');
 
     if (mainModal && mainModal.parentElement !== document.body) {
         document.body.appendChild(mainModal);
@@ -349,6 +378,9 @@ function prepareWarehouseEntryModalLayers() {
     }
     if (pettyCashModal && pettyCashModal.parentElement !== document.body) {
         document.body.appendChild(pettyCashModal);
+    }
+    if (creditAlertsModal && creditAlertsModal.parentElement !== document.body) {
+        document.body.appendChild(creditAlertsModal);
     }
 }
 
@@ -485,12 +517,14 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
             client: entry.customer_order_client || 'Sin cliente relacionado',
             branch: entry.customer_order_branch || 'Sin sede registrada',
             lastEntry: entry.created_at || '-',
+            creditAlerts: [],
             items: []
         };
 
         group.entries += 1;
         group.total += Number(entry.grand_total_value || 0);
         if (entry.supplier_id) group.providers.add(String(entry.supplier_id));
+        if (entry.credit_summary?.is_pending) group.creditAlerts.push(entry.credit_summary);
         group.items.push(entry);
         groups[key] = group;
     });
@@ -507,6 +541,7 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
         const entryLabel = group.entries === 1 ? 'ingreso' : 'ingresos';
         const providerLabel = group.providers.size === 1 ? 'proveedor' : 'proveedores';
         const lastEntryDate = String(group.lastEntry).split(' ')[0];
+        const creditGroupAlert = renderWarehouseEntryGroupCreditAlert(group.creditAlerts);
         const detailRows = group.items.map(entry => `<tr>
             <td>${escapeWarehouseEntryHtml(entry.entry_number || '-')}</td>
             <td>${escapeWarehouseEntryHtml(entry.supplier_purchase_order_id || '-')}</td>
@@ -541,6 +576,7 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
                             <span><i class="fas fa-warehouse"></i>${group.entries} ${entryLabel}</span>
                             <span><i class="fas fa-truck"></i>${group.providers.size} ${providerLabel}</span>
                             <span class="warehouse-entry-group-total"><i class="fas fa-coins"></i>${escapeWarehouseEntryHtml(group.currency)} ${formatWarehouseEntryMoney(group.total)}</span>
+                            ${creditGroupAlert}
                             <span><i class="far fa-calendar-alt"></i>&Uacute;ltimo: ${escapeWarehouseEntryHtml(lastEntryDate)}</span>
                             <button type="button" class="warehouse-entry-group-toggle" aria-expanded="${isExpanded ? 'true' : 'false'}">
                                 <span>${isExpanded ? 'Ocultar ingresos' : 'Ver ingresos'}</span>
@@ -562,6 +598,155 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
 
         $(nodes[firstEntryIndex]).before(groupRow);
     });
+}
+
+function renderWarehouseEntryGroupCreditAlert(alerts) {
+    if (!alerts.length) return '';
+
+    const orderedAlerts = [...alerts].sort(function (left, right) {
+        const leftDays = left.days_remaining === null ? Number.MAX_SAFE_INTEGER : Number(left.days_remaining);
+        const rightDays = right.days_remaining === null ? Number.MAX_SAFE_INTEGER : Number(right.days_remaining);
+        return leftDays - rightDays;
+    });
+    const alert = orderedAlerts[0];
+    const extra = orderedAlerts.length > 1 ? ` (+${orderedAlerts.length - 1})` : '';
+
+    return `<span class="warehouse-entry-group-credit-alert ${warehouseEntryCreditAlertClass(alert.days_remaining)}">
+        <i class="fas fa-exclamation-triangle"></i>
+        ${escapeWarehouseEntryHtml(`${alert.condition_label} · ${alert.status_label}${extra}`)}
+    </span>`;
+}
+
+function warehouseEntryCreditAlertClass(daysRemaining) {
+    if (daysRemaining === null || daysRemaining === undefined || daysRemaining === '') return 'is-normal';
+    const days = Number(daysRemaining);
+    if (days < 0) return 'is-overdue';
+    if (days === 0) return 'is-due-today';
+    if (days <= 7) return 'is-orange';
+    if (days <= CREDIT_DUE_WARNING_DAYS) return 'is-warning';
+    return 'is-normal';
+}
+
+function loadWarehouseEntryCreditAlerts(autoShow = false, showWhenLoaded = false) {
+    const button = $('#btnWarehouseCreditAlerts');
+    button.prop('disabled', true);
+    button.find('.warehouse-credit-alert-button-label').text('Consultando créditos...');
+
+    return $.get(window.routes.warehouseEntryCreditAlerts)
+        .done(function (response) {
+            warehouseEntryCreditAlertsCache = response;
+            renderWarehouseEntryCreditAlerts(response);
+            updateWarehouseEntryCreditAlertButton(response.total || 0);
+
+            if ((showWhenLoaded || (autoShow && !warehouseEntryCreditAlertsAutoShown)) && Number(response.total || 0) > 0) {
+                warehouseEntryCreditAlertsAutoShown = true;
+                $('#warehouseEntryCreditAlertsModal').modal('show');
+            }
+        })
+        .fail(function () {
+            warehouseEntryCreditAlertsCache = null;
+            button.prop('disabled', true);
+            button.find('.warehouse-credit-alert-button-label').text('No se pudieron consultar los créditos');
+            $('#warehouseCreditAlertCount').addClass('d-none').text('0');
+        });
+}
+
+function updateWarehouseEntryCreditAlertButton(total) {
+    const button = $('#btnWarehouseCreditAlerts');
+    const count = Number(total || 0);
+
+    button.prop('disabled', count === 0);
+    button.find('.warehouse-credit-alert-button-label')
+        .text(count > 0 ? 'Créditos por vencer' : 'Sin créditos por vencer');
+    $('#warehouseCreditAlertCount').toggleClass('d-none', count === 0).text(count);
+}
+
+function openWarehouseEntryCreditAlerts() {
+    if (warehouseEntryCreditAlertsCache) {
+        renderWarehouseEntryCreditAlerts(warehouseEntryCreditAlertsCache);
+        $('#warehouseEntryCreditAlertsModal').modal('show');
+        return;
+    }
+
+    loadWarehouseEntryCreditAlerts(false, true);
+}
+
+function renderWarehouseEntryCreditAlerts(response) {
+    const alerts = Array.isArray(response.data) ? response.data : [];
+    $('#warehouseCreditAlertLoading').addClass('d-none');
+    $('#warehouseCreditAlertContent').toggleClass('d-none', alerts.length === 0);
+    $('#warehouseCreditAlertEmpty').toggleClass('d-none', alerts.length > 0);
+    $('#warehouseCreditAlertTotal').text(Number(response.total || 0));
+    $('#warehouseCreditAlertOverdue').text(Number(response.overdue || 0));
+    $('#warehouseCreditAlertToday').text(Number(response.due_today || 0));
+    $('#warehouseCreditAlertSevenDays').text(Number(response.due_within_7 || 0));
+    $('#warehouseCreditAlertFifteenDays').text(Number(response.due_within_15 || 0));
+    $('#warehouseCreditAlertAmount').html(renderWarehouseEntryCreditAlertTotals(response.total_pending_by_currency));
+    $('#warehouseCreditAlertRows').html(alerts.map(renderWarehouseEntryCreditAlertRow).join(''));
+}
+
+function renderWarehouseEntryCreditAlertTotals(totals) {
+    if (!Array.isArray(totals) || !totals.length) return '0.00';
+
+    return totals.map(function (total) {
+        return `${escapeWarehouseEntryHtml(total.currency_symbol || total.currency_code || '')} ${formatWarehouseEntryMoney(total.amount || 0)}`.trim();
+    }).join('<br>');
+}
+
+function renderWarehouseEntryCreditAlertRow(alert) {
+    const statusClass = warehouseEntryCreditAlertClass(alert.days_remaining);
+    const statusIcon = Number(alert.days_remaining) <= 0 ? 'fa-exclamation-triangle' : 'fa-clock';
+
+    return `<tr>
+        <td>
+            <span class="warehouse-credit-alert-status ${statusClass}">
+                <i class="fas ${statusIcon}"></i>${escapeWarehouseEntryHtml(alert.status_label || '-')}
+            </span>
+        </td>
+        <td>
+            <strong>${escapeWarehouseEntryHtml(alert.customer_order_number || 'Sin OC cliente')}</strong>
+            <small>OC proveedor: ${escapeWarehouseEntryHtml(alert.supplier_order_code || '-')}</small>
+        </td>
+        <td><strong>${escapeWarehouseEntryHtml(alert.warehouse_entry_code || '-')}</strong></td>
+        <td>
+            <strong>${escapeWarehouseEntryHtml(alert.supplier_name || '-')}</strong>
+            <small>${escapeWarehouseEntryHtml(alert.company_name || '-')}</small>
+        </td>
+        <td>${escapeWarehouseEntryHtml(alert.payment_condition_label || '-')}</td>
+        <td>
+            <span>Documento: ${escapeWarehouseEntryHtml(alert.document_date || '-')}</span>
+            <small>Vencimiento: ${escapeWarehouseEntryHtml(alert.due_date || '-')}</small>
+        </td>
+        <td class="text-right font-weight-bold text-nowrap">
+            ${escapeWarehouseEntryHtml(alert.currency_symbol || alert.currency_code || '')} ${formatWarehouseEntryMoney(alert.pending_amount || 0)}
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-outline-info btn-sm text-nowrap btnViewWarehouseEntryFromCreditAlert" data-id="${Number(alert.warehouse_entry_id)}">
+                <i class="fas fa-eye mr-1"></i>Ver ingreso
+            </button>
+        </td>
+    </tr>`;
+}
+
+function openWarehouseEntryFromCreditAlert(id) {
+    const modal = $('#warehouseEntryCreditAlertsModal');
+    warehouseEntryCreditAlertScrollTop = modal.find('.modal-body').scrollTop();
+    modal.one('hidden.bs.modal.open-credit-entry', function () {
+        loadWarehouseEntryForEdit(id, { fromCreditAlert: true });
+    });
+    modal.modal('hide');
+}
+
+function returnToWarehouseEntryCreditAlerts() {
+    $('#warehouseEntryModal').one('hidden.bs.modal.return-credit-alerts', function () {
+        if (!warehouseEntryCreditAlertsCache) return;
+        renderWarehouseEntryCreditAlerts(warehouseEntryCreditAlertsCache);
+        $('#warehouseEntryCreditAlertsModal').modal('show');
+        window.setTimeout(function () {
+            $('#warehouseEntryCreditAlertsModal .modal-body').scrollTop(warehouseEntryCreditAlertScrollTop);
+        }, 180);
+    });
+    $('#warehouseEntryModal').modal('hide');
 }
 
 function toggleWarehouseEntryCustomerOrderGroup(key) {
@@ -685,6 +870,8 @@ function resetWarehouseEntryForm() {
     warehouseEntryLogisticsStatusRequest = null;
     warehouseEntrySourceOrderTotal = null;
     warehouseEntryEditingPaymentMovement = null;
+    warehouseEntryOpenedFromCreditAlert = false;
+    $('#btnBackToWarehouseCreditAlerts').addClass('d-none');
     $('#warehouseEntryOrderAmountWarning').addClass('d-none').empty();
     resetWarehouseEntryExpenseEditor();
     renderWarehouseEntryExpenses();
@@ -967,6 +1154,7 @@ async function saveWarehouseEntry(form) {
         .done(function (response) {
             $('#warehouseEntryModal').modal('hide');
             tableWarehouseEntry.ajax.reload(null, false);
+            loadWarehouseEntryCreditAlerts(false);
             warehouseEntryPendingDocuments = [];
 
             if (!id && response.pdf_url) {
@@ -2812,12 +3000,14 @@ function renderWarehouseEntrySimpleExpenseLabel(type) {
     return 'Otros gastos';
 }
 
-function loadWarehouseEntryForEdit(id) {
+function loadWarehouseEntryForEdit(id, options = {}) {
     $.get(`${window.routes.warehouseEntryShow}/${id}`)
         .done(function (response) {
             const entry = response.data;
 
             resetWarehouseEntryForm();
+            warehouseEntryOpenedFromCreditAlert = Boolean(options.fromCreditAlert);
+            $('#btnBackToWarehouseCreditAlerts').toggleClass('d-none', !warehouseEntryOpenedFromCreditAlert);
             $('#warehouseEntryModalLabel').text('Editar Ingreso de Almacen');
             $('#warehouse_entry_id').val(entry.id);
             setWarehouseEntrySaving(false);
@@ -3262,6 +3452,7 @@ function deleteWarehouseEntry(id) {
         })
             .done(function (response) {
                 tableWarehouseEntry.ajax.reload(null, false);
+                loadWarehouseEntryCreditAlerts(false);
                 Swal.fire({
                     icon: 'success',
                     title: response.message || 'Ingreso eliminado correctamente.',

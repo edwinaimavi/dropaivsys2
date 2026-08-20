@@ -809,6 +809,10 @@
             </div>
 
             <div class="modal-footer warehouse-entry-modal-footer">
+                <button type="button" id="btnBackToWarehouseCreditAlerts" class="btn btn-outline-warning btn-sm mr-auto d-none">
+                    <i class="fas fa-arrow-left mr-1"></i>
+                    Volver a cr&eacute;ditos por vencer
+                </button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">
                     <i class="fas fa-times mr-1"></i>
                     Cerrar
