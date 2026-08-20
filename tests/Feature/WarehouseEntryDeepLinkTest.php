@@ -23,6 +23,7 @@ beforeEach(function () {
         'admin.warehouse-entries.index',
         'admin.warehouse-entries.load-items',
         'admin.warehouse-entries.store',
+        'admin.warehouse-entries.show',
     ] as $permission) {
         Permission::findOrCreate($permission, 'web');
     }
@@ -30,6 +31,7 @@ beforeEach(function () {
         'admin.warehouse-entries.index',
         'admin.warehouse-entries.load-items',
         'admin.warehouse-entries.store',
+        'admin.warehouse-entries.show',
     ]);
     $this->actingAs($this->user);
 
@@ -131,6 +133,25 @@ it('reutiliza la carga de la OC proveedor para precargar cabecera e items', func
         ->assertJsonPath('document_type', 'FACTURA')
         ->assertJsonPath('affect_igv', true)
         ->assertJsonPath('items.0.supplier_purchase_order_item_id', $orderItem->id);
+});
+
+it('al editar muestra la condición vigente de la OC proveedor y recalcula su vencimiento', function () {
+    $this->supplierOrder->update(['payment_condition' => 'credito_30_dias']);
+    $entry = warehouseEntryDeepLinkExistingEntry();
+    $entry->update([
+        'document_date' => '2026-07-21',
+        'payment_condition' => 'contado',
+        'generate_account_payable' => false,
+        'expected_payment_date' => null,
+    ]);
+
+    $this->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonPath('data.payment_condition', 'credito_30_dias')
+        ->assertJsonPath('data.payment_condition_label', 'Crédito 30 días')
+        ->assertJsonPath('data.generate_account_payable', true)
+        ->assertJsonPath('data.credit_due_date', '2026-08-20')
+        ->assertJsonPath('data.credit_days', 30);
 });
 
 it('devuelve el saldo real del anticipo desde los pagos activos', function () {

@@ -128,10 +128,17 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
-    $(document).on('change input', '#supplier_order_payment_currency_id,#supplier_order_apply_exchange_rate,#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount', function () {
+    $(document).on('change input', '#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_applied_amount,#supplier_order_new_advance_exchange_rate', function () {
         updateSupplierOrderFinancialSummary();
     });
-    $(document).on('change', '#supplier_order_payment_currency_id', loadSupplierOrderAdvanceBankAccounts);
+    $(document).on('change', '#supplier_order_payment_currency_id', function () {
+        $('#supplier_order_new_advance_payment_currency_id').val($(this).val() || '').trigger('change');
+    });
+    $(document).on('change', '#supplier_order_new_advance_payment_currency_id', function () {
+        $('#supplier_order_new_advance_exchange_rate').val('');
+        loadSupplierOrderAdvanceBankAccounts();
+        updateSupplierOrderFinancialSummary();
+    });
     $(document).on('change input', '#supplierPurchaseOrderForm', updateSupplierOrderFormSummary);
     $(document).on('shown.bs.tab', '#supplierPurchaseOrderModal .supplier-order-form-tabs a[data-toggle="pill"]', function () {
         updateSupplierOrderFormSummary();
@@ -320,11 +327,9 @@ function updateSupplierOrderFormSummary() {
     };
     const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
     const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
-    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
     const applyAdvance = $('#supplier_order_apply_advance').is(':checked');
     const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
     const totalPurchase = parseFloat($('#supplier_order_grand_total').val()) || 0;
-    const totalPen = String($('#supplierOrderFinancialPenTotal').text() || 'S/ 0.00');
     const advanceStatus = $('#supplierOrderAdvanceStatusBadge').text().trim() || 'Sin anticipo';
     const itemCount = $('#supplierOrderItemsTbody tr.supplier-order-item-row').length;
     const documentCount = $('#supplierOrderExistingDocuments .supplier-doc-existing, #supplierOrderDocumentsContainer .supplier-doc-row').length;
@@ -335,9 +340,8 @@ function updateSupplierOrderFormSummary() {
         ['OC cliente relacionada', selectedText('#supplier_order_customer_purchase_order_ids'), 'fa-link'],
         ['Moneda compra', purchase.code || '-', 'fa-money-bill-wave'],
         ['Moneda pago', payment.code || '-', 'fa-wallet'],
-        ['Tipo de cambio', applyRate ? (rate > 0 ? rate.toFixed(4) : 'Pendiente') : 'No aplica', 'fa-exchange-alt'],
+        ['TC referencial', rate > 0 ? rate.toFixed(4) : 'No definido', 'fa-exchange-alt'],
         ['Total compra', `${purchase.code} ${formatSupplierOrderMoney(totalPurchase)}`, 'fa-shopping-cart'],
-        ['Total normalizado', totalPen, 'fa-coins'],
         ['Condici\u00f3n de pago', selectedText('#supplier_order_payment_condition'), 'fa-calendar-check'],
         ['Anticipo', applyAdvance ? advanceStatus : 'No aplica', 'fa-hand-holding-usd'],
         ['Total art\u00edculos', String(itemCount), 'fa-boxes'],
@@ -345,14 +349,14 @@ function updateSupplierOrderFormSummary() {
     ];
     const alerts = [];
     if (applyAdvance && advanceStatus !== 'Pagado') alerts.push(['warning', 'fa-exclamation-triangle', 'Esta orden requiere anticipo pendiente.']);
-    if (applyRate) alerts.push(['info', 'fa-exchange-alt', 'Esta orden usa tipo de cambio.']);
+    if (rate > 0) alerts.push(['info', 'fa-exchange-alt', 'Hay un tipo de cambio referencial para precargar pagos.']);
     if (customerCount > 0) alerts.push(['success', 'fa-link', 'Esta orden est\u00e1 relacionada a una OC del cliente.']);
 
     summary.html(`<div class="supplier-order-summary-heading"><div><span>Vista ejecutiva</span><h6>Resumen de la orden</h6><small>Compruebe los datos principales antes de guardar.</small></div><span class="supplier-order-summary-code">${escapeSupplierOrderHtml($('#supplier_order_code').val() || 'C\u00f3digo autom\u00e1tico')}</span></div><div class="supplier-order-summary-grid">${cards.map(([label, value, icon]) => `<div class="supplier-order-summary-card"><span><i class="fas ${icon}"></i></span><div><small>${label}</small><strong>${escapeSupplierOrderHtml(value)}</strong></div></div>`).join('')}</div><div class="supplier-order-summary-alerts">${alerts.length ? alerts.map(([tone, icon, text]) => `<div class="alert alert-${tone}"><i class="fas ${icon}"></i>${text}</div>`).join('') : '<div class="alert alert-light border"><i class="fas fa-check-circle text-success"></i>Sin alertas financieras adicionales.</div>'}</div>`);
 
     $('#supplierOrderSideCurrency').text(purchase.code || '-');
     $('#supplierOrderSideAdvance').text(applyAdvance ? $('#supplierOrderAdvanceRequired').text() : 'No aplica');
-    $('#supplierOrderSideFinancialStatus').text(applyAdvance ? advanceStatus : (applyRate ? 'ConversiÃ³n activa' : 'Sin anticipo'));
+    $('#supplierOrderSideFinancialStatus').text(applyAdvance ? advanceStatus : 'Sin anticipo');
 }
 
 function initSupplierPurchaseOrderTable() {
@@ -772,13 +776,13 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_shipping_reference').val('');
     $('#supplier_order_payment_method').val('').trigger('change.select2');
     $('#supplier_order_payment_currency_id').val('').trigger('change.select2');
-    $('#supplier_order_apply_exchange_rate,#supplier_order_apply_advance').prop('checked', false);
-    $('#supplier_order_exchange_rate,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_amount').val('');
-    $('#supplier_order_advance_type,#supplier_order_new_advance_method').val('');
+    $('#supplier_order_apply_advance').prop('checked', false);
+    $('#supplier_order_exchange_rate,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_applied_amount,#supplier_order_new_advance_exchange_rate,#supplier_order_new_advance_amount').val('');
+    $('#supplier_order_advance_type,#supplier_order_new_advance_method,#supplier_order_new_advance_payment_currency_id').val('');
     $('#supplier_order_new_advance_date').val(new Date().toISOString().slice(0, 10));
     resetSupplierOrderAdvanceBankAccountSelect('Seleccione empresa y moneda de pago.');
     $('#supplier_order_new_advance_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
-    $('#supplierOrderExistingAdvancePayments').empty().data('paid-amount', 0);
+    $('#supplierOrderExistingAdvancePayments').empty().data('paid-applied', 0).data('paid-pen', 0);
     $('#supplier_order_document_type').val('').trigger('change.select2');
     $('#supplier_order_request_department').val('COMPRAS');
     $('#supplier_order_authorized_by_name').val('IVAN CUBAS BINCES');
@@ -1937,7 +1941,7 @@ function fillSupplierPurchaseOrderForm(order) {
     const supplierAccountsRequest = loadSupplierAccounts(order.supplier_id, order.supplier_account_id, { suppressInstructionSync: true });
     $('#supplier_order_currency_id').val(order.currency_id || '').trigger('change');
     $('#supplier_order_payment_currency_id').val(order.payment_currency_id || order.currency_id || '').trigger('change.select2');
-    $('#supplier_order_apply_exchange_rate').prop('checked', Boolean(order.apply_exchange_rate));
+    $('#supplier_order_new_advance_payment_currency_id').val(order.payment_currency_id || order.currency_id || '').trigger('change');
     $('#supplier_order_exchange_rate').val(order.exchange_rate || '');
     $('#supplier_order_apply_advance').prop('checked', Boolean(order.apply_advance));
     $('#supplier_order_advance_type').val(order.advance_type || '');
@@ -2318,6 +2322,10 @@ function syncSupplierOrderPaymentCurrency() {
     if (!paymentCurrency.val()) {
         paymentCurrency.val($('#supplier_order_currency_id').val() || '').trigger('change.select2');
     }
+    const newPaymentCurrency = $('#supplier_order_new_advance_payment_currency_id');
+    if (!newPaymentCurrency.val()) {
+        newPaymentCurrency.val(paymentCurrency.val() || $('#supplier_order_currency_id').val() || '').trigger('change');
+    }
 }
 
 function supplierOrderFinancialCurrency(selector) {
@@ -2347,7 +2355,7 @@ function resetSupplierOrderAdvanceBankAccountSelect(message, helpClass = '', dis
 
 function supplierOrderAdvanceBankAccountKey() {
     const companyId = String($('#supplier_order_company_id').val() || '');
-    const currencyId = String($('#supplier_order_payment_currency_id').val() || '');
+    const currencyId = String($('#supplier_order_new_advance_payment_currency_id').val() || '');
 
     return companyId && currencyId ? `${companyId}:${currencyId}` : '';
 }
@@ -2400,7 +2408,7 @@ function loadSupplierOrderAdvanceBankAccounts() {
     const select = $('#supplier_order_new_advance_bank_account_id');
     if (!select.length) return;
     const companyId = String($('#supplier_order_company_id').val() || '');
-    const currencyId = String($('#supplier_order_payment_currency_id').val() || '');
+    const currencyId = String($('#supplier_order_new_advance_payment_currency_id').val() || '');
     const accountKey = companyId && currencyId ? `${companyId}:${currencyId}` : '';
     if (supplierOrderAdvanceBankAccountsRequest) {
         supplierOrderAdvanceBankAccountsRequest.abort();
@@ -2479,43 +2487,51 @@ function loadSupplierOrderAdvanceBankAccounts() {
 function updateSupplierOrderFinancialSummary() {
     if (!$('#supplier_order_payment_currency_id').length) return;
     const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
-    const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
+    const payment = supplierOrderFinancialCurrency('#supplier_order_new_advance_payment_currency_id');
     const totalPurchase = parseFloat($('#supplier_order_grand_total').val()) || 0;
-    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
-    const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
-    const needsRate = purchase.code !== payment.code || purchase.code !== 'PEN' || payment.code !== 'PEN';
-    $('#supplier_order_apply_exchange_rate').prop('checked', applyRate || needsRate);
-    $('#supplierOrderExchangeRateGroup').toggleClass('d-none', !(applyRate || needsRate));
-    $('#supplier_order_exchange_rate').prop('disabled', !(applyRate || needsRate));
-
-    let totalPayment = totalPurchase;
-    if (purchase.code !== payment.code && rate > 0) {
-        totalPayment = payment.code === 'PEN' ? totalPurchase * rate : totalPurchase / rate;
+    const referenceRate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
+    const rateInput = $('#supplier_order_new_advance_exchange_rate');
+    const sameCurrency = Boolean(payment.id) && purchase.code === payment.code;
+    if (sameCurrency) {
+        rateInput.val('1').prop('readonly', true);
+    } else {
+        rateInput.prop('readonly', false);
+        if (!rateInput.val() && referenceRate > 0) rateInput.val(referenceRate);
     }
-    const totalPen = payment.code === 'PEN' ? totalPayment : (rate > 0 ? totalPayment * rate : 0);
+    const rate = parseFloat(rateInput.val()) || 0;
+    const appliedAmount = parseFloat($('#supplier_order_new_advance_applied_amount').val()) || 0;
+    let paidAmount = 0;
+    if (sameCurrency) paidAmount = appliedAmount;
+    else if (rate > 0 && payment.code === 'PEN') paidAmount = appliedAmount * rate;
+    else if (rate > 0 && purchase.code === 'PEN') paidAmount = appliedAmount / rate;
+    $('#supplier_order_new_advance_amount').val(paidAmount > 0 ? paidAmount.toFixed(4) : '');
+    $('#supplier_order_new_advance_purchase_currency_id').val(purchase.id || '');
+    $('#supplierOrderAppliedAmountHelp').text(`En ${purchase.code}, moneda de la compra.`);
+    $('#supplierOrderPaidAmountHelp').text(payment.id ? `Salida bancaria en ${payment.code}.` : 'Seleccione la moneda del pago.');
     $('#supplierOrderFinancialPurchaseTotal').text(`${purchase.code} ${formatSupplierOrderMoney(totalPurchase)}`);
-    $('#supplierOrderFinancialRate').text((applyRate || needsRate) && rate > 0 ? rate.toFixed(4) : 'Pendiente');
-    $('#supplierOrderFinancialPaymentTotal').text(`${payment.code} ${formatSupplierOrderMoney(totalPayment)}`);
-    $('#supplierOrderFinancialPenTotal').text(`S/ ${formatSupplierOrderMoney(totalPen)}`);
 
     const applyAdvance = $('#supplier_order_apply_advance').is(':checked');
     const advanceType = $('#supplier_order_advance_type').val();
     const percentage = parseFloat($('#supplier_order_advance_percentage').val()) || 0;
     const fixedAmount = parseFloat($('#supplier_order_advance_amount').val()) || 0;
-    const storedPaid = parseFloat($('#supplierOrderExistingAdvancePayments').data('paid-amount')) || 0;
-    const newPaid = parseFloat($('#supplier_order_new_advance_amount').val()) || 0;
+    const storedPaid = parseFloat($('#supplierOrderExistingAdvancePayments').data('paid-applied')) || 0;
+    const storedPaidPen = parseFloat($('#supplierOrderExistingAdvancePayments').data('paid-pen')) || 0;
+    const newPaid = appliedAmount;
     const paid = storedPaid + newPaid;
-    const required = !applyAdvance ? 0 : (advanceType === 'percentage' ? totalPayment * percentage / 100 : fixedAmount);
+    const required = !applyAdvance ? 0 : (advanceType === 'percentage' ? totalPurchase * percentage / 100 : fixedAmount);
     const balance = Math.max(required - paid, 0);
+    const purchaseBalance = Math.max(totalPurchase - paid, 0);
+    const paidPen = storedPaidPen + (payment.code === 'PEN' ? paidAmount : 0);
     const status = !applyAdvance ? 'Sin anticipo' : (paid <= 0 ? 'Pendiente' : (paid + 0.0001 < required ? 'Parcial' : 'Pagado'));
 
     $('.supplier-order-advance-field').toggleClass('d-none', !applyAdvance);
     $('#supplierOrderAdvancePercentageGroup').toggleClass('d-none', advanceType !== 'percentage');
     $('#supplierOrderAdvanceAmountGroup').toggleClass('d-none', advanceType !== 'fixed_amount');
-    $('#supplierOrderAdvanceRequired').text(`${payment.code} ${formatSupplierOrderMoney(required)}`);
-    $('#supplierOrderAdvancePaid').text(`${payment.code} ${formatSupplierOrderMoney(paid)}`);
-    $('#supplierOrderAdvanceBalance').text(`${payment.code} ${formatSupplierOrderMoney(balance)}`);
-    $('#supplierOrderAdvancePen').text(`S/ ${formatSupplierOrderMoney(payment.code === 'PEN' ? required : required * rate)}`);
+    $('#supplierOrderAdvanceRequired').text(`${purchase.code} ${formatSupplierOrderMoney(required)}`);
+    $('#supplierOrderAdvancePaid').text(`${purchase.code} ${formatSupplierOrderMoney(paid)}`);
+    $('#supplierOrderAdvanceBalance').text(`${purchase.code} ${formatSupplierOrderMoney(balance)}`);
+    $('#supplierOrderPurchaseBalance').text(`${purchase.code} ${formatSupplierOrderMoney(purchaseBalance)}`);
+    $('#supplierOrderPaidPenTotal').text(`PEN ${formatSupplierOrderMoney(paidPen)}`);
     $('#supplierOrderAdvanceStatusBadge')
         .removeClass('badge-light badge-warning badge-info badge-success')
         .addClass(status === 'Pagado' ? 'badge-success' : (status === 'Parcial' ? 'badge-info' : (applyAdvance ? 'badge-warning' : 'badge-light')))
@@ -2525,14 +2541,8 @@ function updateSupplierOrderFinancialSummary() {
 
 function validateSupplierOrderFinancialTerms() {
     const purchase = supplierOrderFinancialCurrency('#supplier_order_currency_id');
-    const payment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
-    if (!payment.id) return 'Seleccione la moneda en la que se pagará al proveedor.';
-    const needsRate = purchase.code !== payment.code || purchase.code !== 'PEN' || payment.code !== 'PEN';
-    const applyRate = $('#supplier_order_apply_exchange_rate').is(':checked');
-    const rate = parseFloat($('#supplier_order_exchange_rate').val()) || 0;
-    if (needsRate && !applyRate) return 'Active el tipo de cambio para normalizar la operación en soles.';
-    if (applyRate && rate <= 0) return 'Ingrese un tipo de cambio mayor a cero.';
-    if (purchase.code !== payment.code && purchase.code !== 'PEN' && payment.code !== 'PEN') return 'Una de las monedas debe ser PEN.';
+    const preferredPayment = supplierOrderFinancialCurrency('#supplier_order_payment_currency_id');
+    if (!preferredPayment.id) return 'Seleccione la moneda de pago referencial.';
 
     if ($('#supplier_order_apply_advance').is(':checked')) {
         const type = $('#supplier_order_advance_type').val();
@@ -2541,6 +2551,30 @@ function validateSupplierOrderFinancialTerms() {
         const amount = parseFloat($('#supplier_order_advance_amount').val()) || 0;
         if (type === 'percentage' && (percentage <= 0 || percentage > 100)) return 'El porcentaje del anticipo debe ser mayor a 0 y menor o igual a 100.';
         if (type === 'fixed_amount' && amount <= 0) return 'Ingrese un monto fijo de anticipo mayor a cero.';
+
+        const appliedRaw = String($('#supplier_order_new_advance_applied_amount').val() || '').trim();
+        const appliedAmount = parseFloat(appliedRaw) || 0;
+        if (appliedRaw && appliedAmount <= 0) return 'El monto aplicado a la compra debe ser mayor a cero.';
+        if (appliedAmount > 0) {
+            const payment = supplierOrderFinancialCurrency('#supplier_order_new_advance_payment_currency_id');
+            const rate = parseFloat($('#supplier_order_new_advance_exchange_rate').val()) || 0;
+            const storedPaid = parseFloat($('#supplierOrderExistingAdvancePayments').data('paid-applied')) || 0;
+            const totalPurchase = parseFloat($('#supplier_order_grand_total').val()) || 0;
+            const required = type === 'percentage'
+                ? totalPurchase * percentage / 100
+                : amount;
+            const pending = Math.min(
+                Math.max(required - storedPaid, 0),
+                Math.max(totalPurchase - storedPaid, 0)
+            );
+            if (!payment.id) return 'Seleccione la moneda de este pago.';
+            if (purchase.code !== payment.code && purchase.code !== 'PEN' && payment.code !== 'PEN') return 'Una de las monedas del pago debe ser PEN.';
+            if (purchase.code !== payment.code && rate <= 0) return 'Ingrese el tipo de cambio de este pago, mayor a cero.';
+            if (appliedAmount > pending + 0.0001) return `El monto aplicado no puede superar el saldo pendiente de ${purchase.code} ${formatSupplierOrderMoney(pending)}.`;
+            if (!$('#supplier_order_new_advance_bank_account_id').val()) return 'Seleccione una cuenta bancaria de la empresa en la moneda del pago.';
+            if (!$('#supplier_order_new_advance_method').val()) return 'Seleccione el medio de pago del anticipo.';
+            if (!$('#supplier_order_new_advance_date').val()) return 'Ingrese la fecha del pago del anticipo.';
+        }
     }
 
     return null;
@@ -2549,14 +2583,16 @@ function validateSupplierOrderFinancialTerms() {
 function renderSupplierOrderAdvancePayments(payments) {
     const container = $('#supplierOrderExistingAdvancePayments');
     const rows = payments || [];
-    const paidAmount = rows.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    container.data('paid-amount', paidAmount);
+    const purchaseCode = supplierOrderFinancialCurrency('#supplier_order_currency_id').code;
+    const paidApplied = rows.reduce((sum, payment) => sum + Number(payment.effective_applied_amount ?? payment.applied_amount ?? 0), 0);
+    const paidPen = rows.reduce((sum, payment) => String(payment.currency?.code || '').toUpperCase() === 'PEN' ? sum + Number(payment.amount || 0) : sum, 0);
+    container.data('paid-applied', paidApplied).data('paid-pen', paidPen);
     if (!rows.length) {
         container.html('<div class="text-muted small py-2">Aún no hay pagos de anticipo registrados.</div>');
         return;
     }
 
-    container.html(`<div class="table-responsive"><table class="table table-sm supplier-order-advance-payments-table"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Cuenta proveedor</th><th>Medio</th><th>Operación</th><th class="text-right">Monto</th><th class="text-right">Soles</th><th>Usuario</th><th>Constancia</th></tr></thead><tbody>${rows.map(payment => `<tr><td>${escapeSupplierOrderHtml(String(payment.payment_date || '').slice(0,10))}</td><td>${escapeSupplierOrderHtml(payment.company_bank_account?.bank?.short_name || payment.company_bank_account?.bank?.description || '-')}<small class="d-block text-muted">${escapeSupplierOrderHtml(payment.company_bank_account?.account_number || '')}</small></td><td>${escapeSupplierOrderHtml(payment.supplier_account?.bank?.short_name || payment.supplier_account?.bank?.description || '-')}</td><td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td><td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td><td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td><td class="text-right">S/ ${formatSupplierOrderMoney(payment.amount_pen)}</td><td>${escapeSupplierOrderHtml(payment.creator?.name || '-')}</td><td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye"></i> Ver</a>` : '-'}</td></tr>`).join('')}</tbody></table></div>`);
+    container.html(`<div class="table-responsive"><table class="table table-sm supplier-order-advance-payments-table"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Medio</th><th>Operación</th><th class="text-right">Monto aplicado</th><th class="text-right">TC</th><th class="text-right">Monto pagado</th><th>Usuario</th><th>Constancia</th></tr></thead><tbody>${rows.map(payment => `<tr><td>${escapeSupplierOrderHtml(String(payment.payment_date || '').slice(0,10))}</td><td>${escapeSupplierOrderHtml(payment.company_bank_account?.bank?.short_name || payment.company_bank_account?.bank?.description || '-')}<small class="d-block text-muted">${escapeSupplierOrderHtml(payment.company_bank_account?.account_number || '')}</small></td><td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td><td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td><td class="text-right">${escapeSupplierOrderHtml(payment.purchase_currency?.code || purchaseCode)} ${formatSupplierOrderMoney(payment.effective_applied_amount ?? payment.applied_amount)}</td><td class="text-right">${Number(payment.exchange_rate || 1).toFixed(4)}</td><td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td><td>${escapeSupplierOrderHtml(payment.creator?.name || '-')}</td><td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" class="btn btn-outline-info btn-xs"><i class="fas fa-eye"></i> Ver</a>` : '-'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
 function setDefaultSupplierOrderCurrency() {

@@ -8,11 +8,13 @@ use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Supplier;
+use App\Models\SupplierPurchaseOrder;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
 use App\Services\WarehouseEntryBankPaymentService;
+use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -277,6 +279,124 @@ it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario'
         ->and((float) $this->account->fresh()->current_balance)->toBe(882.0);
 });
 
+it('hereda crédito de la OC, calcula vencimiento y no genera egreso aunque manipulen el request', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.store', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.store');
+    [$warehouse, $article] = warehousePaymentInventoryData();
+    $order = warehousePaymentSupplierOrder(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'credito_30_dias',
+        'OCP-CREDITO-001'
+    );
+
+    $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
+        'supplier_purchase_order_id' => $order->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'CRED-001',
+        'document_date' => '2026-07-21',
+        'payment_condition' => 'contado',
+        'generate_account_payable' => 0,
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 118,
+        ]],
+    ]);
+
+    $response->assertCreated()->assertJsonPath('status', 'success');
+    $entry = WarehouseEntry::query()->where('document_number', 'CRED-001')->firstOrFail();
+
+    expect($entry->payment_condition)->toBe('credito_30_dias')
+        ->and($entry->generate_account_payable)->toBeTrue()
+        ->and($entry->expected_payment_date?->toDateString())->toBe('2026-08-20')
+        ->and($entry->payment_company_bank_account_id)->toBeNull()
+        ->and($entry->bank_payment_date)->toBeNull()
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)
+            ->where('source_id', $entry->id)->doesntExist())->toBeTrue();
+});
+
+it('hereda contado de la OC y genera el egreso bancario', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.store', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.store');
+    [$warehouse, $article] = warehousePaymentInventoryData();
+    $order = warehousePaymentSupplierOrder(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'contado',
+        'OCP-CONTADO-001'
+    );
+
+    $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
+        'supplier_purchase_order_id' => $order->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'document_number' => 'CONT-001',
+        'document_date' => '2026-07-21',
+        'payment_condition' => 'credito_30_dias',
+        'generate_account_payable' => 1,
+        'payment_company_bank_account_id' => $this->account->id,
+        'bank_payment_date' => '2026-07-21',
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 118,
+        ]],
+    ])->assertCreated();
+
+    $entry = WarehouseEntry::query()->where('document_number', 'CONT-001')->firstOrFail();
+    expect($entry->payment_condition)->toBe('contado')
+        ->and($entry->generate_account_payable)->toBeFalse()
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)
+            ->where('source_id', $entry->id)->exists())->toBeTrue();
+});
+
+it('muestra en el listado la alerta de vencimiento del crédito', function () {
+    $this->travelTo(Carbon::parse('2026-07-31'));
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.index', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.index');
+    $order = warehousePaymentSupplierOrder(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'credito_30_dias',
+        'OCP-CREDITO-LISTA'
+    );
+    $entry = WarehouseEntry::create([
+        'entry_number' => 'ING-CREDITO-LISTA',
+        'supplier_purchase_order_id' => $order->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->pen->id,
+        'document_type' => 'FACTURA',
+        'document_date' => '2026-07-21',
+        'payment_condition' => 'credito_30_dias',
+        'generate_account_payable' => true,
+        'expected_payment_date' => '2026-08-20',
+        'grand_total' => 118,
+        'payable_amount' => 118,
+        'status' => 'registered',
+    ]);
+
+    $response = $this->actingAs($this->user)->getJson(route('admin.warehouse-entries.list'));
+    $row = collect($response->json('data'))->firstWhere('entry_number', $entry->entry_number);
+
+    expect($response->status())->toBe(200)
+        ->and($row['credit_alert'] ?? '')->toContain('Crédito 30 días')
+        ->and($row['credit_alert'] ?? '')->toContain('Faltan 20 días');
+});
+
 it('entrega al selector únicamente cuentas activas de la empresa solicitada', function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.index', 'web');
@@ -375,4 +495,29 @@ function warehousePaymentInventoryData(): array
     ]);
 
     return [$warehouse, $article];
+}
+
+function warehousePaymentSupplierOrder(
+    Company $company,
+    Supplier $supplier,
+    Currency $currency,
+    string $paymentCondition,
+    string $code
+): SupplierPurchaseOrder {
+    return SupplierPurchaseOrder::create([
+        'code' => $code,
+        'company_id' => $company->id,
+        'supplier_id' => $supplier->id,
+        'currency_id' => $currency->id,
+        'payment_currency_id' => $currency->id,
+        'order_type' => 'DIRECTA',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => $paymentCondition,
+        'document_type' => 'factura',
+        'affect_igv' => true,
+        'grand_total' => 118,
+        'total_purchase_currency' => 118,
+        'total_payment_currency' => 118,
+        'status' => 'registered',
+    ]);
 }

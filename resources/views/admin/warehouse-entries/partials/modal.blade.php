@@ -193,6 +193,7 @@
                                         <label>CONDICI&Oacute;N DE PAGO</label>
                                         <input type="text" id="warehouse_entry_payment_condition" name="payment_condition"
                                             class="form-control form-control-sm text-uppercase">
+                                        <small id="warehouseEntryPaymentConditionHelp" class="form-text text-muted d-none">Condici&oacute;n heredada desde la OC proveedor.</small>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -276,6 +277,10 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
+                                    <div class="col-12">
+                                        <div id="warehouseEntryCreditSummary" class="alert alert-info d-none py-2 px-3 mb-3"></div>
+                                    </div>
+
                                     <div class="form-group col-md-4">
                                         <label>SERIE GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_series" name="guide_series"
@@ -315,7 +320,7 @@
                                     </div>
                                     <div id="warehouseEntryBankPaymentCreditHelp" class="warehouse-entry-bank-payment-help d-none">
                                         <i class="fas fa-clock"></i>
-                                        <span>Este ingreso generar&aacute; una cuenta por pagar. No se descontar&aacute; saldo bancario hasta registrar el pago.</span>
+                                        <span>Esta compra es a cr&eacute;dito. No se generar&aacute; egreso bancario hasta registrar el pago.</span>
                                     </div>
                                     <div id="warehouseEntryBankPaymentFields" class="row mt-3">
                                         <input type="hidden" id="warehouse_entry_bank_payment_negative_balance_confirmed"

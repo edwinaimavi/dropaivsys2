@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\User;
+use App\Services\SupplierPurchaseOrderFinancialService;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -124,9 +125,11 @@ it('bloquea una cuenta bancaria que pertenece a otra empresa', function () {
     try {
         $method->invoke(
             app(SupplierPurchaseOrderController::class),
-            collect([['company_bank_account_id' => $dropaivAccount->id]]),
-            $this->praga->id,
-            $this->pen->id
+            collect([[
+                'company_bank_account_id' => $dropaivAccount->id,
+                'payment_currency_id' => $this->pen->id,
+            ]]),
+            $this->praga->id
         );
     } catch (ValidationException $caught) {
         $exception = $caught;
@@ -135,4 +138,88 @@ it('bloquea una cuenta bancaria que pertenece a otra empresa', function () {
     expect($exception)->not->toBeNull()
         ->and($exception->errors()['advance_payments.0.company_bank_account_id'][0])
         ->toBe('La cuenta bancaria seleccionada no pertenece a la empresa de la orden o no corresponde a la moneda seleccionada.');
+});
+
+it('calcula y prepara un pago PEN con tipo de cambio individual', function () {
+    $account = supplierOrderCompanyAccount([
+        'company_id' => $this->praga->id,
+        'currency_id' => $this->pen->id,
+        'account_number' => 'PRAGA-PEN-PAGO',
+    ]);
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'prepareAdvancePayments');
+
+    $payments = $method->invoke(
+        app(SupplierPurchaseOrderController::class),
+        collect([[
+            'purchase_currency_id' => $this->usd->id,
+            'payment_currency_id' => $this->pen->id,
+            'company_bank_account_id' => $account->id,
+            'applied_amount' => 500,
+            'exchange_rate' => 3.39,
+        ]]),
+        $this->usd,
+        $this->praga->id,
+        app(SupplierPurchaseOrderFinancialService::class)
+    );
+
+    expect($payments[0]['applied_amount'])->toBe(500.0)
+        ->and($payments[0]['amount'])->toBe(1695.0)
+        ->and($payments[0]['amount_pen'])->toBe(1695.0)
+        ->and($payments[0]['exchange_rate'])->toBe(3.39);
+});
+
+it('fuerza tipo de cambio uno cuando compra y pago usan la misma moneda', function () {
+    $account = supplierOrderCompanyAccount([
+        'company_id' => $this->praga->id,
+        'currency_id' => $this->usd->id,
+        'account_number' => 'PRAGA-USD-PAGO',
+    ]);
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'prepareAdvancePayments');
+
+    $payments = $method->invoke(
+        app(SupplierPurchaseOrderController::class),
+        collect([[
+            'purchase_currency_id' => $this->usd->id,
+            'payment_currency_id' => $this->usd->id,
+            'company_bank_account_id' => $account->id,
+            'applied_amount' => 300,
+            'exchange_rate' => 9.99,
+        ]]),
+        $this->usd,
+        $this->praga->id,
+        app(SupplierPurchaseOrderFinancialService::class)
+    );
+
+    expect($payments[0]['applied_amount'])->toBe(300.0)
+        ->and($payments[0]['amount'])->toBe(300.0)
+        ->and($payments[0]['exchange_rate'])->toBe(1.0);
+});
+
+it('bloquea una cuenta cuya moneda no coincide con la moneda real del pago', function () {
+    $penAccount = supplierOrderCompanyAccount([
+        'company_id' => $this->praga->id,
+        'currency_id' => $this->pen->id,
+        'account_number' => 'PRAGA-PEN-INCORRECTA',
+    ]);
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'validateAdvancePaymentBankAccounts');
+
+    expect(fn () => $method->invoke(
+        app(SupplierPurchaseOrderController::class),
+        collect([[
+            'company_bank_account_id' => $penAccount->id,
+            'payment_currency_id' => $this->usd->id,
+        ]]),
+        $this->praga->id
+    ))->toThrow(ValidationException::class);
+});
+
+it('retira el total normalizado y el switch global del formulario financiero', function () {
+    $view = file_get_contents(resource_path('views/admin/supplier-purchase-orders/partials/modal.blade.php'));
+
+    expect($view)
+        ->not->toContain('Total normalizado')
+        ->not->toContain('supplier_order_apply_exchange_rate')
+        ->toContain('MONTO APLICADO')
+        ->toContain('TC DEL PAGO')
+        ->toContain('MONTO PAGADO');
 });

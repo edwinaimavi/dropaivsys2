@@ -34,12 +34,14 @@ use App\Services\SupplierPurchaseOrderFinancialService;
 use App\Services\WarehouseEntryBankPaymentService;
 use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
@@ -359,12 +361,17 @@ class WarehouseEntryController extends Controller
                 'supplier:id,business_name,short_name',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
-                'supplierPurchaseOrder:id,code,customer_purchase_order_id',
+                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,created_at',
                 'supplierPurchaseOrder.customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
                 'supplierPurchaseOrder.customerPurchaseOrder.customerBranch:id,branch_name',
                 'supplierPurchaseOrder.customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
                 'supplierPurchaseOrder.customerPurchaseOrders.customerBranch:id,branch_name',
                 'warehouse:id,code,name,description',
+                'bankPaymentMovement' => fn ($query) => $query->select(
+                    'bank_movements.id',
+                    'bank_movements.source_id',
+                    'bank_movements.status'
+                ),
                 'documents' => function ($query) {
                     $query->where('observation', self::PDF_OBSERVATION)
                         ->where('status', 'ACTIVE')
@@ -427,6 +434,7 @@ class WarehouseEntryController extends Controller
             ->addColumn('company', fn (WarehouseEntry $entry) => $entry->company?->trade_name ?? $entry->company?->business_name ?? '-')
             ->addColumn('warehouse', fn (WarehouseEntry $entry) => $entry->warehouse?->name ?? 'SIN ALMACEN')
             ->addColumn('currency', fn (WarehouseEntry $entry) => $entry->currency?->code ?? $entry->currency?->description ?? '-')
+            ->addColumn('credit_alert', fn (WarehouseEntry $entry) => $this->warehouseEntryCreditPresentation($entry)['html'])
             ->editColumn('grand_total', function (WarehouseEntry $entry) {
                 $symbol = $entry->currency?->symbol ?? '';
 
@@ -513,7 +521,7 @@ class WarehouseEntryController extends Controller
 
                 $query->where('warehouse_entries.status', 'like', '%'.($statusAliases[$normalized] ?? $keyword).'%');
             })
-            ->rawColumns(['customer_order', 'status', 'acciones'])
+            ->rawColumns(['customer_order', 'credit_alert', 'status', 'acciones'])
             ->make(true);
     }
 
@@ -658,6 +666,26 @@ class WarehouseEntryController extends Controller
                 })->with('documentType');
             },
         ]);
+
+        if ($warehouseEntry->supplierPurchaseOrder) {
+            $officialCondition = $warehouseEntry->supplierPurchaseOrder->payment_condition;
+            $isCredit = $this->isCreditPaymentCondition($officialCondition);
+            $warehouseEntry->setAttribute('payment_condition', $officialCondition);
+            $warehouseEntry->setAttribute('generate_account_payable', $isCredit);
+            $warehouseEntry->setAttribute(
+                'expected_payment_date',
+                $isCredit ? $this->warehouseEntryCreditDueDate($warehouseEntry) : null
+            );
+        }
+        $creditPresentation = $this->warehouseEntryCreditPresentation($warehouseEntry);
+        $warehouseEntry->setAttribute('credit_days', $creditPresentation['credit_days']);
+        $warehouseEntry->setAttribute('credit_due_date', $creditPresentation['due_date']);
+        $warehouseEntry->setAttribute('credit_status', $creditPresentation['status']);
+        $warehouseEntry->setAttribute('credit_status_label', $creditPresentation['label']);
+        $warehouseEntry->setAttribute(
+            'payment_condition_label',
+            $this->paymentConditionLabel($warehouseEntry->payment_condition)
+        );
 
         if ($warehouseEntry->bankPaymentMovement) {
             $warehouseEntry->bankPaymentMovement->setAttribute(
@@ -926,6 +954,8 @@ class WarehouseEntryController extends Controller
             'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
+            'payment_condition_label' => $this->paymentConditionLabel($order->payment_condition),
+            'credit_days' => $this->creditDaysFromCondition($order->payment_condition),
             'document_type' => $this->normalizeDocumentType($order->document_type),
             'delivery_type' => SupplierPurchaseOrder::normalizeDeliveryType($order->delivery_type),
             'affect_igv' => (bool) $order->affect_igv,
@@ -947,7 +977,39 @@ class WarehouseEntryController extends Controller
                 ->map(fn (array $expense) => $this->normalizeLinkedExpenseFields($expense))
                 ->all(),
         ]);
-        $hasSupplierPurchaseOrder = $request->filled('supplier_purchase_order_id');
+        $sourceOrderId = $request->input('supplier_purchase_order_id') ?: $entry?->supplier_purchase_order_id;
+        if ($sourceOrderId) {
+            $request->merge(['supplier_purchase_order_id' => $sourceOrderId]);
+        }
+        $hasSupplierPurchaseOrder = filled($sourceOrderId);
+        $sourceOrder = $hasSupplierPurchaseOrder
+            ? SupplierPurchaseOrder::query()->find($sourceOrderId)
+            : null;
+
+        if ($sourceOrder) {
+            $officialCondition = $sourceOrder->payment_condition;
+            $isCredit = $this->isCreditPaymentCondition($officialCondition);
+            $request->merge([
+                'payment_condition' => $officialCondition,
+                'generate_account_payable' => $isCredit,
+                'expected_payment_date' => $isCredit
+                    ? $this->calculateCreditDueDate(
+                        $request->input('document_date'),
+                        $entry,
+                        $sourceOrder,
+                        $this->creditDaysFromCondition($officialCondition)
+                    )
+                    : null,
+            ]);
+
+            $paymentSummary = $this->supplierPurchaseOrderFinancialService->paymentSummary($sourceOrder);
+            if (($paymentSummary['financial_blocked'] ?? false)
+                && (! $entry || (int) $entry->supplier_purchase_order_id !== (int) $sourceOrder->id)) {
+                throw ValidationException::withMessages([
+                    'supplier_purchase_order_id' => 'Complete el anticipo pendiente antes de registrar el ingreso de almacén.',
+                ]);
+            }
+        }
 
         if (! $entry && $hasSupplierPurchaseOrder) {
             $existingEntry = $this->warehouseEntryForSupplierPurchaseOrder((int) $request->input('supplier_purchase_order_id'));
@@ -1179,9 +1241,19 @@ class WarehouseEntryController extends Controller
                 $this->validatePendingQuantities($validated['items'], $entry?->id);
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
                 $totals = $this->calculateTotals($preparedItems);
-                $generateAccountPayable = (bool) ($validated['generate_account_payable'] ?? false);
                 $paymentCondition = $supplierPurchaseOrder?->payment_condition
                     ?? ($validated['payment_condition'] ?? null);
+                $generateAccountPayable = $supplierPurchaseOrder
+                    ? $this->isCreditPaymentCondition($paymentCondition)
+                    : (bool) ($validated['generate_account_payable'] ?? false);
+                $expectedPaymentDate = $generateAccountPayable && $supplierPurchaseOrder
+                    ? $this->calculateCreditDueDate(
+                        $validated['document_date'] ?? null,
+                        $entry,
+                        $supplierPurchaseOrder,
+                        $this->creditDaysFromCondition($paymentCondition)
+                    )
+                    : ($generateAccountPayable ? ($validated['expected_payment_date'] ?? null) : null);
                 if ($generateAccountPayable && $this->isCashPaymentCondition($paymentCondition)) {
                     throw ValidationException::withMessages([
                         'generate_account_payable' => 'Una compra al contado o ya pagada debe registrar la cuenta bancaria de salida.',
@@ -1206,9 +1278,7 @@ class WarehouseEntryController extends Controller
                     'payment_condition' => $paymentCondition,
                     'generate_account_payable' => $generateAccountPayable,
                     'payable_amount' => $totals['grand_total'],
-                    'expected_payment_date' => $generateAccountPayable
-                        ? ($validated['expected_payment_date'] ?? null)
-                        : null,
+                    'expected_payment_date' => $expectedPaymentDate,
                     'payment_company_bank_account_id' => $generateAccountPayable
                         ? null
                         : ($validated['payment_company_bank_account_id'] ?? null),
@@ -2218,6 +2288,134 @@ class WarehouseEntryController extends Controller
         $value = mb_strtolower(trim((string) $value), 'UTF-8');
 
         return str_contains($value, 'contado') || str_contains($value, 'pagado');
+    }
+
+    private function isCreditPaymentCondition(?string $value): bool
+    {
+        return str_contains(
+            mb_strtolower(Str::ascii(trim((string) $value)), 'UTF-8'),
+            'credito'
+        );
+    }
+
+    private function creditDaysFromCondition(?string $value): int
+    {
+        $normalized = mb_strtolower(Str::ascii(trim((string) $value)), 'UTF-8');
+
+        return preg_match('/credito\D*(\d+)/', $normalized, $matches)
+            ? (int) $matches[1]
+            : 0;
+    }
+
+    private function calculateCreditDueDate(
+        ?string $documentDate,
+        ?WarehouseEntry $entry,
+        ?SupplierPurchaseOrder $supplierPurchaseOrder,
+        int $creditDays
+    ): ?string {
+        if ($creditDays <= 0) {
+            return $entry?->expected_payment_date?->toDateString();
+        }
+
+        $baseDate = filled($documentDate)
+            ? Carbon::parse($documentDate)
+            : ($entry?->document_date
+                ?? $entry?->created_at
+                ?? ($entry ? $supplierPurchaseOrder?->created_at : now())
+                ?? $supplierPurchaseOrder?->created_at
+                ?? now());
+
+        return $baseDate->copy()->startOfDay()->addDays($creditDays)->toDateString();
+    }
+
+    private function warehouseEntryCreditDueDate(WarehouseEntry $entry): ?string
+    {
+        if ($entry->expected_payment_date) {
+            return $entry->expected_payment_date->toDateString();
+        }
+
+        $condition = $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition;
+
+        return $this->calculateCreditDueDate(
+            $entry->document_date?->toDateString(),
+            $entry,
+            $entry->supplierPurchaseOrder,
+            $this->creditDaysFromCondition($condition)
+        );
+    }
+
+    private function paymentConditionLabel(?string $condition): string
+    {
+        if ($this->isCashPaymentCondition($condition)) {
+            return 'Contado';
+        }
+
+        $creditDays = $this->creditDaysFromCondition($condition);
+        if ($this->isCreditPaymentCondition($condition)) {
+            return $creditDays > 0 ? "Crédito {$creditDays} días" : 'Crédito';
+        }
+
+        return Str::headline((string) $condition) ?: 'Sin condición';
+    }
+
+    private function warehouseEntryCreditPresentation(WarehouseEntry $entry): array
+    {
+        $condition = $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition;
+        $conditionLabel = $this->paymentConditionLabel($condition);
+        $creditDays = $this->creditDaysFromCondition($condition);
+
+        if (! $this->isCreditPaymentCondition($condition)) {
+            return [
+                'credit_days' => 0,
+                'due_date' => null,
+                'status' => 'cash',
+                'label' => 'Pago al contado',
+                'html' => sprintf(
+                    '<span class="badge badge-light border text-dark px-2 py-1"><i class="fas fa-money-bill-wave mr-1"></i>%s</span>',
+                    e($conditionLabel)
+                ),
+            ];
+        }
+
+        $dueDate = $this->warehouseEntryCreditDueDate($entry);
+        $activeMovement = $entry->bankPaymentMovement;
+        if ($activeMovement) {
+            $status = 'paid';
+            $label = 'Pagado';
+            $class = 'badge-info';
+            $style = '';
+            $icon = 'fas fa-check-circle';
+        } elseif (! $dueDate) {
+            $status = 'pending';
+            $label = 'Pago pendiente';
+            $class = 'badge-secondary';
+            $style = '';
+            $icon = 'fas fa-clock';
+        } else {
+            $remainingDays = (int) today()->diffInDays(Carbon::parse($dueDate), false);
+            [$status, $label, $class, $style, $icon] = match (true) {
+                $remainingDays > 15 => ['pending', "Faltan {$remainingDays} días", 'badge-success', '', 'far fa-calendar-check'],
+                $remainingDays >= 8 => ['pending', "Faltan {$remainingDays} días", 'badge-warning text-dark', '', 'far fa-calendar-alt'],
+                $remainingDays >= 1 => ['pending', "Faltan {$remainingDays} días", '', 'background:#fd7e14;color:#fff;', 'fas fa-exclamation-circle'],
+                $remainingDays === 0 => ['due_today', 'Vence hoy', 'badge-danger', '', 'fas fa-exclamation-triangle'],
+                default => ['overdue', 'Vencido hace '.abs($remainingDays).' días', 'badge-danger', '', 'fas fa-exclamation-triangle'],
+            };
+        }
+
+        return [
+            'credit_days' => $creditDays,
+            'due_date' => $dueDate,
+            'status' => $status,
+            'label' => $label,
+            'html' => sprintf(
+                '<div class="d-inline-flex flex-column align-items-start"><span class="font-weight-bold text-nowrap">%s</span><span class="badge %s mt-1 px-2 py-1" style="%s"><i class="%s mr-1"></i>%s</span></div>',
+                e($conditionLabel),
+                e($class),
+                e($style),
+                e($icon),
+                e($label)
+            ),
+        ];
     }
 
     private function warehouseEntryDeepLink(Request $request): ?array

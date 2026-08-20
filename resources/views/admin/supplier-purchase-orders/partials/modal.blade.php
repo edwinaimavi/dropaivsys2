@@ -392,17 +392,18 @@
 
                                 <div class="card border-0 shadow-sm mb-3 supplier-order-financial-card">
                                     <div class="card-header border-0 d-flex align-items-center justify-content-between">
-                                        <div><h6 class="mb-0"><i class="fas fa-coins mr-1"></i> Condiciones financieras</h6><small>Conversi&oacute;n a soles y control trazable del anticipo</small></div>
+                                        <div><h6 class="mb-0"><i class="fas fa-coins mr-1"></i> Condiciones financieras</h6><small>Control del anticipo en moneda de compra y pagos con tipo de cambio individual</small></div>
                                         <span id="supplierOrderAdvanceStatusBadge" class="badge badge-light">Sin anticipo</span>
                                     </div>
                                     <div class="card-body">
+                                        <h6 class="font-weight-bold text-uppercase mb-2">1. Resumen de la compra</h6>
                                         <div class="form-row align-items-end">
                                             <div class="form-group col-md-3">
                                                 <label>MONEDA DE LA COMPRA</label>
                                                 <input id="supplier_order_purchase_currency_label" class="form-control form-control-sm" readonly value="PEN | SOL">
                                             </div>
                                             <div class="form-group col-md-3">
-                                                <label>MONEDA DE PAGO <span class="text-danger">*</span></label>
+                                                <label>MONEDA DE PAGO REFERENCIAL <span class="text-danger">*</span></label>
                                                 <select id="supplier_order_payment_currency_id" name="payment_currency_id" class="form-control form-control-sm js-supplier-order-select" required>
                                                     <option value="">Seleccione moneda</option>
                                                     @foreach ($currencies as $currency)
@@ -413,24 +414,12 @@
                                                 </select>
                                                 <span class="invalid-feedback"></span>
                                             </div>
-                                            <div class="form-group col-md-3">
-                                                <div class="custom-control custom-switch mb-2">
-                                                    <input type="hidden" name="apply_exchange_rate" value="0">
-                                                    <input type="checkbox" class="custom-control-input" id="supplier_order_apply_exchange_rate" name="apply_exchange_rate" value="1">
-                                                    <label class="custom-control-label" for="supplier_order_apply_exchange_rate">Aplicar tipo de cambio</label>
-                                                </div>
-                                            </div>
                                             <div class="form-group col-md-3" id="supplierOrderExchangeRateGroup">
-                                                <label>TIPO DE CAMBIO</label>
+                                                <label>TIPO DE CAMBIO REFERENCIAL</label>
                                                 <input type="number" step="0.000001" min="0.000001" id="supplier_order_exchange_rate" name="exchange_rate" class="form-control form-control-sm text-right" placeholder="3.7500">
+                                                <small class="text-muted">Solo sirve para precargar un pago nuevo.</small>
                                                 <span class="invalid-feedback"></span>
                                             </div>
-                                        </div>
-                                        <div class="supplier-order-financial-summary mb-3">
-                                            <div><small>Total compra</small><strong id="supplierOrderFinancialPurchaseTotal">PEN 0.00</strong></div>
-                                            <div><small>Tipo de cambio</small><strong id="supplierOrderFinancialRate">No aplica</strong></div>
-                                            <div><small>Total moneda de pago</small><strong id="supplierOrderFinancialPaymentTotal">PEN 0.00</strong></div>
-                                            <div class="is-pen"><small>Total normalizado</small><strong id="supplierOrderFinancialPenTotal">S/ 0.00</strong></div>
                                         </div>
 
                                         <div class="form-row align-items-end">
@@ -461,21 +450,27 @@
                                                 <span class="invalid-feedback"></span>
                                             </div>
                                         </div>
-                                        <div class="supplier-order-advance-summary supplier-order-advance-field mb-3">
+                                        <div class="supplier-order-advance-summary mb-3">
+                                            <div><small>Total compra</small><strong id="supplierOrderFinancialPurchaseTotal">PEN 0.00</strong></div>
                                             <div><small>Anticipo requerido</small><strong id="supplierOrderAdvanceRequired">0.00</strong></div>
-                                            <div><small>Pagado</small><strong id="supplierOrderAdvancePaid">0.00</strong></div>
-                                            <div><small>Saldo pendiente</small><strong id="supplierOrderAdvanceBalance">0.00</strong></div>
-                                            <div><small>Equivalente requerido</small><strong id="supplierOrderAdvancePen">S/ 0.00</strong></div>
+                                            <div><small>Pagado aplicado</small><strong id="supplierOrderAdvancePaid">0.00</strong></div>
+                                            <div><small>Saldo anticipo</small><strong id="supplierOrderAdvanceBalance">0.00</strong></div>
+                                            <div><small>Saldo de compra</small><strong id="supplierOrderPurchaseBalance">0.00</strong></div>
+                                            <div class="is-pen"><small>Total pagado en PEN</small><strong id="supplierOrderPaidPenTotal">S/ 0.00</strong></div>
                                         </div>
 
                                         <div id="supplierOrderAdvancePaymentsSection" class="supplier-order-advance-field">
-                                            <div class="d-flex justify-content-between align-items-center mb-2"><div><strong class="d-block">Pagos de anticipo</strong><small class="text-muted">Cada registro conserva fecha, cuenta, moneda, usuario y constancia.</small></div></div>
+                                            <div class="d-flex justify-content-between align-items-center mb-2"><div><strong class="d-block">2. Pagos registrados</strong><small class="text-muted">El monto aplicado está expresado en moneda de compra; el monto pagado corresponde a la salida bancaria.</small></div></div>
                                             <div id="supplierOrderExistingAdvancePayments" class="mb-2"></div>
                                             <div class="supplier-order-new-advance-payment">
-                                                <small class="d-block font-weight-bold mb-2 text-uppercase">Registrar nuevo pago al guardar</small>
+                                                <small class="d-block font-weight-bold mb-2 text-uppercase">3. Registrar nuevo pago al guardar</small>
                                                 <div class="form-row">
-                                                    <div class="form-group col-md-4"><label>CUENTA BANCARIA ORIGEN</label><select name="advance_payments[0][company_bank_account_id]" id="supplier_order_new_advance_bank_account_id" class="form-control form-control-sm" disabled><option value="">Seleccione empresa y moneda de pago</option></select><span class="invalid-feedback"></span></div>
-                                                    <div class="form-group col-md-2"><label>MONTO</label><input type="number" step="0.01" min="0.01" name="advance_payments[0][amount]" id="supplier_order_new_advance_amount" class="form-control form-control-sm text-right"><span class="invalid-feedback"></span></div>
+                                                    <input type="hidden" name="advance_payments[0][purchase_currency_id]" id="supplier_order_new_advance_purchase_currency_id">
+                                                    <div class="form-group col-md-3"><label>MONEDA DEL PAGO</label><select name="advance_payments[0][payment_currency_id]" id="supplier_order_new_advance_payment_currency_id" class="form-control form-control-sm"><option value="">Seleccione moneda</option>@foreach ($currencies as $currency)<option value="{{ $currency->id }}" data-code="{{ $currency->code }}" data-symbol="{{ $currency->symbol }}">{{ $currency->code }} | {{ $currency->description }}</option>@endforeach</select><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-5"><label>CUENTA BANCARIA ORIGEN</label><select name="advance_payments[0][company_bank_account_id]" id="supplier_order_new_advance_bank_account_id" class="form-control form-control-sm" disabled><option value="">Seleccione empresa y moneda de pago</option></select><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-2"><label>MONTO APLICADO</label><input type="number" step="0.01" min="0.01" name="advance_payments[0][applied_amount]" id="supplier_order_new_advance_applied_amount" class="form-control form-control-sm text-right"><small id="supplierOrderAppliedAmountHelp" class="text-muted"></small><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-2" id="supplierOrderPaymentExchangeRateGroup"><label>TC DEL PAGO</label><input type="number" step="0.000001" min="0.000001" name="advance_payments[0][exchange_rate]" id="supplier_order_new_advance_exchange_rate" class="form-control form-control-sm text-right"><span class="invalid-feedback"></span></div>
+                                                    <div class="form-group col-md-3"><label>MONTO PAGADO</label><input type="number" step="0.01" min="0.01" name="advance_payments[0][amount]" id="supplier_order_new_advance_amount" class="form-control form-control-sm text-right" readonly><small id="supplierOrderPaidAmountHelp" class="text-muted"></small><span class="invalid-feedback"></span></div>
                                                     <div class="form-group col-md-2"><label>FECHA</label><input type="date" name="advance_payments[0][payment_date]" id="supplier_order_new_advance_date" class="form-control form-control-sm"><span class="invalid-feedback"></span></div>
                                                     <div class="form-group col-md-2"><label>MEDIO DE PAGO</label><select name="advance_payments[0][payment_method]" id="supplier_order_new_advance_method" class="form-control form-control-sm"><option value="">Seleccione</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="deposito_cuenta">Dep&oacute;sito en cuenta</option></select><span class="invalid-feedback"></span></div>
                                                     <div class="form-group col-md-2"><label>NRO. OPERACIÓN</label><input type="text" name="advance_payments[0][operation_number]" class="form-control form-control-sm text-uppercase" maxlength="100"></div>

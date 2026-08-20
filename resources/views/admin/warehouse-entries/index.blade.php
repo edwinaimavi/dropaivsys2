@@ -60,6 +60,7 @@
                             <th>ALMAC&Eacute;N</th>
                             <th>MONEDA</th>
                             <th>TOTAL</th>
+                            <th>CONDICI&Oacute;N / PAGO</th>
                             <th>ESTADO</th>
                             <th>F. REGISTRO</th>
                             <th width="150">ACCIONES</th>

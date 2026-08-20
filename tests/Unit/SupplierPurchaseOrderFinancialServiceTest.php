@@ -29,13 +29,13 @@ it('convierte una compra en dólares pagada en soles', function () {
 it('calcula el anticipo porcentual y sus estados por pagos trazados', function () {
     $service = new SupplierPurchaseOrderFinancialService();
     $partial = $service->calculate(
-        1000, 'USD', 'PEN', true, 3.75, true, 'percentage', 30, null, 500, 500, 'contado'
+        1000, 'USD', 'PEN', true, 3.75, true, 'percentage', 30, null, 150, 562.5, 'contado'
     );
     $paid = $service->calculate(
-        1000, 'USD', 'PEN', true, 3.75, true, 'percentage', 30, null, 1125, 1125, 'contado'
+        1000, 'USD', 'PEN', true, 3.75, true, 'percentage', 30, null, 300, 1125, 'contado'
     );
 
-    expect($partial['advance_amount'])->toBe(1125.0)
+    expect($partial['advance_amount'])->toBe(300.0)
         ->and($partial['advance_status'])->toBe(SupplierPurchaseOrder::ADVANCE_PARTIAL)
         ->and($paid['advance_status'])->toBe(SupplierPurchaseOrder::ADVANCE_PAID);
 });
@@ -44,13 +44,26 @@ it('rechaza pagos mayores al anticipo requerido', function () {
     (new SupplierPurchaseOrderFinancialService())->calculate(
         1000, 'PEN', 'PEN', false, null, true, 'fixed_amount', null, 300, 301, 301, 'contado'
     );
-})->throws(InvalidArgumentException::class, 'El monto pagado no puede ser mayor al anticipo requerido.');
+})->throws(InvalidArgumentException::class, 'El monto aplicado no puede ser mayor al anticipo pendiente.');
 
-it('exige tipo de cambio para normalizar una compra y pago en dólares', function () {
-    (new SupplierPurchaseOrderFinancialService())->calculate(
+it('permite compra y pago en dólares sin exigir un tipo de cambio global', function () {
+    $result = (new SupplierPurchaseOrderFinancialService())->calculate(
         1000, 'USD', 'USD', false, null, false, null, null, null, 0, 0, 'credito_30_dias'
     );
-})->throws(InvalidArgumentException::class);
+
+    expect($result['total_purchase_currency'])->toBe(1000.0)
+        ->and($result['total_payment_currency'])->toBe(1000.0)
+        ->and($result['exchange_rate'])->toBeNull();
+});
+
+it('calcula cada pago con su propio tipo de cambio', function () {
+    $service = new SupplierPurchaseOrderFinancialService();
+
+    expect($service->convertAppliedToPaid(500, 'USD', 'PEN', 3.39))->toBe(1695.0)
+        ->and($service->convertAppliedToPaid(600, 'USD', 'PEN', 3.56))->toBe(2136.0)
+        ->and($service->convertAppliedToPaid(300, 'PEN', 'PEN', 1))->toBe(300.0)
+        ->and($service->convertAppliedToPaid(300, 'USD', 'USD', 1))->toBe(300.0);
+});
 
 it('bloquea el ingreso contado con anticipo pendiente y permite crédito con aviso', function () {
     $cash = new SupplierPurchaseOrder([
@@ -78,6 +91,7 @@ it('calcula el saldo real en PEN desde los pagos activos y no desde el acumulado
         'status' => 'ACTIVE',
     ]);
     $payment->setRelation('currency', $pen);
+    $payment->setRelation('purchaseCurrency', $pen);
     $order = new SupplierPurchaseOrder([
         'grand_total' => 10000,
         'total_purchase_currency' => 10000,
@@ -109,7 +123,7 @@ it('calcula el saldo real en PEN desde los pagos activos y no desde el acumulado
         ->and($creditSummary['financial_credit_warning'])->toBeTrue();
 });
 
-it('muestra PEN y USD usando el tipo de cambio registrado en la orden', function () {
+it('interpreta un pago histórico usando el tipo de cambio registrado en la orden', function () {
     $pen = new Currency(['code' => 'PEN']);
     $usd = new Currency(['code' => 'USD']);
     $payment = new SupplierPurchaseOrderAdvancePayment([
@@ -118,6 +132,7 @@ it('muestra PEN y USD usando el tipo de cambio registrado en la orden', function
         'status' => 'ACTIVE',
     ]);
     $payment->setRelation('currency', $pen);
+    $payment->setRelation('purchaseCurrency', $usd);
     $order = new SupplierPurchaseOrder([
         'grand_total' => 1000,
         'total_purchase_currency' => 1000,
@@ -136,15 +151,55 @@ it('muestra PEN y USD usando el tipo de cambio registrado en la orden', function
 
     $summary = (new SupplierPurchaseOrderFinancialService())->paymentSummary($order);
 
-    expect($summary['breakdown'])->toHaveCount(2)
-        ->and($summary['breakdown'][0]['currency'])->toBe('PEN')
-        ->and($summary['breakdown'][0]['order_total'])->toBe(3700.0)
-        ->and($summary['breakdown'][0]['paid_total'])->toBe(1850.0)
-        ->and($summary['breakdown'][0]['balance'])->toBe(1850.0)
-        ->and($summary['breakdown'][1]['currency'])->toBe('USD')
-        ->and($summary['breakdown'][1]['order_total'])->toBe(1000.0)
-        ->and($summary['breakdown'][1]['paid_total'])->toBe(500.0)
-        ->and($summary['breakdown'][1]['balance'])->toBe(500.0);
+    expect($summary['breakdown'])->toHaveCount(1)
+        ->and($summary['currency'])->toBe('USD')
+        ->and($summary['order_total'])->toBe(1000.0)
+        ->and($summary['paid_total'])->toBe(500.0)
+        ->and($summary['balance'])->toBe(500.0);
+});
+
+it('calcula el saldo aplicado con dos pagos PEN y tipos de cambio distintos', function () {
+    $pen = new Currency(['code' => 'PEN']);
+    $usd = new Currency(['code' => 'USD']);
+    $first = new SupplierPurchaseOrderAdvancePayment([
+        'purchase_currency_id' => 2,
+        'applied_amount' => 500,
+        'amount' => 1695,
+        'amount_pen' => 1695,
+        'exchange_rate' => 3.39,
+        'status' => 'ACTIVE',
+    ]);
+    $second = new SupplierPurchaseOrderAdvancePayment([
+        'purchase_currency_id' => 2,
+        'applied_amount' => 600,
+        'amount' => 2136,
+        'amount_pen' => 2136,
+        'exchange_rate' => 3.56,
+        'status' => 'ACTIVE',
+    ]);
+    foreach ([$first, $second] as $payment) {
+        $payment->setRelation('currency', $pen);
+        $payment->setRelation('purchaseCurrency', $usd);
+    }
+    $order = new SupplierPurchaseOrder([
+        'grand_total' => 1100,
+        'total_purchase_currency' => 1100,
+        'apply_advance' => true,
+        'advance_type' => 'percentage',
+        'advance_percentage' => 100,
+        'advance_status' => SupplierPurchaseOrder::ADVANCE_PARTIAL,
+        'payment_condition' => 'contado',
+    ]);
+    $order->setRelation('currency', $usd);
+    $order->setRelation('paymentCurrency', $pen);
+    $order->setRelation('advancePayments', collect([$first, $second]));
+
+    $summary = (new SupplierPurchaseOrderFinancialService())->paymentSummary($order);
+
+    expect($summary['paid_total'])->toBe(1100.0)
+        ->and($summary['balance'])->toBe(0.0)
+        ->and($summary['required_advance_balance'])->toBe(0.0)
+        ->and($summary['fully_paid'])->toBeTrue();
 });
 
 it('permite el ingreso si el total real ya fue pagado aunque el estado guardado siga pendiente', function () {
@@ -156,6 +211,7 @@ it('permite el ingreso si el total real ya fue pagado aunque el estado guardado 
         'status' => 'ACTIVE',
     ]);
     $payment->setRelation('currency', $usd);
+    $payment->setRelation('purchaseCurrency', $usd);
     $order = new SupplierPurchaseOrder([
         'grand_total' => 2000,
         'total_purchase_currency' => 2000,
@@ -189,6 +245,7 @@ it('desglosa pagos registrados en PEN y USD sin mezclar sus importes originales'
         'status' => 'ACTIVE',
     ]);
     $usdPayment->setRelation('currency', $usd);
+    $usdPayment->setRelation('purchaseCurrency', $usd);
     $penPayment = new SupplierPurchaseOrderAdvancePayment([
         'amount' => 740,
         'amount_pen' => 740,
@@ -196,6 +253,7 @@ it('desglosa pagos registrados en PEN y USD sin mezclar sus importes originales'
         'status' => 'ACTIVE',
     ]);
     $penPayment->setRelation('currency', $pen);
+    $penPayment->setRelation('purchaseCurrency', $usd);
     $order = new SupplierPurchaseOrder([
         'grand_total' => 1000,
         'total_purchase_currency' => 1000,

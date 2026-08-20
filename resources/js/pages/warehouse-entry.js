@@ -245,6 +245,13 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_generate_account_payable', function () {
         syncWarehouseEntryPayableAmount();
         toggleWarehouseEntryBankPayment();
+        updateWarehouseEntryCreditSummary();
+    });
+    $(document).on('change', '#warehouse_entry_document_date', function () {
+        updateWarehouseEntryCreditSummary(true);
+    });
+    $(document).on('input change', '#warehouse_entry_payment_condition', function () {
+        updateWarehouseEntryCreditSummary(true);
     });
 
     $(document).on('change', '.item-article-picker', function () {
@@ -424,6 +431,7 @@ function initWarehouseEntryTable() {
             { data: 'warehouse', name: 'warehouse_id' },
             { data: 'currency', name: 'currency.code', orderable: false },
             { data: 'grand_total', name: 'grand_total' },
+            { data: 'credit_alert', name: 'credit_alert', orderable: false, searchable: false, defaultContent: '-' },
             { data: 'status', name: 'status' },
             { data: 'created_at', name: 'created_at' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
@@ -507,6 +515,7 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
             <td>${escapeWarehouseEntryHtml(entry.warehouse || '-')}</td>
             <td>${escapeWarehouseEntryHtml(entry.currency || '-')}</td>
             <td class="text-right font-weight-bold">${escapeWarehouseEntryHtml(entry.grand_total || '-')}</td>
+            <td>${entry.credit_alert || '-'}</td>
             <td>${entry.status || '-'}</td>
             <td>${escapeWarehouseEntryHtml(entry.created_at || '-')}</td>
             <td class="warehouse-entry-group-actions">${entry.acciones || '-'}</td>
@@ -542,7 +551,7 @@ function renderWarehouseEntryCustomerOrderGroups(table) {
                     <div class="warehouse-entry-group-body"${isExpanded ? '' : ' style="display:none"'}>
                         <div class="warehouse-entry-group-table-wrap">
                             <table class="warehouse-entry-group-table">
-                                <thead><tr><th>N&deg; Ingreso</th><th>OC Proveedor</th><th>Proveedor</th><th>Empresa</th><th>Almac&eacute;n</th><th>Moneda</th><th>Total</th><th>Estado</th><th>F. Registro</th><th>Acciones</th></tr></thead>
+                                <thead><tr><th>N&deg; Ingreso</th><th>OC Proveedor</th><th>Proveedor</th><th>Empresa</th><th>Almac&eacute;n</th><th>Moneda</th><th>Total</th><th>Condici&oacute;n / Pago</th><th>Estado</th><th>F. Registro</th><th>Acciones</th></tr></thead>
                                 <tbody>${detailRows}</tbody>
                             </table>
                         </div>
@@ -705,6 +714,8 @@ function resetWarehouseEntryForm() {
     renderWarehouseEntryDocuments();
     refreshWarehouseEntryLotDocumentItems();
     setWarehouseEntrySupplierLocked(false);
+    setWarehouseEntryPaymentConditionLocked(false);
+    $('#warehouseEntryCreditSummary').addClass('d-none').empty();
     syncWarehouseEntryPayableAmount();
     refreshWarehouseEntryBankAccounts();
     toggleWarehouseEntryBankPayment();
@@ -1046,12 +1057,14 @@ function applySelectedSupplierOrderHeader() {
         renderWarehouseEntryOrderAmountDifference(parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val()));
         updateWarehouseEntryDeliveryCostContext('');
         setWarehouseEntrySupplierLocked(false);
+        setWarehouseEntryPaymentConditionLocked(false);
         $('#warehouse_entry_supplier_ruc').val('');
         $('#warehouse_entry_guide_ruc').val('');
         return;
     }
 
     setWarehouseEntrySupplierLocked(true);
+    setWarehouseEntryPaymentConditionLocked(true);
     $('#warehouse_entry_purchase_order_number').val(option.data('code') || '');
     $('#warehouse_entry_company_id').val(option.data('company-id') || '').trigger('change.select2');
     setWarehouseEntrySupplier(option.data('supplier-id') || '');
@@ -1256,6 +1269,7 @@ function cancelWarehouseEntrySupplierOrderSelection() {
     $('#warehouse_entry_company_id,#warehouse_entry_currency_id').val('').trigger('change.select2');
     setWarehouseEntrySupplier('', '');
     setWarehouseEntrySupplierLocked(false);
+    setWarehouseEntryPaymentConditionLocked(false);
     warehouseEntrySourceOrderTotal = null;
     updateWarehouseEntryDeliveryCostContext('');
     clearWarehouseEntryItemRows();
@@ -1308,13 +1322,15 @@ function loadWarehouseEntrySourceItems(options = {}) {
             $('#warehouse_entry_purchase_order_number').val(response.purchase_order_number || '');
             warehouseEntrySourceOrderTotal = parseWarehouseEntryNumber(response.order_total);
             $('#warehouse_entry_payment_method').val(response.payment_method || '');
-            $('#warehouse_entry_payment_condition').val(response.payment_condition || '');
+            $('#warehouse_entry_payment_condition').val(response.payment_condition_label || response.payment_condition || '');
             const paymentCondition = String(response.payment_condition || '').toLocaleLowerCase();
             if (paymentCondition.startsWith('credito') || paymentCondition.startsWith('crédito')) {
                 $('#warehouse_entry_generate_account_payable').val('1').trigger('change');
             } else if (paymentCondition.includes('contado') || paymentCondition.includes('pagado')) {
                 $('#warehouse_entry_generate_account_payable').val('0').trigger('change');
             }
+            setWarehouseEntryPaymentConditionLocked(true);
+            updateWarehouseEntryCreditSummary(true);
             $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(response.document_type));
             $('#warehouse_entry_affect_igv').val(response.affect_igv ? '1' : '0');
             updateWarehouseEntryDeliveryCostContext(response.delivery_type || '');
@@ -1970,6 +1986,92 @@ function setWarehouseEntrySupplierLocked(locked) {
     if ($.fn.select2 && supplier.data('select2')) {
         supplier.trigger('change.select2');
     }
+}
+
+function warehouseEntryCreditDays() {
+    const condition = String($('#warehouse_entry_payment_condition').val() || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+    const match = condition.match(/credito\D*(\d+)/);
+
+    return match ? Number(match[1]) : 0;
+}
+
+function warehouseEntryIsCredit() {
+    return String($('#warehouse_entry_payment_condition').val() || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase()
+        .includes('credito');
+}
+
+function setWarehouseEntryPaymentConditionLocked(locked) {
+    $('#warehouse_entry_payment_condition').prop('readonly', locked);
+    $('#warehouseEntryPaymentConditionHelp').toggleClass('d-none', !locked);
+    $('#warehouse_entry_generate_account_payable').prop('disabled', locked);
+    $('#warehouse_entry_expected_payment_date').prop('readonly', locked && warehouseEntryIsCredit());
+}
+
+function updateWarehouseEntryCreditSummary(recalculateDueDate = false, serverStatus = '') {
+    const summary = $('#warehouseEntryCreditSummary');
+    const isCredit = warehouseEntryIsCredit();
+    const creditDays = warehouseEntryCreditDays();
+    const linkedOrder = Boolean($('#warehouse_entry_supplier_purchase_order_id').val());
+
+    if (!isCredit) {
+        summary.addClass('d-none').empty();
+        $('#warehouse_entry_expected_payment_date').prop('readonly', false);
+        return;
+    }
+
+    const dueField = $('#warehouse_entry_expected_payment_date');
+    if (recalculateDueDate || !dueField.val()) {
+        const documentDate = $('#warehouse_entry_document_date').val();
+        const baseDate = documentDate
+            ? new Date(`${documentDate}T00:00:00`)
+            : new Date();
+        baseDate.setHours(0, 0, 0, 0);
+        baseDate.setDate(baseDate.getDate() + creditDays);
+        dueField.val(baseDate.toISOString().slice(0, 10));
+    }
+    dueField.prop('readonly', linkedOrder);
+
+    const dueDate = dueField.val() ? new Date(`${dueField.val()}T00:00:00`) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const remainingDays = dueDate ? Math.round((dueDate.getTime() - today.getTime()) / 86400000) : null;
+    let statusLabel = serverStatus;
+    let statusClass = 'badge-secondary';
+    if (statusLabel === 'Pagado') {
+        statusClass = 'badge-info';
+    } else if (remainingDays === null) {
+        statusLabel = 'Pago pendiente';
+    } else if (remainingDays > 15) {
+        statusLabel = `Faltan ${remainingDays} días`;
+        statusClass = 'badge-success';
+    } else if (remainingDays >= 8) {
+        statusLabel = `Faltan ${remainingDays} días`;
+        statusClass = 'badge-warning text-dark';
+    } else if (remainingDays >= 1) {
+        statusLabel = `Faltan ${remainingDays} días`;
+        statusClass = 'badge-warning';
+    } else if (remainingDays === 0) {
+        statusLabel = 'Vence hoy';
+        statusClass = 'badge-danger';
+    } else {
+        statusLabel = `Vencido hace ${Math.abs(remainingDays)} días`;
+        statusClass = 'badge-danger';
+    }
+
+    summary.removeClass('d-none').html(`
+        <div class="d-flex flex-wrap align-items-center justify-content-between">
+            <span><i class="fas fa-file-invoice-dollar mr-1"></i><strong>Compra a crédito</strong></span>
+            <span>Días de crédito: <strong>${creditDays}</strong></span>
+            <span>Vencimiento: <strong>${dueField.val() ? formatWarehouseEntryDisplayDate(dueField.val()) : '-'}</strong></span>
+            <span class="badge ${statusClass} px-2 py-1">${escapeWarehouseEntryHtml(statusLabel)}</span>
+        </div>
+    `);
 }
 
 function toggleWarehouseEntryExpenseDistribution() {
@@ -2738,6 +2840,7 @@ function fillWarehouseEntryForm(entry) {
     refreshWarehouseEntryBankAccounts(entry.payment_company_bank_account_id || '');
     setWarehouseEntrySupplier(entry.supplier_id || '', entry.supplier?.ruc || '');
     setWarehouseEntrySupplierLocked(Boolean(entry.supplier_purchase_order_id));
+    setWarehouseEntryPaymentConditionLocked(Boolean(entry.supplier_purchase_order_id));
     $('#warehouse_entry_currency_id').val(entry.currency_id || '').trigger('change.select2').trigger('change');
     $('#warehouse_entry_purchase_order_number').val(entry.purchase_order_number || '');
     $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(entry.document_type));
@@ -2745,10 +2848,11 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_document_number').val(entry.document_number || '');
     $('#warehouse_entry_document_date').val(formatWarehouseEntryDate(entry.document_date));
     $('#warehouse_entry_payment_method').val(entry.payment_method || '');
-    $('#warehouse_entry_payment_condition').val(entry.payment_condition || '');
+    $('#warehouse_entry_payment_condition').val(entry.payment_condition_label || entry.payment_condition || '');
     $('#warehouse_entry_generate_account_payable').val(entry.generate_account_payable ? '1' : '0');
     $('#warehouse_entry_payable_amount').val(formatWarehouseEntryMoney(entry.payable_amount || 0));
     $('#warehouse_entry_expected_payment_date').val(formatWarehouseEntryDate(entry.expected_payment_date));
+    updateWarehouseEntryCreditSummary(false, entry.credit_status_label || '');
     $('#warehouse_entry_bank_payment_date').val(formatWarehouseEntryDate(entry.bank_payment_date));
     $('#warehouse_entry_bank_payment_operation_number').val(entry.bank_payment_operation_number || '');
     $('#warehouse_entry_bank_payment_exchange_rate').val(entry.bank_payment_exchange_rate || '');
