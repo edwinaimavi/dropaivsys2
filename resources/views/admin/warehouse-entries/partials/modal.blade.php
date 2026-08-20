@@ -337,7 +337,7 @@
                                             <span class="invalid-feedback"></span>
                                         </div>
                                         <div class="form-group col-sm-6 col-lg-3">
-                                            <label>N&deg; OPERACI&Oacute;N / CONSTANCIA</label>
+                                            <label>NRO. OPERACIÓN / CONSTANCIA</label>
                                             <input type="text" id="warehouse_entry_bank_payment_operation_number"
                                                 name="bank_payment_operation_number" class="form-control form-control-sm text-uppercase" maxlength="100">
                                             <span class="invalid-feedback"></span>

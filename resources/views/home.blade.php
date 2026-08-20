@@ -54,7 +54,7 @@
                     @endcan
                 </div>
                 <div class="command-trust">
-                    <span><i class="fas fa-shield-alt"></i> Operaci&oacute;n segura</span>
+                    <span><i class="fas fa-shield-alt"></i> Operación segura</span>
                     <span><i class="fas fa-heartbeat"></i> Sector salud</span>
                     <span><i class="fas fa-landmark"></i> Contratación estatal</span>
                 </div>

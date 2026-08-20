@@ -42,7 +42,7 @@
                 <i class="fas fa-list text-info"></i>
                 Lista de Empresas
             </h5>
-            <small class="text-muted">Empresas disponibles para operaciones, compras y facturación.</small>
+            <small class="text-muted">Empresas disponibles paraones, compras y facturación.</small>
         </div>
 
         <div class="card-body pt-2">
