@@ -309,6 +309,10 @@ class CustomerOrderProfitabilityController extends Controller
             return 'Ver pago';
         }
 
+        if ($type === WarehouseEntryExpenseDocument::TYPE_DETRACTION_PROOF) {
+            return 'Ver constancia detracción';
+        }
+
         return match (WarehouseEntryExpense::normalizeDocumentType($expense->document_type)) {
             'RECIBO_INTERNO' => 'Ver recibo interno',
             'SIN_COMPROBANTE' => 'Ver sustento',

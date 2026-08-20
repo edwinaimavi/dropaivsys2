@@ -10,6 +10,7 @@ use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerPurchaseOrder;
+use App\Models\DetractionType;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\GeneralCashBox;
@@ -159,6 +160,10 @@ class WarehouseEntryController extends Controller
             ->where('status', GeneralCashBox::STATUS_ACTIVE)
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'company_id', 'currency_id', 'responsible_user_id', 'current_balance']);
+        $detractionTypes = DetractionType::query()
+            ->where('status', DetractionType::STATUS_ACTIVE)
+            ->orderBy('code')
+            ->get(['id', 'appendix', 'code', 'name', 'percentage']);
 
         return view('admin.warehouse-entries.index', compact(
             'supplierPurchaseOrders',
@@ -173,6 +178,7 @@ class WarehouseEntryController extends Controller
             'warehouses',
             'shippingAgencies',
             'generalCashBoxes',
+            'detractionTypes',
             'warehouseEntryDeepLink'
         ));
     }
@@ -792,6 +798,7 @@ class WarehouseEntryController extends Controller
             'expenses.provider:id,business_name,short_name,ruc',
             'expenses.shippingAgency:id,business_name,trade_name,ruc',
             'expenses.currency:id,code,symbol',
+            'expenses.detractionType:id,appendix,code,name,percentage',
             'expenses.pettyCashExpense.pettyCashBox:id,code,company_id,currency_id',
             'expenses.pettyCashExpense.exchange:id,document_type,document_series,document_correlative,exchange_date,status',
             'expenses.generalCashBox:id,code,name,responsible_user_id',
@@ -1389,6 +1396,8 @@ class WarehouseEntryController extends Controller
             'expenses.*.taxable_amount' => ['nullable', 'numeric', 'min:0'],
             'expenses.*.igv_amount' => ['nullable', 'numeric', 'min:0'],
             'expenses.*.total_amount' => ['nullable', 'numeric', 'gt:0'],
+            'expenses.*.applies_detraction' => ['nullable', 'boolean'],
+            'expenses.*.detraction_type_id' => ['nullable', 'integer'],
             'expenses.*.affects_inventory_cost' => ['required', 'boolean'],
             'expenses.*.distribution_method' => ['nullable', Rule::in(['quantity', 'amount', 'weight', 'manual'])],
             'expenses.*.description' => ['nullable', 'string', 'max:1000'],
@@ -1397,8 +1406,10 @@ class WarehouseEntryController extends Controller
             'expenses.*.distributions.*.distributed_amount' => ['required', 'numeric', 'min:0'],
             'expenses.*.invoice_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'expenses.*.payment_proof_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'expenses.*.detraction_proof_file' => ['exclude_unless:expenses.*.applies_detraction,1', 'nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'expenses.*.remove_invoice_document' => ['nullable', 'boolean'],
             'expenses.*.remove_payment_proof_document' => ['nullable', 'boolean'],
+            'expenses.*.remove_detraction_proof_document' => ['nullable', 'boolean'],
             // Compatibilidad temporal con formularios anteriores: se trata como factura.
             'expenses.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'expense_management' => ['nullable', 'boolean'],
@@ -1419,6 +1430,9 @@ class WarehouseEntryController extends Controller
             'expenses.*.invoice_file.max' => 'El archivo de la factura no debe superar los 10 MB.',
             'expenses.*.payment_proof_file.mimes' => 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.',
             'expenses.*.payment_proof_file.max' => 'El archivo de la constancia de pago no debe superar los 10 MB.',
+            'expenses.*.detraction_proof_file.file' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
+            'expenses.*.detraction_proof_file.mimes' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
+            'expenses.*.detraction_proof_file.max' => 'La constancia de detracción no debe superar 10 MB.',
             'payment_company_bank_account_id.required' => 'Seleccione la cuenta bancaria utilizada para pagar al proveedor.',
             'payment_company_bank_account_id.exists' => 'La cuenta bancaria seleccionada no existe.',
             'bank_payment_date.required' => 'Indique la fecha en que se realizó el pago al proveedor.',
@@ -1897,8 +1911,14 @@ class WarehouseEntryController extends Controller
                 ?? $expenseFiles[$index]['file']
                 ?? null;
             $paymentProofFile = $expenseFiles[$index]['payment_proof_file'] ?? null;
+            $appliesDetraction = filter_var($data['applies_detraction'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $detractionProofFile = $appliesDetraction
+                ? ($expenseFiles[$index]['detraction_proof_file'] ?? null)
+                : null;
             $removeInvoice = filter_var($data['remove_invoice_document'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $removePaymentProof = filter_var($data['remove_payment_proof_document'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $removeDetractionProof = $appliesDetraction
+                && filter_var($data['remove_detraction_proof_document'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $hasStoredInvoice = (bool) $existingExpense?->documents?->contains(
                 fn (WarehouseEntryExpenseDocument $document) => WarehouseEntryExpenseDocument::normalizeType($document->document_type)
                     === WarehouseEntryExpenseDocument::TYPE_INVOICE
@@ -1989,6 +2009,11 @@ class WarehouseEntryController extends Controller
                 (float) $data['amount'],
                 filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN)
             );
+            $detraction = $this->warehouseEntryExpenseDetraction(
+                $data,
+                $index,
+                (float) $taxBreakdown['total_amount']
+            );
             $expense = $existingExpense
                 ? $existingExpense
                 : $entry->expenses()->make(['created_by' => Auth::id()]);
@@ -2011,6 +2036,7 @@ class WarehouseEntryController extends Controller
                 'currency_id' => $data['currency_id'] ?? $entry->currency_id,
                 'amount' => $taxBreakdown['total_amount'],
                 ...$taxBreakdown,
+                ...$detraction,
                 'affects_inventory_cost' => $affectsCost,
                 'distribution_method' => $method,
                 'description' => $this->upperOrNull($data['description'] ?? null),
@@ -2050,7 +2076,9 @@ class WarehouseEntryController extends Controller
                 'source_type', 'general_cash_box_id', 'company_bank_account_id', 'expense_type',
                 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series',
                 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv',
-                'affects_inventory_cost', 'distribution_method', 'description',
+                'applies_detraction', 'detraction_type_id', 'detraction_percentage',
+                'detraction_amount', 'supplier_net_amount', 'affects_inventory_cost',
+                'distribution_method', 'description',
             ]);
             if ($sourceType === WarehouseEntryExpense::SOURCE_PETTY_CASH) {
                 $expense->approval_status = WarehouseEntryExpense::APPROVAL_APPROVED;
@@ -2092,6 +2120,14 @@ class WarehouseEntryController extends Controller
                 $paymentProofFile,
                 $removePaymentProof,
                 'Constancia de pago'
+            );
+            $this->syncExpenseDocument(
+                $entry,
+                $expense,
+                WarehouseEntryExpenseDocument::TYPE_DETRACTION_PROOF,
+                $detractionProofFile,
+                $removeDetractionProof,
+                'Constancia de detracción SUNAT'
             );
             if ($pettyCashExpense) {
                 $this->pettyCashWarehouseExpenseService->syncDocuments($expense, $pettyCashExpense);
@@ -2155,12 +2191,15 @@ class WarehouseEntryController extends Controller
             ->where('warehouse_entry_expense_id', $expense->id)
             ->where('status', 'ACTIVE')
             ->when(
-                $documentType === WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF,
-                fn ($query) => $query->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF),
+                $documentType === WarehouseEntryExpenseDocument::TYPE_INVOICE,
                 fn ($query) => $query->where(function ($innerQuery) {
                     $innerQuery->whereNull('document_type')
-                        ->orWhere('document_type', '!=', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF);
-                })
+                        ->orWhereNotIn('document_type', [
+                            WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF,
+                            WarehouseEntryExpenseDocument::TYPE_DETRACTION_PROOF,
+                        ]);
+                }),
+                fn ($query) => $query->where('document_type', $documentType)
             );
 
         if ($remove || $file) {
@@ -2186,6 +2225,47 @@ class WarehouseEntryController extends Controller
             'created_by' => Auth::id(),
             'updated_by' => Auth::id(),
         ]);
+    }
+
+    private function warehouseEntryExpenseDetraction(array $data, int $index, float $total): array
+    {
+        $applies = filter_var($data['applies_detraction'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (! $applies) {
+            return [
+                'applies_detraction' => false,
+                'detraction_type_id' => null,
+                'detraction_percentage' => 0,
+                'detraction_amount' => 0,
+                'supplier_net_amount' => round($total, 2),
+            ];
+        }
+
+        if (empty($data['detraction_type_id'])) {
+            throw ValidationException::withMessages([
+                "expenses.$index.detraction_type_id" => 'Seleccione el tipo de detracción.',
+            ]);
+        }
+
+        $type = DetractionType::query()
+            ->where('status', DetractionType::STATUS_ACTIVE)
+            ->find($data['detraction_type_id']);
+        if (! $type) {
+            throw ValidationException::withMessages([
+                "expenses.$index.detraction_type_id" => 'El tipo de detracción seleccionado no está vigente.',
+            ]);
+        }
+
+        $percentage = round((float) $type->percentage, 4);
+        $rawDetraction = $total * ($percentage / 100);
+        $detractionAmount = round($rawDetraction, 0, PHP_ROUND_HALF_UP);
+
+        return [
+            'applies_detraction' => true,
+            'detraction_type_id' => $type->id,
+            'detraction_percentage' => $percentage,
+            'detraction_amount' => $detractionAmount,
+            'supplier_net_amount' => round($total - $detractionAmount, 2),
+        ];
     }
 
     private function prepareLinkedExpense(array $data, int $index): array

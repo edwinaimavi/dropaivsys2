@@ -43,7 +43,7 @@ class WarehouseEntryExpense extends Model
         'SIN_COMPROBANTE' => 'Sin comprobante',
     ];
 
-    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'source_type', 'petty_cash_expense_id', 'petty_cash_replenishment_id', 'general_cash_box_id', 'general_cash_movement_id', 'company_bank_account_id', 'bank_movement_id', 'document_classification', 'official_document_type', 'internal_document_type', 'exchanged_document_id', 'exchanged_at', 'payment_proof_path', 'official_document_path', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'approval_status', 'approval_observation', 'created_by', 'updated_by', 'approved_by', 'approved_at'];
+    protected $fillable = ['warehouse_entry_id', 'supplier_purchase_order_id', 'source_type', 'petty_cash_expense_id', 'petty_cash_replenishment_id', 'general_cash_box_id', 'general_cash_movement_id', 'company_bank_account_id', 'bank_movement_id', 'document_classification', 'official_document_type', 'internal_document_type', 'exchanged_document_id', 'exchanged_at', 'payment_proof_path', 'official_document_path', 'expense_category', 'cost_origin', 'expense_type', 'shipping_agency_id', 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series', 'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv', 'igv_rate', 'taxable_amount', 'igv_amount', 'total_amount', 'applies_detraction', 'detraction_type_id', 'detraction_percentage', 'detraction_amount', 'supplier_net_amount', 'affects_inventory_cost', 'distribution_method', 'description', 'status', 'approval_status', 'approval_observation', 'created_by', 'updated_by', 'approved_by', 'approved_at'];
 
     protected $casts = [
         'document_date' => 'date',
@@ -54,6 +54,10 @@ class WarehouseEntryExpense extends Model
         'taxable_amount' => 'decimal:2',
         'igv_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'applies_detraction' => 'boolean',
+        'detraction_percentage' => 'decimal:4',
+        'detraction_amount' => 'decimal:2',
+        'supplier_net_amount' => 'decimal:2',
         'affects_inventory_cost' => 'boolean',
         'approved_at' => 'datetime',
     ];
@@ -247,6 +251,11 @@ class WarehouseEntryExpense extends Model
         return $this->belongsTo(Currency::class);
     }
 
+    public function detractionType()
+    {
+        return $this->belongsTo(DetractionType::class);
+    }
+
     public function distributions()
     {
         return $this->hasMany(WarehouseEntryExpenseDistribution::class);
@@ -265,5 +274,10 @@ class WarehouseEntryExpense extends Model
     public function paymentProofDocuments()
     {
         return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_PAYMENT_PROOF);
+    }
+
+    public function detractionProofDocuments()
+    {
+        return $this->documents()->where('document_type', WarehouseEntryExpenseDocument::TYPE_DETRACTION_PROOF);
     }
 }

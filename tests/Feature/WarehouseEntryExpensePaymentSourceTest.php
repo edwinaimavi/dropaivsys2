@@ -5,11 +5,16 @@ use App\Models\Bank;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
+use App\Models\DetractionType;
 use App\Models\GeneralCashBox;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryExpense;
+use App\Models\WarehouseEntryExpenseDocument;
+use Database\Seeders\DetractionTypeSeeder;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -28,7 +33,7 @@ beforeEach(function () {
     ]);
     $this->user = User::factory()->create();
     foreach ([
-        'admin.warehouse-entries.show', 'admin.warehouse-entries.expenses.index',
+        'admin.warehouse-entries.index', 'admin.warehouse-entries.show', 'admin.warehouse-entries.expenses.index',
         'admin.warehouse-entries.expenses.store', 'admin.warehouse-entries.expenses.update',
         'admin.warehouse-entries.expenses.approve',
     ] as $permission) {
@@ -54,6 +59,33 @@ beforeEach(function () {
         'account_number' => '001-999999', 'current_balance' => 1000,
         'is_detraction' => 'NO', 'status' => 'ACTIVE',
     ]);
+});
+
+it('carga el catálogo vigente de los anexos SUNAT', function () {
+    $legacyType = DetractionType::create([
+        'appendix' => 'ANEXO_III',
+        'code' => 'ANEXO_III_10',
+        'name' => 'Demás servicios gravados con el IGV',
+        'percentage' => 12,
+        'status' => DetractionType::STATUS_ACTIVE,
+    ]);
+    app(DetractionTypeSeeder::class)->run();
+
+    expect(DetractionType::where('status', DetractionType::STATUS_ACTIVE)->count())->toBe(36)
+        ->and((float) DetractionType::where('code', '001')->value('percentage'))->toBe(10.0)
+        ->and((float) DetractionType::where('code', '002')->value('percentage'))->toBe(3.85)
+        ->and((float) DetractionType::where('code', '003')->value('percentage'))->toBe(10.0)
+        ->and((float) DetractionType::where('code', '021')->value('percentage'))->toBe(10.0)
+        ->and((float) DetractionType::where('code', '037')->value('percentage'))->toBe(12.0)
+        ->and((float) DetractionType::where('code', '044')->value('percentage'))->toBe(12.0)
+        ->and((float) DetractionType::where('code', '045')->value('percentage'))->toBe(10.0)
+        ->and((float) DetractionType::where('code', '099')->value('percentage'))->toBe(8.0)
+        ->and(DetractionType::where('code', '037')->value('id'))->toBe($legacyType->id);
+
+    $this->get(route('admin.warehouse-entries.index'))
+        ->assertOk()
+        ->assertSee('warehouse_entry_expense_detraction_type_id', false)
+        ->assertSee('037 &middot; Demás servicios gravados con el IGV &middot; 12%', false);
 });
 
 function warehouseSourceExpensePayload(string $source, string $responsible, array $extra = []): array
@@ -121,4 +153,126 @@ it('conserva trazabilidad al aprobar un gasto manual', function () {
         ->and($expense->approval_observation)->toBe('SUSTENTO CONFORME')
         ->and($expense->bank_movement_id)->toBeNull()
         ->and((float) $this->account->fresh()->current_balance)->toBe(1000.0);
+});
+
+it('guarda el importe completo cuando el costo no aplica detracción', function () {
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'SERVICIO SIN DETRACCIÓN', [
+            'amount' => 1000,
+            'applies_detraction' => false,
+        ]),
+    ], [], []);
+
+    $expense = $this->entry->expenses()->firstOrFail();
+    expect($expense->applies_detraction)->toBeFalse()
+        ->and($expense->detraction_type_id)->toBeNull()
+        ->and((float) $expense->detraction_percentage)->toBe(0.0)
+        ->and((float) $expense->detraction_amount)->toBe(0.0)
+        ->and((float) $expense->supplier_net_amount)->toBe(1000.0)
+        ->and((float) $expense->amount)->toBe(1000.0);
+});
+
+it('calcula la detracción desde el catálogo y la recalcula al editar el importe', function () {
+    app(DetractionTypeSeeder::class)->run();
+    $type = DetractionType::where('code', '037')->firstOrFail();
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $payload = warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'SERVICIO CON DETRACCIÓN', [
+        'amount' => 1000,
+        'applies_detraction' => true,
+        'detraction_type_id' => $type->id,
+        'detraction_percentage' => 99,
+        'detraction_amount' => 999,
+        'supplier_net_amount' => 1,
+    ]);
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [$payload], [], []);
+
+    $expense = $this->entry->expenses()->firstOrFail();
+    expect($expense->applies_detraction)->toBeTrue()
+        ->and((float) $expense->detraction_percentage)->toBe(12.0)
+        ->and((float) $expense->detraction_amount)->toBe(120.0)
+        ->and((float) $expense->supplier_net_amount)->toBe(880.0)
+        ->and((float) $expense->amount)->toBe(1000.0);
+
+    $payload['id'] = $expense->id;
+    $payload['amount'] = 2000;
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [$payload], [], []);
+
+    $expense->refresh()->load('detractionType');
+    expect((float) $expense->amount)->toBe(2000.0)
+        ->and((float) $expense->detraction_amount)->toBe(240.0)
+        ->and((float) $expense->supplier_net_amount)->toBe(1760.0)
+        ->and($expense->detractionType->id)->toBe($type->id);
+
+    $movementType = DetractionType::where('code', '021')->firstOrFail();
+    $payload['amount'] = 1000;
+    $payload['detraction_type_id'] = $movementType->id;
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [$payload], [], []);
+
+    $expense->refresh();
+    expect((float) $expense->detraction_percentage)->toBe(10.0)
+        ->and((float) $expense->detraction_amount)->toBe(100.0)
+        ->and((float) $expense->supplier_net_amount)->toBe(900.0)
+        ->and((float) $expense->amount)->toBe(1000.0);
+});
+
+it('bloquea la detracción sin tipo seleccionado', function () {
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+
+    expect(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'SERVICIO INCOMPLETO', [
+            'amount' => 1000,
+            'applies_detraction' => true,
+            'detraction_type_id' => null,
+        ]),
+    ], [], []))->toThrow(\Illuminate\Validation\ValidationException::class, 'Seleccione el tipo de detracción.');
+
+    $inactiveType = DetractionType::create([
+        'appendix' => 'ANEXO_III',
+        'code' => 'TEST_INACTIVE',
+        'name' => 'Tipo no vigente',
+        'percentage' => 12,
+        'status' => 'INACTIVE',
+    ]);
+
+    expect(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'SERVICIO NO VIGENTE', [
+            'amount' => 1000,
+            'applies_detraction' => true,
+            'detraction_type_id' => $inactiveType->id,
+        ]),
+    ], [], []))->toThrow(\Illuminate\Validation\ValidationException::class, 'El tipo de detracción seleccionado no está vigente.');
+});
+
+it('guarda la constancia SUNAT como documento independiente y la conserva al desactivar la detracción', function () {
+    Storage::fake('public');
+    app(DetractionTypeSeeder::class)->run();
+    $type = DetractionType::where('code', '037')->firstOrFail();
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $payload = warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'SERVICIO CON CONSTANCIA', [
+        'amount' => 1000,
+        'applies_detraction' => true,
+        'detraction_type_id' => $type->id,
+    ]);
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [$payload], [[
+        'detraction_proof_file' => UploadedFile::fake()->create('constancia-sunat.pdf', 128, 'application/pdf'),
+    ]], []);
+
+    $expense = $this->entry->expenses()->firstOrFail();
+    $document = $expense->documents()->sole();
+    expect($document->document_type)->toBe(WarehouseEntryExpenseDocument::TYPE_DETRACTION_PROOF)
+        ->and($document->original_name)->toBe('constancia-sunat.pdf');
+    Storage::disk('public')->assertExists($document->file_path);
+
+    $payload['id'] = $expense->id;
+    $payload['applies_detraction'] = false;
+    $payload['detraction_type_id'] = null;
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [$payload], [[
+        'detraction_proof_file' => UploadedFile::fake()->create('archivo-ignorado.pdf', 64, 'application/pdf'),
+    ]], []);
+
+    expect($expense->fresh()->applies_detraction)->toBeFalse()
+        ->and($expense->documents()->count())->toBe(1)
+        ->and($expense->documents()->sole()->original_name)->toBe('constancia-sunat.pdf');
 });

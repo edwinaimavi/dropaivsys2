@@ -524,6 +524,68 @@
                                     <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-calculator"></i></span><div><strong>Importe e IGV</strong><small>Registra el total pagado y su tratamiento tributario.</small></div></div></div>
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
                                     <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
+                                    <div class="col-12 mb-3">
+                                        <div class="warehouse-entry-detraction-card">
+                                            <div class="warehouse-entry-detraction-heading">
+                                                <span><i class="fas fa-landmark"></i></span>
+                                                <div><strong>Detracci&oacute;n SUNAT</strong><small>Separa el importe tributario sin reducir el costo vinculado.</small></div>
+                                                <div class="custom-control custom-switch ml-auto">
+                                                    <input type="checkbox" class="custom-control-input" id="warehouse_entry_expense_applies_detraction">
+                                                    <label class="custom-control-label" for="warehouse_entry_expense_applies_detraction">Aplicar detracci&oacute;n</label>
+                                                </div>
+                                            </div>
+                                            <div id="warehouseEntryExpenseDetractionFields" class="row mt-3 d-none">
+                                                <div class="form-group col-lg-6">
+                                                    <label>TIPO DE DETRACCI&Oacute;N *</label>
+                                                    <select id="warehouse_entry_expense_detraction_type_id" class="form-control form-control-sm js-warehouse-entry-select" disabled>
+                                                        <option value="">Seleccione tipo de detracci&oacute;n</option>
+                                                        @foreach($detractionTypes as $detractionType)
+                                                            <option value="{{ $detractionType->id }}"
+                                                                data-percentage="{{ $detractionType->percentage }}"
+                                                                data-appendix="{{ $detractionType->appendix }}"
+                                                                data-name="{{ $detractionType->name }}">
+                                                                {{ str_pad($detractionType->code, 3, '0', STR_PAD_LEFT) }} &middot; {{ $detractionType->name }} &middot; {{ rtrim(rtrim(number_format((float) $detractionType->percentage, 4, '.', ''), '0'), '.') }}%
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="form-group col-sm-4 col-lg-2">
+                                                    <label>PORCENTAJE</label>
+                                                    <div class="input-group input-group-sm"><input id="warehouse_entry_expense_detraction_percentage" class="form-control text-right" value="0.0000" readonly><div class="input-group-append"><span class="input-group-text">%</span></div></div>
+                                                </div>
+                                                <div class="form-group col-sm-4 col-lg-2">
+                                                    <label>MONTO DETRACCI&Oacute;N</label>
+                                                    <div class="input-group input-group-sm"><div class="input-group-prepend"><span class="input-group-text warehouse-entry-currency-symbol">S/</span></div><input id="warehouse_entry_expense_detraction_amount" class="form-control text-right" value="0.00" readonly></div>
+                                                </div>
+                                                <div class="form-group col-sm-4 col-lg-2">
+                                                    <label>NETO A PAGAR PROVEEDOR</label>
+                                                    <div class="input-group input-group-sm"><div class="input-group-prepend"><span class="input-group-text warehouse-entry-currency-symbol">S/</span></div><input id="warehouse_entry_expense_supplier_net_amount" class="form-control text-right font-weight-bold" value="0.00" readonly></div>
+                                                </div>
+                                                <div id="warehouseEntryExpenseDetractionProofGroup" class="col-12">
+                                                    <div class="warehouse-entry-expense-document-card is-detraction-proof">
+                                                        <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-university"></i></span><div><strong>Constancia de detracci&oacute;n SUNAT</strong><small>Sustento del dep&oacute;sito de detracci&oacute;n; no reemplaza la factura ni el pago al proveedor.</small></div></div>
+                                                        <div id="warehouseEntryExpenseDetractionProofFilePicker" class="warehouse-entry-expense-file-picker">
+                                                            <input type="file" id="warehouse_entry_expense_detraction_proof_file" class="warehouse-entry-expense-file-input" data-expense-document-type="detraction_proof" accept=".pdf,.jpg,.jpeg,.png,.webp" tabindex="-1">
+                                                            <label for="warehouse_entry_expense_detraction_proof_file" class="warehouse-entry-expense-file-empty mb-0">
+                                                                <span class="warehouse-entry-expense-file-icon"><i class="fas fa-file-invoice-dollar"></i></span>
+                                                                <span><strong>Seleccionar constancia</strong><small>PDF, JPG, JPEG, PNG o WEBP &middot; m&aacute;x. 10 MB</small></span>
+                                                                <i class="fas fa-chevron-right warehouse-entry-expense-file-arrow"></i>
+                                                            </label>
+                                                            <div class="warehouse-entry-expense-file-selected d-none">
+                                                                <span class="warehouse-entry-expense-file-icon"><i id="warehouseEntryExpenseDetractionProofFileTypeIcon" class="fas fa-file-alt"></i></span>
+                                                                <span class="warehouse-entry-expense-file-info"><strong id="warehouseEntryExpenseDetractionProofFileName"></strong><small id="warehouseEntryExpenseDetractionProofFileSize"></small></span>
+                                                                <a id="warehouseEntryExpenseDetractionProofView" href="#" target="_blank" class="btn btn-outline-secondary btn-sm d-none"><i class="fas fa-eye mr-1"></i>Ver constancia de detracci&oacute;n</a>
+                                                                <label for="warehouse_entry_expense_detraction_proof_file" class="btn btn-outline-info btn-sm mb-0"><i class="fas fa-sync-alt mr-1"></i>Cambiar</label>
+                                                                <button type="button" class="btn btn-light btn-sm btnRemoveWarehouseEntryExpenseDocument" data-expense-document-type="detraction_proof"><i class="fas fa-times mr-1"></i>Quitar</button>
+                                                            </div>
+                                                        </div>
+                                                        <small class="warehouse-entry-expense-document-help">Adjunta la constancia del dep&oacute;sito de detracci&oacute;n realizado a SUNAT.</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <small class="warehouse-entry-detraction-note"><i class="fas fa-info-circle mr-1"></i>La detracci&oacute;n no reduce el costo del gasto; solo separa el importe a depositar seg&uacute;n SUNAT.</small>
+                                        </div>
+                                    </div>
                                     <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-file-invoice"></i></span><div><strong>Documento</strong><small>Detalla el comprobante o sustento que identifica el gasto.</small></div></div></div>
                                     <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><optgroup label="DOCUMENTOS OFICIALES"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option></optgroup><optgroup label="DOCUMENTOS NO OFICIALES"><option value="RECIBO_INTERNO">Recibo interno</option><option value="SIN_COMPROBANTE">Sin comprobante</option></optgroup></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>

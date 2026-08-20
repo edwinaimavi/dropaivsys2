@@ -53,6 +53,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             DocumentTypeSeeder::class,
+            DetractionTypeSeeder::class,
         ]);
 
         $this->call([

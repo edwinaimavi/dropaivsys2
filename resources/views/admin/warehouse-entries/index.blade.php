@@ -701,7 +701,20 @@
         .warehouse-entry-expense-subsection-title strong, .warehouse-entry-expense-subsection-title small { display: block; }
         .warehouse-entry-expense-subsection-title strong { color: #405b55; font-size: 10px; }
         .warehouse-entry-expense-subsection-title small { margin-top: 1px; color: #81908c; font-size: 8px; }
+        .warehouse-entry-detraction-card { padding: 12px; border: 1px solid #e5d8a7; border-radius: 11px; background: linear-gradient(145deg, #fffdf6, #fff9e8); }
+        .warehouse-entry-detraction-heading { display: flex; gap: 9px; align-items: center; }
+        .warehouse-entry-detraction-heading > span { display: grid; width: 32px; height: 32px; place-items: center; flex: 0 0 auto; border-radius: 9px; background: #f7e9b8; color: #8a680e; }
+        .warehouse-entry-detraction-heading > div:nth-child(2) { min-width: 0; }
+        .warehouse-entry-detraction-heading strong, .warehouse-entry-detraction-heading small { display: block; }
+        .warehouse-entry-detraction-heading strong { color: #5f501e; font-size: 11px; }
+        .warehouse-entry-detraction-heading small { margin-top: 2px; color: #81764e; font-size: 9px; }
+        .warehouse-entry-detraction-heading .custom-control-label { padding-top: 2px; color: #6f5b18; cursor: pointer; font-size: 9px; }
+        .warehouse-entry-detraction-note { display: block; margin-top: 7px; color: #7b704b; font-size: 8.5px; }
+        .warehouse-entry-detraction-card .select2-container { width: 100% !important; }
+        .warehouse-entry-soft-badge.is-detraction { color: #7d5e08; background: #fff0bc; }
+        .warehouse-entry-detraction-summary { width: 100%; color: #796b3f; font-size: 8px; font-weight: 700; }
         .warehouse-entry-expense-document-card{height:100%;padding:11px;border:1px solid #dfeae8;border-radius:11px;background:#fbfdfc}.warehouse-entry-expense-document-card.is-invoice{border-top:3px solid #168b78}.warehouse-entry-expense-document-card.is-payment{border-top:3px solid #4d7fa8}.warehouse-entry-expense-document-heading{display:flex;gap:9px;margin-bottom:8px;align-items:center}.warehouse-entry-expense-document-heading>span{display:grid;width:32px;height:32px;place-items:center;flex:0 0 auto;border-radius:9px;background:#e1f3ef;color:#138478}.warehouse-entry-expense-document-card.is-payment .warehouse-entry-expense-document-heading>span{background:#e8f0f7;color:#47789f}.warehouse-entry-expense-document-heading strong,.warehouse-entry-expense-document-heading small{display:block}.warehouse-entry-expense-document-heading strong{color:#31534c;font-size:10px}.warehouse-entry-expense-document-heading small{margin-top:1px;color:#788984;font-size:8px}.warehouse-entry-expense-document-help{display:block;margin-top:7px;color:#788984;font-size:8px;line-height:1.35}
+        .warehouse-entry-expense-document-card.is-detraction-proof{border-color:#e5d8a7;border-top:3px solid #b88a16;background:#fffdf7}.warehouse-entry-expense-document-card.is-detraction-proof .warehouse-entry-expense-document-heading>span{background:#f7e9b8;color:#8a680e}.warehouse-entry-expense-document-card.is-detraction-proof .warehouse-entry-expense-file-picker{border-color:#dfcd8e;background:linear-gradient(145deg,#fffef9,#fff9e8)}
         .warehouse-entry-expense-file-picker{position:relative;min-height:58px;border:1px dashed #bcd7d2;border-radius:10px;background:linear-gradient(145deg,#f9fcfb,#f0f8f6);transition:border-color .18s,box-shadow .18s,transform .18s}
         .warehouse-entry-expense-file-picker:hover{border-color:#54a99e;box-shadow:0 5px 14px rgba(17,134,122,.09);transform:translateY(-1px)}
         .warehouse-entry-expense-file-picker.has-file{border-style:solid;border-color:#a9d8d1;background:#f3fbf9}
@@ -910,6 +923,8 @@
             .warehouse-entry-expense-body { padding: 8px !important; }
             .warehouse-entry-expense-form { padding: 10px; }
             .warehouse-entry-expense-editor-actions { flex-direction: column; }
+            .warehouse-entry-detraction-heading { align-items: flex-start; flex-wrap: wrap; }
+            .warehouse-entry-detraction-heading .custom-control { margin-left: 41px !important; }
             .warehouse-entry-expense-file-selected { flex-wrap: wrap; }
             .warehouse-entry-expense-file-info { flex-basis: calc(100% - 46px); }
             .warehouse-entry-expense-file-selected .btn { flex: 1; }
