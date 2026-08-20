@@ -322,6 +322,45 @@
                                         <i class="fas fa-clock"></i>
                                         <span>Esta compra es a cr&eacute;dito. No se generar&aacute; egreso bancario hasta registrar el pago.</span>
                                     </div>
+                                    <div id="warehouseEntryCreditPaymentPanel" class="warehouse-entry-credit-payment-panel d-none">
+                                        <div class="warehouse-entry-credit-payment-summary-grid">
+                                            <div><small>Condici&oacute;n</small><strong id="warehouseEntryCreditCondition">-</strong></div>
+                                            <div><small>Vencimiento</small><strong id="warehouseEntryCreditDueDate">-</strong></div>
+                                            <div><small>Estado</small><strong id="warehouseEntryCreditPaymentStatus">Pendiente</strong></div>
+                                            <div><small>Saldo pendiente</small><strong id="warehouseEntryCreditPendingAmount">0.00</strong></div>
+                                        </div>
+                                        <div class="d-flex flex-wrap align-items-center justify-content-between mt-3">
+                                            <div>
+                                                <strong class="d-block text-dark">Historial de pagos</strong>
+                                                <small class="text-muted">Cada pago genera su propio egreso bancario.</small>
+                                            </div>
+                                            <button type="button" id="btnRegisterWarehouseCreditPayment" class="btn btn-warning btn-sm mt-2 mt-md-0">
+                                                <i class="fas fa-money-check-alt mr-1"></i>
+                                                Registrar pago del cr&eacute;dito
+                                            </button>
+                                        </div>
+                                        <div class="table-responsive mt-2">
+                                            <table class="table table-sm table-hover warehouse-entry-credit-payment-history mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Fecha</th>
+                                                        <th>Cuenta bancaria</th>
+                                                        <th>Medio</th>
+                                                        <th>Operaci&oacute;n</th>
+                                                        <th class="text-right">Monto aplicado</th>
+                                                        <th class="text-right">TC</th>
+                                                        <th class="text-right">Salida banco</th>
+                                                        <th>Usuario</th>
+                                                        <th>Constancia</th>
+                                                        <th>Estado</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="warehouseEntryCreditPaymentHistoryRows">
+                                                    <tr><td colspan="10" class="text-center text-muted py-3">Sin pagos registrados todav&iacute;a.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
                                     <div id="warehouseEntryBankPaymentFields" class="row mt-3">
                                         <input type="hidden" id="warehouse_entry_bank_payment_negative_balance_confirmed"
                                             name="bank_payment_negative_balance_confirmed" value="0">

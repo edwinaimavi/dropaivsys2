@@ -41,7 +41,7 @@
                                     <th>Condici&oacute;n</th>
                                     <th>Fechas</th>
                                     <th class="text-right">Saldo pendiente</th>
-                                    <th class="text-center">Acci&oacute;n</th>
+                                    <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="warehouseCreditAlertRows"></tbody>

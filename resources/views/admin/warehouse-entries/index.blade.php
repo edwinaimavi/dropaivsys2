@@ -83,6 +83,7 @@
 
     @include('admin.warehouse-entries.partials.modal')
     @include('admin.warehouse-entries.partials.creditAlertsModal')
+    @include('admin.warehouse-entries.partials.creditPaymentModal')
     @include('admin.warehouse-entries.partials.viewModal')
     @include('admin.warehouse-entries.partials.pettyCashExpenseModal')
 @stop
@@ -555,12 +556,14 @@
 
         #warehouseEntryLotsModal,
         .warehouse-entry-lots-modal,
-        #warehouseEntryPettyCashModal {
+        #warehouseEntryPettyCashModal,
+        #warehouseEntryCreditPaymentModal {
             z-index: 2080 !important;
         }
 
         .warehouse-entry-backdrop-lots,
-        .warehouse-entry-backdrop-petty-cash {
+        .warehouse-entry-backdrop-petty-cash,
+        .warehouse-entry-backdrop-credit-payment {
             z-index: 2070 !important;
         }
 
@@ -572,7 +575,10 @@
         #warehouseEntryLotsModal .modal-content,
         #warehouseEntryPettyCashModal.show,
         #warehouseEntryPettyCashModal .modal-dialog,
-        #warehouseEntryPettyCashModal .modal-content {
+        #warehouseEntryPettyCashModal .modal-content,
+        #warehouseEntryCreditPaymentModal.show,
+        #warehouseEntryCreditPaymentModal .modal-dialog,
+        #warehouseEntryCreditPaymentModal .modal-content {
             pointer-events: auto;
         }
 
@@ -1051,6 +1057,60 @@
         .warehouse-entry-bank-payment-summary strong { color: #284e42; font-size: 12px; }
         .warehouse-entry-bank-payment-summary small { margin-top: 3px; color: #71817b; }
 
+        .warehouse-entry-credit-payment-panel {
+            margin-top: 11px;
+            padding: 12px;
+            border: 1px solid #ead7a2;
+            border-radius: 9px;
+            background: #fffdf6;
+        }
+
+        .warehouse-entry-credit-payment-summary-grid,
+        .warehouse-credit-payment-debt-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .warehouse-entry-credit-payment-summary-grid > div,
+        .warehouse-credit-payment-debt-grid > div {
+            padding: 9px 10px;
+            border: 1px solid #e5ebe8;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .warehouse-entry-credit-payment-summary-grid small,
+        .warehouse-entry-credit-payment-summary-grid strong,
+        .warehouse-credit-payment-debt-grid small,
+        .warehouse-credit-payment-debt-grid strong { display: block; }
+        .warehouse-entry-credit-payment-summary-grid small,
+        .warehouse-credit-payment-debt-grid small { color: #748079; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+        .warehouse-entry-credit-payment-summary-grid strong,
+        .warehouse-credit-payment-debt-grid strong { margin-top: 4px; color: #34453f; font-size: 12px; }
+        .warehouse-entry-credit-payment-summary-grid > div:last-child,
+        .warehouse-credit-payment-debt-grid .is-pending { border-color: #efcd79; background: #fff8df; }
+        .warehouse-entry-credit-payment-summary-grid > div:last-child strong,
+        .warehouse-credit-payment-debt-grid .is-pending strong { color: #986600; }
+
+        .warehouse-entry-credit-payment-history { min-width: 1080px; font-size: 10.5px; }
+        .warehouse-entry-credit-payment-history th { border-top: 0; color: #63716c; font-size: 9px; text-transform: uppercase; white-space: nowrap; }
+        .warehouse-entry-credit-payment-history td { vertical-align: middle; }
+        .warehouse-entry-credit-payment-history td small { display: block; color: #7a8782; }
+
+        .warehouse-credit-payment-header {
+            border: 0;
+            background: linear-gradient(135deg, #8b5e00, #d39913);
+        }
+        .warehouse-credit-payment-header small { opacity: .88; }
+        #warehouseEntryCreditPaymentModal label { margin-bottom: 3px; color: #66726d; font-size: 10px; font-weight: 800; }
+        #warehouseEntryCreditPaymentModal .form-group { margin-bottom: 10px; }
+        #warehouseEntryCreditPaymentModal .custom-file,
+        #warehouseEntryCreditPaymentModal .custom-file-input,
+        #warehouseEntryCreditPaymentModal .custom-file-label { height: 31px; }
+        #warehouseEntryCreditPaymentModal .custom-file-label { padding-top: 5px; font-size: 11px; }
+        #warehouseEntryCreditPaymentModal .custom-file-label::after { height: 29px; padding-top: 5px; }
+
         #warehouseEntryBankPaymentFields .custom-file,
         #warehouseEntryBankPaymentFields .custom-file-input,
         #warehouseEntryBankPaymentFields .custom-file-label { height: 30px; }
@@ -1060,6 +1120,13 @@
         @media (max-width: 575.98px) {
             .warehouse-entry-bank-payment-card { padding: 11px 10px 4px; }
             .warehouse-entry-bank-payment-heading { align-items: flex-start; }
+            .warehouse-entry-credit-payment-summary-grid,
+            .warehouse-credit-payment-debt-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (min-width: 576px) and (max-width: 991.98px) {
+            .warehouse-entry-credit-payment-summary-grid,
+            .warehouse-credit-payment-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
         .warehouse-entry-modal label {

@@ -21,6 +21,10 @@ let warehouseEntryCreditAlertsCache = null;
 let warehouseEntryCreditAlertsAutoShown = false;
 let warehouseEntryOpenedFromCreditAlert = false;
 let warehouseEntryCreditAlertScrollTop = 0;
+let warehouseEntryCreditPaymentEntry = null;
+let warehouseEntryCreditPaymentAccounts = [];
+let warehouseEntryCreditPaymentAccountsRequest = null;
+let warehouseEntryCreditPaymentReturnToAlerts = false;
 const warehouseEntryExpandedGroups = new Set();
 const CREDIT_DUE_WARNING_DAYS = 15;
 
@@ -88,6 +92,11 @@ document.addEventListener('DOMContentLoaded', function () {
         keyboard: true,
         show: false
     });
+    $('#warehouseEntryCreditPaymentModal').modal({
+        backdrop: 'static',
+        keyboard: false,
+        show: false
+    });
 
     initWarehouseEntrySelect2($('#warehouseEntryModal'));
     initWarehouseEntryTable();
@@ -147,6 +156,24 @@ document.addEventListener('DOMContentLoaded', function () {
             if ($('#warehouseEntryModal').hasClass('show')) {
                 document.body.classList.add('modal-open', 'warehouse-entry-active');
                 $('#warehouseEntryModal').trigger('focus');
+            }
+        });
+
+    $('#warehouseEntryCreditPaymentModal')
+        .on('shown.bs.modal', function () {
+            tagWarehouseEntryBackdrop('warehouse-entry-backdrop-credit-payment');
+        })
+        .on('hidden.bs.modal', function () {
+            if (warehouseEntryCreditPaymentReturnToAlerts) {
+                warehouseEntryCreditPaymentReturnToAlerts = false;
+                loadWarehouseEntryCreditAlerts(false, true);
+                return;
+            }
+            if ($('#warehouseEntryModal').hasClass('show')) {
+                document.body.classList.add('modal-open', 'warehouse-entry-active');
+                $('#warehouseEntryModal').trigger('focus');
+            } else {
+                cleanupWarehouseEntryModalBackdrops();
             }
         });
 
@@ -343,6 +370,29 @@ document.addEventListener('DOMContentLoaded', function () {
         openWarehouseEntryFromCreditAlert($(this).data('id'));
     });
 
+    $(document).on('click', '.btnRegisterWarehouseCreditPaymentFromAlert', function () {
+        openWarehouseEntryCreditPaymentFromAlert($(this).data('id'));
+    });
+
+    $(document).on('click', '#btnRegisterWarehouseCreditPayment', function () {
+        openWarehouseEntryCreditPayment($('#warehouse_entry_id').val(), false);
+    });
+
+    $(document).on('change', '#warehouse_credit_payment_currency_id', function () {
+        filterWarehouseEntryCreditPaymentAccounts();
+        updateWarehouseEntryCreditPaymentExchangeRate();
+        calculateWarehouseEntryCreditPaymentAmount();
+    });
+    $(document).on('change', '#warehouse_credit_payment_bank_account_id', updateWarehouseEntryCreditPaymentBankHelp);
+    $(document).on('input', '#warehouse_credit_payment_applied_amount, #warehouse_credit_payment_exchange_rate', calculateWarehouseEntryCreditPaymentAmount);
+    $(document).on('change', '#warehouse_credit_payment_proof', function () {
+        $(this).siblings('.custom-file-label').text(this.files?.[0]?.name || 'Seleccionar archivo');
+    });
+    $(document).on('submit', '#warehouseEntryCreditPaymentForm', function (event) {
+        event.preventDefault();
+        saveWarehouseEntryCreditPayment(this);
+    });
+
     $(document).on('click', '#btnBackToWarehouseCreditAlerts', function () {
         returnToWarehouseEntryCreditAlerts();
     });
@@ -369,6 +419,7 @@ function prepareWarehouseEntryModalLayers() {
     const lotsModal = document.getElementById('warehouseEntryLotsModal');
     const pettyCashModal = document.getElementById('warehouseEntryPettyCashModal');
     const creditAlertsModal = document.getElementById('warehouseEntryCreditAlertsModal');
+    const creditPaymentModal = document.getElementById('warehouseEntryCreditPaymentModal');
 
     if (mainModal && mainModal.parentElement !== document.body) {
         document.body.appendChild(mainModal);
@@ -381,6 +432,9 @@ function prepareWarehouseEntryModalLayers() {
     }
     if (creditAlertsModal && creditAlertsModal.parentElement !== document.body) {
         document.body.appendChild(creditAlertsModal);
+    }
+    if (creditPaymentModal && creditPaymentModal.parentElement !== document.body) {
+        document.body.appendChild(creditPaymentModal);
     }
 }
 
@@ -406,7 +460,8 @@ function tagWarehouseEntryBackdrop(className) {
         .reverse()
         .find(element => !element.classList.contains('warehouse-entry-backdrop-main')
             && !element.classList.contains('warehouse-entry-backdrop-lots')
-            && !element.classList.contains('warehouse-entry-backdrop-petty-cash'));
+            && !element.classList.contains('warehouse-entry-backdrop-petty-cash')
+            && !element.classList.contains('warehouse-entry-backdrop-credit-payment'));
 
     if (backdrop) {
         backdrop.classList.add(className);
@@ -712,7 +767,10 @@ function renderWarehouseEntryCreditAlertRow(alert) {
             <strong>${escapeWarehouseEntryHtml(alert.supplier_name || '-')}</strong>
             <small>${escapeWarehouseEntryHtml(alert.company_name || '-')}</small>
         </td>
-        <td>${escapeWarehouseEntryHtml(alert.payment_condition_label || '-')}</td>
+        <td>
+            ${escapeWarehouseEntryHtml(alert.payment_condition_label || '-')}
+            <small>${escapeWarehouseEntryHtml(alert.payment_status_label || 'Pendiente')}</small>
+        </td>
         <td>
             <span>Documento: ${escapeWarehouseEntryHtml(alert.document_date || '-')}</span>
             <small>Vencimiento: ${escapeWarehouseEntryHtml(alert.due_date || '-')}</small>
@@ -720,9 +778,12 @@ function renderWarehouseEntryCreditAlertRow(alert) {
         <td class="text-right font-weight-bold text-nowrap">
             ${escapeWarehouseEntryHtml(alert.currency_symbol || alert.currency_code || '')} ${formatWarehouseEntryMoney(alert.pending_amount || 0)}
         </td>
-        <td class="text-center">
+        <td class="text-center text-nowrap">
             <button type="button" class="btn btn-outline-info btn-sm text-nowrap btnViewWarehouseEntryFromCreditAlert" data-id="${Number(alert.warehouse_entry_id)}">
                 <i class="fas fa-eye mr-1"></i>Ver ingreso
+            </button>
+            <button type="button" class="btn btn-warning btn-sm text-nowrap ml-1 btnRegisterWarehouseCreditPaymentFromAlert" data-id="${Number(alert.warehouse_entry_id)}">
+                <i class="fas fa-money-check-alt mr-1"></i>Registrar pago
             </button>
         </td>
     </tr>`;
@@ -747,6 +808,261 @@ function returnToWarehouseEntryCreditAlerts() {
         }, 180);
     });
     $('#warehouseEntryModal').modal('hide');
+}
+
+function openWarehouseEntryCreditPaymentFromAlert(id) {
+    const modal = $('#warehouseEntryCreditAlertsModal');
+    warehouseEntryCreditAlertScrollTop = modal.find('.modal-body').scrollTop();
+    modal.one('hidden.bs.modal.open-credit-payment', function () {
+        openWarehouseEntryCreditPayment(id, true);
+    });
+    modal.modal('hide');
+}
+
+function openWarehouseEntryCreditPayment(id, fromAlerts = false) {
+    if (!id) return;
+
+    $.get(`${window.routes.warehouseEntryShow}/${id}`)
+        .done(function (response) {
+            const entry = response.data;
+            const summary = entry.credit_payment_summary || {};
+            if (parseWarehouseEntryNumber(summary.pending_amount) <= 0) {
+                Swal.fire('Crédito pagado', 'Este ingreso ya no tiene saldo pendiente.', 'info');
+                if (fromAlerts) loadWarehouseEntryCreditAlerts(false, true);
+                return;
+            }
+
+            warehouseEntryCreditPaymentEntry = entry;
+            warehouseEntryCreditPaymentReturnToAlerts = fromAlerts;
+            resetWarehouseEntryCreditPaymentForm(entry);
+            loadWarehouseEntryCreditPaymentAccounts(entry.company_id);
+            $('#warehouseEntryCreditPaymentModal').modal('show');
+        })
+        .fail(function (xhr) {
+            Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo cargar el ingreso para registrar el pago.', 'error');
+            if (fromAlerts) loadWarehouseEntryCreditAlerts(false, true);
+        });
+}
+
+function resetWarehouseEntryCreditPaymentForm(entry) {
+    const form = $('#warehouseEntryCreditPaymentForm');
+    const summary = entry.credit_payment_summary || {};
+    const currency = entry.currency || {};
+    const symbol = currency.symbol || currency.code || '';
+    const supplier = entry.supplier?.short_name || entry.supplier?.business_name || '-';
+    const company = entry.company?.trade_name || entry.company?.business_name || '-';
+
+    form[0]?.reset();
+    clearWarehouseEntryCreditPaymentValidation();
+    $('#warehouse_credit_payment_entry_id').val(entry.id);
+    $('#warehouse_credit_payment_idempotency_key').val(generateWarehouseEntryCreditPaymentKey());
+    $('#warehouse_credit_payment_date').val(formatWarehouseEntryDate(new Date().toISOString()));
+    $('#warehouse_credit_payment_method').val('transferencia');
+    $('#warehouse_credit_payment_currency_id').val(String(entry.currency_id || ''));
+    $('#warehouse_credit_payment_applied_amount')
+        .attr('max', parseWarehouseEntryNumber(summary.pending_amount).toFixed(4))
+        .val('');
+    $('#warehouse_credit_payment_exchange_rate').val('1');
+    $('#warehouse_credit_payment_amount').val('0.00');
+    $('#warehouse_credit_payment_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
+    $('#warehouseCreditPaymentEntryCode').text(entry.entry_number || '-');
+    $('#warehouseCreditPaymentOrderCode').text(entry.supplier_purchase_order?.code || entry.purchase_order_number || '-');
+    $('#warehouseCreditPaymentSupplier').text(supplier);
+    $('#warehouseCreditPaymentCompany').text(company);
+    $('#warehouseCreditPaymentCondition').text(entry.payment_condition_label || entry.payment_condition || '-');
+    $('#warehouseCreditPaymentDueDate').text(formatWarehouseEntryDisplayDate(entry.credit_due_date || entry.expected_payment_date));
+    $('#warehouseCreditPaymentTotal').text(`${symbol} ${formatWarehouseEntryMoney(summary.total_amount)}`.trim());
+    $('#warehouseCreditPaymentPaid').text(`${symbol} ${formatWarehouseEntryMoney(summary.paid_amount)}`.trim());
+    $('#warehouseCreditPaymentPending').text(`${symbol} ${formatWarehouseEntryMoney(summary.pending_amount)}`.trim());
+    $('#warehouseCreditPaymentOutputSymbol').text(symbol || '-');
+    $('#warehouse_credit_payment_bank_account_id').empty().append(new Option('Cargando cuentas...', '')).prop('disabled', true);
+    $('#warehouseCreditPaymentBankHelp').text('Cargando cuentas bancarias activas...').removeClass('text-danger');
+    updateWarehouseEntryCreditPaymentExchangeRate();
+    setWarehouseEntryCreditPaymentSaving(false);
+}
+
+function generateWarehouseEntryCreditPaymentKey() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `warehouse-credit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function loadWarehouseEntryCreditPaymentAccounts(companyId) {
+    warehouseEntryCreditPaymentAccountsRequest?.abort();
+    warehouseEntryCreditPaymentAccountsRequest = $.get(
+        `${window.routes.warehouseEntryCompanyBankAccounts}/${companyId}/bank-accounts`
+    )
+        .done(function (response) {
+            if (Number(warehouseEntryCreditPaymentEntry?.company_id) !== Number(companyId)) return;
+            warehouseEntryCreditPaymentAccounts = response.data || [];
+            filterWarehouseEntryCreditPaymentAccounts();
+        })
+        .fail(function (xhr) {
+            if (xhr.statusText === 'abort') return;
+            warehouseEntryCreditPaymentAccounts = [];
+            filterWarehouseEntryCreditPaymentAccounts();
+            $('#warehouseCreditPaymentBankHelp').text('No se pudieron cargar las cuentas bancarias de la empresa.').addClass('text-danger');
+        })
+        .always(function () {
+            warehouseEntryCreditPaymentAccountsRequest = null;
+        });
+}
+
+function filterWarehouseEntryCreditPaymentAccounts() {
+    const select = $('#warehouse_credit_payment_bank_account_id');
+    const currencyId = String($('#warehouse_credit_payment_currency_id').val() || '');
+    const accounts = warehouseEntryCreditPaymentAccounts.filter(account => String(account.currency_id) === currencyId);
+    select.empty().append(new Option('Seleccione cuenta bancaria', ''));
+
+    accounts.forEach(function (account) {
+        const bank = account.bank?.short_name || account.bank?.description || 'Banco';
+        const currency = account.currency?.symbol || account.currency?.code || '';
+        const balance = parseWarehouseEntryNumber(account.current_balance);
+        const negative = balance < 0 ? ' | SALDO NEGATIVO' : '';
+        const option = new Option(
+            `${bank} | ${account.account_number} | Saldo ${currency} ${formatWarehouseEntryMoney(balance)}${negative}`,
+            account.id
+        );
+        $(option).attr('data-balance', balance);
+        if (balance < 0) $(option).css('color', '#dc3545');
+        select.append(option);
+    });
+
+    select.prop('disabled', !currencyId || accounts.length === 0);
+    $('#warehouseCreditPaymentBankHelp')
+        .text(accounts.length
+            ? `${accounts.length} cuenta${accounts.length === 1 ? '' : 's'} activa${accounts.length === 1 ? '' : 's'} para la moneda seleccionada.`
+            : 'No hay cuentas bancarias activas para la empresa y moneda seleccionadas.')
+        .toggleClass('text-danger', accounts.length === 0);
+    updateWarehouseEntryCreditPaymentBankHelp();
+}
+
+function updateWarehouseEntryCreditPaymentBankHelp() {
+    const selected = $('#warehouse_credit_payment_bank_account_id option:selected');
+    if (!selected.val()) return;
+    const balance = parseWarehouseEntryNumber(selected.data('balance'));
+    const paymentOption = $('#warehouse_credit_payment_currency_id option:selected');
+    const symbol = paymentOption.data('symbol') || paymentOption.data('code') || '';
+    $('#warehouseCreditPaymentBankHelp')
+        .text(`Saldo actual: ${symbol} ${formatWarehouseEntryMoney(balance)}`)
+        .toggleClass('text-danger', balance < 0);
+}
+
+function updateWarehouseEntryCreditPaymentExchangeRate() {
+    const purchaseCode = String(warehouseEntryCreditPaymentEntry?.currency?.code || '').toUpperCase();
+    const paymentOption = $('#warehouse_credit_payment_currency_id option:selected');
+    const paymentCode = String(paymentOption.data('code') || '').toUpperCase();
+    const sameCurrency = Boolean(purchaseCode) && purchaseCode === paymentCode;
+    const rate = $('#warehouse_credit_payment_exchange_rate');
+
+    rate.prop('readonly', sameCurrency).prop('required', !sameCurrency);
+    if (sameCurrency) rate.val('1');
+    $('#warehouseCreditPaymentExchangeRateGroup small').text(
+        sameCurrency ? 'Misma moneda: equivalencia 1 a 1.' : 'Tipo de cambio individual de este pago.'
+    );
+    $('#warehouseCreditPaymentOutputSymbol').text(paymentOption.data('symbol') || paymentCode || '-');
+}
+
+function calculateWarehouseEntryCreditPaymentAmount() {
+    const applied = parseWarehouseEntryNumber($('#warehouse_credit_payment_applied_amount').val());
+    const rate = parseWarehouseEntryNumber($('#warehouse_credit_payment_exchange_rate').val());
+    const purchaseCode = String(warehouseEntryCreditPaymentEntry?.currency?.code || '').toUpperCase();
+    const paymentCode = String($('#warehouse_credit_payment_currency_id option:selected').data('code') || '').toUpperCase();
+    let amount = 0;
+
+    if (applied > 0 && purchaseCode && paymentCode) {
+        if (purchaseCode === paymentCode) amount = applied;
+        else if (purchaseCode !== 'PEN' && paymentCode === 'PEN' && rate > 0) amount = applied * rate;
+        else if (purchaseCode === 'PEN' && paymentCode !== 'PEN' && rate > 0) amount = applied / rate;
+    }
+    $('#warehouse_credit_payment_amount').val(formatWarehouseEntryMoney(amount));
+}
+
+function clearWarehouseEntryCreditPaymentValidation() {
+    const form = $('#warehouseEntryCreditPaymentForm');
+    form.find('.is-invalid').removeClass('is-invalid');
+    form.find('.invalid-feedback').text('');
+}
+
+function validateWarehouseEntryCreditPayment() {
+    clearWarehouseEntryCreditPaymentValidation();
+    const summary = warehouseEntryCreditPaymentEntry?.credit_payment_summary || {};
+    const pending = parseWarehouseEntryNumber(summary.pending_amount);
+    const applied = parseWarehouseEntryNumber($('#warehouse_credit_payment_applied_amount').val());
+    const purchaseCode = String(warehouseEntryCreditPaymentEntry?.currency?.code || '').toUpperCase();
+    const paymentCode = String($('#warehouse_credit_payment_currency_id option:selected').data('code') || '').toUpperCase();
+    const rate = parseWarehouseEntryNumber($('#warehouse_credit_payment_exchange_rate').val());
+    const checks = [
+        ['#warehouse_credit_payment_currency_id', Boolean(paymentCode), 'Seleccione la moneda del pago.'],
+        ['#warehouse_credit_payment_bank_account_id', Boolean($('#warehouse_credit_payment_bank_account_id').val()), 'Seleccione la cuenta bancaria de salida.'],
+        ['#warehouse_credit_payment_applied_amount', applied > 0, 'El monto aplicado debe ser mayor a cero.'],
+        ['#warehouse_credit_payment_applied_amount', applied <= pending, 'El monto aplicado no puede superar el saldo pendiente.'],
+        ['#warehouse_credit_payment_exchange_rate', purchaseCode === paymentCode || rate > 0, 'Ingrese el tipo de cambio del pago, mayor a cero.'],
+        ['#warehouse_credit_payment_date', Boolean($('#warehouse_credit_payment_date').val()), 'Ingrese la fecha del pago.'],
+        ['#warehouse_credit_payment_method', Boolean($('#warehouse_credit_payment_method').val()), 'Seleccione el medio de pago.'],
+        ['#warehouse_credit_payment_operation_number', Boolean(String($('#warehouse_credit_payment_operation_number').val() || '').trim()), 'Ingrese el número de operación o constancia.']
+    ];
+    const invalid = checks.find(check => !check[1]);
+    if (!invalid) return true;
+
+    const field = $(invalid[0]);
+    field.addClass('is-invalid');
+    field.closest('.form-group').find('.invalid-feedback').first().text(invalid[2]);
+    Swal.fire('Revise el pago', invalid[2], 'warning').then(() => field.trigger('focus'));
+    return false;
+}
+
+function saveWarehouseEntryCreditPayment(form) {
+    if (!warehouseEntryCreditPaymentEntry || !validateWarehouseEntryCreditPayment()) return;
+
+    const entryId = warehouseEntryCreditPaymentEntry.id;
+    const returnToAlerts = warehouseEntryCreditPaymentReturnToAlerts;
+    setWarehouseEntryCreditPaymentSaving(true);
+    $.ajax({
+        url: `${window.routes.warehouseEntryShow}/${entryId}/credit-payments`,
+        type: 'POST',
+        data: new FormData(form),
+        processData: false,
+        contentType: false
+    })
+        .done(function (response) {
+            tableWarehouseEntry?.ajax.reload(null, false);
+            if (!returnToAlerts) loadWarehouseEntryCreditAlerts(false);
+            Swal.fire({ icon: 'success', title: 'Pago registrado', text: response.message, timer: 2400, showConfirmButton: false });
+
+            if ($('#warehouseEntryModal').hasClass('show')) {
+                $.get(`${window.routes.warehouseEntryShow}/${entryId}`).done(function (entryResponse) {
+                    fillWarehouseEntryForm(entryResponse.data);
+                });
+            }
+            warehouseEntryCreditPaymentReturnToAlerts = returnToAlerts;
+            $('#warehouseEntryCreditPaymentModal').modal('hide');
+        })
+        .fail(function (xhr) {
+            if (xhr.status === 422) {
+                const errors = xhr.responseJSON?.errors || {};
+                const messages = [];
+                Object.keys(errors).forEach(function (name) {
+                    const message = Array.isArray(errors[name]) ? errors[name][0] : errors[name];
+                    const field = $(`#warehouseEntryCreditPaymentForm [name="${name}"]`);
+                    if (message) messages.push(message);
+                    field.addClass('is-invalid');
+                    field.closest('.form-group').find('.invalid-feedback').first().text(message || '');
+                });
+                Swal.fire('No se pudo registrar', messages[0] || 'Revise los datos del pago.', 'warning');
+                return;
+            }
+            Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo registrar el pago del crédito.', 'error');
+        })
+        .always(function () {
+            setWarehouseEntryCreditPaymentSaving(false);
+        });
+}
+
+function setWarehouseEntryCreditPaymentSaving(saving) {
+    const button = $('#btnSaveWarehouseCreditPayment');
+    button.prop('disabled', saving).html(saving
+        ? '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...'
+        : '<i class="fas fa-save mr-1"></i>Guardar pago');
 }
 
 function toggleWarehouseEntryCustomerOrderGroup(key) {
@@ -890,6 +1206,8 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
     $('#warehouse_entry_bank_payment_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
     $('#warehouseEntryBankPaymentExistingProof, #warehouseEntryBankPaymentStatus').addClass('d-none').empty();
+    $('#warehouseEntryCreditPaymentPanel').addClass('d-none');
+    $('#warehouseEntryCreditPaymentHistoryRows').html('<tr><td colspan="10" class="text-center text-muted py-3">Sin pagos registrados todavía.</td></tr>');
     $('#warehouse_entry_payable_amount').val('0.00');
     $('#warehouse_entry_supplier_ruc').val('');
     $('#warehouse_entry_guide_ruc').val('');
@@ -2064,6 +2382,7 @@ function filterWarehouseEntryGeneralCashBoxes() {
 function toggleWarehouseEntryBankPayment() {
     const isCredit = $('#warehouse_entry_generate_account_payable').val() === '1';
     $('#warehouseEntryBankPaymentCreditHelp').toggleClass('d-none', !isCredit);
+    $('#warehouseEntryCreditPaymentPanel').toggleClass('d-none', !isCredit || !$('#warehouse_entry_id').val());
     $('#warehouseEntryBankPaymentFields').toggleClass('d-none', isCredit)
         .find(':input').prop('disabled', isCredit);
 
@@ -3053,6 +3372,7 @@ function fillWarehouseEntryForm(entry) {
         .text(entry.bank_payment_proof_original_name ? `Archivo actual: ${entry.bank_payment_proof_original_name}` : '');
     warehouseEntryEditingPaymentMovement = entry.bank_payment_movement || null;
     renderWarehouseEntryBankPaymentStatus(entry);
+    renderWarehouseEntryCreditPaymentPanel(entry);
     $('#warehouse_entry_seller_name').val(entry.seller_name || '');
     $('#warehouse_entry_affect_igv').val(entry.affect_igv ? '1' : '0');
     $('#warehouse_entry_guide_series').val(entry.guide_series || '');
@@ -3128,6 +3448,52 @@ function renderWarehouseEntryBankPaymentStatus(entry) {
             + `<strong>Pago generado:</strong> ${escapeWarehouseEntryHtml(bank)} ${escapeWarehouseEntryHtml(account)}`
             + ` Â· ${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(movement.amount)}`
             + ` Â· <span class="badge badge-${reconciled ? 'success' : 'info'}">${escapeWarehouseEntryHtml(movement.status || 'REGISTRADO')}</span>`);
+}
+
+function renderWarehouseEntryCreditPaymentPanel(entry) {
+    const panel = $('#warehouseEntryCreditPaymentPanel');
+    const isCredit = Boolean(entry.generate_account_payable);
+    panel.toggleClass('d-none', !isCredit);
+    if (!isCredit) return;
+
+    const summary = entry.credit_payment_summary || {};
+    const currency = entry.currency?.symbol || entry.currency?.code || '';
+    const pending = parseWarehouseEntryNumber(summary.pending_amount);
+    $('#warehouseEntryCreditCondition').text(entry.payment_condition_label || entry.payment_condition || '-');
+    $('#warehouseEntryCreditDueDate').text(formatWarehouseEntryDisplayDate(entry.credit_due_date || entry.expected_payment_date));
+    $('#warehouseEntryCreditPaymentStatus').text(summary.status_label || 'Pendiente');
+    $('#warehouseEntryCreditPendingAmount').text(`${currency} ${formatWarehouseEntryMoney(pending)}`.trim());
+    $('#btnRegisterWarehouseCreditPayment').prop('disabled', pending <= 0);
+
+    const payments = Array.isArray(entry.credit_payments) ? entry.credit_payments : [];
+    $('#warehouseEntryCreditPaymentHistoryRows').html(payments.length
+        ? payments.map(renderWarehouseEntryCreditPaymentHistoryRow).join('')
+        : '<tr><td colspan="10" class="text-center text-muted py-3">Sin pagos registrados todavía.</td></tr>');
+}
+
+function renderWarehouseEntryCreditPaymentHistoryRow(payment) {
+    const account = payment.company_bank_account || {};
+    const bank = account.bank?.short_name || account.bank?.description || 'Banco';
+    const purchaseCurrency = payment.purchase_currency?.symbol || payment.purchase_currency?.code || '';
+    const paymentCurrency = payment.payment_currency?.symbol || payment.payment_currency?.code || '';
+    const creator = [payment.creator?.name, payment.creator?.lastname].filter(Boolean).join(' ') || payment.creator?.email || '-';
+    const movementStatus = payment.bank_movement?.status || 'REGISTRADO';
+    const proof = payment.proof_url
+        ? `<a href="${escapeWarehouseEntryHtml(payment.proof_url)}" class="btn btn-outline-secondary btn-xs" target="_blank" rel="noopener" title="Ver constancia"><i class="fas fa-paperclip"></i></a>`
+        : '<span class="text-muted">-</span>';
+
+    return `<tr>
+        <td class="text-nowrap">${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(payment.payment_date))}</td>
+        <td><strong>${escapeWarehouseEntryHtml(bank)}</strong><small>${escapeWarehouseEntryHtml(account.account_number || '-')}</small></td>
+        <td>${escapeWarehouseEntryHtml(payment.payment_method_label || payment.payment_method || '-')}</td>
+        <td>${escapeWarehouseEntryHtml(payment.operation_number || '-')}</td>
+        <td class="text-right text-nowrap">${escapeWarehouseEntryHtml(purchaseCurrency)} ${formatWarehouseEntryMoney(payment.applied_amount)}</td>
+        <td class="text-right">${parseWarehouseEntryNumber(payment.exchange_rate).toFixed(4)}</td>
+        <td class="text-right text-nowrap">${escapeWarehouseEntryHtml(paymentCurrency)} ${formatWarehouseEntryMoney(payment.amount)}</td>
+        <td>${escapeWarehouseEntryHtml(creator)}</td>
+        <td class="text-center">${proof}</td>
+        <td><span class="badge badge-info">${escapeWarehouseEntryHtml(movementStatus)}</span></td>
+    </tr>`;
 }
 
 function loadWarehouseEntryDetail(id) {

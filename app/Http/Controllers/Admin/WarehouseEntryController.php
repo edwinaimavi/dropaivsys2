@@ -25,6 +25,7 @@ use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryCreditPayment;
 use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemLotDocument;
@@ -32,6 +33,7 @@ use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\PettyCashWarehouseExpenseService;
 use App\Services\SupplierPurchaseOrderFinancialService;
 use App\Services\WarehouseEntryBankPaymentService;
+use App\Services\WarehouseEntryCreditPaymentService;
 use App\Services\WarehouseKardexService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -62,10 +64,13 @@ class WarehouseEntryController extends Controller
 
     private SupplierPurchaseOrderFinancialService $supplierPurchaseOrderFinancialService;
 
+    private WarehouseEntryCreditPaymentService $warehouseEntryCreditPaymentService;
+
     public function __construct(
         ?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null,
         ?WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService = null,
-        ?SupplierPurchaseOrderFinancialService $supplierPurchaseOrderFinancialService = null
+        ?SupplierPurchaseOrderFinancialService $supplierPurchaseOrderFinancialService = null,
+        ?WarehouseEntryCreditPaymentService $warehouseEntryCreditPaymentService = null
     ) {
         $this->pettyCashWarehouseExpenseService = $pettyCashWarehouseExpenseService
             ?? app(PettyCashWarehouseExpenseService::class);
@@ -73,6 +78,8 @@ class WarehouseEntryController extends Controller
             ?? app(WarehouseEntryBankPaymentService::class);
         $this->supplierPurchaseOrderFinancialService = $supplierPurchaseOrderFinancialService
             ?? app(SupplierPurchaseOrderFinancialService::class);
+        $this->warehouseEntryCreditPaymentService = $warehouseEntryCreditPaymentService
+            ?? app(WarehouseEntryCreditPaymentService::class);
         $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only([
             'viewExpenseDocument',
             'viewPettyCashExpenseDocument',
@@ -89,9 +96,17 @@ class WarehouseEntryController extends Controller
             'supplierPurchaseOrderLogisticsStatus',
         ]);
         $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
-        $this->middleware('can:admin.warehouse-entries.update')->only(['update', 'destroyDocument']);
+        $this->middleware('can:admin.warehouse-entries.update')->only([
+            'update',
+            'destroyDocument',
+            'storeCreditPayment',
+        ]);
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
-        $this->middleware('can:admin.warehouse-entries.show')->only(['show', 'downloadDocument']);
+        $this->middleware('can:admin.warehouse-entries.show')->only([
+            'show',
+            'downloadDocument',
+            'viewCreditPaymentProof',
+        ]);
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.index')->only(['downloadLotDocument']);
         $this->middleware('can:admin.warehouse-entries.lot-documents.destroy')->only(['destroyLotDocument']);
@@ -380,6 +395,7 @@ class WarehouseEntryController extends Controller
                     'bank_movements.source_id',
                     'bank_movements.status'
                 ),
+                'creditPayments:id,warehouse_entry_id,applied_amount,status',
                 'documents' => function ($query) {
                     $query->where('observation', self::PDF_OBSERVATION)
                         ->where('status', 'ACTIVE')
@@ -448,6 +464,10 @@ class WarehouseEntryController extends Controller
 
                 return [
                     'is_pending' => $presentation['is_pending'],
+                    'paid_amount' => $presentation['paid_amount'],
+                    'pending_amount' => $presentation['pending_amount'],
+                    'payment_status' => $presentation['payment_status'],
+                    'payment_status_label' => $presentation['payment_status_label'],
                     'days_remaining' => $presentation['days_remaining'],
                     'status' => $presentation['status'],
                     'status_label' => $presentation['label'],
@@ -564,6 +584,7 @@ class WarehouseEntryController extends Controller
                     'bank_movements.source_id',
                     'bank_movements.status'
                 ),
+                'creditPayments:id,warehouse_entry_id,applied_amount,status',
             ])
             ->orderBy('expected_payment_date')
             ->orderBy('id')
@@ -579,7 +600,7 @@ class WarehouseEntryController extends Controller
                 }
 
                 $customerOrder = $this->customerOrdersForWarehouseEntry($entry)->first();
-                $pendingAmount = max(0, (float) $entry->payable_amount);
+                $pendingAmount = $presentation['pending_amount'];
 
                 return [
                     'warehouse_entry_id' => $entry->id,
@@ -597,6 +618,9 @@ class WarehouseEntryController extends Controller
                     'currency_code' => $entry->currency?->code ?: '',
                     'currency_symbol' => $entry->currency?->symbol ?: $entry->currency?->code ?: '',
                     'pending_amount' => $pendingAmount,
+                    'paid_amount' => $presentation['paid_amount'],
+                    'payment_status' => $presentation['payment_status'],
+                    'payment_status_label' => $presentation['payment_status_label'],
                     'payment_condition_label' => $this->paymentConditionLabel(
                         $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition
                     ),
@@ -751,6 +775,12 @@ class WarehouseEntryController extends Controller
             'bankPaymentMovement.account.bank:id,description,short_name',
             'bankPaymentMovement.account.currency:id,code,symbol',
             'bankPaymentMovement.originalCurrency:id,code,symbol',
+            'creditPayments.companyBankAccount.bank:id,description,short_name',
+            'creditPayments.companyBankAccount.currency:id,code,symbol',
+            'creditPayments.purchaseCurrency:id,code,symbol',
+            'creditPayments.paymentCurrency:id,code,symbol',
+            'creditPayments.bankMovement:id,code,status',
+            'creditPayments.creator:id,name,lastname,email',
             'creator:id,name,lastname,email',
             'updater:id,name,lastname,email',
             'items.article',
@@ -797,6 +827,13 @@ class WarehouseEntryController extends Controller
         $warehouseEntry->setAttribute('credit_due_date', $creditPresentation['due_date']);
         $warehouseEntry->setAttribute('credit_status', $creditPresentation['status']);
         $warehouseEntry->setAttribute('credit_status_label', $creditPresentation['label']);
+        $warehouseEntry->setAttribute('credit_payment_summary', [
+            'total_amount' => $creditPresentation['total_amount'],
+            'paid_amount' => $creditPresentation['paid_amount'],
+            'pending_amount' => $creditPresentation['pending_amount'],
+            'status' => $creditPresentation['payment_status'],
+            'status_label' => $creditPresentation['payment_status_label'],
+        ]);
         $warehouseEntry->setAttribute(
             'payment_condition_label',
             $this->paymentConditionLabel($warehouseEntry->payment_condition)
@@ -810,6 +847,19 @@ class WarehouseEntryController extends Controller
                     : null
             );
         }
+
+        $warehouseEntry->creditPayments->each(function (WarehouseEntryCreditPayment $payment) use ($warehouseEntry) {
+            $payment->setAttribute(
+                'proof_url',
+                $payment->proof_path
+                    ? route('admin.warehouse-entries.credit-payments.proof', [$warehouseEntry, $payment])
+                    : null
+            );
+            $payment->setAttribute(
+                'payment_method_label',
+                WarehouseEntryCreditPayment::PAYMENT_METHODS[$payment->payment_method] ?? Str::headline($payment->payment_method)
+            );
+        });
 
         if (! Auth::user()?->can('admin.warehouse-entries.expenses.index')) {
             $warehouseEntry->unsetRelation('expenses');
@@ -833,6 +883,90 @@ class WarehouseEntryController extends Controller
             'status' => 'success',
             'data' => $warehouseEntry,
             'warehouse_name' => $warehouseEntry->warehouse?->name ?? 'SIN ALMACEN',
+        ]);
+    }
+
+    public function storeCreditPayment(Request $request, WarehouseEntry $warehouseEntry)
+    {
+        $validated = $request->validate([
+            'company_bank_account_id' => ['required', 'integer', 'exists:company_bank_accounts,id'],
+            'payment_currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'applied_amount' => ['required', 'numeric', 'gt:0'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'payment_date' => ['required', 'date'],
+            'payment_method' => ['required', Rule::in(array_keys(WarehouseEntryCreditPayment::PAYMENT_METHODS))],
+            'operation_number' => ['required', 'string', 'max:100'],
+            'proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'observation' => ['nullable', 'string', 'max:1500'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
+        ], [
+            'company_bank_account_id.required' => 'Seleccione la cuenta bancaria de salida.',
+            'payment_currency_id.required' => 'Seleccione la moneda del pago.',
+            'applied_amount.required' => 'Ingrese el monto aplicado a la deuda.',
+            'applied_amount.gt' => 'El monto aplicado debe ser mayor a cero.',
+            'exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
+            'payment_date.required' => 'Ingrese la fecha del pago.',
+            'payment_method.required' => 'Seleccione el medio de pago.',
+            'operation_number.required' => 'Ingrese el número de operación o constancia.',
+            'proof.mimes' => 'La constancia debe ser un archivo PDF, JPG, JPEG, PNG o WEBP.',
+            'proof.max' => 'La constancia no debe superar los 10 MB.',
+        ]);
+
+        $payment = $this->warehouseEntryCreditPaymentService->create(
+            $warehouseEntry,
+            $validated,
+            $request->file('proof'),
+            Auth::id()
+        );
+        $entry = WarehouseEntry::query()
+            ->with([
+                'creditPayments',
+                'bankPaymentMovement',
+                'supplierPurchaseOrder:id,code,payment_condition,created_at',
+                'currency:id,code,symbol',
+            ])
+            ->findOrFail($warehouseEntry->id);
+        $presentation = $this->warehouseEntryCreditPresentation($entry);
+        $payment->setAttribute(
+            'proof_url',
+            $payment->proof_path
+                ? route('admin.warehouse-entries.credit-payments.proof', [$entry, $payment])
+                : null
+        );
+        $payment->setAttribute(
+            'payment_method_label',
+            WarehouseEntryCreditPayment::PAYMENT_METHODS[$payment->payment_method] ?? Str::headline($payment->payment_method)
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'El pago del crédito fue registrado y el egreso bancario fue generado.',
+            'data' => $payment,
+            'credit_payment_summary' => [
+                'total_amount' => $presentation['total_amount'],
+                'paid_amount' => $presentation['paid_amount'],
+                'pending_amount' => $presentation['pending_amount'],
+                'status' => $presentation['payment_status'],
+                'status_label' => $presentation['payment_status_label'],
+            ],
+        ], 201);
+    }
+
+    public function viewCreditPaymentProof(
+        WarehouseEntry $warehouseEntry,
+        WarehouseEntryCreditPayment $creditPayment
+    ) {
+        abort_unless((int) $creditPayment->warehouse_entry_id === (int) $warehouseEntry->id, 404);
+        abort_unless(
+            $creditPayment->status === WarehouseEntryCreditPayment::STATUS_ACTIVE
+                && filled($creditPayment->proof_path)
+                && Storage::disk('public')->exists($creditPayment->proof_path),
+            404
+        );
+
+        return response()->file(Storage::disk('public')->path($creditPayment->proof_path), [
+            'Content-Type' => $creditPayment->proof_mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="'.($creditPayment->proof_original_name ?: basename($creditPayment->proof_path)).'"',
         ]);
     }
 
@@ -2485,6 +2619,11 @@ class WarehouseEntryController extends Controller
                 'due_date' => null,
                 'days_remaining' => null,
                 'is_pending' => false,
+                'total_amount' => 0.0,
+                'paid_amount' => 0.0,
+                'pending_amount' => 0.0,
+                'payment_status' => 'cash',
+                'payment_status_label' => 'Contado',
                 'status' => 'cash',
                 'label' => 'Pago al contado',
                 'html' => sprintf(
@@ -2498,14 +2637,25 @@ class WarehouseEntryController extends Controller
         $remainingDays = $dueDate
             ? (int) today()->diffInDays(Carbon::parse($dueDate), false)
             : null;
-        $activeMovement = $entry->bankPaymentMovement;
+        $paymentSummary = $this->warehouseEntryCreditPaymentService->summary($entry);
+        $paymentStatus = $paymentSummary['status'] !== 'paid'
+            && $remainingDays !== null
+            && $remainingDays < 0
+            ? 'overdue'
+            : $paymentSummary['status'];
+        $paymentStatusLabel = match ($paymentStatus) {
+            'paid' => 'Pagado',
+            'partial' => 'Parcial',
+            'overdue' => 'Vencido',
+            default => 'Pendiente',
+        };
         if ($entry->status === self::STATUS_CANCELLED) {
             $status = 'cancelled';
             $label = 'Ingreso anulado';
             $class = 'badge-secondary';
             $style = '';
             $icon = 'fas fa-ban';
-        } elseif ($activeMovement) {
+        } elseif ($paymentSummary['status'] === 'paid') {
             $status = 'paid';
             $label = 'Pagado';
             $class = 'badge-info';
@@ -2525,6 +2675,9 @@ class WarehouseEntryController extends Controller
                 $remainingDays === 0 => ['due_today', 'Vence hoy', 'badge-danger', '', 'fas fa-exclamation-triangle'],
                 default => ['overdue', 'Vencido hace '.abs($remainingDays).' días', 'badge-danger', '', 'fas fa-exclamation-triangle'],
             };
+            if ($paymentSummary['status'] === 'partial') {
+                $label = 'Parcial · '.$label;
+            }
         }
 
         return [
@@ -2532,8 +2685,12 @@ class WarehouseEntryController extends Controller
             'due_date' => $dueDate,
             'days_remaining' => $remainingDays,
             'is_pending' => $entry->status === self::STATUS_REGISTERED
-                && ! $activeMovement
-                && (float) $entry->payable_amount > 0,
+                && $paymentSummary['pending_amount'] > 0.0001,
+            'total_amount' => $paymentSummary['total_amount'],
+            'paid_amount' => $paymentSummary['paid_amount'],
+            'pending_amount' => $paymentSummary['pending_amount'],
+            'payment_status' => $paymentStatus,
+            'payment_status_label' => $paymentStatusLabel,
             'status' => $status,
             'label' => $label,
             'html' => sprintf(

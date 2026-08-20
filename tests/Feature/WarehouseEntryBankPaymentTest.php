@@ -13,7 +13,9 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryCreditPayment;
 use App\Services\WarehouseEntryBankPaymentService;
+use App\Services\WarehouseEntryCreditPaymentService;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\UploadedFile;
@@ -458,6 +460,163 @@ it('excluye de alertas créditos pagados, anulados, sin saldo, contado y fuera d
         ->assertJsonCount(0, 'data');
 });
 
+it('registra pagos parciales, genera egresos y completa el saldo sin duplicar el submit', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.index'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo([
+        'admin.warehouse-entries.update',
+        'admin.warehouse-entries.index',
+    ]);
+    $this->account->update(['current_balance' => 20000]);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'CREDITO-PARCIAL',
+        today()->toDateString(),
+        14951.97
+    );
+
+    $first = $this->actingAs($this->user)->postJson(
+        route('admin.warehouse-entries.credit-payments.store', $entry),
+        warehouseCreditPaymentPayload($this->account, $this->pen, 5000, 'pago-parcial-1')
+    );
+
+    $first->assertCreated()
+        ->assertJsonPath('credit_payment_summary.status', 'partial')
+        ->assertJsonPath('credit_payment_summary.paid_amount', 5000)
+        ->assertJsonPath('credit_payment_summary.pending_amount', 9951.97);
+    $payment = WarehouseEntryCreditPayment::query()->firstOrFail();
+    expect((float) $payment->applied_amount)->toBe(5000.0)
+        ->and((float) $payment->amount)->toBe(5000.0)
+        ->and($payment->bank_movement_id)->not->toBeNull()
+        ->and((float) $this->account->fresh()->current_balance)->toBe(15000.0)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)
+            ->where('source_id', $payment->id)->exists())->toBeTrue();
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.credit-alerts'))
+        ->assertOk()
+        ->assertJsonPath('total', 1)
+        ->assertJsonPath('data.0.payment_status', 'partial')
+        ->assertJsonPath('data.0.pending_amount', 9951.97);
+
+    $secondPayload = warehouseCreditPaymentPayload($this->account, $this->pen, 9951.97, 'pago-parcial-2');
+    $second = $this->actingAs($this->user)->postJson(
+        route('admin.warehouse-entries.credit-payments.store', $entry),
+        $secondPayload
+    );
+    $second->assertCreated()
+        ->assertJsonPath('credit_payment_summary.status', 'paid')
+        ->assertJsonPath('credit_payment_summary.pending_amount', 0);
+
+    $this->actingAs($this->user)
+        ->postJson(route('admin.warehouse-entries.credit-payments.store', $entry), $secondPayload)
+        ->assertCreated()
+        ->assertJsonPath('credit_payment_summary.status', 'paid');
+
+    expect(WarehouseEntryCreditPayment::where('warehouse_entry_id', $entry->id)->count())->toBe(2)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(2)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(5048.03);
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.credit-alerts'))
+        ->assertOk()
+        ->assertJsonPath('total', 0);
+});
+
+it('bloquea un pago mayor al saldo pendiente', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'CREDITO-EXCESO',
+        today()->toDateString(),
+        100
+    );
+
+    $this->actingAs($this->user)
+        ->postJson(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($this->account, $this->pen, 100.01, 'pago-excesivo')
+        )
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('applied_amount')
+        ->assertJsonPath('errors.applied_amount.0', 'El monto aplicado no puede superar el saldo pendiente.');
+
+    expect(WarehouseEntryCreditPayment::count())->toBe(0)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(0);
+});
+
+it('convierte un pago aplicado en USD a una salida bancaria en PEN', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $usd = Currency::create([
+        'code' => 'USD',
+        'description' => 'Dólares',
+        'symbol' => '$',
+        'status' => 'ACTIVE',
+    ]);
+    $this->account->update(['current_balance' => 3000]);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $usd,
+        'CREDITO-USD-PEN',
+        today()->toDateString(),
+        500
+    );
+    $payload = warehouseCreditPaymentPayload($this->account, $this->pen, 500, 'pago-usd-pen');
+    $payload['exchange_rate'] = 3.39;
+
+    $this->actingAs($this->user)
+        ->postJson(route('admin.warehouse-entries.credit-payments.store', $entry), $payload)
+        ->assertCreated()
+        ->assertJsonPath('data.applied_amount', '500.0000')
+        ->assertJsonPath('data.amount', '1695.0000')
+        ->assertJsonPath('data.exchange_rate', '3.390000');
+
+    $movement = BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->firstOrFail();
+    expect((float) $movement->original_amount)->toBe(500.0)
+        ->and((float) $movement->amount)->toBe(1695.0)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(1305.0);
+});
+
+it('rechaza una cuenta de otra empresa al pagar el crédito', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $otherCompany = Company::create([
+        'business_name' => 'EMPRESA AJENA CRÉDITO S.A.C.',
+        'ruc' => '20999999991',
+        'status' => true,
+    ]);
+    $otherAccount = warehousePaymentAccount($otherCompany, $this->bank, $this->pen, 'OTRA-CREDITO', 1000);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'CREDITO-CUENTA-AJENA',
+        today()->toDateString(),
+        100
+    );
+
+    $this->actingAs($this->user)
+        ->postJson(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($otherAccount, $this->pen, 100, 'pago-cuenta-ajena')
+        )
+        ->assertUnprocessable()
+        ->assertJsonPath(
+            'errors.company_bank_account_id.0',
+            'La cuenta bancaria seleccionada no pertenece a la empresa o moneda del pago.'
+        );
+});
+
 it('entrega al selector únicamente cuentas activas de la empresa solicitada', function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.index', 'web');
@@ -616,4 +775,23 @@ function warehouseCreditAlertEntry(
         'payable_amount' => $pendingAmount,
         'status' => 'registered',
     ], $overrides));
+}
+
+function warehouseCreditPaymentPayload(
+    CompanyBankAccount $account,
+    Currency $paymentCurrency,
+    float $appliedAmount,
+    string $idempotencyKey
+): array {
+    return [
+        'company_bank_account_id' => $account->id,
+        'payment_currency_id' => $paymentCurrency->id,
+        'applied_amount' => $appliedAmount,
+        'exchange_rate' => 1,
+        'payment_date' => today()->toDateString(),
+        'payment_method' => 'transferencia',
+        'operation_number' => 'OP-'.strtoupper($idempotencyKey),
+        'observation' => 'Pago de prueba',
+        'idempotency_key' => $idempotencyKey,
+    ];
 }

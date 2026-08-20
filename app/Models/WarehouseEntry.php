@@ -115,6 +115,14 @@ class WarehouseEntry extends Model
             ->where('source_type', 'WAREHOUSE_ENTRY_PAYMENT');
     }
 
+    public function creditPayments()
+    {
+        return $this->hasMany(WarehouseEntryCreditPayment::class)
+            ->where('status', WarehouseEntryCreditPayment::STATUS_ACTIVE)
+            ->orderBy('payment_date')
+            ->orderBy('id');
+    }
+
     public function items()
     {
         return $this->hasMany(WarehouseEntryItem::class)->where('status', '!=', 'deleted');

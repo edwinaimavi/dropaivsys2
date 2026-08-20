@@ -652,6 +652,14 @@ Route::get(
     'warehouse-entries/credit-alerts',
     [WarehouseEntryController::class, 'creditAlerts']
 )->name('warehouse-entries.credit-alerts');
+Route::post(
+    'warehouse-entries/{warehouseEntry}/credit-payments',
+    [WarehouseEntryController::class, 'storeCreditPayment']
+)->name('warehouse-entries.credit-payments.store');
+Route::get(
+    'warehouse-entries/{warehouseEntry}/credit-payments/{creditPayment}/proof',
+    [WarehouseEntryController::class, 'viewCreditPaymentProof']
+)->name('warehouse-entries.credit-payments.proof');
 Route::get(
     'warehouse-entries/company/{company}/bank-accounts',
     [WarehouseEntryController::class, 'bankAccounts']

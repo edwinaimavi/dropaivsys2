@@ -120,6 +120,7 @@ class BankMovement extends Model
             'GENERAL_CASH_FUNDING' => 'Retiro para Caja General',
             'WAREHOUSE_ENTRY_EXPENSE' => 'Costo de Almacén',
             'WAREHOUSE_ENTRY_PAYMENT' => 'Ingreso de AlmacÃ©n',
+            'WAREHOUSE_ENTRY_CREDIT_PAYMENT' => 'Pago de crédito de almacén',
             'BANK_TRANSFER' => 'Transferencia bancaria',
             'BANK_ADJUSTMENT' => 'Ajuste bancario',
             'BANK_OPENING_BALANCE' => 'Saldo inicial',
