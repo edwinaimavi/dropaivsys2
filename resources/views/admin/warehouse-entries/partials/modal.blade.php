@@ -401,7 +401,9 @@
                                                     class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
                                                 <label class="custom-file-label" for="warehouse_entry_bank_payment_proof">Seleccionar archivo</label>
                                             </div>
-                                            <small id="warehouseEntryBankPaymentExistingProof" class="form-text text-muted"></small>
+                                            <div id="warehouseEntryBankPaymentExistingProof" class="d-none mt-2 rounded border bg-light p-2"></div>
+                                            <small id="warehouseEntryBankPaymentWithoutProof" class="form-text text-muted">Sin constancia bancaria registrada.</small>
+                                            <small class="form-text text-muted">Puede reemplazar la constancia seleccionando un nuevo archivo.</small>
                                             <span class="invalid-feedback"></span>
                                         </div>
                                         <div class="form-group col-lg-5">

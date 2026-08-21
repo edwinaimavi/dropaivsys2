@@ -1063,14 +1063,184 @@
             font-size: 11px;
         }
 
-        .warehouse-entry-bank-payment-help i,
-        .warehouse-entry-bank-payment-status i { margin-right: 7px; color: #168267; }
+        .warehouse-entry-bank-payment-help > i,
+        .warehouse-entry-bank-payment-status > i { margin-right: 7px; color: #168267; }
         .warehouse-entry-bank-payment-status.is-pending { border-color: #cfe2ff; background: #f2f7ff; color: #365c8d; }
         .warehouse-entry-bank-payment-status.is-reconciled { border-color: #c9ead8; background: #effaf4; color: #256346; }
         .warehouse-entry-bank-payment-summary strong,
         .warehouse-entry-bank-payment-summary small { display: block; }
         .warehouse-entry-bank-payment-summary strong { color: #284e42; font-size: 12px; }
         .warehouse-entry-bank-payment-summary small { margin-top: 3px; color: #71817b; }
+
+        .warehouse-entry-bank-payment-status.has-payment,
+        .warehouse-entry-bank-payment-summary.has-payment {
+            padding: 0;
+            border: 0;
+            background: transparent;
+        }
+
+        .warehouse-payment-card {
+            overflow: hidden;
+            border: 1px solid #cde9e1;
+            border-radius: 14px;
+            background: linear-gradient(145deg, #f0fdfa 0%, #f4f9ff 100%);
+            box-shadow: 0 7px 18px rgba(30, 94, 78, .07);
+            color: #315248;
+        }
+
+        .warehouse-payment-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 13px 14px 9px;
+        }
+
+        .warehouse-payment-card-icon {
+            display: inline-grid;
+            flex: 0 0 38px;
+            width: 38px;
+            height: 38px;
+            place-items: center;
+            border-radius: 50%;
+            background: #d7f2e9;
+            color: #13765b;
+        }
+
+        .warehouse-payment-card-icon i,
+        .warehouse-payment-bank i,
+        .warehouse-payment-actions i {
+            margin: 0;
+            color: inherit;
+        }
+
+        .warehouse-payment-card-header strong,
+        .warehouse-payment-card-header small {
+            display: block;
+        }
+
+        .warehouse-payment-card-header strong {
+            color: #183f34;
+            font-size: 12.5px;
+        }
+
+        .warehouse-payment-card-header small {
+            margin-top: 1px;
+            color: #71837d;
+            font-size: 9.5px;
+        }
+
+        .warehouse-payment-bank {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 0 14px 11px;
+        }
+
+        .warehouse-payment-bank strong {
+            margin-right: 2px;
+            color: #1e5545;
+            font-size: 12px;
+        }
+
+        .warehouse-payment-bank span {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 7px;
+            border: 1px solid #d5e8e2;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .8);
+            color: #526b63;
+            font-size: 9.5px;
+            font-weight: 700;
+        }
+
+        .warehouse-payment-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 7px;
+            padding: 0 14px 12px;
+        }
+
+        .warehouse-payment-item {
+            min-width: 0;
+            padding: 9px 10px;
+            border: 1px solid #dcebe6;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, .9);
+        }
+
+        .warehouse-payment-item small,
+        .warehouse-payment-item strong {
+            display: block;
+        }
+
+        .warehouse-payment-item small {
+            margin: 0 0 4px;
+            color: #75857f;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: .35px;
+            text-transform: uppercase;
+        }
+
+        .warehouse-payment-item strong {
+            overflow: hidden;
+            color: #263f37;
+            font-size: 11px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .warehouse-payment-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 8.5px;
+            font-weight: 800;
+            letter-spacing: .3px;
+        }
+
+        .warehouse-payment-status.is-registered { background: #dceeff; color: #245d8e; }
+        .warehouse-payment-status.is-reconciled { background: #d9f3e5; color: #1d714d; }
+
+        .warehouse-payment-actions {
+            display: flex;
+            align-items: center;
+            padding: 9px 14px;
+            border-top: 1px solid #d8ebe5;
+            background: rgba(255, 255, 255, .62);
+        }
+
+        .warehouse-payment-proof-button,
+        .warehouse-payment-no-proof {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 7px;
+            font-size: 9.5px;
+            font-weight: 700;
+        }
+
+        .warehouse-payment-proof-button {
+            border: 1px solid #a9dacb;
+            background: #fff;
+            color: #177154;
+        }
+
+        .warehouse-payment-proof-button:hover {
+            border-color: #6fbea7;
+            color: #105c43;
+            text-decoration: none;
+        }
+
+        .warehouse-payment-no-proof {
+            background: #edf2f0;
+            color: #74817c;
+        }
 
         .warehouse-entry-credit-payment-panel {
             margin-top: 11px;
@@ -1135,11 +1305,13 @@
         @media (max-width: 575.98px) {
             .warehouse-entry-bank-payment-card { padding: 11px 10px 4px; }
             .warehouse-entry-bank-payment-heading { align-items: flex-start; }
+            .warehouse-payment-grid { grid-template-columns: 1fr; }
             .warehouse-entry-credit-payment-summary-grid,
             .warehouse-credit-payment-debt-grid { grid-template-columns: 1fr; }
         }
 
         @media (min-width: 576px) and (max-width: 991.98px) {
+            .warehouse-payment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .warehouse-entry-credit-payment-summary-grid,
             .warehouse-credit-payment-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }

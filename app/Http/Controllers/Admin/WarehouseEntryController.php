@@ -100,12 +100,14 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.update')->only([
             'update',
             'destroyDocument',
+            'destroyBankPaymentProof',
             'storeCreditPayment',
         ]);
         $this->middleware('can:admin.warehouse-entries.destroy')->only(['destroy']);
         $this->middleware('can:admin.warehouse-entries.show')->only([
             'show',
             'downloadDocument',
+            'viewBankPaymentProof',
             'viewCreditPaymentProof',
         ]);
         $this->middleware('can:admin.warehouse-entries.pdf')->only(['pdf']);
@@ -859,6 +861,16 @@ class WarehouseEntryController extends Controller
             )
         );
 
+        $bankPaymentProofAvailable = filled($warehouseEntry->bank_payment_proof_path)
+            && Storage::disk('public')->exists($warehouseEntry->bank_payment_proof_path);
+        $warehouseEntry->setAttribute('bank_payment_proof_available', $bankPaymentProofAvailable);
+        $warehouseEntry->setAttribute(
+            'bank_payment_proof_url',
+            $bankPaymentProofAvailable
+                ? route('admin.warehouse-entries.payment-proof.view', $warehouseEntry)
+                : null
+        );
+
         if ($warehouseEntry->bankPaymentMovement) {
             $warehouseEntry->bankPaymentMovement->setAttribute(
                 'file_url',
@@ -970,6 +982,55 @@ class WarehouseEntryController extends Controller
                 'status_label' => $presentation['payment_status_label'],
             ],
         ], 201);
+    }
+
+    public function viewBankPaymentProof(WarehouseEntry $warehouseEntry)
+    {
+        abort_unless(
+            filled($warehouseEntry->bank_payment_proof_path)
+                && Storage::disk('public')->exists($warehouseEntry->bank_payment_proof_path),
+            404,
+            'La constancia bancaria no está disponible.'
+        );
+
+        return response()->file(Storage::disk('public')->path($warehouseEntry->bank_payment_proof_path), [
+            'Content-Type' => $warehouseEntry->bank_payment_proof_mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="'.(
+                $warehouseEntry->bank_payment_proof_original_name
+                    ?: basename($warehouseEntry->bank_payment_proof_path)
+            ).'"',
+        ]);
+    }
+
+    public function destroyBankPaymentProof(WarehouseEntry $warehouseEntry)
+    {
+        DB::transaction(function () use ($warehouseEntry) {
+            $entry = WarehouseEntry::query()->lockForUpdate()->findOrFail($warehouseEntry->id);
+            abort_unless(
+                $entry->status === self::STATUS_REGISTERED,
+                422,
+                'No se puede eliminar la constancia de un ingreso anulado.'
+            );
+            abort_unless(
+                filled($entry->bank_payment_proof_path),
+                404,
+                'El ingreso no tiene una constancia bancaria registrada.'
+            );
+
+            $entry->update([
+                'bank_payment_proof_path' => null,
+                'bank_payment_proof_original_name' => null,
+                'bank_payment_proof_mime_type' => null,
+                'bank_payment_proof_size' => null,
+                'updated_by' => Auth::id(),
+            ]);
+            $this->warehouseEntryBankPaymentService->syncProofReference($entry->fresh());
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Constancia bancaria eliminada correctamente.',
+        ]);
     }
 
     public function viewCreditPaymentProof(
@@ -1615,6 +1676,7 @@ class WarehouseEntryController extends Controller
                         'bank_payment_proof_mime_type' => $bankPaymentProof->getMimeType(),
                         'bank_payment_proof_size' => $bankPaymentProof->getSize(),
                     ]);
+                    $this->warehouseEntryBankPaymentService->syncProofReference($entry->fresh());
                 }
 
                 $retainedItemIds = [];

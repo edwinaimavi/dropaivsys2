@@ -235,6 +235,54 @@ document.addEventListener('DOMContentLoaded', function () {
         const name = this.files?.[0]?.name || 'Seleccionar archivo';
         $(this).siblings('.custom-file-label').text(name);
     });
+    $(document).on('click', '#btnDeleteWarehouseEntryBankPaymentProof', function () {
+        const entryId = $('#warehouse_entry_id').val();
+        if (!entryId) return;
+
+        Swal.fire({
+            icon: 'warning',
+            title: '¿Seguro que deseas eliminar esta constancia bancaria?',
+            text: 'El pago y el egreso bancario se mantendrán sin cambios.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc3545'
+        }).then(result => {
+            if (!result.isConfirmed) return;
+
+            const button = $('#btnDeleteWarehouseEntryBankPaymentProof').prop('disabled', true);
+            $.ajax({
+                url: `${window.routes.warehouseEntryShow}/${entryId}/payment-proof`,
+                type: 'DELETE'
+            }).done(response => {
+                $('#warehouse_entry_bank_payment_proof').val('')
+                    .siblings('.custom-file-label').text('Seleccionar archivo');
+                renderWarehouseEntryBankPaymentProof();
+                if (warehouseEntryEditingPaymentMovement) {
+                    warehouseEntryEditingPaymentMovement.file_path = null;
+                    warehouseEntryEditingPaymentMovement.file_original_name = null;
+                    warehouseEntryEditingPaymentMovement.file_mime_type = null;
+                    warehouseEntryEditingPaymentMovement.file_size = null;
+                }
+                tableWarehouseEntry?.ajax.reload(null, false);
+                Swal.fire({
+                    icon: 'success',
+                    title: response.message || 'Constancia bancaria eliminada correctamente.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2500
+                });
+            }).fail(xhr => {
+                Swal.fire(
+                    'No se pudo eliminar',
+                    xhr.responseJSON?.message || 'Revise el ingreso e intente nuevamente.',
+                    'error'
+                );
+                button.prop('disabled', false);
+            });
+        });
+    });
     $(document).on('change', '#warehouse_entry_expense_provider_id', function () { $('#warehouse_entry_expense_provider_ruc').val($(this).find('option:selected').data('ruc') || ''); });
     $(document).on('change', '#warehouse_entry_expense_type', function () { renderWarehouseEntryExpenseTypes($(this).val()); });
     $(document).on('change', '#warehouse_entry_expense_shipping_agency_id', function () { $('#warehouse_entry_expense_provider_ruc').val($(this).find('option:selected').data('ruc') || ''); });
@@ -1170,6 +1218,43 @@ function clearWarehouseEntryDeepLinkQuery() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+function renderWarehouseEntryBankPaymentProof(entry = null) {
+    const container = $('#warehouseEntryBankPaymentExistingProof');
+    const emptyState = $('#warehouseEntryBankPaymentWithoutProof');
+    const name = entry?.bank_payment_proof_original_name;
+    const url = entry?.bank_payment_proof_url;
+
+    if (!name) {
+        container.addClass('d-none').empty();
+        emptyState.removeClass('d-none');
+        return;
+    }
+
+    const mimeType = String(entry.bank_payment_proof_mime_type || '').toLowerCase();
+    const extension = getWarehouseEntryFileExtension(name);
+    const icon = mimeType.includes('pdf') || extension === 'pdf' ? 'fa-file-pdf text-danger' : 'fa-file-image text-info';
+    const viewButton = url
+        ? `<a href="${escapeWarehouseEntryHtml(url)}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm mr-1"><i class="fas fa-eye mr-1"></i>Ver constancia</a>`
+        : '<button type="button" class="btn btn-outline-secondary btn-sm mr-1" disabled><i class="fas fa-eye-slash mr-1"></i>No disponible</button>';
+
+    container.removeClass('d-none').html(`
+        <div class="d-flex align-items-start">
+            <span class="mr-2 pt-1"><i class="fas ${icon} fa-lg"></i></span>
+            <div class="min-w-0 flex-grow-1">
+                <small class="d-block text-muted">Constancia actual:</small>
+                <strong class="d-block text-truncate" title="${escapeWarehouseEntryHtml(name)}">${escapeWarehouseEntryHtml(name)}</strong>
+                <div class="mt-2">
+                    ${viewButton}
+                    <button type="button" id="btnDeleteWarehouseEntryBankPaymentProof" class="btn btn-outline-danger btn-sm">
+                        <i class="fas fa-trash-alt mr-1"></i>Eliminar constancia
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+    emptyState.addClass('d-none');
+}
+
 function resetWarehouseEntryForm() {
     const form = $('#warehouseEntryForm');
 
@@ -1209,7 +1294,8 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_bank_payment_operation_number, #warehouse_entry_bank_payment_exchange_rate, #warehouse_entry_bank_payment_observation').val('');
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
     $('#warehouse_entry_bank_payment_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
-    $('#warehouseEntryBankPaymentExistingProof, #warehouseEntryBankPaymentStatus').addClass('d-none').empty();
+    renderWarehouseEntryBankPaymentProof();
+    $('#warehouseEntryBankPaymentStatus').addClass('d-none').empty();
     $('#warehouseEntryCreditPaymentPanel').addClass('d-none');
     $('#warehouseEntryCreditPaymentHistoryRows').html('<tr><td colspan="10" class="text-center text-muted py-3">Sin pagos registrados todavía.</td></tr>');
     $('#warehouse_entry_payable_amount').val('0.00');
@@ -3483,9 +3569,7 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_bank_payment_exchange_rate').val(entry.bank_payment_exchange_rate || '');
     $('#warehouse_entry_bank_payment_observation').val(entry.bank_payment_observation || '');
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
-    $('#warehouseEntryBankPaymentExistingProof')
-        .toggleClass('d-none', !entry.bank_payment_proof_original_name)
-        .text(entry.bank_payment_proof_original_name ? `Archivo actual: ${entry.bank_payment_proof_original_name}` : '');
+    renderWarehouseEntryBankPaymentProof(entry);
     warehouseEntryEditingPaymentMovement = entry.bank_payment_movement || null;
     renderWarehouseEntryBankPaymentStatus(entry);
     renderWarehouseEntryCreditPaymentPanel(entry);
@@ -3537,33 +3621,84 @@ function fillWarehouseEntryForm(entry) {
     toggleWarehouseEntryBankPayment();
 }
 
+function warehouseEntryBankPaymentCard(entry, title) {
+    const movement = entry.bank_payment_movement;
+    const bank = movement.account?.bank?.short_name || movement.account?.bank?.description || 'Banco';
+    const account = movement.account?.account_number || 'Cuenta no disponible';
+    const accountCurrency = movement.account?.currency?.symbol || movement.account?.currency?.code || '';
+    const accountCurrencyCode = movement.account?.currency?.code || accountCurrency;
+    const originalCurrency = movement.original_currency?.symbol
+        || movement.original_currency?.code
+        || entry.currency?.symbol
+        || entry.currency?.code
+        || '';
+    const status = movement.status || 'REGISTRADO';
+    const reconciled = status === 'CONCILIADO';
+    const operation = movement.operation_number || entry.bank_payment_operation_number || 'Sin numero';
+    const proofUrl = entry.bank_payment_proof_url
+        || (entry.bank_payment_proof_available === undefined ? movement.file_url : null);
+    const proofAction = proofUrl
+        ? `<a href="${escapeWarehouseEntryHtml(proofUrl)}" target="_blank" rel="noopener" class="warehouse-payment-proof-button"><i class="fas fa-paperclip"></i>Ver constancia</a>`
+        : '<span class="warehouse-payment-no-proof"><i class="fas fa-file-excel"></i>Sin constancia bancaria</span>';
+
+    return `
+        <div class="warehouse-payment-card">
+            <div class="warehouse-payment-card-header">
+                <span class="warehouse-payment-card-icon"><i class="fas fa-university"></i></span>
+                <div>
+                    <strong>${escapeWarehouseEntryHtml(title)}</strong>
+                    <small>Movimiento bancario vinculado al ingreso</small>
+                </div>
+            </div>
+            <div class="warehouse-payment-bank">
+                <strong>${escapeWarehouseEntryHtml(bank)}</strong>
+                <span><i class="far fa-credit-card"></i>${escapeWarehouseEntryHtml(account)}</span>
+                <span>${escapeWarehouseEntryHtml(accountCurrencyCode)}</span>
+            </div>
+            <div class="warehouse-payment-grid">
+                <div class="warehouse-payment-item">
+                    <small>Pago original</small>
+                    <strong>${escapeWarehouseEntryHtml(originalCurrency)} ${formatWarehouseEntryMoney(movement.original_amount ?? entry.grand_total)}</strong>
+                </div>
+                <div class="warehouse-payment-item">
+                    <small>Dé bito bancario</small>
+                    <strong>${escapeWarehouseEntryHtml(accountCurrency)} ${formatWarehouseEntryMoney(movement.amount)}</strong>
+                </div>
+                <div class="warehouse-payment-item">
+                    <small>Operaci&oacute;n</small>
+                    <strong>${escapeWarehouseEntryHtml(operation)}</strong>
+                </div>
+                <div class="warehouse-payment-item">
+                    <small>Estado</small>
+                    <span class="warehouse-payment-status ${reconciled ? 'is-reconciled' : 'is-registered'}">${escapeWarehouseEntryHtml(status)}</span>
+                </div>
+            </div>
+            <div class="warehouse-payment-actions">${proofAction}</div>
+        </div>
+    `;
+}
+
 function renderWarehouseEntryBankPaymentStatus(entry) {
     const container = $('#warehouseEntryBankPaymentStatus');
     const movement = entry.bank_payment_movement;
 
     if (entry.generate_account_payable) {
-        container.removeClass('d-none is-pending is-reconciled').html(
+        container.removeClass('d-none is-pending is-reconciled has-payment').html(
             '<i class="fas fa-clock"></i><strong>Pago bancario no generado.</strong> El ingreso permanece como cuenta por pagar.'
         );
         return;
     }
     if (!movement) {
-        container.removeClass('d-none is-pending is-reconciled').html(
-            '<i class="fas fa-info-circle"></i>El egreso bancario se generarÃ¡ al guardar el ingreso.'
+        container.removeClass('d-none is-pending is-reconciled has-payment').html(
+            '<i class="fas fa-info-circle"></i>El egreso bancario se generar&aacute; al guardar el ingreso.'
         );
         return;
     }
 
-    const bank = movement.account?.bank?.short_name || movement.account?.bank?.description || 'Banco';
-    const account = movement.account?.account_number || '';
-    const currency = movement.account?.currency?.symbol || movement.account?.currency?.code || '';
     const reconciled = movement.status === 'CONCILIADO';
     container.removeClass('d-none is-pending is-reconciled')
-        .addClass(reconciled ? 'is-reconciled' : 'is-pending')
-        .html(`<i class="fas fa-${reconciled ? 'check-circle' : 'hourglass-half'}"></i>`
-            + `<strong>Pago generado:</strong> ${escapeWarehouseEntryHtml(bank)} ${escapeWarehouseEntryHtml(account)}`
-            + ` Â· ${escapeWarehouseEntryHtml(currency)} ${formatWarehouseEntryMoney(movement.amount)}`
-            + ` Â· <span class="badge badge-${reconciled ? 'success' : 'info'}">${escapeWarehouseEntryHtml(movement.status || 'REGISTRADO')}</span>`);
+        .addClass(`has-payment ${reconciled ? 'is-reconciled' : 'is-pending'}`)
+        .html(warehouseEntryBankPaymentCard(entry, 'Pago bancario generado'));
 }
 
 function renderWarehouseEntryCreditPaymentPanel(entry) {
@@ -3745,27 +3880,18 @@ function renderWarehouseEntryDetailBankPayment(entry) {
     const movement = entry.bank_payment_movement;
 
     if (entry.generate_account_payable) {
-        container.html('<strong><i class="fas fa-clock text-warning mr-1"></i>Cuenta por pagar</strong><small>No se generÃ³ dÃ©bito bancario para este ingreso.</small>');
+        container.removeClass('has-payment');
+        container.html('<strong><i class="fas fa-clock text-warning mr-1"></i>Cuenta por pagar</strong><small>No se genera débito bancario para este ingreso.</small>');
         return;
     }
     if (!movement) {
+        container.removeClass('has-payment');
         container.html('<strong><i class="fas fa-info-circle text-muted mr-1"></i>Pago bancario no registrado</strong><small>No existe un movimiento bancario activo relacionado.</small>');
         return;
     }
 
-    const bank = movement.account?.bank?.short_name || movement.account?.bank?.description || 'Banco';
-    const account = movement.account?.account_number || '-';
-    const accountCurrency = movement.account?.currency?.symbol || movement.account?.currency?.code || '';
-    const originalCurrency = movement.original_currency?.symbol || movement.original_currency?.code || entry.currency?.symbol || entry.currency?.code || '';
-    const proof = movement.file_url
-        ? ` Â· <a href="${escapeWarehouseEntryHtml(movement.file_url)}" target="_blank" rel="noopener">Ver constancia</a>`
-        : '';
-
-    container.html(`<strong><i class="fas fa-university text-info mr-1"></i>${escapeWarehouseEntryHtml(bank)} Â· ${escapeWarehouseEntryHtml(account)}</strong>`
-        + `<small>Pago original: ${escapeWarehouseEntryHtml(originalCurrency)} ${formatWarehouseEntryMoney(movement.original_amount || entry.grand_total)}`
-        + ` Â· DÃ©bito: ${escapeWarehouseEntryHtml(accountCurrency)} ${formatWarehouseEntryMoney(movement.amount)}`
-        + ` Â· Estado: <span class="badge badge-${movement.status === 'CONCILIADO' ? 'success' : 'info'}">${escapeWarehouseEntryHtml(movement.status || 'REGISTRADO')}</span>`
-        + `${movement.operation_number ? ` Â· OperaciÃ³n ${escapeWarehouseEntryHtml(movement.operation_number)}` : ''}${proof}</small>`);
+    container.addClass('has-payment')
+        .html(warehouseEntryBankPaymentCard(entry, 'Pago de compra al proveedor'));
 }
 
 function refreshWarehouseEntryLotDocumentItems() {

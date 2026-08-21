@@ -663,6 +663,14 @@ Route::get(
     [WarehouseEntryController::class, 'viewCreditPaymentProof']
 )->name('warehouse-entries.credit-payments.proof');
 Route::get(
+    'warehouse-entries/{warehouseEntry}/payment-proof',
+    [WarehouseEntryController::class, 'viewBankPaymentProof']
+)->name('warehouse-entries.payment-proof.view');
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/payment-proof',
+    [WarehouseEntryController::class, 'destroyBankPaymentProof']
+)->name('warehouse-entries.payment-proof.destroy');
+Route::get(
     'warehouse-entries/company/{company}/bank-accounts',
     [WarehouseEntryController::class, 'bankAccounts']
 )->name('warehouse-entries.company-bank-accounts');

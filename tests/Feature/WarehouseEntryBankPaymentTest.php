@@ -234,6 +234,87 @@ it('propaga la constancia, operación y observación al movimiento de tesorería
         ->and($movement->description)->toBe('PAGO CONFIRMADO');
 });
 
+it('permite ver y eliminar la constancia sin eliminar ni reemplazar el egreso', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.show', 'admin.warehouse-entries.update'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo([
+        'admin.warehouse-entries.show',
+        'admin.warehouse-entries.update',
+    ]);
+    $path = 'warehouse_entries/'.$this->entry->id.'/bank-payment/constancia.pdf';
+    Storage::disk('public')->put($path, 'PDF DE PRUEBA');
+    $this->entry->update([
+        'bank_payment_proof_path' => $path,
+        'bank_payment_proof_original_name' => 'constancia.pdf',
+        'bank_payment_proof_mime_type' => 'application/pdf',
+        'bank_payment_proof_size' => 13,
+    ]);
+    $movement = $this->service->sync($this->entry->fresh(), $this->user->id);
+    $balance = (float) $this->account->fresh()->current_balance;
+
+    $this->actingAs($this->user)
+        ->get(route('admin.warehouse-entries.payment-proof.view', $this->entry))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+
+    $this->actingAs($this->user)
+        ->deleteJson(route('admin.warehouse-entries.payment-proof.destroy', $this->entry))
+        ->assertOk()
+        ->assertJsonPath('status', 'success');
+
+    $entry = $this->entry->fresh();
+    $sameMovement = $movement->fresh();
+    expect($entry->bank_payment_proof_path)->toBeNull()
+        ->and($entry->bank_payment_proof_original_name)->toBeNull()
+        ->and($sameMovement->id)->toBe($movement->id)
+        ->and($sameMovement->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and($sameMovement->file_path)->toBeNull()
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe($balance);
+    Storage::disk('public')->assertExists($path);
+});
+
+it('reemplaza la referencia de la constancia sin generar otro egreso', function () {
+    $movement = $this->service->sync($this->entry, $this->user->id);
+    $balance = (float) $this->account->fresh()->current_balance;
+    $this->entry->update([
+        'bank_payment_proof_path' => 'warehouse_entries/1/bank-payment/nueva-constancia.pdf',
+        'bank_payment_proof_original_name' => 'nueva-constancia.pdf',
+        'bank_payment_proof_mime_type' => 'application/pdf',
+        'bank_payment_proof_size' => 4096,
+    ]);
+
+    $this->service->syncProofReference($this->entry->fresh());
+    $sameMovement = $this->service->sync($this->entry->fresh(), $this->user->id);
+
+    expect($sameMovement->id)->toBe($movement->id)
+        ->and($sameMovement->file_path)->toBe('warehouse_entries/1/bank-payment/nueva-constancia.pdf')
+        ->and($sameMovement->file_original_name)->toBe('nueva-constancia.pdf')
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe($balance);
+});
+
+it('bloquea eliminar la constancia de un ingreso anulado', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $this->entry->update([
+        'status' => 'cancelled',
+        'bank_payment_proof_path' => 'warehouse_entries/1/bank-payment/constancia.pdf',
+        'bank_payment_proof_original_name' => 'constancia.pdf',
+    ]);
+
+    $this->actingAs($this->user)
+        ->deleteJson(route('admin.warehouse-entries.payment-proof.destroy', $this->entry))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'No se puede eliminar la constancia de un ingreso anulado.');
+
+    expect($this->entry->fresh()->bank_payment_proof_path)->not->toBeNull();
+});
+
 it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario', function () {
     Storage::fake('public');
     app(PermissionRegistrar::class)->forgetCachedPermissions();

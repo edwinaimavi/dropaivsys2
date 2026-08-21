@@ -105,6 +105,20 @@ class WarehouseEntryBankPaymentService
         });
     }
 
+    public function syncProofReference(WarehouseEntry $warehouseEntry): void
+    {
+        BankMovement::query()
+            ->where('source_type', self::SOURCE_TYPE)
+            ->where('source_id', $warehouseEntry->id)
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+            ->update([
+                'file_path' => $warehouseEntry->bank_payment_proof_path,
+                'file_original_name' => $warehouseEntry->bank_payment_proof_original_name,
+                'file_mime_type' => $warehouseEntry->bank_payment_proof_mime_type,
+                'file_size' => $warehouseEntry->bank_payment_proof_size,
+            ]);
+    }
+
     private function activeMovement(int $warehouseEntryId): ?BankMovement
     {
         return BankMovement::query()
