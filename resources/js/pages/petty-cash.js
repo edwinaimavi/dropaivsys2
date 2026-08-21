@@ -488,6 +488,56 @@ $(function () {
         syncExpenseFileInput();
         renderExpenseDocuments();
     };
+    let internalReceiptNumberRequest = null;
+    const loadInternalReceiptNumber = () => {
+        const boxId = $('#pc_expense_box_id').val();
+        if (!boxId) return;
+        if (internalReceiptNumberRequest) internalReceiptNumberRequest.abort();
+
+        const fields = $('#pce_document_series,#pce_document_correlative').val('');
+        $('.pce-internal-number-help').removeClass('text-danger').addClass('text-success')
+            .html('<i class="fas fa-spinner fa-spin mr-1"></i>Calculando numeración...');
+        $('#btnSavePettyCashExpense').prop('disabled', true);
+
+        const request = api({
+            url: `${base}/${boxId}/expenses/internal-receipt-number`,
+            method: 'GET',
+            data: { expense_id: $('#pc_expense_id').val() || null }
+        });
+        internalReceiptNumberRequest = request;
+
+        request.done(response => {
+            if ($('#pce_document_type').val() !== 'RECIBO') return;
+            $('#pce_document_series').val(response.series);
+            $('#pce_document_correlative').val(response.correlative);
+            $('.pce-internal-number-help').html('<i class="fas fa-lock mr-1"></i>Generado por el sistema');
+            $('#btnSavePettyCashExpense').prop('disabled', false);
+        }).fail(xhr => {
+            if (xhr.statusText === 'abort' || $('#pce_document_type').val() !== 'RECIBO') return;
+            fields.val('');
+            $('.pce-internal-number-help').removeClass('text-success').addClass('text-danger')
+                .html('<i class="fas fa-exclamation-triangle mr-1"></i>No se pudo obtener la numeración');
+            $('#btnSavePettyCashExpense').prop('disabled', true);
+            notifyRequestError(xhr);
+        }).always(() => {
+            if (internalReceiptNumberRequest === request) internalReceiptNumberRequest = null;
+        });
+    };
+    const syncInternalReceiptFields = () => {
+        const isInternalReceipt = $('#pce_document_type').val() === 'RECIBO';
+        const fields = $('#pce_document_series,#pce_document_correlative');
+        const wasAutomatic = fields.first().prop('readonly');
+        $('#pce_internal_receipt_notice').toggleClass('d-none', !isInternalReceipt);
+        $('.pce-internal-number-help').toggleClass('d-none', !isInternalReceipt);
+        fields.prop({ required: isInternalReceipt, readonly: isInternalReceipt });
+
+        if (isInternalReceipt) {
+            loadInternalReceiptNumber();
+        } else {
+            if (internalReceiptNumberRequest) internalReceiptNumberRequest.abort();
+            if (wasAutomatic) fields.val('');
+        }
+    };
     const receiptPreview = (source, isExisting, index) => {
         const extension = String(source.extension || source.name?.split('.').pop() || '').toLowerCase();
         const mime = String(source.mime_type || source.type || '');
@@ -1694,6 +1744,7 @@ $(function () {
         $('#pettyCashExpenseForm')[0].reset(); $('#pc_expense_id').val(''); $('#pc_expense_box_id').val($(this).data('id'));
         resetExpenseDocumentDuplicateState();
         resetExpenseDocuments();
+        syncInternalReceiptFields();
         $('#btnPullWarehouseExpenses').removeClass('d-none');
         $('#pcExpenseTitle').text('Registrar gasto'); $('#pettyCashExpenseModal').modal('show');
     });
@@ -1719,6 +1770,7 @@ $(function () {
             if (field === 'document_correlative' && !value && !expense.document_series) value = expense.document_number || '';
             $(`#pce_${field}`).val(String(value).slice(0, field === 'expense_date' ? 10 : undefined));
         });
+        syncInternalReceiptFields();
         $('#pcExpenseTitle').text(expense.approval_status === 'observado' ? 'Corregir gasto observado' : 'Editar gasto'); $('#pettyCashExpenseModal').modal('show');
     });
 
@@ -1799,6 +1851,13 @@ $(function () {
         };
 
         resetExpenseDocumentDuplicateState();
+        if (payload.document_type === 'RECIBO') {
+            $('#btnSavePettyCashExpense').prop(
+                'disabled',
+                !payload.document_series || !payload.document_correlative
+            );
+            return;
+        }
         if (!payload.document_type || !payload.document_series || !payload.document_correlative
             || !/^\d{11}$/.test(payload.supplier_ruc)) return;
 
@@ -1826,6 +1885,7 @@ $(function () {
             resetExpenseDocumentDuplicateState();
             expenseDocumentCheckTimer = setTimeout(checkExpenseDocumentDuplicate, 350);
         });
+    $('#pce_document_type').on('change', syncInternalReceiptFields);
 
     $('#pce_supplier_ruc').on('input', function () {
         this.value = this.value.replace(/\D/g, '').slice(0, 11);
@@ -1870,12 +1930,41 @@ $(function () {
             notify('error', $('#pce_document_duplicate_alert span').text());
             return;
         }
+        const shouldOpenInternalReceipt = $('#pce_document_type').val() === 'RECIBO';
+        const receiptWindow = shouldOpenInternalReceipt ? window.open('about:blank', '_blank') : null;
+        if (receiptWindow) {
+            receiptWindow.opener = null;
+        }
         const id = $('#pc_expense_id').val(), boxId = $('#pc_expense_box_id').val(), data = new FormData(this);
         const wasObservedCorrection = Boolean(id) && !$('#pce_correction_section').hasClass('d-none');
         if (id) data.append('_method', 'PUT');
         loading($(this), true);
         api({ url: id ? `${base}/expenses/${id}` : `${base}/${boxId}/expenses`, method: 'POST', data, processData: false, contentType: false })
             .done(response => {
+                const receiptUrl = shouldOpenInternalReceipt ? response.internal_receipt_url : null;
+                if (receiptUrl && receiptWindow && !receiptWindow.closed) {
+                    receiptWindow.location.replace(receiptUrl);
+                } else {
+                    if (receiptWindow && !receiptWindow.closed) receiptWindow.close();
+                    if (receiptUrl) {
+                        const openedReceipt = window.open(receiptUrl, '_blank');
+                        if (openedReceipt) {
+                            openedReceipt.opener = null;
+                        } else {
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Recibo interno generado',
+                                text: 'El navegador bloqueó la apertura automática. Puede abrir el PDF desde este botón.',
+                                showCancelButton: true,
+                                confirmButtonText: 'Abrir recibo',
+                                cancelButtonText: 'Cerrar',
+                                confirmButtonColor: '#198754',
+                            }).then(result => {
+                                if (result.isConfirmed) window.open(receiptUrl, '_blank');
+                            });
+                        }
+                    }
+                }
                 $('#pettyCashExpenseModal').modal('hide');
                 table.ajax.reload(null, false);
                 if (response.counts) {
@@ -1910,7 +1999,10 @@ $(function () {
                 }
                 notify('success', response.message);
             })
-            .fail(notifyRequestError).always(() => loading($(this), false));
+            .fail(xhr => {
+                if (receiptWindow && !receiptWindow.closed) receiptWindow.close();
+                notifyRequestError(xhr);
+            }).always(() => loading($(this), false));
     });
 
     $(document).on('click', '.deletePettyCashExpense', function () {

@@ -37,6 +37,16 @@ use Yajra\DataTables\Facades\DataTables;
 
 class PettyCashController extends Controller
 {
+    private const INTERNAL_RECEIPT_DOCUMENT_TYPE = 'PETTY_CASH_INTERNAL_RECEIPT';
+
+    private const INTERNAL_RECEIPT_OBSERVATION = 'PDF_GENERATED_PETTY_CASH_INTERNAL_RECEIPT';
+
+    private const INTERNAL_RECEIPT_SERIES = 'R001';
+
+    private const INTERNAL_RECEIPT_FIRST_CORRELATIVE = 11;
+
+    private const INTERNAL_RECEIPT_CORRELATIVE_LENGTH = 7;
+
     public function __construct(
         private readonly PettyCashCalculator $calculator,
         private readonly BankMovementService $bankMovementService
@@ -658,6 +668,36 @@ class PettyCashController extends Controller
         return $this->saveExpense($request, $expense->pettyCashBox, $expense);
     }
 
+    public function nextInternalReceiptNumber(Request $request, PettyCashBox $pettyCash)
+    {
+        abort_unless(
+            Auth::user()?->can('admin.petty-cash.expenses.store')
+                || Auth::user()?->can('admin.petty-cash.expenses.update'),
+            403
+        );
+
+        $validated = $request->validate([
+            'expense_id' => ['nullable', 'integer', 'exists:petty_cash_expenses,id'],
+        ]);
+
+        if (isset($validated['expense_id'])) {
+            $expense = PettyCashExpense::findOrFail($validated['expense_id']);
+            abort_unless((int) $expense->petty_cash_box_id === (int) $pettyCash->id, 404);
+
+            if ($expense->document_type === 'RECIBO'
+                && filled($expense->document_series)
+                && filled($expense->document_correlative)) {
+                return response()->json([
+                    'series' => $expense->document_series,
+                    'correlative' => $expense->document_correlative,
+                    'full_number' => $expense->document_full_number,
+                ]);
+            }
+        }
+
+        return response()->json($this->nextInternalReceiptNumberForCompany((int) $pettyCash->company_id));
+    }
+
     public function checkExpenseDocument(Request $request)
     {
         abort_unless(
@@ -1176,8 +1216,16 @@ class PettyCashController extends Controller
                 ...($box->end_date ? ['before_or_equal:'.$box->end_date->toDateString()] : []),
             ],
             'document_type' => ['nullable', Rule::in(['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS', 'RECIBO', 'SIN_COMPROBANTE', 'TICKET', 'OTRO'])],
-            'document_series' => ['nullable', 'string', 'max:20'],
-            'document_correlative' => ['nullable', 'string', 'max:50'],
+            'document_series' => [
+                'nullable',
+                'string',
+                'max:20',
+            ],
+            'document_correlative' => [
+                'nullable',
+                'string',
+                'max:50',
+            ],
             'supplier_id' => ['nullable', 'exists:suppliers,id'],
             'supplier_ruc' => ['nullable', 'digits:11'],
             'supplier_name' => ['required', 'string', 'max:255'],
@@ -1204,12 +1252,13 @@ class PettyCashController extends Controller
             $request->file('document'),
         ]));
         $storedPaths = [];
+        $obsoletePaths = [];
         $saved = null;
         $wasObserved = false;
 
         try {
-            DB::transaction(function () use ($box, $expense, $validated, $files, &$storedPaths, &$saved, &$wasObserved) {
-                $locked = PettyCashBox::lockForUpdate()->findOrFail($box->id);
+            DB::transaction(function () use ($box, $expense, $validated, $files, &$storedPaths, &$obsoletePaths, &$saved, &$wasObserved) {
+                $locked = PettyCashBox::query()->with('company')->lockForUpdate()->findOrFail($box->id);
                 abort_unless($locked->canManageExpenses(), 422, 'La caja chica no admite gastos.');
                 if ($expense) {
                     if ($expense->exchange_status === PettyCashExpense::EXCHANGE_COMPLETED
@@ -1236,6 +1285,26 @@ class PettyCashController extends Controller
                     }
                 }
 
+                $automaticReceiptNumber = null;
+                if (($validated['document_type'] ?? null) === 'RECIBO') {
+                    $keepsExistingReceiptNumber = $expense
+                        && $expense->document_type === 'RECIBO'
+                        && filled($expense->document_series)
+                        && filled($expense->document_correlative);
+
+                    if ($keepsExistingReceiptNumber) {
+                        $automaticReceiptNumber = [
+                            'series' => $expense->document_series,
+                            'correlative' => $expense->document_correlative,
+                        ];
+                    } else {
+                        Company::query()->lockForUpdate()->findOrFail($locked->company_id);
+                        $automaticReceiptNumber = $this->nextInternalReceiptNumberForCompany(
+                            (int) $locked->company_id
+                        );
+                    }
+                }
+
                 $data = [
                     ...collect($validated)->except(['document', 'documents', 'correction_comment'])->all(),
                     'document_series' => $this->normalizeDocumentPart($validated['document_series'] ?? null),
@@ -1245,6 +1314,10 @@ class PettyCashController extends Controller
                     'status' => 'ACTIVE',
                     'updated_by' => Auth::id(),
                 ];
+                if ($automaticReceiptNumber) {
+                    $data['document_series'] = $automaticReceiptNumber['series'];
+                    $data['document_correlative'] = $automaticReceiptNumber['correlative'];
+                }
                 $data['document_number'] = $this->buildDocumentNumber(
                     $data['document_series'],
                     $data['document_correlative']
@@ -1294,6 +1367,11 @@ class PettyCashController extends Controller
                 foreach ($files as $file) {
                     $storedPaths[] = $this->storeDocument($saved, $file, 'PETTY_CASH_EXPENSE');
                 }
+                $generatedReceiptPath = null;
+                if (($data['document_type'] ?? null) === 'RECIBO') {
+                    $generatedReceiptPath = $this->storeInternalReceipt($saved, $locked, $storedPaths);
+                }
+                $this->removePreviousInternalReceipts($saved, $generatedReceiptPath, $obsoletePaths);
                 $this->recalculateTotals($locked);
             });
         } catch (\Throwable $exception) {
@@ -1301,7 +1379,21 @@ class PettyCashController extends Controller
             throw $exception;
         }
 
+        if ($obsoletePaths) {
+            try {
+                Storage::disk('public')->delete(array_values(array_unique(array_filter($obsoletePaths))));
+            } catch (\Throwable $exception) {
+                Log::warning('No se pudo eliminar una versión anterior del recibo interno de caja chica.', [
+                    'petty_cash_expense_id' => $saved?->id,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+
         $this->loadExpenseDetailRelations($saved);
+        $internalReceipt = $saved->document_type === 'RECIBO'
+            ? $saved->documents->firstWhere('observation', self::INTERNAL_RECEIPT_OBSERVATION)
+            : null;
         $latestLiftedObservation = $saved->observations
             ->where('status', PettyCashExpenseObservation::STATUS_RESOLVED)
             ->sortByDesc('id')
@@ -1315,6 +1407,7 @@ class PettyCashController extends Controller
                     ? 'Gasto actualizado correctamente. Continúa pendiente de aprobación administrativa.'
                     : 'Gasto registrado correctamente. Queda pendiente de aprobación administrativa.'),
             'expense' => $saved,
+            'internal_receipt_url' => $internalReceipt?->view_url,
             'history' => $saved->observations,
             'latest_lifted_observation' => $latestLiftedObservation,
             'counts' => [
@@ -1435,8 +1528,9 @@ class PettyCashController extends Controller
 
     private function normalizeExpenseDocumentRequest(Request $request): void
     {
+        $documentType = $this->normalizeDocumentPart($request->input('document_type'));
         $request->merge([
-            'document_type' => $this->normalizeDocumentPart($request->input('document_type')),
+            'document_type' => $documentType === 'RECIBO_INTERNO' ? 'RECIBO' : $documentType,
             'document_series' => $this->normalizeDocumentPart($request->input('document_series')),
             'document_correlative' => $this->normalizeNullableTrim($request->input('document_correlative')),
             'supplier_ruc' => $this->normalizeNullableTrim($request->input('supplier_ruc')),
@@ -1498,6 +1592,47 @@ class PettyCashController extends Controller
         $parts = array_filter([$series, $correlative], fn (?string $value) => filled($value));
 
         return $parts ? implode('-', $parts) : null;
+    }
+
+    private function nextInternalReceiptNumberForCompany(int $companyId): array
+    {
+        $lastCorrelative = PettyCashExpense::withTrashed()
+            ->where('document_type', 'RECIBO')
+            ->where('document_series', self::INTERNAL_RECEIPT_SERIES)
+            ->whereIn(
+                'petty_cash_box_id',
+                PettyCashBox::withTrashed()
+                    ->select('id')
+                    ->where('company_id', $companyId)
+            )
+            ->pluck('document_correlative')
+            ->filter(fn ($value) => ctype_digit((string) $value))
+            ->map(fn ($value) => (int) $value)
+            ->max();
+
+        $nextCorrelative = max(
+            self::INTERNAL_RECEIPT_FIRST_CORRELATIVE,
+            ((int) $lastCorrelative) + 1
+        );
+
+        if (strlen((string) $nextCorrelative) > self::INTERNAL_RECEIPT_CORRELATIVE_LENGTH) {
+            throw ValidationException::withMessages([
+                'document_correlative' => 'Se agotó la numeración disponible para recibos internos.',
+            ]);
+        }
+
+        $correlative = str_pad(
+            (string) $nextCorrelative,
+            self::INTERNAL_RECEIPT_CORRELATIVE_LENGTH,
+            '0',
+            STR_PAD_LEFT
+        );
+
+        return [
+            'series' => self::INTERNAL_RECEIPT_SERIES,
+            'correlative' => $correlative,
+            'full_number' => self::INTERNAL_RECEIPT_SERIES.'-'.$correlative,
+        ];
     }
 
     private function validateBox(Request $request): array
@@ -1788,6 +1923,138 @@ class PettyCashController extends Controller
         ]);
 
         return $path;
+    }
+
+    private function storeInternalReceipt(
+        PettyCashExpense $expense,
+        PettyCashBox $box,
+        array &$storedPaths
+    ): string {
+        $expense->setRelation('pettyCashBox', $box);
+        $expense->loadMissing('creator:id,name,lastname');
+        $company = $box->company;
+        $pdf = Pdf::loadView('admin.petty-cash.pdf.internal-receipt', [
+            'expense' => $expense,
+            'box' => $box,
+            'company' => $company,
+            'logoDataUri' => $this->companyLogoDataUri($company),
+            'amountInWords' => $this->amountInWords((float) $expense->amount),
+            'generatedAt' => now(),
+        ])->setPaper('a4', 'portrait');
+
+        $series = $this->safeFilePart($expense->document_series ?: 'SIN-SERIE');
+        $correlative = $this->safeFilePart($expense->document_correlative ?: (string) $expense->id);
+        $fileName = sprintf(
+            'recibo-interno-%s-%s-%s.pdf',
+            $series,
+            $correlative,
+            now()->format('YmdHisu')
+        );
+        $path = 'petty-cash/'.class_basename($expense).'/'.$expense->id.'/'.$fileName;
+        $contents = $pdf->output();
+
+        if (! Storage::disk('public')->put($path, $contents)) {
+            throw new \RuntimeException('No se pudo guardar el recibo interno generado.');
+        }
+        $storedPaths[] = $path;
+
+        $type = DocumentType::withTrashed()->firstOrCreate(
+            ['code' => self::INTERNAL_RECEIPT_DOCUMENT_TYPE],
+            [
+                'description' => 'Recibo interno generado automáticamente',
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]
+        );
+        if ($type->trashed()) {
+            $type->restore();
+        }
+        if ($type->description !== 'Recibo interno generado automáticamente' || $type->status !== 'ACTIVE') {
+            $type->update([
+                'description' => 'Recibo interno generado automáticamente',
+                'status' => 'ACTIVE',
+                'updated_by' => Auth::id(),
+            ]);
+        }
+
+        $expense->documents()->create([
+            'document_type_id' => $type->id,
+            'original_name' => $fileName,
+            'stored_name' => $fileName,
+            'file_path' => $path,
+            'mime_type' => 'application/pdf',
+            'extension' => 'pdf',
+            'file_size' => strlen($contents),
+            'issue_date' => $expense->expense_date,
+            'observation' => self::INTERNAL_RECEIPT_OBSERVATION,
+            'status' => 'ACTIVE',
+            'created_by' => Auth::id(),
+            'updated_by' => Auth::id(),
+        ]);
+
+        return $path;
+    }
+
+    private function removePreviousInternalReceipts(
+        PettyCashExpense $expense,
+        ?string $currentPath,
+        array &$obsoletePaths
+    ): void {
+        $expense->documents()
+            ->where('observation', self::INTERNAL_RECEIPT_OBSERVATION)
+            ->when($currentPath, fn ($query) => $query->where('file_path', '!=', $currentPath))
+            ->get()
+            ->each(function (Document $document) use (&$obsoletePaths) {
+                if ($document->file_path) {
+                    $obsoletePaths[] = $document->file_path;
+                }
+                $document->update([
+                    'status' => 'INACTIVE',
+                    'updated_by' => Auth::id(),
+                    'deleted_by' => Auth::id(),
+                ]);
+                $document->delete();
+            });
+    }
+
+    private function companyLogoDataUri(?Company $company): ?string
+    {
+        $logo = trim((string) $company?->logo);
+        if ($logo === '' || ! Storage::disk('public')->exists($logo)) {
+            return null;
+        }
+
+        $mime = Storage::disk('public')->mimeType($logo) ?: 'image/png';
+
+        return 'data:'.$mime.';base64,'.base64_encode(Storage::disk('public')->get($logo));
+    }
+
+    private function amountInWords(float $amount): string
+    {
+        $amount = round($amount, 2);
+        $whole = (int) floor($amount);
+        $cents = (int) round(($amount - $whole) * 100);
+        if ($cents === 100) {
+            $whole++;
+            $cents = 0;
+        }
+
+        if (class_exists(\NumberFormatter::class)) {
+            $formatter = new \NumberFormatter('es_PE', \NumberFormatter::SPELLOUT);
+            $words = mb_strtoupper((string) $formatter->format($whole), 'UTF-8');
+
+            return sprintf('SON: %s CON %02d/100 SOLES', $words, $cents);
+        }
+
+        return sprintf('SON: S/ %s', number_format($amount, 2, '.', ','));
+    }
+
+    private function safeFilePart(string $value): string
+    {
+        $value = preg_replace('/[^A-Za-z0-9_-]/', '-', trim($value));
+
+        return trim((string) $value, '-') ?: 'SIN-DATO';
     }
 
     private function isEditableExpenseImage(Document $document): bool

@@ -51,8 +51,20 @@
                                 <div class="form-row">
                                     <div class="form-group col-md-3"><label>Fecha *</label><input type="date" name="expense_date" id="pce_expense_date" class="form-control" required></div>
                                     <div class="form-group col-md-3"><label>Tipo comprobante</label><select name="document_type" id="pce_document_type" class="form-control"><option value="">Seleccione</option><option value="FACTURA">FACTURA</option><option value="BOLETA">BOLETA</option><option value="RECIBO_HONORARIOS">RECIBO POR HONORARIOS</option><option value="RECIBO">RECIBO INTERNO</option><option value="SIN_COMPROBANTE">SIN COMPROBANTE</option><option value="TICKET">TICKET</option><option value="OTRO">OTRO</option></select></div>
-                                    <div class="form-group col-md-3"><label>Serie</label><input name="document_series" id="pce_document_series" class="form-control text-uppercase" maxlength="20" placeholder="F001"></div>
-                                    <div class="form-group col-md-3"><label>Correlativo</label><input name="document_correlative" id="pce_document_correlative" class="form-control text-uppercase" maxlength="50" placeholder="000123"></div>
+                                    <div class="form-group col-md-3">
+                                        <label>Serie</label>
+                                        <input name="document_series" id="pce_document_series" class="form-control text-uppercase" maxlength="20" placeholder="F001">
+                                        <small class="pce-internal-number-help d-none text-success"><i class="fas fa-lock mr-1"></i>Generada por el sistema</small>
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label>Correlativo</label>
+                                        <input name="document_correlative" id="pce_document_correlative" class="form-control text-uppercase" maxlength="50" placeholder="000123">
+                                        <small class="pce-internal-number-help d-none text-success"><i class="fas fa-lock mr-1"></i>Generado por el sistema</small>
+                                    </div>
+                                </div>
+                                <div id="pce_internal_receipt_notice" class="alert alert-success d-none py-2 px-3 mb-0">
+                                    <i class="fas fa-file-pdf mr-1"></i>
+                                    La serie y el correlativo se asignan autom&aacute;ticamente. Al guardar se generar&aacute; y adjuntar&aacute; el recibo interno en PDF. Tambi&eacute;n puede agregar comprobantes manuales.
                                 </div>
                             </section>
 

@@ -112,6 +112,8 @@ Route::get('petty-cash/approved-amount/configuration', [PettyCashApprovedAmountC
 Route::put('petty-cash/approved-amount', [PettyCashApprovedAmountController::class, 'update'])
     ->name('petty-cash.approved-amount.update');
 Route::post('petty-cash/{pettyCash}/expenses', [PettyCashController::class, 'storeExpense'])->name('petty-cash.expenses.store');
+Route::get('petty-cash/{pettyCash}/expenses/internal-receipt-number', [PettyCashController::class, 'nextInternalReceiptNumber'])
+    ->name('petty-cash.expenses.internal-receipt-number');
 Route::get('petty-cash/{pettyCash}/warehouse-expenses/available', [PettyCashController::class, 'availableWarehouseExpenses'])
     ->name('petty-cash.warehouse-expenses.available');
 Route::post('petty-cash/{pettyCash}/warehouse-expenses/pull', [PettyCashController::class, 'pullWarehouseExpenses'])
