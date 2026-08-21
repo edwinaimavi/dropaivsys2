@@ -57,6 +57,8 @@ class SupplierPurchaseOrder extends Model
         'market_study_id',
         'order_type',
         'payment_condition',
+        'credit_days',
+        'payment_due_date',
         'delivery_type',
         'transport_type',
         'shipping_address',
@@ -114,6 +116,8 @@ class SupplierPurchaseOrder extends Model
         'advance_amount_pen' => 'decimal:4',
         'advance_paid_amount' => 'decimal:4',
         'advance_paid_amount_pen' => 'decimal:4',
+        'credit_days' => 'integer',
+        'payment_due_date' => 'date',
     ];
 
     public function company()

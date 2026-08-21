@@ -251,17 +251,30 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
-                                        <label>CONDICI&Oacute;N DE PAGO</label>
+                                    <div class="form-group col-md-4">
+                                        <label>CONDICI&Oacute;N DE PAGO <span class="text-danger">*</span></label>
                                         <select id="supplier_order_payment_condition" name="payment_condition"
-                                            class="form-control form-control-sm js-supplier-order-select">
+                                            class="form-control form-control-sm js-supplier-order-select" required>
                                             <option value="">Seleccione</option>
                                             <option value="contado">Contado</option>
-                                            <option value="credito_20_dias">Cr&eacute;dito 20 d&iacute;as</option>
-                                            <option value="credito_30_dias">Cr&eacute;dito 30 d&iacute;as</option>
-                                            <option value="credito_45_dias">Cr&eacute;dito 45 d&iacute;as</option>
-                                            <option value="credito_60_dias">Cr&eacute;dito 60 d&iacute;as</option>
+                                            <option value="credito">Cr&eacute;dito</option>
                                         </select>
+                                        <small id="supplierOrderCashPaymentHelp" class="form-text text-muted d-none">La compra se considera de pago inmediato.</small>
+                                        <span class="invalid-feedback"></span>
+                                    </div>
+
+                                    <div class="form-group col-md-4 supplier-order-credit-field d-none">
+                                        <label>D&Iacute;AS DE CR&Eacute;DITO <span class="text-danger">*</span></label>
+                                        <input type="number" id="supplier_order_credit_days" name="credit_days"
+                                            class="form-control form-control-sm" min="1" step="1" inputmode="numeric">
+                                        <span class="invalid-feedback"></span>
+                                    </div>
+
+                                    <div class="form-group col-md-4 supplier-order-credit-field d-none">
+                                        <label>FECHA DE VENCIMIENTO <span class="text-danger">*</span></label>
+                                        <input type="date" id="supplier_order_payment_due_date" name="payment_due_date"
+                                            class="form-control form-control-sm" readonly>
+                                        <small id="supplierOrderPaymentDueDateHelp" class="form-text text-muted">La fecha de vencimiento se calcula autom&aacute;ticamente desde hoy.</small>
                                         <span class="invalid-feedback"></span>
                                     </div>
 

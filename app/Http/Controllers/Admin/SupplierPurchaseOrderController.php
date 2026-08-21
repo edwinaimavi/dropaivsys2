@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -811,7 +812,14 @@ class SupplierPurchaseOrderController extends Controller
             'quote_id' => ['nullable', 'exists:quotes,id'],
             'market_study_id' => ['nullable', 'exists:market_studies,id'],
             'order_type' => ['nullable', Rule::in(['articles', 'services'])],
-            'payment_condition' => ['nullable', Rule::in($this->paymentConditionOptions())],
+            'payment_condition' => ['required', Rule::in($this->paymentConditionOptions())],
+            'credit_days' => [
+                Rule::requiredIf(fn () => $request->input('payment_condition') === 'credito'),
+                'nullable',
+                'integer',
+                'min:1',
+            ],
+            'payment_due_date' => ['nullable', 'date'],
             'delivery_type' => ['required', Rule::in($this->deliveryTypeOptions())],
             'transport_type' => ['nullable', Rule::in($this->transportTypeOptions())],
             'shipping_address' => ['nullable', 'string'],
@@ -913,6 +921,11 @@ class SupplierPurchaseOrderController extends Controller
             'supplier_account_id.exists' => 'La cuenta bancaria debe pertenecer al proveedor y estar activa.',
             'currency_id.required' => 'La moneda es obligatoria.',
             'payment_currency_id.required' => 'La moneda de pago es obligatoria.',
+            'payment_condition.required' => 'La condición de pago es obligatoria.',
+            'payment_condition.in' => 'Seleccione Contado o Crédito como condición de pago.',
+            'credit_days.required' => 'Ingrese los días de crédito.',
+            'credit_days.integer' => 'Los días de crédito deben ser un número entero.',
+            'credit_days.min' => 'Los días de crédito deben ser mayores a 0.',
             'exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
             'advance_type.in' => 'Seleccione Monto fijo o Porcentaje como tipo de anticipo.',
             'advance_percentage.gt' => 'El porcentaje del anticipo debe ser mayor a cero.',
@@ -1094,6 +1107,14 @@ class SupplierPurchaseOrderController extends Controller
                     ]);
                 }
                 $isAgencyDelivery = $this->deliveryRequiresShippingAgency($validated['delivery_type'] ?? null);
+                $isCredit = ($validated['payment_condition'] ?? null) === 'credito';
+                $creditDays = $isCredit ? (int) $validated['credit_days'] : null;
+                $paymentBaseDate = $order?->created_at instanceof Carbon
+                    ? $order->created_at->copy()
+                    : now();
+                $paymentDueDate = $isCredit
+                    ? $paymentBaseDate->startOfDay()->addDays($creditDays)->toDateString()
+                    : null;
                 $supplierAccount = SupplierAccount::query()
                     ->with('bank')
                     ->findOrFail($validated['supplier_account_id']);
@@ -1117,6 +1138,8 @@ class SupplierPurchaseOrderController extends Controller
                     'market_study_id' => $validated['market_study_id'] ?? null,
                     'order_type' => $validated['order_type'] ?? 'articles',
                     'payment_condition' => $validated['payment_condition'] ?? null,
+                    'credit_days' => $creditDays,
+                    'payment_due_date' => $paymentDueDate,
                     'delivery_type' => $validated['delivery_type'] ?? null,
                     'transport_type' => $validated['transport_type'] ?? null,
                     'shipping_address' => $this->upperOrNull(
@@ -2324,10 +2347,7 @@ class SupplierPurchaseOrderController extends Controller
     {
         return [
             'contado',
-            'credito_20_dias',
-            'credito_30_dias',
-            'credito_45_dias',
-            'credito_60_dias',
+            'credito',
         ];
     }
 

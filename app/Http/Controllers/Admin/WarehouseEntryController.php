@@ -390,7 +390,7 @@ class WarehouseEntryController extends Controller
                 'supplier:id,business_name,short_name',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
-                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,created_at',
+                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,credit_days,payment_due_date,created_at',
                 'supplierPurchaseOrder.customerPurchaseOrder.customer:id,business_name,full_name,first_name,last_name',
                 'supplierPurchaseOrder.customerPurchaseOrder.customerBranch:id,branch_name',
                 'supplierPurchaseOrder.customerPurchaseOrders.customer:id,business_name,full_name,first_name,last_name',
@@ -478,7 +478,10 @@ class WarehouseEntryController extends Controller
                     'status' => $presentation['status'],
                     'status_label' => $presentation['label'],
                     'condition_label' => $this->paymentConditionLabel(
-                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition
+                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition,
+                        $entry->supplierPurchaseOrder
+                            ? $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
+                            : null
                     ),
                 ];
             })
@@ -582,7 +585,7 @@ class WarehouseEntryController extends Controller
                 'supplier:id,business_name,short_name',
                 'company:id,business_name,trade_name',
                 'currency:id,code,symbol,description',
-                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,created_at',
+                'supplierPurchaseOrder:id,code,customer_purchase_order_id,payment_condition,credit_days,payment_due_date,created_at',
                 'supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
                 'supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
                 'bankPaymentMovement' => fn ($query) => $query->select(
@@ -628,7 +631,10 @@ class WarehouseEntryController extends Controller
                     'payment_status' => $presentation['payment_status'],
                     'payment_status_label' => $presentation['payment_status_label'],
                     'payment_condition_label' => $this->paymentConditionLabel(
-                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition
+                        $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition,
+                        $entry->supplierPurchaseOrder
+                            ? $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
+                            : null
                     ),
                     'document_date' => $entry->document_date?->format('d/m/Y'),
                     'due_date' => Carbon::parse($presentation['due_date'])->format('d/m/Y'),
@@ -826,7 +832,9 @@ class WarehouseEntryController extends Controller
             $warehouseEntry->setAttribute('generate_account_payable', $isCredit);
             $warehouseEntry->setAttribute(
                 'expected_payment_date',
-                $isCredit ? $this->warehouseEntryCreditDueDate($warehouseEntry) : null
+                $isCredit
+                    ? $this->supplierPurchaseOrderDueDate($warehouseEntry->supplierPurchaseOrder)
+                    : null
             );
         }
         $creditPresentation = $this->warehouseEntryCreditPresentation($warehouseEntry);
@@ -843,7 +851,12 @@ class WarehouseEntryController extends Controller
         ]);
         $warehouseEntry->setAttribute(
             'payment_condition_label',
-            $this->paymentConditionLabel($warehouseEntry->payment_condition)
+            $this->paymentConditionLabel(
+                $warehouseEntry->payment_condition,
+                $warehouseEntry->supplierPurchaseOrder
+                    ? $this->creditDaysForSupplierOrder($warehouseEntry->supplierPurchaseOrder)
+                    : null
+            )
         );
 
         if ($warehouseEntry->bankPaymentMovement) {
@@ -929,7 +942,7 @@ class WarehouseEntryController extends Controller
             ->with([
                 'creditPayments',
                 'bankPaymentMovement',
-                'supplierPurchaseOrder:id,code,payment_condition,created_at',
+                'supplierPurchaseOrder:id,code,payment_condition,credit_days,payment_due_date,created_at',
                 'currency:id,code,symbol',
             ])
             ->findOrFail($warehouseEntry->id);
@@ -1210,8 +1223,12 @@ class WarehouseEntryController extends Controller
             'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
-            'payment_condition_label' => $this->paymentConditionLabel($order->payment_condition),
-            'credit_days' => $this->creditDaysFromCondition($order->payment_condition),
+            'payment_condition_label' => $this->paymentConditionLabel(
+                $order->payment_condition,
+                $this->creditDaysForSupplierOrder($order)
+            ),
+            'credit_days' => $this->creditDaysForSupplierOrder($order),
+            'payment_due_date' => $this->supplierPurchaseOrderDueDate($order),
             'document_type' => $this->normalizeDocumentType($order->document_type),
             'delivery_type' => SupplierPurchaseOrder::normalizeDeliveryType($order->delivery_type),
             'affect_igv' => (bool) $order->affect_igv,
@@ -1249,12 +1266,7 @@ class WarehouseEntryController extends Controller
                 'payment_condition' => $officialCondition,
                 'generate_account_payable' => $isCredit,
                 'expected_payment_date' => $isCredit
-                    ? $this->calculateCreditDueDate(
-                        $request->input('document_date'),
-                        $entry,
-                        $sourceOrder,
-                        $this->creditDaysFromCondition($officialCondition)
-                    )
+                    ? $this->supplierPurchaseOrderDueDate($sourceOrder)
                     : null,
             ]);
 
@@ -1510,12 +1522,7 @@ class WarehouseEntryController extends Controller
                     ? $this->isCreditPaymentCondition($paymentCondition)
                     : (bool) ($validated['generate_account_payable'] ?? false);
                 $expectedPaymentDate = $generateAccountPayable && $supplierPurchaseOrder
-                    ? $this->calculateCreditDueDate(
-                        $validated['document_date'] ?? null,
-                        $entry,
-                        $supplierPurchaseOrder,
-                        $this->creditDaysFromCondition($paymentCondition)
-                    )
+                    ? $this->supplierPurchaseOrderDueDate($supplierPurchaseOrder)
                     : ($generateAccountPayable ? ($validated['expected_payment_date'] ?? null) : null);
                 if ($generateAccountPayable && $this->isCashPaymentCondition($paymentCondition)) {
                     throw ValidationException::withMessages([
@@ -2636,6 +2643,35 @@ class WarehouseEntryController extends Controller
             : 0;
     }
 
+    private function creditDaysForSupplierOrder(SupplierPurchaseOrder $order): int
+    {
+        return (int) $order->credit_days > 0
+            ? (int) $order->credit_days
+            : $this->creditDaysFromCondition($order->payment_condition);
+    }
+
+    private function supplierPurchaseOrderDueDate(SupplierPurchaseOrder $order): ?string
+    {
+        if (! $this->isCreditPaymentCondition($order->payment_condition)) {
+            return null;
+        }
+
+        if ($order->payment_due_date) {
+            return $order->payment_due_date->toDateString();
+        }
+
+        $creditDays = $this->creditDaysForSupplierOrder($order);
+        if ($creditDays <= 0) {
+            return null;
+        }
+
+        return ($order->created_at ?? now())
+            ->copy()
+            ->startOfDay()
+            ->addDays($creditDays)
+            ->toDateString();
+    }
+
     private function calculateCreditDueDate(
         ?string $documentDate,
         ?WarehouseEntry $entry,
@@ -2659,6 +2695,10 @@ class WarehouseEntryController extends Controller
 
     private function warehouseEntryCreditDueDate(WarehouseEntry $entry): ?string
     {
+        if ($entry->supplierPurchaseOrder) {
+            return $this->supplierPurchaseOrderDueDate($entry->supplierPurchaseOrder);
+        }
+
         if ($entry->expected_payment_date) {
             return $entry->expected_payment_date->toDateString();
         }
@@ -2673,13 +2713,13 @@ class WarehouseEntryController extends Controller
         );
     }
 
-    private function paymentConditionLabel(?string $condition): string
+    private function paymentConditionLabel(?string $condition, ?int $creditDays = null): string
     {
         if ($this->isCashPaymentCondition($condition)) {
             return 'Contado';
         }
 
-        $creditDays = $this->creditDaysFromCondition($condition);
+        $creditDays ??= $this->creditDaysFromCondition($condition);
         if ($this->isCreditPaymentCondition($condition)) {
             return $creditDays > 0 ? "Crédito {$creditDays} días" : 'Crédito';
         }
@@ -2690,8 +2730,10 @@ class WarehouseEntryController extends Controller
     private function warehouseEntryCreditPresentation(WarehouseEntry $entry): array
     {
         $condition = $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition;
-        $conditionLabel = $this->paymentConditionLabel($condition);
-        $creditDays = $this->creditDaysFromCondition($condition);
+        $creditDays = $entry->supplierPurchaseOrder
+            ? $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
+            : $this->creditDaysFromCondition($condition);
+        $conditionLabel = $this->paymentConditionLabel($condition, $creditDays);
 
         if (! $this->isCreditPaymentCondition($condition)) {
             return [

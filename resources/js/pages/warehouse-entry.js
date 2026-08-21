@@ -1174,6 +1174,7 @@ function resetWarehouseEntryForm() {
     const form = $('#warehouseEntryForm');
 
     form[0]?.reset();
+    $('#warehouse_entry_payment_condition').removeData('credit-days');
     $('#warehouse_entry_id').val('');
     setWarehouseEntrySaving(false);
     $('#warehouse_entry_number').val('');
@@ -1568,6 +1569,7 @@ function applySelectedSupplierOrderHeader() {
         updateWarehouseEntryDeliveryCostContext('');
         setWarehouseEntrySupplierLocked(false);
         setWarehouseEntryPaymentConditionLocked(false);
+        $('#warehouse_entry_payment_condition').removeData('credit-days');
         $('#warehouse_entry_supplier_ruc').val('');
         $('#warehouse_entry_guide_ruc').val('');
         return;
@@ -1833,6 +1835,7 @@ function loadWarehouseEntrySourceItems(options = {}) {
             warehouseEntrySourceOrderTotal = parseWarehouseEntryNumber(response.order_total);
             $('#warehouse_entry_payment_method').val(response.payment_method || '');
             $('#warehouse_entry_payment_condition').val(response.payment_condition_label || response.payment_condition || '');
+            $('#warehouse_entry_payment_condition').data('credit-days', Number(response.credit_days) || 0);
             const paymentCondition = String(response.payment_condition || '').toLocaleLowerCase();
             if (paymentCondition.startsWith('credito') || paymentCondition.startsWith('crédito')) {
                 $('#warehouse_entry_generate_account_payable').val('1').trigger('change');
@@ -1840,7 +1843,8 @@ function loadWarehouseEntrySourceItems(options = {}) {
                 $('#warehouse_entry_generate_account_payable').val('0').trigger('change');
             }
             setWarehouseEntryPaymentConditionLocked(true);
-            updateWarehouseEntryCreditSummary(true);
+            $('#warehouse_entry_expected_payment_date').val(response.payment_due_date || '');
+            updateWarehouseEntryCreditSummary(false);
             $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(response.document_type));
             $('#warehouse_entry_affect_igv').val(response.affect_igv ? '1' : '0');
             updateWarehouseEntryDeliveryCostContext(response.delivery_type || '');
@@ -2500,6 +2504,9 @@ function setWarehouseEntrySupplierLocked(locked) {
 }
 
 function warehouseEntryCreditDays() {
+    const inheritedDays = Number($('#warehouse_entry_payment_condition').data('credit-days')) || 0;
+    if (inheritedDays > 0) return inheritedDays;
+
     const condition = String($('#warehouse_entry_payment_condition').val() || '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -3466,6 +3473,7 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_document_date').val(formatWarehouseEntryDate(entry.document_date));
     $('#warehouse_entry_payment_method').val(entry.payment_method || '');
     $('#warehouse_entry_payment_condition').val(entry.payment_condition_label || entry.payment_condition || '');
+    $('#warehouse_entry_payment_condition').data('credit-days', Number(entry.credit_days) || 0);
     $('#warehouse_entry_generate_account_payable').val(entry.generate_account_payable ? '1' : '0');
     $('#warehouse_entry_payable_amount').val(formatWarehouseEntryMoney(entry.payable_amount || 0));
     $('#warehouse_entry_expected_payment_date').val(formatWarehouseEntryDate(entry.expected_payment_date));

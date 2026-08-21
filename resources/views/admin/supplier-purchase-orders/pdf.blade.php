@@ -40,6 +40,7 @@
         $normalized = \App\Models\SupplierPurchaseOrder::normalizeDeliveryType($value);
         $labels = [
             'contado' => 'Contado',
+            'credito' => 'Crédito',
             'credito_20_dias' => 'Credito 20 dias',
             'credito_30_dias' => 'Credito 30 dias',
             'credito_45_dias' => 'Credito 45 dias',
@@ -116,8 +117,12 @@
     $bankLabel = collect(['BBVA', 'BCP', 'INTERBANK', 'SCOTIABANK'])
         ->first(fn ($knownBankCode) => str_contains($bankLabelCompact, $knownBankCode))
         ?: $bankLabelRaw;
+    $paymentConditionLabel = $order->payment_condition ? $optionLabel($order->payment_condition) : null;
+    if ($paymentConditionLabel && str_starts_with((string) $order->payment_condition, 'credito') && $order->credit_days) {
+        $paymentConditionLabel .= ' ' . $order->credit_days . ' días';
+    }
     $paymentTerms = collect([
-        $order->payment_condition ? $optionLabel($order->payment_condition) : null,
+        $paymentConditionLabel,
         $bankLabel,
         $account?->account_number ?: $account?->cci,
     ])->filter()->join(' - ') ?: '-';

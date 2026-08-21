@@ -7,6 +7,7 @@ let supplierOrderAdvanceBankAccountsRequest = null;
 const supplierOrderExpandedGroups = new Set();
 let supplierOrderEditDeepLinkHandled = false;
 let supplierOrderEditDeepLinkSearchApplied = false;
+let supplierOrderPaymentBaseDate = new Date();
 const defaultSupplierOrderImportantNote = `ADJUNTAR JUNTAMENTE CON LA FACTURA Y GUIA DE REMISION AL CORREO: LOGISTICA@DROPAIV.COM, LOS DOCUMENTOS LEGALES NECESARIOS TALES COMO:
 1. BPM O ISO DEL BIEN ADQUIRIDO O SU EQUIVALENTE - VIGENTE
 2. CERTIFICADO O PROTOCOLO DE ANALISIS DEL BIEN ADQUIRIDO - VIGENTE
@@ -109,9 +110,8 @@ document.addEventListener('DOMContentLoaded', function () {
         );
 
         if (!$('#supplier_order_payment_condition').val()) {
-            const paymentCondition = normalizeSupplierOrderOption(
-                selected.data('payment-condition') || ''
-            );
+            const supplierPaymentCondition = selected.data('payment-condition') || '';
+            const paymentCondition = normalizeSupplierOrderPaymentCondition(supplierPaymentCondition);
 
             if (
                 paymentCondition
@@ -119,7 +119,12 @@ document.addEventListener('DOMContentLoaded', function () {
             ) {
                 $('#supplier_order_payment_condition')
                     .val(paymentCondition)
-                    .trigger('change.select2');
+                    .trigger('change');
+
+                const legacyCreditDays = supplierOrderCreditDaysFromCondition(supplierPaymentCondition);
+                if (paymentCondition === 'credito' && legacyCreditDays > 0) {
+                    $('#supplier_order_credit_days').val(legacyCreditDays).trigger('input');
+                }
             }
         }
 
@@ -128,6 +133,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('change', '#supplier_order_currency_id', updateSupplierOrderCurrency);
+    $(document).on('change', '#supplier_order_payment_condition', toggleSupplierOrderCreditFields);
+    $(document).on('input', '#supplier_order_credit_days', calculateSupplierOrderPaymentDueDate);
     $(document).on('change input', '#supplier_order_exchange_rate,#supplier_order_apply_advance,#supplier_order_advance_type,#supplier_order_advance_percentage,#supplier_order_advance_amount,#supplier_order_new_advance_applied_amount,#supplier_order_new_advance_exchange_rate', function () {
         updateSupplierOrderFinancialSummary();
     });
@@ -259,6 +266,8 @@ function initializeSupplierOrderTabbedLayout() {
         '#supplier_order_supplier_id',
         '#supplier_order_supplier_account_id',
         '#supplier_order_payment_condition',
+        '#supplier_order_credit_days',
+        '#supplier_order_payment_due_date',
         '#supplier_order_payment_method',
         '#supplier_order_document_type',
         '#supplier_order_affect_igv',
@@ -732,6 +741,8 @@ function resetSupplierPurchaseOrderForm() {
     }
 
     form[0].reset();
+    supplierOrderPaymentBaseDate = new Date();
+    $('#supplierOrderPaymentDueDateHelp').text('La fecha de vencimiento se calcula automáticamente desde hoy.');
     clearSupplierPurchaseOrderErrors();
 
     $('#supplier_purchase_order_id').val('');
@@ -760,6 +771,7 @@ function resetSupplierPurchaseOrderForm() {
     $('#supplier_order_destination_ubigeo_id').val('').trigger('change.select2');
     $('#supplier_order_transport_type').val('').trigger('change.select2');
     $('#supplier_order_payment_condition').val('').trigger('change.select2');
+    $('#supplier_order_credit_days,#supplier_order_payment_due_date').val('');
     $('#supplier_order_delivery_type').val('').trigger('change.select2');
     $('#supplier_order_shipping_agency_id').val('').trigger('change.select2');
     $('#supplier_order_shipping_agency_branch_id')
@@ -797,6 +809,7 @@ function resetSupplierPurchaseOrderForm() {
     syncSupplierOrderPaymentCurrency();
     loadSupplierOrderAdvanceBankAccounts();
     $('#supplierOrderSideSupplier').text('Seleccione proveedor');
+    toggleSupplierOrderCreditFields();
     toggleSupplierOrderShippingAgencySection();
     calculateSupplierOrderTotals();
     syncPurchaseInstructions(true);
@@ -1033,6 +1046,14 @@ function saveSupplierPurchaseOrder(formElement) {
     refreshSupplierOrderItemIndexes();
     calculateSupplierOrderTotals();
     syncPurchaseInstructions(true);
+
+    const paymentTermsError = validateSupplierOrderPaymentTerms();
+    if (paymentTermsError) {
+        showSupplierOrderTab('data');
+        showSupplierPurchaseOrderErrors(paymentTermsError.errors);
+        Swal.fire({ icon: 'warning', title: 'Revise la condición de pago', text: paymentTermsError.message });
+        return;
+    }
 
     if (!$('#supplier_order_supplier_account_id').val()) {
         showSupplierOrderTab('data');
@@ -1929,6 +1950,8 @@ function loadSupplierPurchaseOrderForEdit(id) {
 
 function fillSupplierPurchaseOrderForm(order) {
     resetSupplierPurchaseOrderForm();
+    supplierOrderPaymentBaseDate = supplierOrderDateFromInput(order.created_at) || new Date();
+    $('#supplierOrderPaymentDueDateHelp').text('La fecha de vencimiento se calcula desde la fecha de registro de la orden.');
 
     $('#supplier_purchase_order_id').val(order.id || '');
     $('#supplier_order_code').val(order.code || '');
@@ -1971,9 +1994,16 @@ function fillSupplierPurchaseOrderForm(order) {
         .val(customerPurchaseOrderIds.length ? customerPurchaseOrderIds : (order.customer_purchase_order_id ? [String(order.customer_purchase_order_id)] : []))
         .trigger('change.select2');
     $('#supplier_order_type').val(order.order_type || 'articles');
-    $('#supplier_order_payment_condition')
-        .val(normalizeSupplierOrderOption(order.payment_condition || ''))
-        .trigger('change.select2');
+    const paymentCondition = normalizeSupplierOrderPaymentCondition(order.payment_condition);
+    const creditDays = Number(order.credit_days) || supplierOrderCreditDaysFromCondition(order.payment_condition);
+    $('#supplier_order_payment_condition').val(paymentCondition).trigger('change');
+    $('#supplier_order_credit_days').val(paymentCondition === 'credito' && creditDays > 0 ? creditDays : '');
+    $('#supplier_order_payment_due_date').val(
+        paymentCondition === 'credito' ? formatSupplierOrderDateInput(order.payment_due_date) : ''
+    );
+    if (paymentCondition === 'credito' && !$('#supplier_order_payment_due_date').val()) {
+        calculateSupplierOrderPaymentDueDate();
+    }
     $('#supplier_order_delivery_type')
         .val(normalizeSupplierOrderOption(order.delivery_type || ''))
         .trigger('change.select2');
@@ -2104,7 +2134,7 @@ function fillSupplierPurchaseOrderDetail(order) {
         }).join('')
         : '<span class="text-muted">Sin OC cliente relacionada.</span>');
     $('#vspo_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
-    $('#vspo_payment_condition').text(supplierOrderOptionLabel(order.payment_condition) || '-');
+    $('#vspo_payment_condition').text(supplierOrderPaymentConditionLabel(order));
     $('#vspo_delivery_type').text(supplierOrderOptionLabel(order.delivery_type) || '-');
     $('#vspo_transport_type').text(supplierOrderOptionLabel(order.transport_type) || '-');
     $('#vspo_document_type').text(supplierOrderOptionLabel(order.document_type) || '-');
@@ -2731,14 +2761,14 @@ function normalizeSupplierOrderOption(value) {
         .replace(/\s+/g, '_');
 
     const aliases = {
-        credito_20_dias: 'credito_20_dias',
-        credito_20_dia: 'credito_20_dias',
-        credito_30_dias: 'credito_30_dias',
-        credito_30_dia: 'credito_30_dias',
-        credito_45_dias: 'credito_45_dias',
-        credito_45_dia: 'credito_45_dias',
-        credito_60_dias: 'credito_60_dias',
-        credito_60_dia: 'credito_60_dias',
+        credito_20_dias: 'credito',
+        credito_20_dia: 'credito',
+        credito_30_dias: 'credito',
+        credito_30_dia: 'credito',
+        credito_45_dias: 'credito',
+        credito_45_dia: 'credito',
+        credito_60_dias: 'credito',
+        credito_60_dia: 'credito',
         deposito_en_cuenta: 'deposito_cuenta',
         deposito_cuenta: 'deposito_cuenta',
         agencia_de_transporte: 'agencia',
@@ -2757,6 +2787,107 @@ function normalizeSupplierOrderOption(value) {
     };
 
     return aliases[normalized] || normalized;
+}
+
+function normalizeSupplierOrderPaymentCondition(value) {
+    const normalized = normalizeSupplierOrderOption(value);
+
+    if (normalized.startsWith('credito')) return 'credito';
+    if (normalized.includes('contado') || normalized.includes('pagado')) return 'contado';
+
+    return normalized;
+}
+
+function supplierOrderCreditDaysFromCondition(value) {
+    const normalized = String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+    const match = normalized.match(/credito\D*(\d+)/);
+
+    return match ? Number(match[1]) : 0;
+}
+
+function supplierOrderDateFromInput(value) {
+    const datePart = formatSupplierOrderDate(value);
+    if (!datePart) return null;
+
+    const date = new Date(`${datePart}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatSupplierOrderDateInput(value) {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
+
+    const date = value instanceof Date ? value : supplierOrderDateFromInput(value);
+    if (!date || Number.isNaN(date.getTime())) return '';
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+}
+
+function calculateSupplierOrderPaymentDueDate() {
+    const daysValue = String($('#supplier_order_credit_days').val() || '').trim();
+    const days = Number(daysValue);
+
+    if (!/^\d+$/.test(daysValue) || days <= 0) {
+        $('#supplier_order_payment_due_date').val('');
+        return;
+    }
+
+    const dueDate = new Date(supplierOrderPaymentBaseDate.getTime());
+    dueDate.setHours(0, 0, 0, 0);
+    dueDate.setDate(dueDate.getDate() + days);
+    $('#supplier_order_payment_due_date').val(formatSupplierOrderDateInput(dueDate));
+}
+
+function toggleSupplierOrderCreditFields() {
+    const isCredit = normalizeSupplierOrderPaymentCondition(
+        $('#supplier_order_payment_condition').val()
+    ) === 'credito';
+
+    $('.supplier-order-credit-field').toggleClass('d-none', !isCredit);
+    $('#supplierOrderCashPaymentHelp').toggleClass(
+        'd-none',
+        $('#supplier_order_payment_condition').val() !== 'contado'
+    );
+    $('#supplier_order_credit_days,#supplier_order_payment_due_date').prop('required', isCredit);
+
+    if (!isCredit) {
+        $('#supplier_order_credit_days,#supplier_order_payment_due_date').val('').removeClass('is-invalid');
+        return;
+    }
+
+    calculateSupplierOrderPaymentDueDate();
+}
+
+function validateSupplierOrderPaymentTerms() {
+    if (normalizeSupplierOrderPaymentCondition($('#supplier_order_payment_condition').val()) !== 'credito') {
+        return null;
+    }
+
+    const daysValue = String($('#supplier_order_credit_days').val() || '').trim();
+    if (!daysValue) {
+        return {
+            message: 'Ingrese los días de crédito.',
+            errors: { credit_days: ['Ingrese los días de crédito.'] }
+        };
+    }
+
+    if (!/^\d+$/.test(daysValue) || Number(daysValue) <= 0) {
+        return {
+            message: 'Los días de crédito deben ser mayores a 0.',
+            errors: { credit_days: ['Los días de crédito deben ser mayores a 0.'] }
+        };
+    }
+
+    calculateSupplierOrderPaymentDueDate();
+    return null;
 }
 
 function supplierOrderRequiresShippingAgency(value) {
@@ -2780,11 +2911,20 @@ function supplierOrderRequestedBy(order) {
 function supplierOrderPaymentTerms(order) {
     const account = order.supplier_account || {};
     const bank = account.bank || {};
-    const condition = supplierOrderOptionLabel(order.payment_condition) || 'Condicion no indicada';
+    const condition = supplierOrderPaymentConditionLabel(order, 'Condicion no indicada');
     const bankName = bank.short_name || bank.description || 'Banco no indicado';
     const accountNumber = account.account_number || account.cci || 'Cuenta no indicada';
 
     return `${condition} - ${bankName} - ${accountNumber}`;
+}
+
+function supplierOrderPaymentConditionLabel(order, fallback = '-') {
+    const conditionLabel = supplierOrderOptionLabel(order.payment_condition) || fallback;
+    const creditDays = Number(order.credit_days) || supplierOrderCreditDaysFromCondition(order.payment_condition);
+
+    return normalizeSupplierOrderPaymentCondition(order.payment_condition) === 'credito' && creditDays > 0
+        ? `${conditionLabel} ${creditDays} dias`
+        : conditionLabel;
 }
 
 function supplierOrderOptionLabel(value) {
@@ -2792,10 +2932,7 @@ function supplierOrderOptionLabel(value) {
         terrestre: 'Terrestre',
         aereo: 'Aereo',
         contado: 'Contado',
-        credito_20_dias: 'Credito 20 dias',
-        credito_30_dias: 'Credito 30 dias',
-        credito_45_dias: 'Credito 45 dias',
-        credito_60_dias: 'Credito 60 dias',
+        credito: 'Credito',
         agencia: 'Agencia',
         recojo_almacen: 'Recojo de almacén',
         transportista_proveedor: 'Transportista del proveedor',
