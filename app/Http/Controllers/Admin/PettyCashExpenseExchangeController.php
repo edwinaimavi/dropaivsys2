@@ -86,6 +86,7 @@ class PettyCashExpenseExchangeController extends Controller
             ->pendingExchange()
             ->with([
                 'documents',
+                'exchange.items:id,exchange_id,petty_cash_expense_id,amount',
                 'exchange.settlementDocuments.creator:id,name,lastname',
                 'exchange.returns.responsibleUser:id,name,lastname',
                 'exchange.returns.creator:id,name,lastname',
@@ -248,7 +249,9 @@ class PettyCashExpenseExchangeController extends Controller
     private function storeSettlement(Request $request, PettyCashBox $pettyCash)
     {
         $validated = $request->validate([
-            'expense_id' => ['required', 'integer', 'exists:petty_cash_expenses,id'],
+            'expense_id' => ['nullable', 'required_without:expense_ids', 'integer', 'exists:petty_cash_expenses,id'],
+            'expense_ids' => ['nullable', 'required_without:expense_id', 'array', 'min:1'],
+            'expense_ids.*' => ['required', 'integer', 'distinct', 'exists:petty_cash_expenses,id'],
             'settlement_documents' => ['nullable', 'array', 'max:30'],
             'settlement_documents.*.issuer_ruc' => ['nullable', 'regex:/^\d{11}$/'],
             'settlement_documents.*.issuer_name' => ['required', 'string', 'max:255'],
@@ -269,7 +272,9 @@ class PettyCashExpenseExchangeController extends Controller
             'return_observation' => ['nullable', 'string', 'max:1000'],
             'return_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
-            'expense_id.required' => 'Seleccione un recibo interno para registrar la rendición.',
+            'expense_id.required_without' => 'Seleccione al menos un recibo interno para registrar la rendición.',
+            'expense_ids.required_without' => 'Seleccione al menos un recibo interno para registrar la rendición.',
+            'expense_ids.min' => 'Seleccione al menos un recibo interno para registrar la rendición.',
             'settlement_documents.*.amount.gt' => 'El importe de cada comprobante debe ser mayor a 0.',
             'settlement_documents.*.issuer_ruc.regex' => 'El RUC del emisor debe tener 11 dígitos.',
             'return_amount.required_if' => 'Ingrese el monto retornado.',
@@ -277,6 +282,10 @@ class PettyCashExpenseExchangeController extends Controller
             'return_date.required_if' => 'Ingrese la fecha del retorno.',
         ]);
 
+        $expenseIds = array_values(array_unique(array_map(
+            'intval',
+            $validated['expense_ids'] ?? [$validated['expense_id']]
+        )));
         $documents = array_values($validated['settlement_documents'] ?? []);
         $hasReturn = (bool) ($validated['has_return'] ?? false);
         if (empty($documents) && ! $hasReturn) {
@@ -288,102 +297,143 @@ class PettyCashExpenseExchangeController extends Controller
         $storedPaths = [];
         try {
             $exchange = DB::transaction(function () use (
-                $request, $pettyCash, $validated, $documents, $hasReturn, &$storedPaths
+                $request, $pettyCash, $validated, $expenseIds, $documents, $hasReturn, &$storedPaths
             ) {
                 $box = PettyCashBox::query()->lockForUpdate()->findOrFail($pettyCash->id);
-                $expense = PettyCashExpense::query()->lockForUpdate()->findOrFail($validated['expense_id']);
-
-                if ((int) $expense->petty_cash_box_id !== (int) $box->id) {
+                $expenses = PettyCashExpense::query()
+                    ->whereIn('id', $expenseIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                if ($expenses->count() !== count($expenseIds)
+                    || $expenses->contains(fn (PettyCashExpense $expense) => (int) $expense->petty_cash_box_id !== (int) $box->id)) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'El recibo seleccionado no pertenece a la caja chica indicada.',
+                        'expense_ids' => 'Todos los recibos seleccionados deben pertenecer a la caja chica indicada.',
                     ]);
                 }
-                if ($expense->status !== 'ACTIVE' || in_array($expense->approval_status, [
+                if ($expenses->contains(fn (PettyCashExpense $expense) => $expense->status !== 'ACTIVE' || in_array($expense->approval_status, [
                     PettyCashExpense::APPROVAL_CANCELLED,
                     PettyCashExpense::APPROVAL_REJECTED,
-                ], true)) {
+                ], true))) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'No se puede rendir un recibo anulado o rechazado.',
+                        'expense_ids' => 'No se puede rendir un recibo anulado o rechazado.',
                     ]);
                 }
-                if ($expense->document_type !== 'RECIBO') {
+                if ($expenses->contains(fn (PettyCashExpense $expense) => $expense->document_type !== 'RECIBO')) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'Solo se pueden rendir gastos registrados como RECIBO INTERNO.',
+                        'expense_ids' => 'Solo se pueden rendir gastos registrados como RECIBO INTERNO.',
                     ]);
                 }
-                if ($expense->approval_status !== PettyCashExpense::APPROVAL_APPROVED) {
+                if ($expenses->contains(fn (PettyCashExpense $expense) => $expense->approval_status !== PettyCashExpense::APPROVAL_APPROVED)) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'No se puede rendir este recibo porque todavía no está aprobado.',
+                        'expense_ids' => count($expenseIds) > 1
+                            ? 'No se puede rendir uno de los recibos porque todavía no está aprobado.'
+                            : 'No se puede rendir este recibo porque todavía no está aprobado.',
                     ]);
                 }
-                if (! in_array($expense->exchange_status, [
+                if ($expenses->contains(fn (PettyCashExpense $expense) => ! in_array($expense->exchange_status, [
                     PettyCashExpense::EXCHANGE_PENDING,
                     PettyCashExpense::EXCHANGE_PARTIAL,
                     PettyCashExpense::EXCHANGE_OBSERVED,
-                ], true)) {
+                ], true))) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'El recibo ya fue rendido totalmente o no está disponible para canje.',
+                        'expense_ids' => 'Uno de los recibos ya fue rendido totalmente o no está disponible para canje.',
                     ]);
                 }
 
-                $wasObserved = $expense->exchange_status === PettyCashExpense::EXCHANGE_OBSERVED;
-                $exchange = $expense->exchange_id
-                    ? PettyCashExpenseExchange::query()->lockForUpdate()->find($expense->exchange_id)
+                $primaryExpense = $expenses->first();
+                $wasObserved = $expenses->contains(
+                    fn (PettyCashExpense $expense) => $expense->exchange_status === PettyCashExpense::EXCHANGE_OBSERVED
+                );
+                $existingExchangeIds = $expenses->pluck('exchange_id')->filter()->unique()->values();
+                if ($existingExchangeIds->count() > 1
+                    || ($existingExchangeIds->isNotEmpty() && $expenses->contains(fn ($expense) => ! $expense->exchange_id))) {
+                    throw ValidationException::withMessages([
+                        'expense_ids' => 'No se pueden agrupar recibos que pertenecen a rendiciones parciales diferentes.',
+                    ]);
+                }
+                $exchange = $existingExchangeIds->isNotEmpty()
+                    ? PettyCashExpenseExchange::query()->lockForUpdate()->find($existingExchangeIds->first())
                     : null;
                 if ($exchange && $exchange->settlement_status === null) {
                     throw ValidationException::withMessages([
-                        'expense_id' => 'Este recibo pertenece a un canje histórico que no admite rendición parcial.',
+                        'expense_ids' => 'Uno de los recibos pertenece a un canje histórico que no admite rendición parcial.',
                     ]);
                 }
+                if ($exchange) {
+                    $groupExpenseIds = $exchange->items()->pluck('petty_cash_expense_id')->map(fn ($id) => (int) $id)->sort()->values();
+                    $selectedIds = collect($expenseIds)->sort()->values();
+                    if ($groupExpenseIds->all() !== $selectedIds->all()) {
+                        throw ValidationException::withMessages([
+                            'expense_ids' => 'Seleccione todos los recibos que forman parte de esta rendición conjunta.',
+                        ]);
+                    }
+                }
+
+                $receiptNumbers = $expenses->map(
+                    fn (PettyCashExpense $expense) => $expense->document_full_number ?: (string) $expense->id
+                )->values();
+                $receiptLabel = $receiptNumbers->join(', ');
 
                 $firstDocument = $documents[0] ?? null;
                 if (! $exchange) {
+                    $groupOriginalAmount = round((float) $expenses->sum('amount'), 2);
                     $exchange = $box->expenseExchanges()->create([
                         'exchange_date' => $firstDocument['issue_date'] ?? $validated['return_date'],
                         'document_type' => $firstDocument['document_type'] ?? 'RENDICION',
-                        'document_series' => mb_strtoupper(trim($firstDocument['series'] ?? ($expense->document_series ?: 'RI'))),
-                        'document_correlative' => mb_strtoupper(trim($firstDocument['number'] ?? ($expense->document_correlative ?: (string) $expense->id))),
+                        'document_series' => mb_strtoupper(trim($firstDocument['series'] ?? ($primaryExpense->document_series ?: 'RI'))),
+                        'document_correlative' => mb_strtoupper(trim($firstDocument['number'] ?? ($primaryExpense->document_correlative ?: (string) $primaryExpense->id))),
                         'issuer_ruc' => $firstDocument['issuer_ruc'] ?? null,
                         'issuer_business_name' => isset($firstDocument['issuer_name'])
                             ? mb_strtoupper(trim($firstDocument['issuer_name']))
                             : null,
-                        'total_amount' => $expense->amount,
-                        'original_amount' => $expense->amount,
+                        'total_amount' => $groupOriginalAmount,
+                        'original_amount' => $groupOriginalAmount,
                         'supported_amount' => 0,
                         'returned_amount' => 0,
-                        'pending_amount' => $expense->amount,
+                        'pending_amount' => $groupOriginalAmount,
                         'settlement_status' => PettyCashExpenseExchange::SETTLEMENT_PENDING,
                         'status' => PettyCashExpenseExchange::STATUS_ACTIVE,
                         'created_by' => Auth::id(),
                         'updated_by' => Auth::id(),
                     ]);
-                    $exchange->items()->create([
-                        'petty_cash_expense_id' => $expense->id,
-                        'amount' => $expense->amount,
-                        'concept' => $expense->concept,
-                        'receipt_type' => $expense->document_type,
-                        'receipt_series' => $expense->document_series,
-                        'receipt_correlative' => $expense->document_correlative,
-                    ]);
-                    $expense->update(['exchange_id' => $exchange->id, 'updated_by' => Auth::id()]);
-                    $expense->events()->create([
-                        'event' => 'receipt_settlement_started',
-                        'description' => 'Se inició la rendición del recibo interno '.$expense->document_full_number.'.',
-                        'metadata' => ['exchange_id' => $exchange->id, 'original_amount' => (float) $expense->amount],
-                        'created_by' => Auth::id(),
-                    ]);
+                    $expenses->each(function (PettyCashExpense $expense) use ($exchange, $receiptLabel, $expenseIds, $groupOriginalAmount) {
+                        $exchange->items()->create([
+                            'petty_cash_expense_id' => $expense->id,
+                            'amount' => $expense->amount,
+                            'concept' => $expense->concept,
+                            'receipt_type' => $expense->document_type,
+                            'receipt_series' => $expense->document_series,
+                            'receipt_correlative' => $expense->document_correlative,
+                        ]);
+                        $expense->update(['exchange_id' => $exchange->id, 'updated_by' => Auth::id()]);
+                        $expense->events()->create([
+                            'event' => 'receipt_settlement_started',
+                            'description' => count($expenseIds) > 1
+                                ? 'Se inició la rendición conjunta de los recibos '.$receiptLabel.'.'
+                                : 'Se inició la rendición del recibo interno '.$receiptLabel.'.',
+                            'metadata' => [
+                                'exchange_id' => $exchange->id,
+                                'receipt_ids' => $expenseIds,
+                                'original_amount' => $groupOriginalAmount,
+                            ],
+                            'created_by' => Auth::id(),
+                        ]);
+                    });
                 }
 
                 $existingSupported = round((float) $exchange->settlementDocuments()->sum('amount'), 2);
                 $existingReturned = round((float) $exchange->returns()->sum('amount'), 2);
                 $newSupported = round((float) collect($documents)->sum(fn ($document) => (float) $document['amount']), 2);
                 $newReturned = $hasReturn ? round((float) $validated['return_amount'], 2) : 0.0;
-                $originalAmount = round((float) ($exchange->original_amount ?? $expense->amount), 2);
+                $originalAmount = round((float) ($exchange->original_amount ?? $expenses->sum('amount')), 2);
                 $pendingAfterDocuments = round($originalAmount - $existingSupported - $existingReturned - $newSupported, 2);
 
                 if ($newSupported > round($originalAmount - $existingSupported - $existingReturned, 2) + 0.009) {
                     throw ValidationException::withMessages([
-                        'settlement_documents' => 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.',
+                        'settlement_documents' => count($expenseIds) > 1
+                            ? 'La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.'
+                            : 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.',
                     ]);
                 }
                 if ($newReturned > $pendingAfterDocuments + 0.009) {
@@ -393,7 +443,9 @@ class PettyCashExpenseExchangeController extends Controller
                 }
                 if ($existingSupported + $existingReturned + $newSupported + $newReturned > $originalAmount + 0.009) {
                     throw ValidationException::withMessages([
-                        'settlement_documents' => 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.',
+                        'settlement_documents' => count($expenseIds) > 1
+                            ? 'La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.'
+                            : 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.',
                     ]);
                 }
 
@@ -412,7 +464,9 @@ class PettyCashExpenseExchangeController extends Controller
                         ->lockForUpdate()
                         ->exists()) {
                         throw ValidationException::withMessages([
-                            "settlement_documents.$index.number" => 'Este comprobante ya fue registrado para el recibo interno.',
+                            "settlement_documents.$index.number" => count($expenseIds) > 1
+                                ? 'Este comprobante ya fue registrado para la rendición seleccionada.'
+                                : 'Este comprobante ya fue registrado para el recibo interno.',
                         ]);
                     }
                     $newKeys[$key] = true;
@@ -452,12 +506,23 @@ class PettyCashExpenseExchangeController extends Controller
                         'created_by' => Auth::id(),
                         'updated_by' => Auth::id(),
                     ]);
-                    $expense->events()->create([
-                        'event' => 'settlement_document_added',
-                        'description' => "Se agregó {$type} {$series}-{$number} por ".number_format((float) $document->amount, 2).'.',
-                        'metadata' => ['exchange_id' => $exchange->id, 'document_id' => $document->id, 'amount' => (float) $document->amount],
-                        'created_by' => Auth::id(),
-                    ]);
+                    $expenses->each(function (PettyCashExpense $expense) use (
+                        $exchange, $document, $type, $series, $number, $receiptLabel, $expenseIds
+                    ) {
+                        $expense->events()->create([
+                            'event' => 'settlement_document_added',
+                            'description' => "Se agregó {$type} {$series}-{$number} por "
+                                .number_format((float) $document->amount, 2)
+                                .' para los recibos '.$receiptLabel.'.',
+                            'metadata' => [
+                                'exchange_id' => $exchange->id,
+                                'document_id' => $document->id,
+                                'receipt_ids' => $expenseIds,
+                                'amount' => (float) $document->amount,
+                            ],
+                            'created_by' => Auth::id(),
+                        ]);
+                    });
                 }
 
                 if ($hasReturn) {
@@ -472,7 +537,7 @@ class PettyCashExpenseExchangeController extends Controller
                         'amount' => $newReturned,
                         'return_date' => $validated['return_date'],
                         'responsible_user_id' => $validated['return_responsible_user_id'] ?? null,
-                        'responsible_name' => trim((string) ($validated['return_responsible_name'] ?? '')) ?: $expense->supplier_name,
+                        'responsible_name' => trim((string) ($validated['return_responsible_name'] ?? '')) ?: $primaryExpense->supplier_name,
                         'observation' => $validated['return_observation'] ?? null,
                         'file_path' => $returnPath,
                         'original_name' => $returnFile?->getClientOriginalName(),
@@ -481,32 +546,43 @@ class PettyCashExpenseExchangeController extends Controller
                         'status' => PettyCashExpenseExchangeReturn::STATUS_ACTIVE,
                         'created_by' => Auth::id(),
                     ]);
-                    $expense->events()->create([
-                        'event' => 'settlement_return_registered',
-                        'description' => 'Se registró un retorno de vuelto a Caja Chica por '.number_format((float) $return->amount, 2).'.',
-                        'metadata' => ['exchange_id' => $exchange->id, 'return_id' => $return->id, 'amount' => (float) $return->amount],
-                        'created_by' => Auth::id(),
-                    ]);
+                    $expenses->each(function (PettyCashExpense $expense) use ($exchange, $return, $receiptLabel, $expenseIds) {
+                        $expense->events()->create([
+                            'event' => 'settlement_return_registered',
+                            'description' => 'Se registró un retorno de vuelto a Caja Chica por '
+                                .number_format((float) $return->amount, 2)
+                                .' para los recibos '.$receiptLabel.'.',
+                            'metadata' => [
+                                'exchange_id' => $exchange->id,
+                                'return_id' => $return->id,
+                                'receipt_ids' => $expenseIds,
+                                'amount' => (float) $return->amount,
+                            ],
+                            'created_by' => Auth::id(),
+                        ]);
+                    });
                 }
 
                 $previousStatus = $exchange->settlement_status;
-                $this->refreshSettlementTotals($exchange, $expense);
+                $this->refreshSettlementTotals($exchange, $expenses);
                 if ($wasObserved) {
-                    $expense->events()->create([
+                    $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
                         'event' => 'receipt_settlement_corrected',
                         'description' => 'La rendición observada fue corregida con nueva información.',
-                        'metadata' => ['exchange_id' => $exchange->id],
+                        'metadata' => ['exchange_id' => $exchange->id, 'receipt_ids' => $expenseIds],
                         'created_by' => Auth::id(),
-                    ]);
+                    ]));
                 }
                 if ($previousStatus !== PettyCashExpenseExchange::SETTLEMENT_SETTLED
                     && $exchange->settlement_status === PettyCashExpenseExchange::SETTLEMENT_SETTLED) {
-                    $expense->events()->create([
+                    $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
                         'event' => 'receipt_settlement_completed',
-                        'description' => 'El recibo interno quedó rendido totalmente.',
-                        'metadata' => ['exchange_id' => $exchange->id],
+                        'description' => count($expenseIds) > 1
+                            ? 'Los recibos internos '.$receiptLabel.' quedaron rendidos totalmente.'
+                            : 'El recibo interno '.$receiptLabel.' quedó rendido totalmente.',
+                        'metadata' => ['exchange_id' => $exchange->id, 'receipt_ids' => $expenseIds],
                         'created_by' => Auth::id(),
-                    ]);
+                    ]));
                 }
 
                 $totals = $this->pettyCashCalculator->calculate($box);
@@ -538,9 +614,10 @@ class PettyCashExpenseExchangeController extends Controller
 
     private function refreshSettlementTotals(
         PettyCashExpenseExchange $exchange,
-        PettyCashExpense $expense
+        $expenses
     ): void {
-        $original = round((float) ($exchange->original_amount ?? $expense->amount), 2);
+        $expenses = collect($expenses);
+        $original = round((float) ($exchange->original_amount ?? $expenses->sum('amount')), 2);
         $supported = round((float) $exchange->settlementDocuments()->sum('amount'), 2);
         $returned = round((float) $exchange->returns()->sum('amount'), 2);
         $pending = max(0, round($original - $supported - $returned, 2));
@@ -557,14 +634,16 @@ class PettyCashExpenseExchangeController extends Controller
             'settled_at' => $settled ? ($exchange->settled_at ?: now()) : null,
             'updated_by' => Auth::id(),
         ]);
-        $expense->update([
-            'exchange_status' => $settled
-                ? PettyCashExpense::EXCHANGE_COMPLETED
-                : PettyCashExpense::EXCHANGE_PARTIAL,
-            'exchanged_at' => $settled ? ($expense->exchanged_at ?: now()) : null,
-            'exchange_id' => $exchange->id,
-            'updated_by' => Auth::id(),
-        ]);
+        $expenses->each(function (PettyCashExpense $expense) use ($exchange, $settled) {
+            $expense->update([
+                'exchange_status' => $settled
+                    ? PettyCashExpense::EXCHANGE_COMPLETED
+                    : PettyCashExpense::EXCHANGE_PARTIAL,
+                'exchanged_at' => $settled ? ($expense->exchanged_at ?: now()) : null,
+                'exchange_id' => $exchange->id,
+                'updated_by' => Auth::id(),
+            ]);
+        });
     }
 
     public function show(PettyCashExpenseExchange $exchange)
@@ -622,21 +701,22 @@ class PettyCashExpenseExchangeController extends Controller
             abort_unless((int) $lockedDocument->exchange_id === (int) $lockedExchange->id, 404);
             abort_unless($lockedDocument->status === PettyCashExpenseExchangeDocument::STATUS_ACTIVE, 404);
 
-            $expense = PettyCashExpense::query()
+            $expenses = PettyCashExpense::query()
                 ->where('exchange_id', $lockedExchange->id)
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->get();
+            abort_if($expenses->isEmpty(), 404);
             $lockedDocument->update([
                 'status' => PettyCashExpenseExchangeDocument::STATUS_INACTIVE,
                 'updated_by' => Auth::id(),
             ]);
-            $expense->events()->create([
+            $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
                 'event' => 'settlement_document_removed',
                 'description' => "Se retiró {$lockedDocument->document_type} {$lockedDocument->document_full_number} de la rendición.",
                 'metadata' => ['exchange_id' => $lockedExchange->id, 'document_id' => $lockedDocument->id],
                 'created_by' => Auth::id(),
-            ]);
-            $this->refreshSettlementTotals($lockedExchange, $expense);
+            ]));
+            $this->refreshSettlementTotals($lockedExchange, $expenses);
 
             $box = PettyCashBox::query()->lockForUpdate()->findOrFail($lockedExchange->petty_cash_box_id);
             $totals = $this->pettyCashCalculator->calculate($box);

@@ -809,6 +809,111 @@ it('rinde parcialmente un recibo con varios comprobantes y completa con el vuelt
         ->assertJsonPath('data.cash_balance', '1910.00');
 });
 
+it('canjea varios recibos con un solo comprobante oficial y conserva la trazabilidad conjunta', function () {
+    $first = createReceiptExpense(20, '000410');
+    $second = createReceiptExpense(30, '000411');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $first))->assertOk();
+    $this->postJson(route('admin.petty-cash.expenses.approve', $second))->assertOk();
+
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'expense_ids' => [$first->id, $second->id],
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000010',
+            'issuer_name' => 'EMISOR CONJUNTO S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F010',
+            'number' => '000050',
+            'issue_date' => '2026-08-22',
+            'concept' => 'SUSTENTO CONJUNTO DE DOS RECIBOS',
+            'amount' => 50,
+        ]],
+    ])->assertCreated()
+        ->assertJsonPath('data.original_amount', '50.00')
+        ->assertJsonPath('data.supported_amount', '50.00')
+        ->assertJsonPath('data.pending_amount', '0.00')
+        ->assertJsonPath('data.settlement_status', 'SETTLED')
+        ->assertJsonCount(2, 'data.items');
+
+    $first->refresh();
+    $second->refresh();
+    expect($first->exchange_id)->toBe($second->exchange_id)
+        ->and($first->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED)
+        ->and($second->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED)
+        ->and($first->exchange->items)->toHaveCount(2)
+        ->and($first->events()->where('event', 'settlement_document_added')->value('description'))
+        ->toContain('F010-000050', $first->document_full_number, $second->document_full_number);
+});
+
+it('mantiene parcial una rendición conjunta y permite completarla con vuelto sin duplicar egresos', function () {
+    $first = createReceiptExpense(20, '000420');
+    $second = createReceiptExpense(30, '000421');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $first))->assertOk();
+    $this->postJson(route('admin.petty-cash.expenses.approve', $second))->assertOk();
+    $route = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+
+    $this->postJson($route, [
+        'expense_ids' => [$first->id, $second->id],
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000011',
+            'issuer_name' => 'EMISOR PARCIAL S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F011',
+            'number' => '000040',
+            'issue_date' => '2026-08-22',
+            'concept' => 'SUSTENTO PARCIAL CONJUNTO',
+            'amount' => 40,
+        ]],
+    ])->assertCreated()
+        ->assertJsonPath('data.pending_amount', '10.00')
+        ->assertJsonPath('data.settlement_status', 'PARTIAL');
+
+    expect($first->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PARTIAL)
+        ->and($second->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PARTIAL);
+
+    $this->postJson($route, [
+        'expense_ids' => [$first->id, $second->id],
+        'has_return' => true,
+        'return_amount' => 10,
+        'return_date' => '2026-08-22',
+        'return_responsible_name' => 'RESPONSABLE',
+    ])->assertCreated()
+        ->assertJsonPath('data.returned_amount', '10.00')
+        ->assertJsonPath('data.pending_amount', '0.00')
+        ->assertJsonPath('data.settlement_status', 'SETTLED');
+
+    $box = PettyCashBox::findOrFail($this->boxId);
+    expect($first->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED)
+        ->and($second->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED)
+        ->and((float) $box->cash_balance)->toBe(1960.0)
+        ->and((float) $box->reimbursement_amount)->toBe(40.0);
+});
+
+it('bloquea un comprobante que supera el total de varios recibos seleccionados', function () {
+    $first = createReceiptExpense(20, '000430');
+    $second = createReceiptExpense(30, '000431');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $first))->assertOk();
+    $this->postJson(route('admin.petty-cash.expenses.approve', $second))->assertOk();
+
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'expense_ids' => [$first->id, $second->id],
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000012',
+            'issuer_name' => 'EMISOR EXCEDIDO S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F012',
+            'number' => '000060',
+            'issue_date' => '2026-08-22',
+            'concept' => 'MONTO EXCEDIDO',
+            'amount' => 60,
+        ]],
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.');
+
+    expect(PettyCashExpenseExchange::count())->toBe(0)
+        ->and($first->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PENDING)
+        ->and($second->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PENDING);
+});
+
 it('bloquea comprobantes que superan el monto o que duplican el documento del recibo', function () {
     $receipt = createReceiptExpense(100, '000402');
     $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();

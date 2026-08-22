@@ -146,9 +146,18 @@ $(function () {
     const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal, .petty-warehouse-expense-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const settlementEmpty = (icon, title, text) => `<div class="petty-empty-state pcre-empty-state"><span><i class="fas ${icon}"></i></span><strong>${title}</strong><small>${text}</small></div>`;
-    const selectedSettlementReceipt = () => {
-        const selectedId = Number($('.pcre-receipt:checked').val() || 0);
-        return pendingExchangeReceipts.find(receipt => Number(receipt.id) === selectedId) || null;
+    const selectedSettlementReceipts = () => {
+        const selectedIds = new Set($('.pcre-receipt:checked').toArray().map(input => Number(input.value)));
+        return pendingExchangeReceipts.filter(receipt => selectedIds.has(Number(receipt.id)));
+    };
+    const selectedSettlementReceipt = () => selectedSettlementReceipts()[0] || null;
+    const selectedSettlementExchanges = receipts => {
+        const seen = new Set();
+        return receipts.map(receipt => receipt.exchange).filter(exchange => {
+            if (!exchange?.id || seen.has(Number(exchange.id))) return false;
+            seen.add(Number(exchange.id));
+            return true;
+        });
     };
     const settlementState = receipt => {
         const status = receipt?.exchange?.settlement_status;
@@ -157,10 +166,11 @@ $(function () {
         if (status === 'OBSERVED' || receipt?.exchange_status === 'OBSERVADO') return ['Observado', 'is-observed'];
         return ['Pendiente de canje', 'is-pending'];
     };
-    const renderExistingSettlement = receipt => {
-        const exchange = receipt?.exchange || {};
-        const documents = exchange.settlement_documents || [];
-        const returns = exchange.returns || [];
+    const renderExistingSettlement = selected => {
+        const receipts = Array.isArray(selected) ? selected : (selected ? [selected] : []);
+        const exchanges = selectedSettlementExchanges(receipts);
+        const documents = exchanges.flatMap(exchange => exchange.settlement_documents || []);
+        const returns = exchanges.flatMap(exchange => exchange.returns || []);
         $('#pcre_existing_documents').html(documents.length ? documents.map(document => `
             <article class="petty-settlement-existing-card">
                 <header><div><strong><i class="far fa-file-alt mr-1"></i>${escapeHtml(document.document_type)} ${escapeHtml(document.document_full_number)}</strong><small>${escapeHtml(document.issuer_name)}${document.issuer_ruc ? ` · RUC ${escapeHtml(document.issuer_ruc)}` : ''}</small></div><span class="pcre-existing-amount">${money(document.amount, currentBox?.currency?.symbol || '')}</span></header>
@@ -212,19 +222,26 @@ $(function () {
         updateReceiptExchangeSelection();
     };
     const updateReceiptExchangeSelection = () => {
-        const receipt = selectedSettlementReceipt();
+        const receipts = selectedSettlementReceipts();
+        const receipt = receipts[0] || null;
         const symbol = currentBox?.currency?.symbol || '';
-        const exchange = receipt?.exchange || {};
-        const original = Number(exchange.original_amount ?? receipt?.amount ?? 0);
-        const existingSupported = Number(exchange.supported_amount || 0);
-        const existingReturned = Number(exchange.returned_amount || 0);
+        const exchanges = selectedSettlementExchanges(receipts);
+        const exchange = exchanges.length === 1 ? exchanges[0] : {};
+        const receiptsWithExchange = new Set(exchanges.flatMap(item =>
+            (item.items || []).map(exchangeItem => Number(exchangeItem.petty_cash_expense_id || exchangeItem.expense?.id))
+        ));
+        const original = exchanges.reduce((sum, item) => sum + Number(item.original_amount || 0), 0)
+            + receipts.filter(item => !receiptsWithExchange.has(Number(item.id)))
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const existingSupported = exchanges.reduce((sum, item) => sum + Number(item.supported_amount || 0), 0);
+        const existingReturned = exchanges.reduce((sum, item) => sum + Number(item.returned_amount || 0), 0);
         const newSupported = $('.pcre-document-amount').toArray().reduce((sum, input) => sum + Number(input.value || 0), 0);
         const newReturn = $('#pcre_has_return').is(':checked') ? Number($('#pcre_return_amount').val() || 0) : 0;
         const supported = existingSupported + newSupported;
         const returned = existingReturned + newReturn;
         const pending = original - supported - returned;
         const maxReturn = Math.max(0, original - supported - existingReturned);
-        const state = pending < -0.009 ? ['Importe excedido', 'is-observed'] : (pending <= 0.009 ? ['Rendición completa', 'is-completed'] : ((supported + returned) > 0 ? ['Rendición parcial', 'is-pending'] : settlementState(receipt)));
+        const state = pending < -0.009 ? ['Importe excedido', 'is-observed'] : (pending <= 0.009 && receipts.length ? ['Rendición completa', 'is-completed'] : ((supported + returned) > 0 ? ['Rendición parcial', 'is-pending'] : settlementState(receipt)));
         const newDocumentSummaries = $('.pcre-document-row').toArray().map((row, position) => {
             const item = $(row);
             const type = item.find('.pcre-document-type').val() || 'Comprobante nuevo';
@@ -237,7 +254,7 @@ $(function () {
             };
         });
         const documentSummaries = [
-            ...(exchange.settlement_documents || []).map(document => ({
+            ...exchanges.flatMap(item => item.settlement_documents || []).map(document => ({
                 title: [document.document_type, document.document_full_number].filter(Boolean).join(' '),
                 detail: document.issuer_name || 'Emisor no indicado',
                 amount: Number(document.amount || 0)
@@ -245,7 +262,7 @@ $(function () {
             ...newDocumentSummaries
         ];
         const returnSummaries = [
-            ...(exchange.returns || []).map(item => ({
+            ...exchanges.flatMap(item => item.returns || []).map(item => ({
                 title: item.movement_code ? `Retorno ${item.movement_code}` : 'Vuelto registrado',
                 detail: `${date(item.return_date)} · ${item.responsible_name || userName(item.responsible_user)}`,
                 amount: Number(item.amount || 0)
@@ -257,17 +274,18 @@ $(function () {
             }] : [])
         ];
 
-        $('#pcre_expense_id').val(receipt?.id || '');
+        $('#pcre_expense_id').val(receipts.length === 1 ? receipt.id : '');
         $('#pcre_original_amount').text(money(original, symbol));
         $('#pcre_supported_amount').text(money(supported, symbol));
         $('#pcre_returned_amount').text(money(returned, symbol));
         $('#pcre_pending_amount, #pcre_footer_pending').text(money(Math.max(0, pending), symbol));
         $('#pcre_summary_status').attr('class', `petty-exchange-badge ${state[1]}`).text(state[0]);
-        $('#pcre_document_count').text((exchange.settlement_documents || []).length + $('.pcre-document-row').length);
+        $('#pcre_document_count').text(exchanges.reduce((sum, item) => sum + (item.settlement_documents || []).length, 0) + $('.pcre-document-row').length);
+        $('#pcre_selected_count').text(receipts.length);
         $('#pcre_return_amount').attr('max', maxReturn.toFixed(2));
         $('#pcre_return_max').text(`Máximo permitido después de comprobantes: ${money(maxReturn, symbol)}`);
-        $('#pcre_limit_warning').toggleClass('d-none', pending >= -0.009).find('span').text('La suma de comprobantes y vuelto no puede superar el monto del recibo interno.');
-        $('#pcre_save').prop('disabled', !receipt || pending < -0.009);
+        $('#pcre_limit_warning').toggleClass('d-none', pending >= -0.009).find('span').text('La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.');
+        $('#pcre_save').prop('disabled', !receipts.length || pending < -0.009);
         $('#pcre_summary_documents').html(documentSummaries.length ? documentSummaries.map(item => `
             <article class="pcre-summary-item"><div><strong>${escapeHtml(item.title || 'Comprobante')}</strong><small>${escapeHtml(item.detail)}</small></div><span>${money(item.amount, symbol)}</span></article>
         `).join('') : '<div class="pcre-summary-empty"><i class="far fa-file-alt mr-1"></i> Sin comprobantes registrados.</div>');
@@ -280,15 +298,18 @@ $(function () {
             .html(pending >= -0.009 && pending <= 0.009 && receipt
                 ? '<span><i class="fas fa-check"></i></span><div><strong>Rendición completa</strong><small>El monto entregado se encuentra totalmente sustentado.</small></div>'
                 : '<span><i class="fas fa-hourglass-half"></i></span><div><strong>Rendición en proceso</strong><small>Complete el saldo pendiente con comprobantes o vuelto.</small></div>');
-        $('#pcre_selected_receipt_summary').html(receipt ? [
-            ['Recibo interno', receipt.document_full_number || receipt.document_number || '-'],
-            ['Responsable', receipt.supplier_name || '-'],
-            ['Fecha', date(receipt.expense_date)],
-            ['Concepto original', receipt.concept || '-'],
-            ['Estado actual', settlementState(receipt)[0]],
-            ['Monto entregado', money(original, symbol)]
+        $('#pcre_selected_receipt_summary').html(receipts.length ? [
+            ['Recibos seleccionados', receipts.map(item => item.document_full_number || item.document_number || `#${item.id}`).join(', ')],
+            ['Cantidad', receipts.length],
+            ['Responsable(s)', [...new Set(receipts.map(item => item.supplier_name || '-'))].join(', ')],
+            ['Fecha(s)', [...new Set(receipts.map(item => date(item.expense_date)))].join(', ')],
+            ['Estado actual', state[0]],
+            ['Monto seleccionado', money(original, symbol)]
         ].map(item => `<div><small>${item[0]}</small><strong>${escapeHtml(item[1])}</strong></div>`).join('') : '');
-        $('.pcre-receipt-row').removeClass('is-selected').filter(`[data-id="${receipt?.id || 0}"]`).addClass('is-selected');
+        const selectedIds = new Set(receipts.map(item => Number(item.id)));
+        $('.pcre-receipt-row').each(function () {
+            $(this).toggleClass('is-selected', selectedIds.has(Number($(this).data('id'))));
+        });
     };
     const initializeDetailTooltips = () => {
         const tooltips = $('#viewPettyCashModal [data-toggle="tooltip"]');
@@ -2269,7 +2290,7 @@ $(function () {
                 const pending = Number(receipt.exchange?.pending_amount ?? receipt.amount ?? 0);
                 const state = settlementState(receipt);
                 return `<tr class="pcre-receipt-row" data-id="${receipt.id}">
-                    <td><label class="pcre-receipt-selector"><input type="radio" class="pcre-receipt" name="selected_receipt" value="${receipt.id}"><i class="fas fa-check"></i></label></td>
+                    <td><label class="pcre-receipt-selector" title="Seleccionar recibo"><input type="checkbox" class="pcre-receipt" name="expense_ids[]" value="${receipt.id}"><i class="fas fa-check"></i></label></td>
                     <td><i class="far fa-calendar-alt text-muted mr-1"></i>${date(receipt.expense_date)}</td>
                     <td><strong class="text-dark"><i class="fas fa-receipt text-success mr-1"></i>RECIBO ${escapeHtml(number)}</strong></td>
                     <td>${escapeHtml(receipt.supplier_name || '-')}</td><td>${escapeHtml(receipt.concept)}</td>
@@ -2280,7 +2301,10 @@ $(function () {
             }).join('') : '<tr><td colspan="8" class="petty-empty-state"><strong>No hay recibos aprobados pendientes de rendición.</strong></td></tr>');
             $('.pcre-receipt').first().prop('checked', true);
             const firstReceipt = selectedSettlementReceipt();
-            renderExistingSettlement(firstReceipt);
+            (firstReceipt?.exchange?.items || []).forEach(item => {
+                $(`.pcre-receipt[value="${Number(item.petty_cash_expense_id)}"]`).prop('checked', true);
+            });
+            renderExistingSettlement(selectedSettlementReceipts());
             $('#pcre_return_responsible_name').val(firstReceipt?.supplier_name || '');
             $('#pcre_return_date').val(new Date().toISOString().slice(0, 10));
             addSettlementDocumentRow();
@@ -2298,19 +2322,24 @@ $(function () {
     });
 
     $(document).on('click', '.pcre-receipt-row', function (event) {
-        if (!$(event.target).is('input')) $(this).find('.pcre-receipt').prop('checked', true).trigger('change');
+        if ($(event.target).closest('input, label, button, a').length) return;
+        const input = $(this).find('.pcre-receipt');
+        input.prop('checked', !input.prop('checked')).trigger('change');
     });
     $(document).on('change', '.pcre-receipt', function () {
-        $('#pcre_document_rows').empty();
-        receiptSettlementDocumentIndex = 0;
-        $('#pcre_has_return').prop('checked', false);
-        $('#pcre_return_fields').addClass('d-none');
-        $('#pcre_return_amount').val('');
-        const receipt = selectedSettlementReceipt();
-        $('#pcre_return_responsible_name').val(receipt?.supplier_name || '');
-        renderExistingSettlement(receipt);
-        addSettlementDocumentRow();
+        const modalBody = $('#pettyCashReceiptExchangeModal .petty-settlement-body');
+        const previousScrollTop = modalBody.scrollTop();
+        const changedReceipt = pendingExchangeReceipts.find(receipt => Number(receipt.id) === Number(this.value));
+        (changedReceipt?.exchange?.items || []).forEach(item => {
+            $(`.pcre-receipt[value="${Number(item.petty_cash_expense_id)}"]`).prop('checked', this.checked);
+        });
+        const receipts = selectedSettlementReceipts();
+        if (!$('#pcre_return_responsible_name').val()) {
+            $('#pcre_return_responsible_name').val(receipts[0]?.supplier_name || '');
+        }
+        renderExistingSettlement(receipts);
         updateReceiptExchangeSelection();
+        window.requestAnimationFrame(() => modalBody.scrollTop(previousScrollTop));
     });
     $('#pcre_add_document').on('click', addSettlementDocumentRow);
     $(document).on('click', '.removeSettlementDocumentRow', function () {
@@ -2386,9 +2415,9 @@ $(function () {
 
     $('#pettyCashReceiptExchangeForm').on('submit', function (event) {
         event.preventDefault();
-        const receipt = selectedSettlementReceipt();
-        if (!receipt) {
-            notify('warning', 'Seleccione un recibo interno para rendir.');
+        const receipts = selectedSettlementReceipts();
+        if (!receipts.length) {
+            notify('warning', 'Seleccione al menos un recibo interno para rendir.');
             return;
         }
         const hasDocuments = $('.pcre-document-row').length > 0;
@@ -2397,9 +2426,15 @@ $(function () {
             notify('warning', 'Agregue al menos un comprobante o registre el vuelto.');
             return;
         }
-        const original = Number(receipt.exchange?.original_amount ?? receipt.amount ?? 0);
-        const existingSupported = Number(receipt.exchange?.supported_amount || 0);
-        const existingReturned = Number(receipt.exchange?.returned_amount || 0);
+        const exchanges = selectedSettlementExchanges(receipts);
+        const receiptsWithExchange = new Set(exchanges.flatMap(item =>
+            (item.items || []).map(exchangeItem => Number(exchangeItem.petty_cash_expense_id || exchangeItem.expense?.id))
+        ));
+        const original = exchanges.reduce((sum, item) => sum + Number(item.original_amount || 0), 0)
+            + receipts.filter(item => !receiptsWithExchange.has(Number(item.id)))
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const existingSupported = exchanges.reduce((sum, item) => sum + Number(item.supported_amount || 0), 0);
+        const existingReturned = exchanges.reduce((sum, item) => sum + Number(item.returned_amount || 0), 0);
         const newSupported = $('.pcre-document-amount').toArray().reduce((sum, input) => sum + Number(input.value || 0), 0);
         const pendingAfterDocuments = original - existingSupported - existingReturned - newSupported;
         const newReturn = hasReturn ? Number($('#pcre_return_amount').val() || 0) : 0;
@@ -2412,7 +2447,7 @@ $(function () {
             return;
         }
         if (existingSupported + existingReturned + newSupported + newReturn > original + 0.009) {
-            notify('error', 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.');
+            notify('error', 'La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.');
             return;
         }
         const form = $(this);
