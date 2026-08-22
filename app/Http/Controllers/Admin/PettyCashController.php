@@ -130,8 +130,16 @@ class PettyCashController extends Controller
         ]);
     }
 
-    public function list()
+    public function list(Request $request)
     {
+        $statusFilter = $request->validate([
+            'status_filter' => ['nullable', Rule::in(['open', 'closed', 'cancelled', 'all'])],
+        ])['status_filter'] ?? 'open';
+        $statusMap = [
+            'open' => PettyCashBox::STATUS_OPEN,
+            'closed' => PettyCashBox::STATUS_CLOSED,
+            'cancelled' => PettyCashBox::STATUS_CANCELLED,
+        ];
         $activeStatuses = [PettyCashBox::STATUS_OPEN, PettyCashBox::STATUS_IN_REVIEW];
         $summary = [
             'active_boxes' => PettyCashBox::whereIn('status', $activeStatuses)->count(),
@@ -147,6 +155,7 @@ class PettyCashController extends Controller
         ];
         $query = PettyCashBox::query()
             ->with(['company:id,business_name,trade_name', 'currency:id,code,symbol'])
+            ->when($statusFilter !== 'all', fn ($query) => $query->where('status', $statusMap[$statusFilter]))
             ->withCount([
                 'expenses as pending_expenses_count' => fn ($query) => $query
                     ->where('status', 'ACTIVE')

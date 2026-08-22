@@ -92,6 +92,12 @@
             <small class="text-muted">Fondos registrados en el sistema</small>
         </div>
         <div class="card-body pt-2">
+            <div class="petty-cash-status-tabs" role="group" aria-label="Filtrar cajas chicas por estado">
+                <button type="button" class="petty-cash-status-filter is-active" data-status="open" aria-pressed="true"><i class="fas fa-lock-open"></i> Abiertas</button>
+                <button type="button" class="petty-cash-status-filter" data-status="closed" aria-pressed="false"><i class="fas fa-lock"></i> Cerradas</button>
+                <button type="button" class="petty-cash-status-filter" data-status="cancelled" aria-pressed="false"><i class="fas fa-ban"></i> Anuladas</button>
+                <button type="button" class="petty-cash-status-filter" data-status="all" aria-pressed="false"><i class="fas fa-layer-group"></i> Todas</button>
+            </div>
             <div class="table-responsive petty-cash-table-responsive">
                 <table id="tablePettyCash" class="table table-hover align-middle text-center w-100">
                     <thead class="bg-light">
@@ -138,6 +144,12 @@
 
 @push('css')
 <style>
+    .petty-cash-status-tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;padding:6px;border:1px solid #e2ebe7;border-radius:999px;background:#f5f8f7;width:max-content;max-width:100%}
+    .petty-cash-status-filter{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border:1px solid transparent;border-radius:999px;background:transparent;color:#687871;font-size:.7rem;font-weight:800;line-height:1;transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease}
+    .petty-cash-status-filter:hover{border-color:#cdded6;background:#fff;color:#247456}
+    .petty-cash-status-filter.is-active{border-color:#278160;background:#278160;color:#fff;box-shadow:0 4px 11px rgba(39,129,96,.2)}
+    .petty-cash-status-filter:focus{outline:0;box-shadow:0 0 0 3px rgba(39,129,96,.16)}
+    @media(max-width:575px){.petty-cash-status-tabs{width:100%;border-radius:14px}.petty-cash-status-filter{flex:1 1 calc(50% - 7px);justify-content:center}}
     .petty-pending-bell{border:1px solid #dccb9d;background:#fffaf0;color:#755719;font-weight:700}.petty-pending-bell:hover{background:#f8efd9;color:#654810}.petty-pending-bell .badge{background:#9b7424;color:#fff}
     .petty-observed-bell{border:1px solid #e7a36c;background:#fff3e9;color:#994514;font-weight:700}.petty-observed-bell:hover{background:#ffe7d3;color:#80340d}.petty-observed-bell .badge{background:#d85e21;color:#fff}
     .petty-pending-bell .alert-icon,.petty-observed-bell .alert-icon{display:inline-flex;align-items:center;justify-content:center;line-height:1;transform-origin:top center}

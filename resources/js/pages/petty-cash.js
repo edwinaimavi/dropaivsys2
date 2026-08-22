@@ -19,6 +19,7 @@ $(function () {
     const canDestroyReceiptExchange = Boolean(app.data('can-receipt-exchange-destroy'));
     let currentBox = null;
     let table;
+    let currentPettyCashStatusFilter = 'open';
     let applyingPreviousBalance = false;
     let currentApprovedAmount = null;
     let pendingExpenseFiles = [];
@@ -1072,7 +1073,12 @@ $(function () {
             { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf mr-1"></i> PDF', className: 'btn btn-danger btn-sm', orientation: 'landscape' },
             { extend: 'print', text: '<i class="fas fa-print mr-1"></i> Imprimir', className: 'btn btn-secondary btn-sm' }
         ],
-        ajax: app.data('list-url'),
+        ajax: {
+            url: app.data('list-url'),
+            data: data => {
+                data.status_filter = currentPettyCashStatusFilter;
+            }
+        },
         order: [[2, 'desc']],
         columns: [
             { data: null, defaultContent: '', className: 'dtr-control petty-responsive-control', orderable: false, searchable: false },
@@ -1094,6 +1100,17 @@ $(function () {
             updateAttentionCounter('#btnObservedPettyCashExpenses', '#pcObservedExpensesBadge', summary.observed_expenses_count, 'Gastos observados');
             $('#tablePettyCash [data-toggle="tooltip"]').tooltip();
         }
+    });
+
+    $(document).on('click', '.petty-cash-status-filter', function () {
+        const nextFilter = String($(this).data('status') || 'open');
+        if (nextFilter === currentPettyCashStatusFilter) return;
+        currentPettyCashStatusFilter = nextFilter;
+        $('.petty-cash-status-filter')
+            .removeClass('is-active')
+            .attr('aria-pressed', 'false');
+        $(this).addClass('is-active').attr('aria-pressed', 'true');
+        table.ajax.reload(null, true);
     });
 
     const preparePettyCashActionsMenu = dropdown => {
