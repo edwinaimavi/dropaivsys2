@@ -618,8 +618,10 @@ class SupplierPurchaseOrderController extends Controller
             'currency',
             'paymentCurrency',
             'customerPurchaseOrder.customer',
+            'customerPurchaseOrder.company',
             'customerPurchaseOrder.currency',
             'customerPurchaseOrders.customer',
+            'customerPurchaseOrders.company',
             'customerPurchaseOrders.currency',
             'quote',
             'marketStudy',
@@ -643,6 +645,8 @@ class SupplierPurchaseOrderController extends Controller
             'advancePayments.companyBankAccount.bank',
             'advancePayments.companyBankAccount.currency',
             'advancePayments.creator:id,name',
+            'warehouseEntries.warehouse',
+            'warehouseEntries.currency',
         ]);
         $this->appendEntryProgress($supplierPurchaseOrder);
         $supplierPurchaseOrder->setAttribute(

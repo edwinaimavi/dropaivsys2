@@ -143,6 +143,18 @@ Route::post('petty-cash/{pettyCash}/receipt-exchanges', [PettyCashExpenseExchang
     ->name('petty-cash.receipt-exchanges.store');
 Route::get('petty-cash/receipt-exchanges/{exchange}', [PettyCashExpenseExchangeController::class, 'show'])
     ->name('petty-cash.receipt-exchanges.show');
+Route::get(
+    'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}/view',
+    [PettyCashExpenseExchangeController::class, 'viewSettlementDocument']
+)->name('petty-cash.receipt-exchanges.documents.view');
+Route::delete(
+    'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}',
+    [PettyCashExpenseExchangeController::class, 'destroySettlementDocument']
+)->name('petty-cash.receipt-exchanges.documents.destroy');
+Route::get(
+    'petty-cash/receipt-exchanges/{exchange}/returns/{return}/view',
+    [PettyCashExpenseExchangeController::class, 'viewReturnProof']
+)->name('petty-cash.receipt-exchanges.returns.view');
 Route::get('petty-cash/documents/{document}/view', [PettyCashController::class, 'viewDocument'])->name('petty-cash.documents.view');
 Route::get('petty-cash/{pettyCash}/pdf', [PettyCashController::class, 'pdf'])->name('petty-cash.pdf');
 Route::get('petty-cash/{pettyCash}/excel', [PettyCashController::class, 'excel'])->name('petty-cash.excel');

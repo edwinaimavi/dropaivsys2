@@ -2066,6 +2066,7 @@ function loadSupplierPurchaseOrderDetail(id) {
     $.get(`${window.routes.supplierPurchaseOrderShow}/${id}`)
         .done(function (response) {
             fillSupplierPurchaseOrderDetail(response.data);
+            $('#viewSupplierPurchaseOrderModal .supplier-order-view-tabs .nav-link').first().tab('show');
             $('#viewSupplierPurchaseOrderModal').modal('show');
         })
         .fail(function (xhr) {
@@ -2101,14 +2102,63 @@ function fillSupplierPurchaseOrderDetail(order) {
             : '',
         order.destination_text || ''
     ].filter(Boolean).join(' | ') || '-';
+    const supplierLabel = supplierName(order.supplier);
+    const companyLabel = order.company?.trade_name || order.company?.business_name || '-';
+    const paymentConditionLabel = supplierOrderPaymentConditionLabel(order);
+    const documentTypeLabel = supplierOrderOptionLabel(order.document_type) || '-';
+    const paymentMethodLabel = supplierOrderOptionLabel(order.payment_method) || '-';
+    const items = order.items || [];
+    const supplierDocuments = order.supplier_documents || [];
+    const warehouseEntries = order.warehouse_entries || [];
+    const advancePayments = order.advance_payments || [];
+    const advanceRequired = Number(order.advance_amount || 0);
+    const advancePaid = Number(order.advance_paid_amount || 0);
+    const advanceBalance = Math.max(advanceRequired - advancePaid, 0);
+    const financialStatuses = {
+        not_required: 'No requiere anticipo',
+        pending: 'Anticipo pendiente',
+        partial: 'Anticipo parcial',
+        paid: 'Anticipo pagado',
+        unpaid: 'Pendiente de pago',
+        completed: 'Pagado'
+    };
+    const financialStatus = financialStatuses[order.apply_advance ? order.advance_status : order.payment_status]
+        || (order.apply_advance ? 'Anticipo pendiente' : 'Sin anticipo');
+    const purchaseMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.grand_total)}`.trim();
+    const subtotalMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.subtotal)}`.trim();
+    const igvMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.igv)}`.trim();
+    const paymentCurrencyCode = order.payment_currency?.code || currencyCode || currencySymbol;
 
     $('#vspo_code').text(order.code || '-');
     $('#vspo_status').text(status[0]).attr('class', `badge ${status[1]} rounded-pill px-3 py-2 shadow-sm`);
-    $('#vspo_supplier').text(supplierName(order.supplier));
-    $('#vspo_company').text(order.company?.trade_name || order.company?.business_name || '-');
+    $('#vspo_supplier').text(supplierLabel);
+    $('#vspo_company').text(companyLabel);
     $('#vspo_currency_symbol').text(currencySymbol);
     $('#vspo_grand_total').text(formatSupplierOrderMoney(order.grand_total));
     $('#vspo_supplier_account').text(account);
+    $('#vspo_header_subtitle').text(`${order.code || 'Orden sin c\u00f3digo'} \u00b7 ${supplierLabel}`);
+    $('#vspo_side_currency').text(currencyCode || '-');
+    $('#vspo_side_payment_condition').text(paymentConditionLabel);
+    $('#vspo_side_financial_status').text(financialStatus);
+    $('#vspo_side_item_count, #vspo_summary_item_count').text(items.length);
+    $('#vspo_side_document_count, #vspo_summary_document_count').text(supplierDocuments.length);
+    $('#vspo_side_entry_count, #vspo_summary_entry_count').text(warehouseEntries.length);
+
+    $('#vspo_summary_code').text(order.code || '-');
+    $('#vspo_summary_supplier').text(supplierLabel);
+    $('#vspo_summary_company').text(companyLabel);
+    $('#vspo_summary_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
+    $('#vspo_summary_status').text(status[0]);
+    $('#vspo_summary_payment_condition').text(paymentConditionLabel);
+    $('#vspo_summary_document_type').text(documentTypeLabel);
+    $('#vspo_summary_payment_method').text(paymentMethodLabel);
+    $('#vspo_summary_affect_igv').text(order.affect_igv ? 'S\u00cd' : 'NO');
+    $('#vspo_summary_created_at').text(formatSupplierOrderDate(order.created_at) || '-');
+    $('#vspo_summary_total').text(purchaseMoney);
+    $('#vspo_summary_subtotal').text(subtotalMoney);
+    $('#vspo_summary_igv').text(igvMoney);
+    $('#vspo_summary_paid').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advancePaid)}`.trim());
+    $('#vspo_summary_balance').text(`Saldo: ${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceBalance)}`.trim());
     const customerOrders = order.customer_purchase_orders?.length
         ? order.customer_purchase_orders
         : (order.customer_purchase_order ? [order.customer_purchase_order] : []);
@@ -2132,14 +2182,17 @@ function fillSupplierPurchaseOrderDetail(order) {
                 <small><i class="fas fa-coins mr-1"></i>${escapeSupplierOrderHtml(customerOrderCurrency)} ${formatSupplierOrderMoney(customerOrder.grand_total)}</small>
             </div>`;
         }).join('')
-        : '<span class="text-muted">Sin OC cliente relacionada.</span>');
+        : `<div class="supplier-order-view-empty">
+            <i class="fas fa-link"></i><strong>No hay informaci\u00f3n registrada.</strong>
+            <span>Esta compra no tiene \u00f3rdenes cliente relacionadas.</span>
+        </div>`);
     $('#vspo_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
-    $('#vspo_payment_condition').text(supplierOrderPaymentConditionLabel(order));
+    $('#vspo_payment_condition').text(paymentConditionLabel);
     $('#vspo_delivery_type').text(supplierOrderOptionLabel(order.delivery_type) || '-');
     $('#vspo_transport_type').text(supplierOrderOptionLabel(order.transport_type) || '-');
-    $('#vspo_document_type').text(supplierOrderOptionLabel(order.document_type) || '-');
-    $('#vspo_payment_method').text(supplierOrderOptionLabel(order.payment_method) || '-');
-    $('#vspo_affect_igv').text(order.affect_igv ? 'SI' : 'NO');
+    $('#vspo_document_type').text(documentTypeLabel);
+    $('#vspo_payment_method').text(paymentMethodLabel);
+    $('#vspo_affect_igv').text(order.affect_igv ? 'S\u00cd' : 'NO');
     $('#vspo_destination').text(destination);
     $('#vspo_shipping_address').text(order.shipping_address || '-');
     $('#vspo_observations').text(order.observations || 'Sin observaciones');
@@ -2153,13 +2206,19 @@ function fillSupplierPurchaseOrderDetail(order) {
         ? [contact.phone ? `Tel: ${contact.phone}` : '', contact.whatsapp ? `WhatsApp: ${contact.whatsapp}` : '', contact.email ? `Correo: ${contact.email}` : ''].filter(Boolean).join(' | ')
         : '-';
 
-    $('#vspo_shipping_agency_card').toggleClass('d-none', !supplierOrderRequiresShippingAgency(order.delivery_type));
+    const showsAgency = supplierOrderRequiresShippingAgency(order.delivery_type);
+    const hasLogistics = showsAgency || Boolean(order.shipping_address || order.shipping_reference || destination !== '-');
+    $('#vspo_shipping_agency_card').toggleClass('d-none', !hasLogistics).toggleClass('without-agency', !showsAgency);
+    $('#vspo_shipping_agency_card .vspo-agency-only').toggleClass('d-none', !showsAgency);
+    $('#vspo_logistics_empty').toggleClass('d-none', hasLogistics);
     $('#vspo_shipping_agency').text(agency ? `${agency.ruc ? agency.ruc + ' | ' : ''}${agency.trade_name || agency.business_name || '-'}` : '-');
     $('#vspo_shipping_branch').text(branch ? `${branch.branch_name || '-'} | ${branchLocation}` : '-');
     $('#vspo_shipping_contact').text(contact ? contact.contact_name || '-' : '-');
     $('#vspo_shipping_contact_phone').text(contactPhone || '-');
     $('#vspo_shipping_contact_email').text(contact?.email || '-');
     $('#vspo_shipping_reference').text(order.shipping_reference || branch?.reference || '-');
+    $('#vspo_logistics_destination').text(destination);
+    $('#vspo_logistics_address').text(order.shipping_address || '-');
     $('#vspo_requested_by').text(supplierOrderRequestedBy(order) || '-');
     $('#vspo_request_department').text(order.request_department || '-');
     $('#vspo_authorized_by_name').text(order.authorized_by_name || '-');
@@ -2172,22 +2231,64 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_igv').text(`${currencyCode} ${formatSupplierOrderMoney(order.igv)}`);
     $('#vspo_total').text(`${currencyCode} ${formatSupplierOrderMoney(order.grand_total)}`);
 
-    const supplierDocuments = order.supplier_documents || [];
-    $('#vspo_documents').html(supplierDocuments.length
-        ? supplierDocuments.map(document => `
-            <div class="d-flex justify-content-between align-items-center border rounded px-2 py-2 mb-2 bg-white">
-                <div>
-                    <strong>${escapeSupplierOrderHtml(document.document_type?.description || 'Documento del proveedor')}</strong>
-                    <small class="text-muted d-block">${escapeSupplierOrderHtml(document.original_name || '-')}${document.observation ? ` · ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
-                </div>
-                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-external-link-alt mr-1"></i>Abrir
-                </a>
-            </div>
-        `).join('')
-        : '<span class="text-muted">Sin documentos adjuntos.</span>');
+    $('#vspo_fin_purchase_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
+    $('#vspo_fin_payment_currency').text([order.payment_currency?.code, order.payment_currency?.description].filter(Boolean).join(' | ') || currencyCode || '-');
+    $('#vspo_fin_total').text(purchaseMoney);
+    $('#vspo_fin_advance_required').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceRequired)}`.trim());
+    $('#vspo_fin_paid').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advancePaid)}`.trim());
+    $('#vspo_fin_balance').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceBalance)}`.trim());
+    $('#vspo_fin_status').text(financialStatus);
+    $('#vspo_fin_exchange_rate').text(Number(order.exchange_rate || 0) > 0 ? formatSupplierOrderDecimal(order.exchange_rate, 6) : 'No aplica');
 
-    const rows = (order.items || []).map(function (item, index) {
+    const documentGroups = [
+        ['SPO_QUOTE', 'Cotizaci\u00f3n del proveedor'],
+        ['SPO_PAYMENT_SUPPORT', 'Sustento de pago'],
+        ['SPO_OTHER', 'Otro documento del proveedor']
+    ];
+    const documentCards = [];
+    documentGroups.forEach(([code, label]) => {
+        const matchingDocuments = supplierDocuments.filter(document => document.document_type?.code === code);
+        if (!matchingDocuments.length) {
+            documentCards.push(`<article class="supplier-order-view-document is-missing">
+                <span class="supplier-order-view-document-icon"><i class="far fa-file"></i></span>
+                <div><strong>${label}</strong><small>No hay archivo registrado.</small></div>
+                <span class="badge badge-light border">No adjunto</span>
+            </article>`);
+            return;
+        }
+
+        matchingDocuments.forEach(document => {
+            const fileName = document.original_name || '-';
+            const isImage = /image\//i.test(document.mime_type || '') || /\.(jpe?g|png)$/i.test(fileName);
+            documentCards.push(`<article class="supplier-order-view-document">
+                <span class="supplier-order-view-document-icon ${isImage ? 'is-image' : ''}"><i class="far ${isImage ? 'fa-file-image' : 'fa-file-pdf'}"></i></span>
+                <div>
+                    <strong title="${escapeSupplierOrderHtml(fileName)}">${escapeSupplierOrderHtml(fileName)}</strong>
+                    <small>${escapeSupplierOrderHtml(document.document_type?.description || label)}${document.observation ? ` \u00b7 ${escapeSupplierOrderHtml(document.observation)}` : ''}</small>
+                </div>
+                <a href="${escapeSupplierOrderHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm"><i class="fas fa-external-link-alt mr-1"></i>Abrir</a>
+            </article>`);
+        });
+    });
+    $('#vspo_documents').html(documentCards.join(''));
+
+    $('#vspo_advance_payments').html(advancePayments.length
+        ? `<div class="supplier-order-view-payment-table"><table class="table table-sm">
+            <thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Medio</th><th>Operaci\u00f3n</th><th class="text-right">Monto aplicado</th><th class="text-right">TC</th><th class="text-right">Monto pagado</th><th>Constancia</th></tr></thead>
+            <tbody>${advancePayments.map(payment => `<tr>
+                <td>${escapeSupplierOrderHtml(formatSupplierOrderDate(payment.payment_date) || '-')}</td>
+                <td>${escapeSupplierOrderHtml(payment.company_bank_account?.bank?.short_name || payment.company_bank_account?.bank?.description || '-')}<small class="d-block text-muted">${escapeSupplierOrderHtml(payment.company_bank_account?.account_number || '')}</small></td>
+                <td>${escapeSupplierOrderHtml(supplierOrderOptionLabel(payment.payment_method) || '-')}</td>
+                <td>${escapeSupplierOrderHtml(payment.operation_number || '-')}</td>
+                <td class="text-right">${escapeSupplierOrderHtml(payment.purchase_currency?.code || paymentCurrencyCode)} ${formatSupplierOrderMoney(payment.effective_applied_amount ?? payment.applied_amount)}</td>
+                <td class="text-right">${Number(payment.exchange_rate || 1).toFixed(4)}</td>
+                <td class="text-right">${escapeSupplierOrderHtml(payment.currency?.code || '')} ${formatSupplierOrderMoney(payment.amount)}</td>
+                <td>${payment.proof_url ? `<a href="${escapeSupplierOrderHtml(payment.proof_url)}" target="_blank" rel="noopener" class="btn btn-outline-info btn-xs"><i class="fas fa-eye mr-1"></i>Ver</a>` : '<span class="badge badge-light border">No adjunto</span>'}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>`
+        : `<div class="supplier-order-view-empty"><i class="fas fa-money-check-alt"></i><strong>No hay anticipos registrados.</strong><span>La orden no tiene pagos de anticipo asociados.</span></div>`);
+
+    const rows = items.map(function (item) {
         const orderedQuantity = item.ordered_quantity ?? item.quantity ?? 0;
         const enteredQuantity = item.entered_quantity ?? 0;
         const pendingQuantity = item.pending_quantity ?? orderedQuantity;
@@ -2195,7 +2296,6 @@ function fillSupplierPurchaseOrderDetail(order) {
 
         return `
             <tr>
-                <td class="text-center">${index + 1}</td>
                 <td>${escapeSupplierOrderHtml(item.article_code || '-')}</td>
                 <td class="supplier-order-item-name">
                     ${escapeSupplierOrderHtml(item.billing_name_snapshot || '-')}
@@ -2215,17 +2315,55 @@ function fillSupplierPurchaseOrderDetail(order) {
                 </td>
                 <td class="text-right">${formatSupplierOrderMoney(item.reference_purchase_price)}</td>
                 <td class="text-right">${formatSupplierOrderDecimal(item.unit_price)}</td>
-                <td class="text-right font-weight-bold">${formatSupplierOrderDecimal(item.total_with_igv ?? item.line_total)}</td>
-                <td class="text-right">${formatSupplierOrderDecimal(item.taxable_base ?? item.subtotal)}</td>
-                <td class="text-right">${formatSupplierOrderMoney(item.igv_percent ?? (order.affect_igv ? 18 : 0))}</td>
-                <td class="text-right">${formatSupplierOrderDecimal(item.igv_amount ?? item.tax_amount)}</td>
             </tr>
         `;
     }).join('');
 
     $('#vspo_items_body').html(
-        rows || '<tr><td colspan="17" class="text-center text-muted py-3">Sin items registrados</td></tr>'
+        rows || '<tr><td colspan="12" class="text-center text-muted py-4">No hay art\u00edculos o servicios registrados.</td></tr>'
     );
+
+    const warehouseEntryStatuses = {
+        registered: ['Registrado', 'badge-success'],
+        draft: ['Borrador', 'badge-secondary'],
+        cancelled: ['Cancelado', 'badge-danger']
+    };
+    $('#vspo_warehouse_entries').html(warehouseEntries.length
+        ? warehouseEntries.map(entry => {
+            const entryStatus = warehouseEntryStatuses[String(entry.status || '').toLowerCase()]
+                || [String(entry.status || 'Sin estado'), 'badge-light border'];
+            const warehouseLabel = entry.warehouse?.name || entry.warehouse?.description || entry.warehouse?.code || '-';
+            const entryCurrency = entry.currency?.code || entry.currency?.symbol || currencyCode;
+            const paymentState = entry.payment_status_label || 'Consultar en almac\u00e9n';
+
+            return `<article class="supplier-order-view-entry-card">
+                <div>
+                    <h6><i class="fas fa-dolly-flatbed text-success mr-1"></i>${escapeSupplierOrderHtml(entry.entry_number || `Ingreso #${entry.id}`)}</h6>
+                    <span class="badge ${entryStatus[1]}">${escapeSupplierOrderHtml(entryStatus[0])}</span>
+                </div>
+                <dl>
+                    <dt>Almac\u00e9n</dt><dd>${escapeSupplierOrderHtml(warehouseLabel)}</dd>
+                    <dt>Fecha documento</dt><dd>${escapeSupplierOrderHtml(formatSupplierOrderDate(entry.document_date) || '-')}</dd>
+                    <dt>Monto</dt><dd>${escapeSupplierOrderHtml(entryCurrency)} ${formatSupplierOrderMoney(entry.grand_total)}</dd>
+                    <dt>Condici\u00f3n de pago</dt><dd>${escapeSupplierOrderHtml(supplierOrderOptionLabel(entry.payment_condition) || '-')}</dd>
+                    <dt>Estado de pago</dt><dd>${escapeSupplierOrderHtml(paymentState)}</dd>
+                </dl>
+            </article>`;
+        }).join('')
+        : `<div class="supplier-order-view-empty"><i class="fas fa-warehouse"></i><strong>No hay ingresos de almac\u00e9n relacionados.</strong><span>La orden a\u00fan no tiene movimientos de ingreso asociados.</span></div>`);
+
+    const paymentRegistered = advancePaid > 0 || ['paid', 'completed'].includes(String(order.payment_status || '').toLowerCase());
+    const finished = ['received', 'entered', 'invoiced'].includes(String(order.status || '').toLowerCase());
+    const timelineSteps = [
+        ['OC proveedor creada', Boolean(order.id)],
+        ['Compra registrada', Boolean(order.id)],
+        ['Ingreso de almac\u00e9n', warehouseEntries.length > 0],
+        ['Pago / anticipo', paymentRegistered],
+        ['Finalizado', finished]
+    ];
+    $('#vspo_timeline').html(timelineSteps.map(([label, complete]) => `
+        <div class="supplier-order-view-timeline-step ${complete ? 'is-complete' : ''}"><strong>${label}</strong></div>
+    `).join(''));
 }
 
 function deleteSupplierPurchaseOrder(id) {

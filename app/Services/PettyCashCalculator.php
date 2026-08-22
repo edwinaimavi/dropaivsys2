@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\PettyCashBox;
+use App\Models\PettyCashExpenseExchangeReturn;
+use Illuminate\Support\Facades\Schema;
 
 class PettyCashCalculator
 {
@@ -19,9 +21,16 @@ class PettyCashCalculator
             ->pendingApproval()
             ->sum('amount'), 2);
         $totalReplenished = round((float) $cashBox->replenishments()->where('status', 'ACTIVE')->sum('amount'), 2);
+        $totalReturned = Schema::hasTable('petty_cash_expense_exchange_returns')
+            ? round((float) PettyCashExpenseExchangeReturn::query()
+                ->where('petty_cash_box_id', $cashBox->id)
+                ->where('status', PettyCashExpenseExchangeReturn::STATUS_ACTIVE)
+                ->sum('amount'), 2)
+            : 0.0;
 
         return [
-            ...$this->calculateValues($approvedAmount, $initialFund, $totalExpenses, $totalReplenished),
+            ...$this->calculateValues($approvedAmount, $initialFund, $totalExpenses, $totalReplenished, $totalReturned),
+            'total_returns' => $totalReturned,
             'pending_approval_expenses' => $pendingApprovalExpenses,
         ];
     }
@@ -30,20 +39,22 @@ class PettyCashCalculator
         float $approvedAmount,
         float $initialFund,
         float $totalExpenses,
-        float $totalReplenished
+        float $totalReplenished,
+        float $totalReturned = 0
     ): array {
         $approvedAmount = round(max(0, $approvedAmount), 2);
         $initialFund = round(max(0, $initialFund), 2);
         $totalExpenses = round(max(0, $totalExpenses), 2);
         $totalReplenished = round(max(0, $totalReplenished), 2);
+        $totalReturned = round(max(0, $totalReturned), 2);
 
         return [
             'approved_amount' => (float) $approvedAmount,
             'initial_fund' => (float) $initialFund,
             'total_expenses' => (float) $totalExpenses,
             'total_replenished' => (float) $totalReplenished,
-            'current_balance' => (float) max(0, round($initialFund + $totalReplenished - $totalExpenses, 2)),
-            'pending_replenishment' => (float) max(0, round($totalExpenses - $totalReplenished, 2)),
+            'current_balance' => (float) max(0, round($initialFund + $totalReplenished + $totalReturned - $totalExpenses, 2)),
+            'pending_replenishment' => (float) max(0, round($totalExpenses - $totalReplenished - $totalReturned, 2)),
         ];
     }
 

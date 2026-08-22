@@ -25,6 +25,10 @@ class PettyCashExpense extends Model
 
     public const EXCHANGE_PENDING = 'PENDIENTE_CANJE';
 
+    public const EXCHANGE_PARTIAL = 'PARCIALMENTE_RENDIDO';
+
+    public const EXCHANGE_OBSERVED = 'OBSERVADO';
+
     public const EXCHANGE_COMPLETED = 'CANJEADO';
 
     public const WAREHOUSE_LINKABLE_DOCUMENT_TYPES = [
@@ -167,7 +171,11 @@ class PettyCashExpense extends Model
 
     public function scopePendingExchange(Builder $query): Builder
     {
-        return $query->where('exchange_status', self::EXCHANGE_PENDING);
+        return $query->whereIn('exchange_status', [
+            self::EXCHANGE_PENDING,
+            self::EXCHANGE_PARTIAL,
+            self::EXCHANGE_OBSERVED,
+        ]);
     }
 
     public function scopeAvailableForWarehouseLink(Builder $query): Builder

@@ -252,7 +252,9 @@ class PettyCashController extends Controller
             'expenses.currentObservation.observer:id,name,lastname',
             'expenses.observations.observer:id,name,lastname',
             'expenses.observations.resolver:id,name,lastname',
-            'expenses.exchange:id,document_type,document_series,document_correlative,total_amount',
+            'expenses.exchange',
+            'expenses.exchange.settlementDocuments.creator:id,name,lastname',
+            'expenses.exchange.returns.responsibleUser:id,name,lastname',
             'expenses.warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
             'expenses.warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
             'replenishments' => fn ($query) => $query->where('status', 'ACTIVE')->orderBy('replenishment_date'),
@@ -265,6 +267,9 @@ class PettyCashController extends Controller
             'expenseExchanges.items.expense:id,supplier_name,concept',
             'expenseExchanges.documentIssuer',
             'expenseExchanges.documents',
+            'expenseExchanges.settlementDocuments.creator:id,name,lastname',
+            'expenseExchanges.returns.responsibleUser:id,name,lastname',
+            'expenseExchanges.returns.creator:id,name,lastname',
             'expenseExchanges.creator:id,name,lastname',
         ]);
 
@@ -283,7 +288,11 @@ class PettyCashController extends Controller
         $pettyCash->setAttribute('pending_exchange_receipts_count', $pettyCash->expenses
             ->where('document_type', 'RECIBO')
             ->where('approval_status', PettyCashExpense::APPROVAL_APPROVED)
-            ->where('exchange_status', PettyCashExpense::EXCHANGE_PENDING)
+            ->whereIn('exchange_status', [
+                PettyCashExpense::EXCHANGE_PENDING,
+                PettyCashExpense::EXCHANGE_PARTIAL,
+                PettyCashExpense::EXCHANGE_OBSERVED,
+            ])
             ->count());
         $pettyCash->setAttribute(
             'pending_warehouse_link_expenses_count',
@@ -1434,6 +1443,9 @@ class PettyCashController extends Controller
             'events.creator:id,name,lastname',
             'exchange.creator:id,name,lastname',
             'exchange.items:id,exchange_id,petty_cash_expense_id,amount,concept,receipt_type,receipt_series,receipt_correlative',
+            'exchange.settlementDocuments.creator:id,name,lastname',
+            'exchange.returns.responsibleUser:id,name,lastname',
+            'exchange.returns.creator:id,name,lastname',
             'warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrder:id,purchase_order_number,code',
             'warehouseEntryExpense.warehouseEntry.supplierPurchaseOrder.customerPurchaseOrders:id,purchase_order_number,code',
         ]);

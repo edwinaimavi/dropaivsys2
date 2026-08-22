@@ -7,6 +7,8 @@ use App\Models\DocumentIssuer;
 use App\Models\PettyCashBox;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseExchange;
+use App\Models\PettyCashExpenseExchangeDocument;
+use App\Models\PettyCashExpenseExchangeReturn;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\WarehouseEntry;
@@ -728,6 +730,140 @@ it('no lista ni permite canjear recibos pendientes de aprobación', function () 
         ->assertJsonPath('message', 'No se puede canjear este recibo porque todavía no está aprobado.');
 
     expect(PettyCashExpenseExchange::count())->toBe(0);
+});
+
+it('rinde parcialmente un recibo con varios comprobantes y completa con el vuelto sin duplicar egresos', function () {
+    Storage::fake('public');
+    $receipt = createReceiptExpense(100, '000401');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+
+    $boxBefore = PettyCashBox::findOrFail($this->boxId);
+    expect((float) $boxBefore->cash_balance)->toBe(1900.0);
+
+    $documents = [
+        ['ruc' => '20600000001', 'name' => 'EMPRESA UNO S.A.C.', 'series' => 'F001', 'number' => '00010', 'amount' => 10],
+        ['ruc' => '20600000002', 'name' => 'EMPRESA DOS S.A.C.', 'series' => 'F002', 'number' => '00050', 'amount' => 50],
+        ['ruc' => '20600000003', 'name' => 'EMPRESA TRES S.A.C.', 'series' => 'F003', 'number' => '00030', 'amount' => 30],
+    ];
+
+    foreach ($documents as $index => $document) {
+        $payload = [
+            'expense_id' => $receipt->id,
+            'settlement_documents' => [[
+                'issuer_ruc' => $document['ruc'],
+                'issuer_name' => $document['name'],
+                'document_type' => 'FACTURA',
+                'series' => $document['series'],
+                'number' => $document['number'],
+                'issue_date' => '2026-08-22',
+                'concept' => 'ACCESORIOS DE OFICINA',
+                'amount' => $document['amount'],
+            ]],
+        ];
+        if ($index === 0) {
+            $payload['settlement_documents'][0]['file'] = UploadedFile::fake()->create('factura-empresa-1.pdf', 80, 'application/pdf');
+        }
+        $response = $index === 0
+            ? $this->post(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), $payload, ['Accept' => 'application/json'])
+            : $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), $payload);
+        $response->assertCreated()
+            ->assertJsonPath('data.supported_amount', number_format(array_sum(array_column(array_slice($documents, 0, $index + 1), 'amount')), 2, '.', ''))
+            ->assertJsonPath('data.settlement_status', 'PARTIAL');
+    }
+
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'expense_id' => $receipt->id,
+        'has_return' => true,
+        'return_amount' => 10,
+        'return_date' => '2026-08-22',
+        'return_responsible_name' => 'EDWIN',
+        'return_observation' => 'VUELTO DE LA COMPRA',
+    ])->assertCreated()
+        ->assertJsonPath('data.supported_amount', '90.00')
+        ->assertJsonPath('data.returned_amount', '10.00')
+        ->assertJsonPath('data.pending_amount', '0.00')
+        ->assertJsonPath('data.settlement_status', 'SETTLED');
+
+    $receipt->refresh();
+    $exchange = PettyCashExpenseExchange::findOrFail($receipt->exchange_id);
+    $boxAfter = PettyCashBox::findOrFail($this->boxId);
+    expect($receipt->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED)
+        ->and(PettyCashExpenseExchangeDocument::where('exchange_id', $exchange->id)->count())->toBe(3)
+        ->and(PettyCashExpenseExchangeReturn::where('exchange_id', $exchange->id)->count())->toBe(1)
+        ->and((float) $boxAfter->cash_balance)->toBe(1910.0)
+        ->and((float) $boxAfter->reimbursement_amount)->toBe(90.0)
+        ->and($receipt->events()->where('event', 'settlement_document_added')->count())->toBe(3)
+        ->and($receipt->events()->where('event', 'settlement_return_registered')->count())->toBe(1)
+        ->and($receipt->events()->where('event', 'receipt_settlement_completed')->count())->toBe(1);
+
+    $storedDocument = PettyCashExpenseExchangeDocument::where('exchange_id', $exchange->id)->oldest('id')->firstOrFail();
+    Storage::disk('public')->assertExists($storedDocument->file_path);
+    $this->getJson(route('admin.petty-cash.expenses.detail', $receipt))
+        ->assertOk()
+        ->assertJsonCount(3, 'data.exchange.settlement_documents')
+        ->assertJsonCount(1, 'data.exchange.returns')
+        ->assertJsonPath('data.exchange.pending_amount', '0.00');
+    $this->getJson(route('admin.petty-cash.show', $this->boxId))
+        ->assertOk()
+        ->assertJsonPath('data.financial_summary.total_returns', 10)
+        ->assertJsonPath('data.cash_balance', '1910.00');
+});
+
+it('bloquea comprobantes que superan el monto o que duplican el documento del recibo', function () {
+    $receipt = createReceiptExpense(100, '000402');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $route = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+    $document = [
+        'issuer_ruc' => '20600000004',
+        'issuer_name' => 'EMPRESA CUATRO S.A.C.',
+        'document_type' => 'FACTURA',
+        'series' => 'F004',
+        'number' => '00120',
+        'issue_date' => '2026-08-22',
+        'concept' => 'COMPRA DE PRUEBA',
+        'amount' => 120,
+    ];
+
+    $this->postJson($route, ['expense_id' => $receipt->id, 'settlement_documents' => [$document]])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'La suma de comprobantes y vuelto no puede superar el monto del recibo interno.');
+
+    $document['amount'] = 10;
+    $this->postJson($route, ['expense_id' => $receipt->id, 'settlement_documents' => [$document]])->assertCreated();
+    $this->postJson($route, ['expense_id' => $receipt->id, 'settlement_documents' => [$document]])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Este comprobante ya fue registrado para el recibo interno.');
+});
+
+it('bloquea un vuelto mayor al saldo pendiente de rendición', function () {
+    $receipt = createReceiptExpense(100, '000403');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $route = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000005',
+            'issuer_name' => 'EMPRESA CINCO S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F005',
+            'number' => '00090',
+            'issue_date' => '2026-08-22',
+            'concept' => 'COMPRA DE PRUEBA',
+            'amount' => 90,
+        ]],
+    ])->assertCreated();
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'has_return' => true,
+        'return_amount' => 15,
+        'return_date' => '2026-08-22',
+        'return_responsible_name' => 'EDWIN',
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'El vuelto no puede superar el saldo pendiente de rendición.');
+
+    expect(PettyCashExpenseExchangeReturn::count())->toBe(0);
 });
 
 it('consulta primero el historial local de emisores', function () {

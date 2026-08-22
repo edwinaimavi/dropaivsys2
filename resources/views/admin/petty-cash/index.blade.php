@@ -75,6 +75,7 @@
     data-current-user-id="{{ auth()->id() }}"
     data-can-receipt-exchange-store="{{ auth()->user()->can('admin.petty-cash.receipt-exchanges.store') ? 1 : 0 }}"
     data-can-receipt-exchange-show="{{ auth()->user()->can('admin.petty-cash.receipt-exchanges.show') ? 1 : 0 }}"
+    data-can-receipt-exchange-destroy="{{ auth()->user()->can('admin.petty-cash.receipt-exchanges.destroy') ? 1 : 0 }}"
     data-pending-expenses-url="{{ route('admin.petty-cash.expenses.pending') }}"
     data-observed-expenses-url="{{ route('admin.petty-cash.expenses.observed') }}">
     <div class="row mb-3">

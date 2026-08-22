@@ -64,6 +64,7 @@ class PettyCashBox extends Model
     public function previousPettyCash() { return $this->belongsTo(self::class, 'previous_petty_cash_id'); }
     public function carriedForwardTo() { return $this->hasOne(self::class, 'previous_petty_cash_id'); }
     public function expenseExchanges() { return $this->hasMany(PettyCashExpenseExchange::class); }
+    public function receiptReturns() { return $this->hasMany(PettyCashExpenseExchangeReturn::class); }
 
     public function canManageExpenses(): bool
     {

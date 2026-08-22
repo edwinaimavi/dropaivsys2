@@ -18,7 +18,7 @@
                     <a class="nav-link active" data-toggle="pill" href="#pcv_tab_summary"><i class="fas fa-chart-pie"></i><span>Resumen</span></a>
                     <a class="nav-link" data-toggle="pill" href="#pcv_tab_expenses"><i class="fas fa-receipt"></i><span>Gastos</span><span id="pcv_expenses_tab_count" class="badge petty-tab-count">0</span></a>
                     <a class="nav-link" data-toggle="pill" href="#pcv_tab_replenishments"><i class="fas fa-sync-alt"></i><span>Reposiciones</span><span id="pcv_replenishments_tab_count" class="badge petty-tab-count">0</span></a>
-                    <a class="nav-link" data-toggle="pill" href="#pcv_tab_exchanges"><i class="fas fa-exchange-alt"></i><span>Canjes</span><span id="pcv_exchanges_tab_count" class="badge petty-tab-count">0</span></a>
+                    <a class="nav-link" data-toggle="pill" href="#pcv_tab_exchanges"><i class="fas fa-exchange-alt"></i><span>Rendiciones</span><span id="pcv_exchanges_tab_count" class="badge petty-tab-count">0</span></a>
                     <a class="nav-link" data-toggle="pill" href="#pcv_tab_audit"><i class="fas fa-user-shield"></i><span>Auditoría</span></a>
                 </div>
             </nav>
@@ -75,11 +75,11 @@
                     <div class="tab-pane fade" id="pcv_tab_exchanges">
                         <section class="petty-detail-card mb-0">
                             <div class="petty-tab-toolbar">
-                                <div><h6>Canjes realizados</h6><small>Historial de recibos reemplazados</small></div>
-                                <div><button id="btnExchangeReceiptsFromHistory" class="btn btn-sm btn-success exchangePettyCashReceipts d-none"><i class="fas fa-exchange-alt mr-1"></i> Canjear recibos</button><span id="pcv_exchange_history_count" class="petty-section-count">0 canjes</span></div>
+                                <div><h6>Rendiciones de recibos internos</h6><small>Comprobantes oficiales, vuelto y trazabilidad</small></div>
+                                <div><button id="btnExchangeReceiptsFromHistory" class="btn btn-sm btn-success exchangePettyCashReceipts d-none"><i class="fas fa-exchange-alt mr-1"></i> Rendir recibo</button><span id="pcv_exchange_history_count" class="petty-section-count">0 rendiciones</span></div>
                             </div>
                             <div id="pcv_exchange_history" class="petty-exchange-history"></div>
-                            <div id="pcv_exchange_empty" class="petty-empty-state d-none"><i class="fas fa-exchange-alt"></i><strong>No hay canjes realizados.</strong><small>Los canjes registrados aparecerán aquí.</small></div>
+                            <div id="pcv_exchange_empty" class="petty-empty-state d-none"><i class="fas fa-exchange-alt"></i><strong>No hay rendiciones registradas.</strong><small>Las rendiciones y canjes históricos aparecerán aquí.</small></div>
                         </section>
                     </div>
 

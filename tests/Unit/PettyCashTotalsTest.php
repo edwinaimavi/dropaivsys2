@@ -19,6 +19,19 @@ it('calcula una reposicion parcial', function () {
     ]);
 });
 
+it('suma el vuelto retornado como ingreso sin crear un segundo egreso', function () {
+    $calculator = new PettyCashCalculator();
+
+    expect($calculator->calculateValues(2000, 2000, 100, 0, 10))->toBe([
+        'approved_amount' => 2000.0,
+        'initial_fund' => 2000.0,
+        'total_expenses' => 100.0,
+        'total_replenished' => 0.0,
+        'current_balance' => 1910.0,
+        'pending_replenishment' => 90.0,
+    ]);
+});
+
 it('restaura el saldo y permite registrar una reposición excepcional superior', function () {
     expect(PettyCashBox::calculateBalances(1500, 200, 200))->toBe([
         'opening_amount' => 1500.0,
