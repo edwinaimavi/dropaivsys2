@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('click', '.viewKardexMovement', function () {
         loadKardexMovementDetail($(this).data('id'));
     });
+
+    $(document).on('click', '#btnKardexStockAtDate', loadKardexStockAtDate);
+    $(document).on('click', '#btnRecalculateKardex', recalculateKardex);
 });
 
 function initKardexSelect2() {
@@ -57,9 +60,13 @@ function initKardexTable() {
             { data: 'movement_type', name: 'movement_type' },
             { data: 'document', name: 'document', orderable: false, searchable: false, render: renderKardexDocumentPill },
             { data: 'quantity_in', name: 'quantity_in', className: 'text-right', render: renderKardexEntryNumber },
+            { data: 'entry_unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
+            { data: 'entry_total_cost', name: 'total_cost_in', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'quantity_out', name: 'quantity_out', className: 'text-right', render: renderKardexExitNumber },
+            { data: 'exit_unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
+            { data: 'exit_total_cost', name: 'total_cost_out', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right', render: renderKardexBalanceNumber },
-            { data: 'unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
+            { data: 'average_unit_cost_display', name: 'average_unit_cost', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'status', name: 'status' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
@@ -81,11 +88,18 @@ function initKardexTable() {
             >
             <'row mt-3'<'col-sm-12 text-center'B>>
         `,
-        buttons: [
-            { extend: 'excel', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' },
-            { extend: 'pdf', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' },
-            { extend: 'print', text: '<i class="fas fa-print"></i> Imprimir', className: 'btn btn-secondary btn-sm' }
-        ]
+        buttons: (window.routes.kardexCanExport ? ['excel', 'pdf', 'print'] : []).map(function (format) {
+            const presentation = {
+                excel: ['fa-file-excel', 'Excel', 'btn-success'],
+                pdf: ['fa-file-pdf', 'PDF', 'btn-danger'],
+                print: ['fa-print', 'Imprimir', 'btn-secondary']
+            }[format];
+            return {
+                text: `<i class="fas ${presentation[0]}"></i> ${presentation[1]}`,
+                className: `btn ${presentation[2]} btn-sm`,
+                action: function () { window.open(`${window.routes.kardexExport}/${format}?${kardexFilterQuery()}`, '_blank'); }
+            };
+        })
     });
 }
 
@@ -133,6 +147,9 @@ function renderKardexMovementDetail(response) {
     $('#vk_source_id').text(movement.source_id || '-');
     $('#vk_source_item_type').text(response.source_item_label || '-');
     $('#vk_source_item_id').text(movement.source_item_id || '-');
+    $('#vk_source_url')
+        .toggleClass('d-none', !response.source_url)
+        .attr('href', response.source_url || '#');
 }
 
 function kardexMovementBadge(type) {
@@ -144,7 +161,9 @@ function kardexMovementBadge(type) {
         transfer_in: ['Transferencia Entrada', 'kardex-badge-transfer-in', 'fa-exchange-alt'],
         transfer_out: ['Transferencia Salida', 'kardex-badge-transfer-out', 'fa-exchange-alt'],
         reversal: ['Reversa', 'kardex-badge-reversal', 'fa-undo-alt'],
-        exit_reversal: ['Reversa de salida', 'kardex-badge-reversal', 'fa-undo-alt']
+        exit_reversal: ['Reversa de salida', 'kardex-badge-reversal', 'fa-undo-alt'],
+        linked_cost: ['Costo vinculado', 'kardex-badge-transfer-in', 'fa-coins'],
+        cost_reversal: ['Reversa de costo', 'kardex-badge-reversal', 'fa-undo-alt']
     };
     const item = map[type] || [type || '-', 'kardex-badge-reversal', 'fa-circle'];
 
@@ -242,7 +261,9 @@ function formatKardexOperation(value) {
         warehouse_entry_cancel: 'Anulacion de Ingreso',
         manual_adjustment: 'Ajuste Manual',
         sale_exit: 'Salida por Venta',
-        transfer: 'Transferencia'
+        transfer: 'Transferencia',
+        warehouse_entry_linked_cost: 'Costo vinculado al ingreso',
+        warehouse_entry_linked_cost_cancel: 'Reversa de costo vinculado'
     };
 
     return map[value] || value || '-';
@@ -281,4 +302,77 @@ function formatKardexDisplayDateTime(value) {
 
 function escapeKardexHtml(value) {
     return $('<div>').text(value ?? '').html();
+}
+
+function kardexFilterData() {
+    return {
+        warehouse_id: $('#kardex_filter_warehouse_id').val() || '',
+        article_id: $('#kardex_filter_article_id').val() || '',
+        date_from: $('#kardex_filter_date_from').val() || '',
+        date_to: $('#kardex_filter_date_to').val() || '',
+        movement_type: $('#kardex_filter_movement_type').val() || '',
+        lot_number: $('#kardex_filter_lot_number').val() || '',
+        document: $('#kardex_filter_document').val() || '',
+        related_party: $('#kardex_filter_related_party').val() || ''
+    };
+}
+
+function kardexFilterQuery() {
+    return $.param(kardexFilterData());
+}
+
+function loadKardexStockAtDate() {
+    const date = $('#kardex_stock_date').val();
+    if (!date) {
+        Swal.fire('Validación', 'Seleccione la fecha de consulta.', 'warning');
+        return;
+    }
+
+    $.get(window.routes.kardexStockAtDate, {
+        date,
+        warehouse_id: $('#kardex_filter_warehouse_id').val(),
+        article_id: $('#kardex_filter_article_id').val()
+    }).done(function (response) {
+        const rows = response.items.map(item => `
+            <tr>
+                <td>${escapeKardexHtml(item.warehouse || '-')}</td>
+                <td>${escapeKardexHtml(item.article || '-')}</td>
+                <td>${escapeKardexHtml(item.lot_number || '-')}</td>
+                <td class="text-right">${formatKardexNumber(item.quantity)}</td>
+                <td class="text-right">${formatKardexMoney(item.average_cost, 'S/')}</td>
+                <td class="text-right">${formatKardexMoney(item.total_value, 'S/')}</td>
+            </tr>`).join('');
+        Swal.fire({
+            title: `Stock al ${formatKardexDisplayDate(date)}`,
+            width: 1000,
+            html: `<div class="text-left mb-2"><strong>Cantidad:</strong> ${formatKardexNumber(response.total_quantity)} · <strong>Valor:</strong> ${formatKardexMoney(response.total_value, 'S/')}</div>
+                <div class="table-responsive"><table class="table table-sm table-striped"><thead><tr><th>Almacén</th><th>Artículo</th><th>Lote</th><th>Cantidad</th><th>C. promedio</th><th>Valor</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Sin stock a esa fecha.</td></tr>'}</tbody></table></div>`,
+            confirmButtonText: 'Cerrar'
+        });
+    }).fail(function () {
+        Swal.fire('Error', 'No se pudo consultar el stock histórico.', 'error');
+    });
+}
+
+function recalculateKardex() {
+    Swal.fire({
+        title: '¿Recalcular Kardex?',
+        text: 'Se reconstruirán costos promedio y saldos de los artículos alcanzados por los filtros.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, recalcular',
+        cancelButtonText: 'Cancelar'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        const data = kardexFilterData();
+        data._token = $('meta[name="csrf-token"]').attr('content');
+        $.post(window.routes.kardexRecalculate, data)
+            .done(function (response) {
+                Swal.fire('Completado', response.message, 'success');
+                tableKardex.ajax.reload(null, false);
+            })
+            .fail(function (xhr) {
+                Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo recalcular el Kardex.', 'error');
+            });
+    });
 }

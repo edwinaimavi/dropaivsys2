@@ -25,6 +25,7 @@ class WarehouseKardexMovement extends Model
         'source_id',
         'source_item_type',
         'source_item_id',
+        'source_key',
         'document_type',
         'document_series',
         'document_number',

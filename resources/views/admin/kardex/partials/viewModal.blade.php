@@ -107,6 +107,9 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <a id="vk_source_url" href="#" class="btn btn-outline-info btn-sm mt-3 d-none">
+                                    <i class="fas fa-external-link-alt mr-1"></i> Abrir documento de origen
+                                </a>
                             </div>
                         </div>
                     </div>

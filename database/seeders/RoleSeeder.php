@@ -265,6 +265,7 @@ class RoleSeeder extends Seeder
             'admin.kardex.show' => 'Ver detalle de Kardex',
             'admin.kardex.stock' => 'Ver stock de Kardex',
             'admin.kardex.export' => 'Exportar Kardex',
+            'admin.kardex.recalculate' => 'Recalcular Kardex valorizado',
 
             'admin.petty-cash.index' => 'Ver cajas chicas',
             'admin.petty-cash.store' => 'Aperturar cajas chicas',

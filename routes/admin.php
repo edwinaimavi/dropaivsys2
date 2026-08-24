@@ -775,6 +775,9 @@ Route::get('electronic-invoice-api-logs/{electronicInvoiceApiLog}', [ElectronicI
 // RUTAS PARA KARDEX DE ALMACEN
 Route::get('kardex/list', [KardexController::class, 'list'])->name('kardex.list');
 Route::get('kardex/stock/list', [KardexController::class, 'stock'])->name('kardex.stock');
+Route::get('kardex/stock-at-date', [KardexController::class, 'stockAtDate'])->name('kardex.stock-at-date');
+Route::post('kardex/recalculate', [KardexController::class, 'recalculate'])->name('kardex.recalculate');
+Route::get('kardex/export/{format}', [KardexController::class, 'export'])->name('kardex.export');
 Route::get('kardex/article/{article}/history', [KardexController::class, 'articleHistory'])
     ->name('kardex.article-history');
 Route::get('kardex/{movement}', [KardexController::class, 'show'])->name('kardex.show');

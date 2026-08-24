@@ -761,6 +761,10 @@ class WarehouseEntryController extends Controller
                 'updated_by' => Auth::id(),
             ]);
             $this->recalculateEntryExpenseCosts($expense->warehouseEntry);
+            app(WarehouseKardexService::class)->syncLinkedCosts($expense->warehouseEntry->fresh([
+                'currency',
+                'expenses.distributions.item.lots',
+            ]));
         });
 
         return response()->json([
@@ -2398,9 +2402,9 @@ class WarehouseEntryController extends Controller
         };
 
         $mapping = match ($simpleType) {
-            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
-            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
-            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'quantity'],
+            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
+            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
+            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
             default => [],
         };
 

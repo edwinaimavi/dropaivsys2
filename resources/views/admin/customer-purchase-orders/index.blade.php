@@ -125,28 +125,108 @@
             background: #fafafa;
         }
 
-        #tableCustomerPurchaseOrder .customer-order-doc-link {
+        #tableCustomerPurchaseOrder .customer-order-code-cell {
+            position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 5px 10px;
-            border-radius: 999px;
-            background: rgba(14, 165, 233, .10);
-            color: #0369a1;
+            gap: 7px;
+            max-width: 100%;
+            padding: 5px 7px 5px 9px;
+            border: 1px solid rgba(14, 165, 233, .15);
+            border-radius: 10px;
+            background: rgba(14, 165, 233, .08);
+            color: #075985;
             font-size: 12px;
             font-weight: 700;
-            text-decoration: none;
+            transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
         }
 
-        #tableCustomerPurchaseOrder .customer-order-doc-link:hover,
-        #tableCustomerPurchaseOrder .customer-order-doc-link:focus {
-            background: rgba(14, 165, 233, .18);
-            color: #075985;
-            text-decoration: none;
+        #tableCustomerPurchaseOrder .customer-order-code-cell:hover {
+            border-color: rgba(14, 165, 233, .28);
+            background: rgba(14, 165, 233, .12);
+            box-shadow: 0 5px 14px rgba(3, 105, 161, .08);
         }
 
-        #tableCustomerPurchaseOrder .customer-order-doc-link i {
+        #tableCustomerPurchaseOrder .customer-order-code-icon {
+            flex: 0 0 auto;
             color: #ef4444;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-code-text {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            cursor: text;
+            line-height: 1.25;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-code-actions {
+            display: inline-flex;
+            flex: 0 0 auto;
+            gap: 3px;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-copy-btn,
+        #tableCustomerPurchaseOrder .customer-order-open-btn {
+            display: inline-flex;
+            width: 25px;
+            height: 25px;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            border-radius: 7px;
+            background: rgba(255, 255, 255, .82);
+            color: #0369a1;
+            font-size: 10px;
+            text-decoration: none;
+            transition: transform .15s ease, background-color .15s ease, color .15s ease;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-copy-btn:hover,
+        #tableCustomerPurchaseOrder .customer-order-copy-btn:focus,
+        #tableCustomerPurchaseOrder .customer-order-open-btn:hover,
+        #tableCustomerPurchaseOrder .customer-order-open-btn:focus {
+            background: #fff;
+            color: #075985;
+            outline: 0;
+            text-decoration: none;
+            transform: translateY(-1px);
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-code-cell.is-copied .customer-order-copy-btn {
+            background: #dcfce7;
+            color: #15803d;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-copy-feedback {
+            position: absolute;
+            right: 5px;
+            bottom: -19px;
+            z-index: 2;
+            padding: 2px 6px;
+            border-radius: 6px;
+            background: #166534;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-2px);
+            transition: opacity .15s ease, transform .15s ease;
+        }
+
+        #tableCustomerPurchaseOrder .customer-order-code-cell.is-copied .customer-order-copy-feedback {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (max-width: 575.98px) {
+            #tableCustomerPurchaseOrder .customer-order-code-cell {
+                gap: 5px;
+                padding-left: 7px;
+            }
         }
 
         #tableCustomerPurchaseOrder .customer-cell {

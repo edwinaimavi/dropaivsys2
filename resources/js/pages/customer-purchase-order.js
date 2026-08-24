@@ -50,6 +50,12 @@ document.addEventListener('DOMContentLoaded', function () {
         tableCustomerPurchaseOrder.ajax.reload();
     });
 
+    $(document).on('click', '.customer-order-copy-btn', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        copyCustomerPurchaseOrderNumber(this);
+    });
+
     $(document).on('click', '.closeCustomerPurchaseOrderAttention', function () {
         openCustomerPurchaseOrderAttentionModal($(this).data('id'), $(this).data('code'));
     });
@@ -375,7 +381,14 @@ function initCustomerPurchaseOrderTable() {
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'id', name: 'id' },
             { data: 'code', name: 'code' },
-            { data: 'purchase_order_number', name: 'purchase_order_number', defaultContent: '-' },
+            {
+                data: 'purchase_order_number',
+                name: 'purchase_order_number',
+                defaultContent: '-',
+                render: function (data, type, row) {
+                    return type === 'display' ? data : (row.purchase_order_number_text || '-');
+                }
+            },
             {
                 data: 'customer',
                 name: 'customer',
@@ -436,6 +449,79 @@ function initCustomerPurchaseOrderTable() {
         }
     });
 
+}
+
+async function copyCustomerPurchaseOrderNumber(button) {
+    const orderNumber = button.getAttribute('data-order-number') || '';
+    if (!orderNumber) {
+        return;
+    }
+
+    let copied = false;
+
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(orderNumber);
+            copied = true;
+        } catch (error) {
+            copied = copyCustomerPurchaseOrderNumberFallback(orderNumber);
+        }
+    } else {
+        copied = copyCustomerPurchaseOrderNumberFallback(orderNumber);
+    }
+
+    if (!copied) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'error',
+            title: 'No se pudo copiar',
+            showConfirmButton: false,
+            timer: 1800
+        });
+        return;
+    }
+
+    const cell = button.closest('.customer-order-code-cell');
+    const icon = button.querySelector('i');
+    const originalTitle = button.getAttribute('title') || 'Copiar número';
+
+    window.clearTimeout(button.customerOrderCopyTimer);
+    cell?.classList.add('is-copied');
+    icon?.classList.remove('fa-copy');
+    icon?.classList.add('fa-check');
+    button.setAttribute('title', 'Copiado');
+    button.setAttribute('aria-label', 'Número copiado');
+
+    button.customerOrderCopyTimer = window.setTimeout(function () {
+        cell?.classList.remove('is-copied');
+        icon?.classList.remove('fa-check');
+        icon?.classList.add('fa-copy');
+        button.setAttribute('title', originalTitle);
+        button.setAttribute('aria-label', 'Copiar número de orden');
+    }, 1400);
+}
+
+function copyCustomerPurchaseOrderNumberFallback(orderNumber) {
+    const textarea = document.createElement('textarea');
+    textarea.value = orderNumber;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (error) {
+        copied = false;
+    }
+
+    textarea.remove();
+
+    return copied;
 }
 
 function updateCustomerPurchaseOrderStatusFilters() {

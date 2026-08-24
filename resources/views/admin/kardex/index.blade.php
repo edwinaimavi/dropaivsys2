@@ -131,6 +131,8 @@
                         <option value="transfer_out">Transferencia Salida</option>
                         <option value="reversal">Reversa</option>
                         <option value="exit_reversal">Reversa de salida</option>
+                        <option value="linked_cost">Costo vinculado</option>
+                        <option value="cost_reversal">Reversa de costo</option>
                     </select>
                 </div>
                 <div class="form-group col-md-3">
@@ -159,6 +161,35 @@
         </div>
     </div>
 
+    <div class="card border-0 shadow-sm kardex-card mb-3">
+        <div class="card-body py-3">
+            <div class="row align-items-end">
+                @can('admin.kardex.stock')
+                <div class="form-group col-md-3 mb-md-0">
+                    <label>STOCK A LA FECHA</label>
+                    <input type="date" id="kardex_stock_date" class="form-control form-control-sm" value="{{ now()->format('Y-m-d') }}">
+                </div>
+                <div class="col-md-3 mb-2 mb-md-0">
+                    <button type="button" id="btnKardexStockAtDate" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-calendar-check mr-1"></i> Consultar saldo histórico
+                    </button>
+                </div>
+                @endcan
+                <div class="col-md-6 text-md-right">
+                    @can('admin.kardex.recalculate')
+                        <button type="button" id="btnRecalculateKardex" class="btn btn-warning btn-sm">
+                            <i class="fas fa-sync-alt mr-1"></i> Recalcular Kardex filtrado
+                        </button>
+                    @endcan
+                    <small class="d-block text-muted mt-2">
+                        Último recálculo:
+                        {{ $lastRecalculation?->finished_at?->format('d/m/Y H:i') ?? 'sin ejecuciones' }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card border-0 shadow-sm kardex-card kardex-table-card">
         <div class="card-header border-0">
             <div>
@@ -174,22 +205,25 @@
                 <table id="tableKardex" class="table table-hover align-middle text-center w-100">
                     <thead class="bg-light">
                         <tr>
-                            <th>#</th>
-                            <th>FECHA</th>
-                            <th>N&deg; MOV.</th>
-                            <th>ALMAC&Eacute;N</th>
-                            <th>ART&Iacute;CULO</th>
-                            <th>LOTE</th>
-                            <th>F. VENC.</th>
-                            <th>TIPO</th>
-                            <th>DOCUMENTO</th>
-                            <th>ENTRADA</th>
-                            <th>SALIDA</th>
-                            <th>SALDO</th>
-                            <th>COSTO UNIT.</th>
-                            <th>VALOR SALDO</th>
-                            <th>ESTADO</th>
-                            <th>ACCIONES</th>
+                            <th rowspan="2">#</th>
+                            <th rowspan="2">FECHA</th>
+                            <th rowspan="2">N&deg; MOV.</th>
+                            <th rowspan="2">ALMAC&Eacute;N</th>
+                            <th rowspan="2">ART&Iacute;CULO</th>
+                            <th rowspan="2">LOTE</th>
+                            <th rowspan="2">F. VENC.</th>
+                            <th rowspan="2">TIPO</th>
+                            <th rowspan="2">DOCUMENTO</th>
+                            <th colspan="3" class="bg-success text-white">ENTRADAS</th>
+                            <th colspan="3" class="bg-danger text-white">SALIDAS</th>
+                            <th colspan="3" class="bg-info text-white">SALDOS</th>
+                            <th rowspan="2">ESTADO</th>
+                            <th rowspan="2">ACCIONES</th>
+                        </tr>
+                        <tr>
+                            <th>CANT.</th><th>C. UNIT.</th><th>C. TOTAL</th>
+                            <th>CANT.</th><th>C. UNIT.</th><th>C. TOTAL</th>
+                            <th>CANT.</th><th>C. PROM.</th><th>VALOR</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -795,7 +829,11 @@
         window.routes = Object.assign(window.routes || {}, {
             kardexList: "{{ route('admin.kardex.list') }}",
             kardexShow: "{{ url('admin/kardex') }}",
-            kardexStock: "{{ route('admin.kardex.stock') }}"
+            kardexStock: "{{ route('admin.kardex.stock') }}",
+            kardexStockAtDate: "{{ route('admin.kardex.stock-at-date') }}",
+            kardexRecalculate: "{{ route('admin.kardex.recalculate') }}",
+            kardexExport: "{{ url('admin/kardex/export') }}",
+            kardexCanExport: @json(auth()->user()?->can('admin.kardex.export') ?? false)
         });
     </script>
     @vite(['resources/js/pages/kardex.js'])

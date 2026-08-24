@@ -9,19 +9,22 @@ uses(Tests\TestCase::class);
 function distributeWarehouseExpense(array $data, array $items, string $method, float $amount): array
 {
     $reflection = new ReflectionMethod(WarehouseEntryController::class, 'expenseAllocations');
-    return $reflection->invoke(new WarehouseEntryController(), $data, collect($items), $method, $amount, 0);
+
+    return $reflection->invoke(new WarehouseEntryController, $data, collect($items), $method, $amount, 0);
 }
 
 function prepareWarehouseExpense(array $data): array
 {
     $reflection = new ReflectionMethod(WarehouseEntryController::class, 'prepareLinkedExpense');
-    return $reflection->invoke(new WarehouseEntryController(), $data, 0);
+
+    return $reflection->invoke(new WarehouseEntryController, $data, 0);
 }
 
 function normalizeWarehouseExpense(array $data): array
 {
     $reflection = new ReflectionMethod(WarehouseEntryController::class, 'normalizeLinkedExpenseFields');
-    return $reflection->invoke(new WarehouseEntryController(), $data);
+
+    return $reflection->invoke(new WarehouseEntryController, $data);
 }
 
 it('mapea automáticamente los campos técnicos desde el tipo de costo visible', function (string $type, array $expected) {
@@ -29,7 +32,7 @@ it('mapea automáticamente los campos técnicos desde el tipo de costo visible',
 
     expect($expense)->toMatchArray($expected)
         ->and($expense['affects_inventory_cost'])->toBeTrue()
-        ->and($expense['distribution_method'])->toBe('quantity')
+        ->and($expense['distribution_method'])->toBe('amount')
         ->and($expense['distributed_amount'])->toBe(60.0);
 })->with([
     'flete de agencia' => ['agency_freight', ['expense_type' => 'agency_freight', 'expense_category' => 'freight_transport', 'cost_origin' => 'third_party']],

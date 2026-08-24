@@ -282,6 +282,7 @@ class CustomerPurchaseOrderController extends Controller
                     ?? '-';
             })
             ->addColumn('seller', fn (CustomerPurchaseOrder $order) => e($order->seller_full_name ?: '-'))
+            ->addColumn('purchase_order_number_text', fn (CustomerPurchaseOrder $order) => trim((string) $order->purchase_order_number) ?: '-')
             ->editColumn('purchase_order_number', function (CustomerPurchaseOrder $order) {
                 $purchaseOrderNumber = trim((string) $order->purchase_order_number);
 
@@ -290,18 +291,32 @@ class CustomerPurchaseOrderController extends Controller
                 }
 
                 $purchaseOrderDocument = $order->documents->first();
-
-                if (! $purchaseOrderDocument?->file_path) {
-                    return e($purchaseOrderNumber);
-                }
+                $openButton = $purchaseOrderDocument?->file_path
+                    ? sprintf(
+                        '<a href="%s" target="_blank" rel="noopener" class="customer-order-open-btn"
+                            title="Abrir orden de compra adjunta" data-toggle="tooltip" aria-label="Abrir documento">
+                            <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                        </a>',
+                        e(Storage::disk('public')->url($purchaseOrderDocument->file_path))
+                    )
+                    : '';
 
                 return sprintf(
-                    '<a href="%s" target="_blank" rel="noopener" class="customer-order-doc-link" title="Abrir orden de compra adjunta">
-                        <i class="fas fa-file-pdf" aria-hidden="true"></i>
-                        <span>%s</span>
-                    </a>',
-                    e(Storage::disk('public')->url($purchaseOrderDocument->file_path)),
-                    e($purchaseOrderNumber)
+                    '<div class="customer-order-code-cell">
+                        <i class="fas fa-file-pdf customer-order-code-icon" aria-hidden="true"></i>
+                        <span class="customer-order-code-text">%s</span>
+                        <span class="customer-order-code-actions">
+                            <button type="button" class="customer-order-copy-btn" data-order-number="%s"
+                                title="Copiar número" data-toggle="tooltip" aria-label="Copiar número de orden">
+                                <i class="fas fa-copy" aria-hidden="true"></i>
+                            </button>
+                            %s
+                        </span>
+                        <span class="customer-order-copy-feedback" aria-live="polite">Copiado</span>
+                    </div>',
+                    e($purchaseOrderNumber),
+                    e($purchaseOrderNumber),
+                    $openButton
                 );
             })
             ->editColumn('grand_total', function (CustomerPurchaseOrder $order) {
