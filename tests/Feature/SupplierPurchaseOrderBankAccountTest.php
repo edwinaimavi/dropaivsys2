@@ -195,6 +195,59 @@ it('fuerza tipo de cambio uno cuando compra y pago usan la misma moneda', functi
         ->and($payments[0]['exchange_rate'])->toBe(1.0);
 });
 
+it('valida el nuevo pago contra el saldo real de compra sin contar el mismo pago dos veces', function () {
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'validateNewAdvancePaymentsAgainstPending');
+
+    $method->invoke(
+        app(SupplierPurchaseOrderController::class),
+        collect([['applied_amount' => 2917.43]]),
+        2917.43,
+        5834.86,
+        'USD'
+    );
+
+    expect(true)->toBeTrue();
+});
+
+it('permite guardar sin nuevo pago aunque la orden ya esté pagada', function () {
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'validateNewAdvancePaymentsAgainstPending');
+
+    $method->invoke(
+        app(SupplierPurchaseOrderController::class),
+        collect(),
+        5834.86,
+        5834.86,
+        'USD'
+    );
+
+    expect(true)->toBeTrue();
+});
+
+it('muestra mensajes claros cuando no hay saldo o el pago supera el pendiente', function () {
+    $method = new ReflectionMethod(SupplierPurchaseOrderController::class, 'validateNewAdvancePaymentsAgainstPending');
+
+    foreach ([
+        [5834.86, 100, 'La orden ya no tiene saldo pendiente para registrar un nuevo pago.'],
+        [5000, 900, 'El monto aplicado no puede superar el saldo pendiente de USD 834.86.'],
+    ] as [$existingPaid, $newPayment, $expectedMessage]) {
+        $exception = null;
+        try {
+            $method->invoke(
+                app(SupplierPurchaseOrderController::class),
+                collect([['applied_amount' => $newPayment]]),
+                $existingPaid,
+                5834.86,
+                'USD'
+            );
+        } catch (ValidationException $caught) {
+            $exception = $caught;
+        }
+
+        expect($exception)->not->toBeNull()
+            ->and($exception->errors()['financial_terms'][0])->toBe($expectedMessage);
+    }
+});
+
 it('bloquea una cuenta cuya moneda no coincide con la moneda real del pago', function () {
     $penAccount = supplierOrderCompanyAccount([
         'company_id' => $this->praga->id,

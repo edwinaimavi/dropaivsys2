@@ -28,11 +28,11 @@ use App\Services\SupplierPurchaseOrderFinancialService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -1080,17 +1080,19 @@ class SupplierPurchaseOrderController extends Controller
 
                 $exchangeRate = isset($validated['exchange_rate']) ? (float) $validated['exchange_rate'] : null;
                 $existingPaidApplied = round((float) $existingAdvancePayments->sum(
-                    fn (SupplierPurchaseOrderAdvancePayment $payment) =>
-                        $financialService->effectiveAppliedAmount($payment, $order) ?? 0
+                    fn (SupplierPurchaseOrderAdvancePayment $payment) => $financialService->effectiveAppliedAmount($payment, $order) ?? 0
                 ), 4);
                 $newPaidAmount = round((float) $newAdvancePayments->sum('applied_amount'), 4);
                 try {
+                    $this->validateNewAdvancePaymentsAgainstPending(
+                        $newAdvancePayments,
+                        $existingPaidApplied,
+                        (float) $totals['grand_total'],
+                        $purchaseCurrency->code
+                    );
                     $newPaidAmountPen = round((float) $newAdvancePayments->sum('amount_pen'), 4);
                     $paidAmount = round($existingPaidApplied + $newPaidAmount, 4);
                     $paidAmountPen = round((float) $existingAdvancePayments->sum('amount_pen') + $newPaidAmountPen, 4);
-                    if ($paidAmount > $totals['grand_total'] + 0.0001) {
-                        throw new \InvalidArgumentException('El monto aplicado no puede superar el saldo pendiente de la compra.');
-                    }
                     $financialData = $financialService->calculate(
                         $totals['grand_total'],
                         $purchaseCurrency->code,
@@ -2096,6 +2098,34 @@ class SupplierPurchaseOrderController extends Controller
         $this->validateAdvancePaymentBankAccounts($prepared, $companyId);
 
         return $prepared;
+    }
+
+    private function validateNewAdvancePaymentsAgainstPending(
+        iterable $newPayments,
+        float $existingPaidApplied,
+        float $purchaseTotal,
+        string $purchaseCurrency
+    ): void {
+        $newApplied = round((float) collect($newPayments)->sum('applied_amount'), 4);
+        if ($newApplied <= 0) {
+            return;
+        }
+
+        $pending = max(round($purchaseTotal - $existingPaidApplied, 4), 0);
+        if ($pending <= 0.0001) {
+            throw ValidationException::withMessages([
+                'financial_terms' => 'La orden ya no tiene saldo pendiente para registrar un nuevo pago.',
+            ]);
+        }
+        if ($newApplied > $pending + 0.0001) {
+            throw ValidationException::withMessages([
+                'financial_terms' => sprintf(
+                    'El monto aplicado no puede superar el saldo pendiente de %s %s.',
+                    strtoupper($purchaseCurrency),
+                    number_format($pending, 2, '.', ',')
+                ),
+            ]);
+        }
     }
 
     private function validateAdvancePaymentBankAccounts(

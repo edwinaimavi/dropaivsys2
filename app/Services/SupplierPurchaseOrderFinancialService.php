@@ -74,10 +74,6 @@ class SupplierPurchaseOrderFinancialService
             if ($advanceAmount > $purchaseTotal + self::MONEY_EPSILON) {
                 throw new InvalidArgumentException('El anticipo no puede ser mayor al total de la compra.');
             }
-            if ($paidAppliedAmount > $advanceAmount + self::MONEY_EPSILON) {
-                throw new InvalidArgumentException('El monto aplicado no puede ser mayor al anticipo pendiente.');
-            }
-
             $advanceStatus = match (true) {
                 $paidAppliedAmount <= 0 => SupplierPurchaseOrder::ADVANCE_PENDING,
                 $paidAppliedAmount + self::MONEY_EPSILON < $advanceAmount => SupplierPurchaseOrder::ADVANCE_PARTIAL,
@@ -186,8 +182,7 @@ class SupplierPurchaseOrderFinancialService
             ? (float) $order->total_purchase_currency
             : (float) $order->grand_total;
         $payments = $order->advancePayments
-            ->filter(fn (SupplierPurchaseOrderAdvancePayment $payment) =>
-                strtoupper((string) $payment->status) === 'ACTIVE' && $payment->deleted_at === null
+            ->filter(fn (SupplierPurchaseOrderAdvancePayment $payment) => strtoupper((string) $payment->status) === 'ACTIVE' && $payment->deleted_at === null
             )
             ->values();
 
@@ -217,8 +212,7 @@ class SupplierPurchaseOrderFinancialService
             'credito'
         );
         $paymentsByCurrency = $payments
-            ->groupBy(fn (SupplierPurchaseOrderAdvancePayment $payment) =>
-                strtoupper((string) ($payment->currency?->code ?: $purchaseCurrency))
+            ->groupBy(fn (SupplierPurchaseOrderAdvancePayment $payment) => strtoupper((string) ($payment->currency?->code ?: $purchaseCurrency))
             )
             ->map(fn (Collection $currencyPayments, string $currency) => [
                 'currency' => $currency,
