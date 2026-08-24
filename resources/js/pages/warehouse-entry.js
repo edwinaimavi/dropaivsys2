@@ -16,6 +16,7 @@ let warehouseEntryActiveLotsRow = null;
 let warehouseEntryDeliveryType = '';
 let warehouseEntrySourceOrderTotal = null;
 let warehouseEntryBankAccountsRequest = null;
+let warehouseEntryCompanyBankAccounts = [];
 let warehouseEntryEditingPaymentMovement = null;
 let warehouseEntryCreditAlertsCache = null;
 let warehouseEntryCreditAlertsAutoShown = false;
@@ -224,6 +225,7 @@ document.addEventListener('DOMContentLoaded', function () {
         updateWarehouseEntryBankPaymentExchangeRate();
         resetWarehouseEntryNegativeBalanceConfirmation();
         filterWarehouseEntryGeneralCashBoxes();
+        renderWarehouseEntryExpenseBankAccounts();
     });
     $(document).on('change', '#warehouse_entry_payment_company_bank_account_id', function () {
         updateWarehouseEntryBankPaymentExchangeRate();
@@ -288,7 +290,9 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_expense_shipping_agency_id', function () { $('#warehouse_entry_expense_provider_ruc').val($(this).find('option:selected').data('ruc') || ''); });
     $(document).on('change', '#warehouse_entry_expense_document_type', toggleWarehouseEntryExpenseDocumentFields);
     $(document).on('change', '#warehouse_entry_expense_cost_origin', applyWarehouseEntryExpenseOriginRules);
-    $(document).on('change', '#warehouse_entry_expense_payment_source', toggleWarehouseEntryExpensePaymentSource);
+    $(document).on('change', '#warehouse_entry_expense_payment_source', function () {
+        toggleWarehouseEntryExpensePaymentSource(true);
+    });
     $(document).on('change', '#warehouse_entry_expense_applies_detraction', toggleWarehouseEntryExpenseDetraction);
     $(document).on('change', '#warehouse_entry_expense_detraction_type_id', calculateWarehouseEntryExpenseDetraction);
     $(document).on('input', '#warehouse_entry_expense_amount', calculateWarehouseEntryExpenseDetraction);
@@ -2396,21 +2400,20 @@ function syncWarehouseEntryPayableAmount(total = null) {
 
 function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
     const select = $('#warehouse_entry_payment_company_bank_account_id');
-    const expenseSelect = $('#warehouse_entry_expense_company_bank_account_id');
     if (!select.length) return;
 
     const companyId = String($('#warehouse_entry_company_id').val() || '');
     const currentId = selectedAccountId === null ? String(select.val() || '') : String(selectedAccountId || '');
-    const currentExpenseId = String(expenseSelect.val() || '');
     select.empty().append(new Option('Seleccione cuenta bancaria', ''));
-    expenseSelect.empty().append(new Option('Seleccione cuenta bancaria', ''));
     const help = $('#warehouseEntryBankAccountHelp');
+    const expenseHelp = $('#warehouseEntryExpenseBankAccountHelp');
 
     warehouseEntryBankAccountsRequest?.abort();
     warehouseEntryBankAccountsRequest = null;
+    warehouseEntryCompanyBankAccounts = [];
+    renderWarehouseEntryExpenseBankAccounts();
     if (!companyId) {
         select.val('').trigger('change.select2');
-        expenseSelect.val('').trigger('change.select2');
         help.text('Seleccione primero la empresa para ver sus cuentas activas.').removeClass('text-danger');
         updateWarehouseEntryBankPaymentExchangeRate();
         resetWarehouseEntryNegativeBalanceConfirmation();
@@ -2419,11 +2422,13 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
 
     select.prop('disabled', true).trigger('change.select2');
     help.text('Cargando cuentas bancarias activas...').removeClass('text-danger');
+    expenseHelp.text('Cargando cuentas bancarias activas...').removeClass('text-danger');
     warehouseEntryBankAccountsRequest = $.get(`${window.routes.warehouseEntryCompanyBankAccounts}/${companyId}/bank-accounts`)
         .done(function (response) {
             if (String($('#warehouse_entry_company_id').val() || '') !== companyId) return;
 
             const accounts = response.data || [];
+            warehouseEntryCompanyBankAccounts = accounts;
             accounts.forEach(function (account) {
                 const currencyCode = String(account.currency?.code || '').toUpperCase();
                 const symbol = account.currency?.symbol || currencyCode;
@@ -2439,10 +2444,9 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
                     'data-account-number': account.account_number
                 });
                 select.append(option);
-                expenseSelect.append($(option).clone().prop('selected', String(account.id) === currentExpenseId));
             });
             select.val(accounts.some(account => String(account.id) === currentId) ? currentId : '').trigger('change.select2');
-            expenseSelect.val(accounts.some(account => String(account.id) === currentExpenseId) ? currentExpenseId : '').trigger('change.select2');
+            renderWarehouseEntryExpenseBankAccounts();
             if (!accounts.length) {
                 help.text('La empresa seleccionada no tiene cuentas bancarias activas disponibles.').addClass('text-danger');
             } else {
@@ -2451,7 +2455,10 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
         })
         .fail(function (xhr) {
             if (xhr.statusText === 'abort') return;
+            warehouseEntryCompanyBankAccounts = [];
+            renderWarehouseEntryExpenseBankAccounts();
             help.text('No se pudieron cargar las cuentas bancarias de la empresa.').addClass('text-danger');
+            expenseHelp.text('No se pudieron cargar las cuentas bancarias de la empresa.').addClass('text-danger');
         })
         .always(function () {
             warehouseEntryBankAccountsRequest = null;
@@ -2459,6 +2466,44 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
             updateWarehouseEntryBankPaymentExchangeRate();
             resetWarehouseEntryNegativeBalanceConfirmation();
         });
+}
+
+function renderWarehouseEntryExpenseBankAccounts(selectedAccountId = null) {
+    const select = $('#warehouse_entry_expense_company_bank_account_id');
+    if (!select.length) return;
+
+    const companyId = String($('#warehouse_entry_company_id').val() || '');
+    const currencyId = String($('#warehouse_entry_currency_id').val() || '');
+    const currentId = selectedAccountId === null ? String(select.val() || '') : String(selectedAccountId || '');
+    const help = $('#warehouseEntryExpenseBankAccountHelp');
+    const accounts = warehouseEntryCompanyBankAccounts.filter(account =>
+        String(account.company_id) === companyId
+        && String(account.currency_id) === currencyId
+        && String(account.status || '').toUpperCase() === 'ACTIVE'
+    );
+
+    select.empty().append(new Option('Seleccione cuenta bancaria', ''));
+    accounts.forEach(function (account) {
+        const currencyCode = String(account.currency?.code || '').toUpperCase();
+        const bank = account.bank?.short_name || account.bank?.description || 'Banco';
+        const option = new Option(`${bank} | ${account.account_number} | ${currencyCode}`, account.id, false, String(account.id) === currentId);
+        $(option).attr({
+            'data-company-id': account.company_id,
+            'data-currency-id': account.currency_id,
+            'data-bank': bank,
+            'data-account-number': account.account_number
+        });
+        select.append(option);
+    });
+    select.val(accounts.some(account => String(account.id) === currentId) ? currentId : '').trigger('change.select2');
+
+    if (!companyId || !currencyId) {
+        help.text('Seleccione empresa y moneda para ver sus cuentas activas.').removeClass('text-danger');
+    } else if (!accounts.length) {
+        help.text('No hay cuentas bancarias activas para la empresa y moneda seleccionadas.').addClass('text-danger');
+    } else {
+        help.text(`${accounts.length} cuenta${accounts.length === 1 ? '' : 's'} activa${accounts.length === 1 ? '' : 's'} disponible${accounts.length === 1 ? '' : 's'}.`).removeClass('text-danger');
+    }
 }
 
 function filterWarehouseEntryGeneralCashBoxes() {
@@ -2967,11 +3012,24 @@ function applyWarehouseEntryExpenseOriginRules() {
     toggleWarehouseEntryExpenseDistribution();
 }
 
-function toggleWarehouseEntryExpensePaymentSource() {
-    const source = $('#warehouse_entry_expense_payment_source').val() || 'manual';
+function toggleWarehouseEntryExpensePaymentSource(clearInactiveFields = false) {
+    const sourceSelect = $('#warehouse_entry_expense_payment_source');
+    const source = sourceSelect.val() || 'manual';
+    const previousSource = sourceSelect.data('previous-source') || source;
     $('#warehouseEntryExpenseGeneralCashGroup').toggleClass('d-none', source !== 'general_cash');
     $('#warehouseEntryExpenseBankGroup').toggleClass('d-none', source !== 'bank');
+
+    if (clearInactiveFields && source !== 'general_cash') {
+        $('#warehouse_entry_expense_general_cash_box_id').val('').trigger('change.select2');
+    }
+    if (clearInactiveFields && source !== 'bank') {
+        $('#warehouse_entry_expense_company_bank_account_id').val('').trigger('change.select2');
+        if (previousSource === 'bank') clearWarehouseEntryExpenseFile('payment_proof');
+    }
+
     filterWarehouseEntryGeneralCashBoxes();
+    renderWarehouseEntryExpenseBankAccounts();
+    sourceSelect.data('previous-source', source);
 }
 
 function toggleWarehouseEntryExpenseDetraction() {
@@ -3025,7 +3083,7 @@ function resetWarehouseEntryExpenseEditor() {
     $('#warehouse_entry_expense_edit_index').val('');
     $('#warehouse_entry_expense_provider_id,#warehouse_entry_expense_provider_name,#warehouse_entry_expense_document_series,#warehouse_entry_expense_document_number,#warehouse_entry_expense_document_date,#warehouse_entry_expense_description,#warehouse_entry_expense_invoice_file,#warehouse_entry_expense_payment_proof_file,#warehouse_entry_expense_detraction_proof_file,#warehouse_entry_expense_shipping_agency_id').val('');
     $('#warehouse_entry_expense_provider_ruc,#warehouse_entry_expense_amount,#warehouse_entry_expense_general_cash_box_id,#warehouse_entry_expense_company_bank_account_id').val('');
-    $('#warehouse_entry_expense_payment_source').val('manual').prop('disabled', false);
+    $('#warehouse_entry_expense_payment_source').val('manual').prop('disabled', false).data('previous-source', 'manual');
     $('#warehouse_entry_expense_affects_cost').val('1');
     $('#warehouse_entry_expense_category').val('freight_transport');
     $('#warehouse_entry_expense_cost_origin').val('third_party');
@@ -3045,7 +3103,7 @@ function resetWarehouseEntryExpenseEditor() {
     renderWarehouseEntryExpenseFileSelection('invoice', null);
     renderWarehouseEntryExpenseFileSelection('payment_proof', null);
     renderWarehouseEntryExpenseFileSelection('detraction_proof', null);
-    toggleWarehouseEntryExpensePaymentSource();
+    toggleWarehouseEntryExpensePaymentSource(false);
     toggleWarehouseEntryExpenseDetraction();
 }
 
@@ -3256,7 +3314,7 @@ function editWarehouseEntryExpense(index) {
         detraction_proof: Boolean(expense.remove_detraction_proof_document)
     };
     const category = expense.expense_category || (['flete', 'transporte', 'movilidad'].includes(expense.expense_type) ? 'freight_transport' : 'other_expense');
-    $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_payment_source').val(expense.source_type || 'manual').prop('disabled', expense.source_type === 'petty_cash'); $('#warehouse_entry_expense_general_cash_box_id').val(expense.general_cash_box_id || ''); $('#warehouse_entry_expense_company_bank_account_id').val(expense.company_bank_account_id || ''); toggleWarehouseEntryExpensePaymentSource(); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); applyWarehouseEntryExpenseOriginRules();
+    $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_payment_source').val(expense.source_type || 'manual').prop('disabled', expense.source_type === 'petty_cash').data('previous-source', expense.source_type || 'manual'); $('#warehouse_entry_expense_general_cash_box_id').val(expense.general_cash_box_id || ''); renderWarehouseEntryExpenseBankAccounts(expense.company_bank_account_id || ''); toggleWarehouseEntryExpensePaymentSource(false); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); applyWarehouseEntryExpenseOriginRules();
     $('#warehouse_entry_expense_applies_detraction').prop('checked', Boolean(expense.applies_detraction));
     $('#warehouse_entry_expense_detraction_type_id').val(expense.detraction_type_id || '').trigger('change.select2');
     toggleWarehouseEntryExpenseDetraction();
@@ -3505,13 +3563,23 @@ function renderWarehouseEntryExpenses() {
         </article>`;
     }).join('') : '<div class="warehouse-entry-expense-empty"><span><i class="fas fa-receipt"></i></span><strong>Aún no hay costos vinculados</strong><small>Agrega un costo manual o jálalo desde Caja Chica.</small></div>');
     $('#warehouseEntryExpenseCount').text(`${warehouseEntryExpenses.length} ${warehouseEntryExpenses.length === 1 ? 'costo vinculado' : 'costos vinculados'} a este ingreso`);
-    const approvedExpenses = warehouseEntryExpenses.filter(warehouseEntryExpenseIsApproved);
-    const freight = approvedExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
-    const other = approvedExpenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
+    const registeredExpenses = warehouseEntryExpenses;
+    const approvedExpenses = registeredExpenses.filter(warehouseEntryExpenseIsApproved);
+    const pendingExpenses = registeredExpenses.filter(expense => !warehouseEntryExpenseIsApproved(expense)
+        && (expense.approval_status || 'pending') === 'pending');
+    const expenseAmount = expense => parseWarehouseEntryNumber(expense.total_amount ?? expense.amount);
+    const freight = registeredExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + expenseAmount(expense), 0);
+    const other = registeredExpenses.filter(expense => !isWarehouseEntryOfficialTransportExpense(expense)).reduce((sum, expense) => sum + expenseAmount(expense), 0);
+    const registered = registeredExpenses.reduce((sum, expense) => sum + expenseAmount(expense), 0);
+    const pending = pendingExpenses.reduce((sum, expense) => sum + expenseAmount(expense), 0);
+    const approved = approvedExpenses.reduce((sum, expense) => sum + expenseAmount(expense), 0);
     const inventory = approvedExpenses.filter(expense => expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     const informative = approvedExpenses.filter(expense => !expense.affects_inventory_cost).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
     $('#warehouseEntryFreightTotal').text(formatWarehouseEntryMoney(freight)); $('#warehouseEntryOtherExpenseTotal').text(formatWarehouseEntryMoney(other)); $('#warehouseEntryExpenseInventoryTotal').text(formatWarehouseEntryMoney(inventory)); $('#warehouseEntryExpenseInformativeTotal').text(formatWarehouseEntryMoney(informative));
-    $('#warehouseEntryExpenseLinkedTotal').text(formatWarehouseEntryMoney(freight + other));
+    $('#warehouseEntryExpenseRegisteredTotal').text(formatWarehouseEntryMoney(registered));
+    $('#warehouseEntryExpensePendingTotal').text(formatWarehouseEntryMoney(pending));
+    $('#warehouseEntryExpenseApprovedTotal').text(formatWarehouseEntryMoney(approved));
+    $('#warehouseEntryExpenseLinkedTotal').text(formatWarehouseEntryMoney(registered));
 }
 
 function renderWarehouseEntrySimpleExpenseLabel(type) {

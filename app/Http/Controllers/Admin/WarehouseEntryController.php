@@ -1446,14 +1446,20 @@ class WarehouseEntryController extends Controller
                 WarehouseEntryExpense::SOURCE_BANK,
             ])],
             'expenses.*.petty_cash_expense_id' => [
+                'exclude_unless:expenses.*.source_type,petty_cash',
                 'nullable',
                 'integer',
                 'exists:petty_cash_expenses,id',
             ],
-            'expenses.*.general_cash_box_id' => ['nullable', 'integer', 'exists:general_cash_boxes,id'],
-            'expenses.*.general_cash_movement_id' => ['nullable', 'integer', 'exists:general_cash_movements,id'],
-            'expenses.*.company_bank_account_id' => ['nullable', 'integer', 'exists:company_bank_accounts,id'],
-            'expenses.*.bank_movement_id' => ['nullable', 'integer', 'exists:bank_movements,id'],
+            'expenses.*.general_cash_box_id' => ['exclude_unless:expenses.*.source_type,general_cash', 'nullable', 'integer', 'exists:general_cash_boxes,id'],
+            'expenses.*.general_cash_movement_id' => ['exclude_unless:expenses.*.source_type,general_cash', 'nullable', 'integer', 'exists:general_cash_movements,id'],
+            'expenses.*.company_bank_account_id' => [
+                'exclude_unless:expenses.*.source_type,bank',
+                'required_if:expenses.*.source_type,bank',
+                'integer',
+                'exists:company_bank_accounts,id',
+            ],
+            'expenses.*.bank_movement_id' => ['exclude_unless:expenses.*.source_type,bank', 'nullable', 'integer', 'exists:bank_movements,id'],
             'expenses.*.expense_category' => ['required', Rule::in(['freight_transport', 'other_expense'])],
             'expenses.*.cost_origin' => ['required', Rule::in(['included_in_purchase_price', 'same_purchase_document', 'third_party', 'internal_without_document'])],
             'expenses.*.expense_type' => ['required', Rule::in(['agency_freight', 'pickup_transfer', 'agency_pickup_to_warehouse', 'agency_direct_to_warehouse', 'supplier_warehouse_pickup', 'transfer_to_agency', 'transport_agency', 'courier', 'truck', 'mobility', 'shipping', 'delivery', 'transfer', 'stowage', 'packaging', 'toll', 'insurance', 'commission', 'handling', 'loading_unloading', 'other', 'flete', 'transporte', 'estiba', 'movilidad', 'embalaje', 'peaje', 'seguro', 'comision', 'aduana', 'otro'])],
@@ -1507,6 +1513,8 @@ class WarehouseEntryController extends Controller
             'expenses.*.invoice_file.max' => 'El archivo de la factura no debe superar los 10 MB.',
             'expenses.*.payment_proof_file.mimes' => 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.',
             'expenses.*.payment_proof_file.max' => 'El archivo de la constancia de pago no debe superar los 10 MB.',
+            'expenses.*.company_bank_account_id.required_if' => 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.',
+            'expenses.*.company_bank_account_id.exists' => 'La cuenta bancaria seleccionada no existe o no está activa.',
             'expenses.*.detraction_proof_file.file' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
             'expenses.*.detraction_proof_file.mimes' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
             'expenses.*.detraction_proof_file.max' => 'La constancia de detracción no debe superar 10 MB.',
@@ -1970,10 +1978,19 @@ class WarehouseEntryController extends Controller
                 if ($sourceType === WarehouseEntryExpense::SOURCE_BANK) {
                     $account = CompanyBankAccount::query()->where('status', 'ACTIVE')
                         ->find($data['company_bank_account_id'] ?? null);
-                    if (! $account || (int) $account->company_id !== (int) $entry->company_id
-                        || (int) $account->currency_id !== (int) $entry->currency_id) {
+                    if (! $account) {
                         throw ValidationException::withMessages([
                             "expenses.$index.company_bank_account_id" => 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.',
+                        ]);
+                    }
+                    if ((int) $account->company_id !== (int) $entry->company_id) {
+                        throw ValidationException::withMessages([
+                            "expenses.$index.company_bank_account_id" => 'La cuenta bancaria seleccionada no pertenece a la empresa del ingreso.',
+                        ]);
+                    }
+                    if ((int) $account->currency_id !== (int) $entry->currency_id) {
+                        throw ValidationException::withMessages([
+                            "expenses.$index.company_bank_account_id" => 'La cuenta bancaria seleccionada no corresponde a la moneda del ingreso.',
                         ]);
                     }
                 }

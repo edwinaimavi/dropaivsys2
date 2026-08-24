@@ -130,6 +130,60 @@ it('registra fuentes manual, Caja General y Banco como pendientes sin afectar sa
         ->assertJsonPath('data.expenses.2.company_bank_account.account_number', '001-999999');
 });
 
+it('ignora una cuenta bancaria residual cuando la fuente del costo es manual', function () {
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'RESPONSABLE MANUAL', [
+            'company_bank_account_id' => PHP_INT_MAX,
+        ]),
+    ], [], []);
+
+    $expense = $this->entry->expenses()->sole();
+    expect($expense->source_type)->toBe(WarehouseEntryExpense::SOURCE_MANUAL)
+        ->and($expense->company_bank_account_id)->toBeNull()
+        ->and($expense->bank_movement_id)->toBeNull();
+});
+
+it('exige para Banco una cuenta activa de la empresa y moneda del ingreso', function () {
+    $otherCompany = Company::create([
+        'business_name' => 'OTRA EMPRESA S.A.C.', 'ruc' => '20977777772', 'status' => true,
+    ]);
+    $otherCurrency = Currency::create([
+        'code' => 'USD', 'description' => 'DÃ³lares', 'symbol' => '$', 'status' => 'ACTIVE',
+    ]);
+    $foreignAccount = CompanyBankAccount::create([
+        'company_id' => $otherCompany->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $this->currency->id, 'account_holder' => 'OTRA EMPRESA S.A.C.',
+        'account_number' => '001-FOREIGN', 'current_balance' => 500,
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
+    ]);
+    $otherCurrencyAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $otherCurrency->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-USD', 'current_balance' => 500,
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
+    ]);
+    $inactiveAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $this->currency->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-INACTIVE', 'current_balance' => 500,
+        'is_detraction' => 'NO', 'status' => 'INACTIVE',
+    ]);
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $payload = fn (int $accountId) => [warehouseSourceExpensePayload(
+        WarehouseEntryExpense::SOURCE_BANK,
+        'RESPONSABLE BANCO',
+        ['company_bank_account_id' => $accountId]
+    )];
+
+    expect(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($foreignAccount->id), [], []))
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La cuenta bancaria seleccionada no pertenece a la empresa del ingreso.')
+        ->and(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($otherCurrencyAccount->id), [], []))
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La cuenta bancaria seleccionada no corresponde a la moneda del ingreso.')
+        ->and(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($inactiveAccount->id), [], []))
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.');
+});
+
 it('conserva trazabilidad al aprobar un gasto manual', function () {
     $expense = $this->entry->expenses()->create([
         ...warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [

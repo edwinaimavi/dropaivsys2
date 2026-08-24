@@ -14,6 +14,7 @@ it('evita la validación HTML5 nativa en el modal con pestañas', function () {
 it('valida por javascript, cambia de pestaña y controla el estado de guardado', function () {
     $root = dirname(__DIR__, 2);
     $javascript = file_get_contents($root.'/resources/js/pages/warehouse-entry.js');
+    $controller = file_get_contents($root.'/app/Http/Controllers/Admin/WarehouseEntryController.php');
 
     expect($javascript)
         ->toContain("$(document).on('submit', '#warehouseEntryForm'")
@@ -24,7 +25,12 @@ it('valida por javascript, cambia de pestaña y controla el estado de guardado',
         ->toContain('validateWarehouseEntryPendingExpense()')
         ->toContain('setWarehouseEntrySaving(true)')
         ->toContain('.always(() => setWarehouseEntrySaving(false))')
-        ->toContain('.warehouse-entry-form-tabs a[href=');
+        ->toContain('.warehouse-entry-form-tabs a[href=')
+        ->and($controller)
+        ->toContain("'exclude_unless:expenses.*.source_type,bank'")
+        ->toContain("'required_if:expenses.*.source_type,bank'")
+        ->toContain("'exclude_unless:expenses.*.source_type,general_cash'")
+        ->toContain("'exclude_unless:expenses.*.source_type,petty_cash'");
 });
 
 it('presenta los costos vinculados como tarjetas responsivas sin perder sus acciones', function () {
@@ -38,6 +44,9 @@ it('presenta los costos vinculados como tarjetas responsivas sin perder sus acci
         ->toContain('id="warehouseEntryExpenseCount"')
         ->toContain('id="warehouseEntryFreightTotal"')
         ->toContain('id="warehouseEntryOtherExpenseTotal"')
+        ->toContain('id="warehouseEntryExpenseRegisteredTotal"')
+        ->toContain('id="warehouseEntryExpensePendingTotal"')
+        ->toContain('id="warehouseEntryExpenseApprovedTotal"')
         ->toContain('id="warehouseEntryExpenseLinkedTotal"')
         ->toContain('id="warehouseEntryExpensesBody" class="warehouse-entry-expense-cards"')
         ->not->toContain('warehouse-entry-expenses-table')
@@ -50,7 +59,13 @@ it('presenta los costos vinculados como tarjetas responsivas sin perder sus acci
         ->toContain('btnViewWarehouseEntryExpenseObservation')
         ->toContain('btnReviewWarehouseEntryExpense')
         ->toContain('btnEditWarehouseEntryExpense')
-        ->toContain('btnRemoveWarehouseEntryExpense');
+        ->toContain('btnRemoveWarehouseEntryExpense')
+        ->toContain('renderWarehouseEntryExpenseBankAccounts')
+        ->toContain("String(account.company_id) === companyId")
+        ->toContain("String(account.currency_id) === currencyId")
+        ->toContain("clearWarehouseEntryExpenseFile('payment_proof')")
+        ->toContain('const registeredExpenses = warehouseEntryExpenses;')
+        ->toContain("$('#warehouseEntryExpensePendingTotal').text");
 });
 
 it('presenta el resumen real del anticipo sin completar saldos faltantes con cero', function () {
