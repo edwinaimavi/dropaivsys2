@@ -818,7 +818,7 @@ $(function () {
             })
             .catch(error => notify('error', error.message || 'No se pudo cargar la imagen guardada.'));
     };
-    const loadSourceAccounts = (companyId, selectSelector, helpSelector, selectedId = '') => {
+    const loadSourceAccounts = (companyId, selectSelector, helpSelector, selectedId = '', currencyId = '') => {
         const select = $(selectSelector).prop('disabled', true);
         $(helpSelector).text('');
         if (!companyId) {
@@ -826,12 +826,16 @@ $(function () {
             return;
         }
         select.html('<option value="">Cargando cuentas...</option>');
-        api({ url: `${base}/source-companies/${companyId}/bank-accounts`, method: 'GET' })
+        api({
+            url: `${base}/source-companies/${companyId}/bank-accounts`,
+            method: 'GET',
+            data: currencyId ? { currency_id: currencyId } : {}
+        })
             .done(response => {
                 const accounts = response.data || [];
                 select.html('<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => `<option value="${account.id}" data-currency="${escapeHtml(account.currency_code || '')}">${escapeHtml(account.label)}</option>`).join(''))
                     .prop('disabled', !accounts.length).val(String(selectedId || ''));
-                $(helpSelector).text(accounts.length ? '' : 'Esta empresa no tiene cuentas bancarias registradas.');
+                $(helpSelector).text(accounts.length ? '' : 'No hay cuentas bancarias activas para esta empresa y moneda.');
                 select.trigger('change.bankExchangeRate');
             })
             .fail(xhr => $(helpSelector).text(errorMessage(xhr)));
@@ -932,8 +936,8 @@ $(function () {
         const previous = Math.max(0, Number($('#pc_previous_balance').val()) || 0);
         const approvedAmount = Math.max(0, Number(currentApprovedAmount?.amount) || 0);
         const hasPreviousBox = Boolean($('#pc_previous_petty_cash_id').val());
-        const approved = hasPreviousBox ? Math.max(0, approvedAmount - previous) : 0;
-        const opening = hasPreviousBox ? previous + approved : approvedAmount;
+        const approved = hasPreviousBox ? Math.max(0, approvedAmount - previous) : approvedAmount;
+        const opening = previous + approved;
         $('#pc_approved_fund').val(approved.toFixed(2));
         $('#pc_opening_amount').val(opening.toFixed(2));
         $('#pc_side_previous').text(money(previous));
@@ -975,6 +979,7 @@ $(function () {
             return $.Deferred().resolve().promise();
         }
 
+        currentApprovedAmount = null;
         $('#pc_approved_amount_display').html('<i class="fas fa-spinner fa-spin"></i>');
         $('#pc_approved_amount_caption').text('Consultando autorización...');
         return api({
@@ -982,6 +987,8 @@ $(function () {
             method: 'GET',
             data: { company_id: companyId, currency_id: currencyId }
         }).done(response => {
+            if (String($('#pc_company_id').val()) !== String(companyId)
+                || String($('#pc_currency_id').val()) !== String(currencyId)) return;
             currentApprovedAmount = response.status === 'success' ? response.data : null;
             $('#pc_approved_amount_display').text(currentApprovedAmount?.formatted_amount || 'Sin asignar');
             $('#pc_approved_amount_caption').text(currentApprovedAmount
@@ -989,6 +996,8 @@ $(function () {
                 : 'No existe una configuración activa');
             updateOpeningAmount();
         }).fail(xhr => {
+            if (String($('#pc_company_id').val()) !== String(companyId)
+                || String($('#pc_currency_id').val()) !== String(currencyId)) return;
             resetApprovedAmount('No fue posible consultar el monto');
             if (xhr.status !== 403) notify('error', errorMessage(xhr));
         });
@@ -1184,7 +1193,7 @@ $(function () {
     });
 
     $('#pc_fund_source_company_id').on('change', function () {
-        loadSourceAccounts(this.value, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help');
+        loadSourceAccounts(this.value, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help', '', $('#pc_currency_id').val());
     });
     $('#pcr_fund_source_company_id').on('change', function () {
         loadSourceAccounts(this.value, '#pcr_fund_source_bank_account_id', '#pcr_fund_source_account_help');
@@ -1218,19 +1227,26 @@ $(function () {
     });
     $(document).off('change', '#pc_company_id').on('change', '#pc_company_id', function () {
         const companyId = this.value;
-        loadApprovedAmount();
+        const currencyId = $('#pc_currency_id').val();
+        applyingPreviousBalance = true;
+        $('#pc_previous_petty_cash_id').val('');
+        $('#pc_previous_balance').val('0');
+        applyingPreviousBalance = false;
+        $('#pc_previous_balance_message').removeData('previous-code');
+        $('#pc_fund_source_company_id').val(companyId || '');
+        loadSourceAccounts(companyId, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help', '', currencyId);
+        resetApprovedAmount(companyId && currencyId ? 'Consultando autorización...' : 'Seleccione empresa y moneda');
+        updateOpeningAmount();
         if (!companyId) {
-            applyingPreviousBalance = true;
-            $('#pc_previous_petty_cash_id').val('');
-            $('#pc_previous_balance').val('0');
-            applyingPreviousBalance = false;
             $('#pc_previous_balance_message').text('Seleccione empresa y moneda para calcular el fondo inicial.');
-            updateOpeningAmount();
             return;
         }
+        loadApprovedAmount();
         $('#pc_previous_balance_message').html('<i class="fas fa-spinner fa-spin mr-1"></i> Buscando saldo anterior...');
-        api({ url: app.data('previous-balance-url'), method: 'GET', data: { company_id: companyId, currency_id: $('#pc_currency_id').val(), exclude_id: $('#petty_cash_id').val() || null } })
+        api({ url: app.data('previous-balance-url'), method: 'GET', data: { company_id: companyId, currency_id: currencyId, exclude_id: $('#petty_cash_id').val() || null } })
             .done(response => {
+                if (String($('#pc_company_id').val()) !== String(companyId)
+                    || String($('#pc_currency_id').val()) !== String(currencyId)) return;
                 const data = response.data || {};
                 applyingPreviousBalance = true;
                 $('#pc_previous_petty_cash_id').val(data.previous_petty_cash_id || '');
@@ -1242,8 +1258,12 @@ $(function () {
                 updateOpeningAmount();
             })
             .fail(xhr => {
+                if (String($('#pc_company_id').val()) !== String(companyId)
+                    || String($('#pc_currency_id').val()) !== String(currencyId)) return;
                 $('#pc_previous_balance_message').text(errorMessage(xhr));
                 $('#pc_previous_petty_cash_id').val('');
+                $('#pc_previous_balance').val('0');
+                updateOpeningAmount();
             });
     });
     $(document).off('change', '#pc_currency_id').on('change', '#pc_currency_id', function () {
@@ -1381,7 +1401,7 @@ $(function () {
             $('#pc_fund_source_company_id').val(box.fund_source_company_id || '');
             $('#pc_fund_source_exchange_rate').val(box.fund_source_exchange_rate || '');
             if (box.fund_source_company_id) {
-                loadSourceAccounts(box.fund_source_company_id, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help', box.fund_source_bank_account_id);
+                loadSourceAccounts(box.fund_source_company_id, '#pc_fund_source_bank_account_id', '#pc_fund_source_account_help', box.fund_source_bank_account_id, box.currency_id);
             }
             $('#pc_side_expenses').text(money(box.total_expenses)); $('#pc_side_balance').text(money(box.cash_balance));
             $('#pettyCashModalLabel').text('Editar caja chica'); $('#btnSavePettyCash span').text('Actualizar Caja'); $('#pettyCashModal').modal('show');

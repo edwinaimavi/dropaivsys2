@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Bank;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashExpenseObservation;
@@ -24,6 +26,12 @@ beforeEach(function () {
         'description' => 'Soles',
         'symbol' => 'S/',
         'status' => 'ACTIVE',
+    ]);
+    $bank = Bank::create(['description' => 'BANCO DE PRUEBA', 'short_name' => 'TEST', 'status' => 'ACTIVE']);
+    $this->account = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $bank->id, 'currency_id' => $this->currency->id,
+        'account_holder' => 'DROPAIV S.A.C.', 'account_number' => '001-CAJA-CHICA',
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
     ]);
 
     foreach ([
@@ -56,6 +64,8 @@ beforeEach(function () {
     $this->boxId = $this->postJson(route('admin.petty-cash.store'), [
         'company_id' => $this->company->id,
         'currency_id' => $this->currency->id,
+        'fund_source_company_id' => $this->company->id,
+        'fund_source_bank_account_id' => $this->account->id,
         'start_date' => '2026-07-01',
         'responsible_name' => 'RESPONSABLE',
         'responsible_dni' => '12345678',

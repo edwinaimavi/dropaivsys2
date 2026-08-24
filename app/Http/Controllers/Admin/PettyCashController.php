@@ -342,13 +342,15 @@ class PettyCashController extends Controller
             'currency_id' => ['required', 'exists:currencies,id'],
             'exclude_id' => ['nullable', 'integer', 'exists:petty_cash_boxes,id'],
         ]);
+        $excludeId = $validated['exclude_id'] ?? null;
         $previous = PettyCashBox::query()
             ->where('company_id', $validated['company_id'])
             ->where('currency_id', $validated['currency_id'])
-            ->when($validated['exclude_id'] ?? null, fn ($query, $id) => $query->where('id', '!=', $id))
+            ->when($excludeId, fn ($query, $id) => $query->where('id', '!=', $id))
             ->where('cash_balance', '>', 0)
             ->whereIn('status', [PettyCashBox::STATUS_CLOSED, PettyCashBox::STATUS_REIMBURSED])
-            ->whereDoesntHave('carriedForwardTo')
+            ->whereDoesntHave('carriedForwardTo', fn ($query) => $query
+                ->when($excludeId, fn ($carriedQuery, $id) => $carriedQuery->where('id', '!=', $id)))
             ->latest('id')
             ->first();
 
@@ -365,22 +367,32 @@ class PettyCashController extends Controller
         ]);
     }
 
-    public function sourceBankAccounts(Company $company)
+    public function sourceBankAccounts(Request $request, Company $company)
     {
+        $validated = $request->validate([
+            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+        ]);
+
         $accounts = $company->bankAccounts()
             ->where('status', 'ACTIVE')
-            ->with(['bank:id,description,short_name', 'currency:id,code'])
+            ->when($validated['currency_id'] ?? null, fn ($query, $currencyId) => $query->where('currency_id', $currencyId))
+            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
             ->orderBy('id')
             ->get()
-            ->map(fn (CompanyBankAccount $account) => [
-                'id' => $account->id,
-                'label' => implode(' - ', array_filter([
+            ->map(function (CompanyBankAccount $account) {
+                $label = implode(' - ', array_filter([
                     $account->bank?->short_name ?: $account->bank?->description,
                     $account->currency?->code,
                     $account->account_number,
-                ])).($account->cci ? " | CCI: {$account->cci}" : ''),
-                'currency_code' => $account->currency?->code,
-            ]);
+                ])).($account->cci ? " | CCI: {$account->cci}" : '');
+                $balanceSymbol = $account->currency?->symbol ?: $account->currency?->code;
+
+                return [
+                    'id' => $account->id,
+                    'label' => $label.' - Saldo '.trim($balanceSymbol.' '.number_format((float) $account->current_balance, 2)),
+                    'currency_code' => $account->currency?->code,
+                ];
+            });
 
         return response()->json(['data' => $accounts]);
     }
@@ -1715,13 +1727,21 @@ class PettyCashController extends Controller
         $account = CompanyBankAccount::query()
             ->with('currency:id,code')
             ->whereKey($validated['fund_source_bank_account_id'])
-            ->where('company_id', $validated['fund_source_company_id'])
-            ->where('status', 'ACTIVE')
             ->first();
 
         if (! $account) {
             throw ValidationException::withMessages([
-                'fund_source_bank_account_id' => 'La cuenta bancaria seleccionada no pertenece a la empresa origen.',
+                'fund_source_bank_account_id' => 'La cuenta bancaria origen no existe o no se encuentra activa.',
+            ]);
+        }
+        if ((int) $account->company_id !== (int) $validated['fund_source_company_id']) {
+            throw ValidationException::withMessages([
+                'fund_source_bank_account_id' => 'La cuenta bancaria origen no pertenece a la empresa seleccionada.',
+            ]);
+        }
+        if ($account->status !== 'ACTIVE') {
+            throw ValidationException::withMessages([
+                'fund_source_bank_account_id' => 'La cuenta bancaria origen no se encuentra activa.',
             ]);
         }
         if (isset($validated['currency_id']) && (int) $account->currency_id !== (int) $validated['currency_id']) {

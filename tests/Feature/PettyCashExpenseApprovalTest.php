@@ -5,9 +5,9 @@ use App\Models\BankMovement;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
+use App\Models\DocumentType;
 use App\Models\PettyCashExpense;
 use App\Models\PettyCashReplenishment;
-use App\Models\DocumentType;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -18,6 +18,12 @@ beforeEach(function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     $this->company = Company::create(['business_name' => 'DROPAIV S.A.C.', 'trade_name' => 'DROPAIV', 'ruc' => '20123456789', 'status' => true]);
     $this->currency = Currency::create(['code' => 'PEN', 'description' => 'Soles', 'symbol' => 'S/', 'status' => 'ACTIVE']);
+    $bank = Bank::create(['description' => 'BANCO DE PRUEBA', 'short_name' => 'TEST', 'status' => 'ACTIVE']);
+    $this->account = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $bank->id, 'currency_id' => $this->currency->id,
+        'account_holder' => 'DROPAIV S.A.C.', 'account_number' => '001-CAJA-CHICA',
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
+    ]);
     $this->manager = User::factory()->create();
     foreach (['admin.petty-cash.approved-amount.index', 'admin.petty-cash.approved-amount.update', 'admin.petty-cash.show', 'admin.petty-cash.store', 'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.approve', 'admin.petty-cash.close', 'admin.petty-cash.replenishments.store'] as $name) {
         Permission::findOrCreate($name, 'web');
@@ -27,23 +33,13 @@ beforeEach(function () {
 
 it('registra una reposición sin datos bancarios manuales y recalcula los saldos', function () {
     Storage::fake('public');
-    $bank = Bank::create([
-        'description' => 'BANCO DE PRUEBA', 'short_name' => 'TEST', 'status' => 'ACTIVE',
-    ]);
-    $account = CompanyBankAccount::create([
-        'company_id' => $this->company->id,
-        'bank_id' => $bank->id,
-        'currency_id' => $this->currency->id,
-        'account_holder' => 'DROPAIV S.A.C.',
-        'account_number' => '0011223344',
-        'is_detraction' => 'NO',
-        'status' => 'ACTIVE',
-    ]);
+    $account = $this->account;
     $this->actingAs($this->manager)->putJson(route('admin.petty-cash.approved-amount.update'), [
         'company_id' => $this->company->id, 'currency_id' => $this->currency->id, 'amount' => 2000, 'active' => true,
     ])->assertOk();
     $boxId = $this->postJson(route('admin.petty-cash.store'), [
         'company_id' => $this->company->id, 'currency_id' => $this->currency->id, 'start_date' => '2026-07-01',
+        'fund_source_company_id' => $this->company->id, 'fund_source_bank_account_id' => $account->id,
         'responsible_name' => 'RESPONSABLE', 'responsible_dni' => '12345678',
         'supervisor_name' => 'SUPERVISOR', 'supervisor_dni' => '87654321',
     ])->assertCreated()->json('data.id');
@@ -77,7 +73,7 @@ it('registra una reposición sin datos bancarios manuales y recalcula los saldos
         ->and($replenishment->documents->first()->documentType->code)->toBe('CAJA_REP')
         ->and(DocumentType::where('code', 'CAJA_REP')->count())->toBe(1)
         ->and(BankMovement::where('source_type', 'PETTY_CASH_REPLENISHMENT')->where('source_id', $replenishment->id)->count())->toBe(1)
-        ->and((float) $account->fresh()->current_balance)->toBe(-300.0);
+        ->and((float) $account->fresh()->current_balance)->toBe(-2300.0);
 });
 
 it('impide cerrar con gastos pendientes y permite cerrar después de resolverlos', function () {
@@ -86,6 +82,7 @@ it('impide cerrar con gastos pendientes y permite cerrar después de resolverlos
     ])->assertOk();
     $boxId = $this->postJson(route('admin.petty-cash.store'), [
         'company_id' => $this->company->id, 'currency_id' => $this->currency->id, 'start_date' => '2026-07-01',
+        'fund_source_company_id' => $this->company->id, 'fund_source_bank_account_id' => $this->account->id,
         'responsible_name' => 'RESPONSABLE', 'responsible_dni' => '12345678',
         'supervisor_name' => 'SUPERVISOR', 'supervisor_dni' => '87654321',
     ])->assertCreated()->json('data.id');
@@ -121,6 +118,7 @@ it('solo afecta los saldos al aprobar y excluye los gastos rechazados', function
     ])->assertOk();
     $boxId = $this->postJson(route('admin.petty-cash.store'), [
         'company_id' => $this->company->id, 'currency_id' => $this->currency->id, 'start_date' => '2026-07-01',
+        'fund_source_company_id' => $this->company->id, 'fund_source_bank_account_id' => $this->account->id,
         'responsible_name' => 'RESPONSABLE', 'responsible_dni' => '12345678',
         'supervisor_name' => 'SUPERVISOR', 'supervisor_dni' => '87654321',
     ])->assertCreated()->json('data.id');

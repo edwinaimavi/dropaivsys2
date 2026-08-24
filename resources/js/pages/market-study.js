@@ -3891,9 +3891,8 @@ $(document).on('click', '.viewMarketStudy', function () {
 
         success: function (response) {
 
-            console.log(response.data);
             loadMarketStudyView(response.data);
-
+            $('#viewMarketStudyModal .market-study-view-tabs .nav-link').first().tab('show');
             $('#viewMarketStudyModal').modal('show');
 
         }
@@ -3903,171 +3902,179 @@ $(document).on('click', '.viewMarketStudy', function () {
 });
 
 function loadMarketStudyView(data) {
+    const items = Array.isArray(data.items) ? data.items : [];
+    const quotes = Array.isArray(data.quotes) ? data.quotes : [];
+    const winners = Array.isArray(data.winners) ? data.winners : [];
+    const documents = Array.isArray(data.documents) ? data.documents : [];
+    const isActive = data.status === true || data.status === 1 || data.status === '1';
+    const statusLabel = isActive ? 'Activo' : 'Inactivo';
+    const responsible = data.creator?.name || data.creator?.full_name || data.created_by_name || '';
+    const suppliers = [...new Set(quotes.map(quote => quote.supplier?.id).filter(Boolean))];
+    const economicSummary = data.economic_summary || calculateWinnerEconomicSummary(winners);
+    const totalGravada = parseFloat(economicSummary.gravada || 0);
+    const totalInafecta = parseFloat(economicSummary.inafecta || 0);
+    const totalExonerada = parseFloat(economicSummary.exonerada || 0);
+    const totalIgv = parseFloat(economicSummary.igv || 0);
+    const total = parseFloat(economicSummary.total || economicSummary.grand_total || 0);
 
-    // ==========================
-    // DATOS GENERALES
-    // ==========================
-    $('#view_code').text(data.code ?? '-');
-    $('#view_description').text(data.description ?? '-');
-    $('#view_terms').text(data.reference_terms ?? '-');
-
-    // ==========================
-    // RESUMEN
-    // ==========================
-    $('#view_total_items').text(data.items?.length ?? 0);
-    $('#view_total_quotes').text(data.quotes?.length ?? 0);
-
-    const suppliers =
-        [...new Set(
-            (data.quotes || [])
-                .map(q => q.supplier?.id)
-        )];
-
-    $('#view_total_suppliers').text(
-        suppliers.filter(Boolean).length
+    $('#view_header_subtitle').text(`${data.code || 'Estudio sin c\u00f3digo'} \u00b7 ${data.description || 'Sin descripci\u00f3n'}`);
+    $('#view_summary_code, #view_code').text(data.code || '-');
+    $('#view_summary_description, #view_description').text(data.description || '-');
+    $('#view_terms').text(data.reference_terms || 'No hay t\u00e9rminos de referencia registrados.');
+    $('#view_created_at').text(formatMarketStudyViewDate(data.created_at));
+    $('#view_summary_status, #view_general_status').html(
+        `<span class="market-study-view-status ${isActive ? 'is-active' : 'is-inactive'}">${statusLabel}</span>`
     );
+    $('#view_responsible').text(responsible || '-');
+    $('#view_responsible_card').toggleClass('d-none', !responsible);
 
-    $('#view_total_winners').text(
-        data.winners?.length ?? 0
-    );
+    $('#view_total_items').text(items.length);
+    $('#view_total_quotes').text(quotes.length);
+    $('#view_total_suppliers').text(suppliers.length);
+    $('#view_award_status')
+        .toggleClass('has-winners', winners.length > 0)
+        .text(winners.length > 0 ? formatMarketStudyViewMoney(total) : 'Sin adjudicaci\u00f3n');
 
-    // ==========================
-    // PROVEEDORES
-    // ==========================
-    let suppliersHtml = '';
+    $('#view_summary_igv, #view_igv').text(formatMarketStudyViewMoney(totalIgv));
+    $('#view_summary_total, #view_total').text(formatMarketStudyViewMoney(total));
+    $('#view_gravada').text(formatMarketStudyViewMoney(totalGravada));
+    $('#view_inafecta').text(formatMarketStudyViewMoney(totalInafecta));
+    $('#view_exonerada').text(formatMarketStudyViewMoney(totalExonerada));
 
-    (data.quotes || []).forEach(function (quote) {
+    const suppliersHtml = quotes.map(function (quote) {
+        return `<tr>
+            <td>${escapeHtml(quote.supplier?.business_name || '-')}</td>
+            <td>${escapeHtml(quote.currency?.description || '-')}</td>
+            <td>${escapeHtml(quote.payment_condition || '-')}</td>
+            <td class="text-center"><span class="market-study-view-status is-active">Activo</span></td>
+        </tr>`;
+    }).join('');
 
-        suppliersHtml += `
-            <tr>
-                <td>${quote.supplier?.business_name ?? '-'}</td>
-                <td>${quote.currency?.description ?? '-'}</td>
-                <td>${quote.payment_condition ?? '-'}</td>
-                <td>
-                    <span class="badge badge-success">
-                        ACTIVO
-                    </span>
-                </td>
-            </tr>
-        `;
-    });
+    $('#viewSuppliersBody').html(suppliersHtml);
+    $('#viewSuppliersTableWrap').toggleClass('d-none', quotes.length === 0);
+    $('#viewSuppliersEmpty').toggleClass('d-none', quotes.length > 0);
 
-    $('#viewSuppliersBody').html(
-        suppliersHtml ||
-        '<tr><td colspan="4" class="text-center">Sin registros</td></tr>'
-    );
+    const comparisonHtml = items.map(function (item) {
+        const winner = winners.find(
+            candidate => parseInt(candidate.market_study_item_id) === parseInt(item.id)
+        );
+        const winnerItem = winner?.quote_item ?? winner?.quoteItem ?? null;
+        const hasWinner = Boolean(winnerItem);
 
-    // ==========================
-    // GANADORES
-    // ==========================
-    let comparisonHtml = '';
+        return `<tr>
+            <td>${escapeHtml(item.billing_name_snapshot || item.article_code_snapshot || '-')}</td>
+            <td>${hasWinner
+                ? escapeHtml(winnerItem.quote?.supplier?.business_name || '-')
+                : '<span class="market-study-view-status no-winner">Sin ganador</span>'}</td>
+            <td>${escapeHtml(winnerItem?.brand?.description || '-')}</td>
+            <td>${escapeHtml(winnerItem?.presentation?.description || '-')}</td>
+            <td class="text-right">${formatMarketStudyViewNumber(winnerItem?.quantity)}</td>
+            <td class="text-right">${formatMarketStudyViewNumber(winnerItem?.unit_price, 2)}</td>
+            <td class="text-right">${formatMarketStudyViewNumber(winnerItem?.total, 2)}</td>
+            <td class="text-center"><span class="market-study-view-status ${hasWinner ? 'has-winner' : 'no-winner'}">${hasWinner ? 'Adjudicado' : 'Sin ganador'}</span></td>
+        </tr>`;
+    }).join('');
 
-    (data.items || []).forEach(function (item) {
+    $('#viewComparisonBody').html(comparisonHtml);
+    $('#viewComparisonTableWrap').toggleClass('d-none', items.length === 0);
+    $('#viewComparisonEmpty').toggleClass('d-none', items.length > 0);
 
-        let winner = null;
+    const sanitaryItems = winners.map(function (winner) {
+        const winnerItem = winner?.quote_item ?? winner?.quoteItem ?? null;
+        if (!winnerItem) return null;
 
-        if (data.winners) {
+        const hasSanitaryData = winnerItem.sanitary_registration
+            || winnerItem.expiration_date
+            || winnerItem.manufacture_date
+            || winnerItem.origin;
 
-            winner = data.winners.find(
-                x => parseInt(x.market_study_item_id) === parseInt(item.id)
-            );
+        return hasSanitaryData ? winnerItem : null;
+    }).filter(Boolean);
 
-        }
+    if (sanitaryItems.length) {
+        $('#viewSanitaryContainer').html(`<div class="market-study-view-sanitary-grid">
+            ${sanitaryItems.map(function (item) {
+                return `<article class="market-study-view-sanitary-card">
+                    <div class="market-study-view-sanitary-card-heading">
+                        <span><i class="fas fa-building mr-1"></i>${escapeHtml(item.quote?.supplier?.business_name || 'Proveedor')}</span>
+                        <span class="market-study-view-status has-winner">Registrado</span>
+                    </div>
+                    <dl>
+                        <dt>Registro sanitario</dt><dd>${escapeHtml(item.sanitary_registration || '-')}</dd>
+                        <dt>Fecha de vencimiento</dt><dd>${formatMarketStudyViewDate(item.expiration_date)}</dd>
+                        <dt>Procedencia</dt><dd>${escapeHtml(item.origin || '-')}</dd>
+                    </dl>
+                </article>`;
+            }).join('')}
+        </div>`);
+    } else {
+        $('#viewSanitaryContainer').html(winners.length
+            ? `<div class="market-study-view-sanitary-state">
+                <i class="fas fa-shield-alt"></i>
+                <div><strong>Informaci\u00f3n sanitaria pendiente.</strong><span>No hay datos sanitarios adicionales disponibles en el detalle actual.</span></div>
+            </div>`
+            : `<div class="market-study-view-sanitary-state">
+                <i class="fas fa-info-circle"></i>
+                <div><strong>Sin proveedores adjudicados.</strong><span>La informaci\u00f3n sanitaria estar\u00e1 disponible cuando exista una adjudicaci\u00f3n.</span></div>
+            </div>`);
+    }
 
-        const winnerItem =
-            winner?.quote_item ??
-            winner?.quoteItem ??
-            null;
+    const storageBase = String($('#viewMarketStudyModal').attr('data-storage-base') || '').replace(/\/$/, '');
+    const documentsHtml = documents.map(function (document) {
+        const fileName = document.original_name || document.stored_name || 'Documento';
+        const documentType = String(document.extension || document.mime_type || 'Archivo').toUpperCase();
+        const filePath = String(document.file_path || '').replace(/^\/+/, '');
+        const fileUrl = filePath && storageBase ? encodeURI(`${storageBase}/${filePath}`) : '';
+        const openButton = fileUrl
+            ? `<a href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener" class="btn btn-light border"><i class="fas fa-external-link-alt mr-1"></i>Abrir</a>`
+            : '';
 
-        comparisonHtml += `
-        <tr>
+        return `<article class="market-study-view-document">
+            <span class="market-study-view-document-icon"><i class="fas fa-file-alt"></i></span>
+            <div><strong title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</strong><small>${escapeHtml(documentType)} \u00b7 ${formatMarketStudyViewDate(document.created_at)}</small></div>
+            ${openButton}
+        </article>`;
+    }).join('');
 
-            <td>
-                ${item.billing_name_snapshot ?? ''}
-            </td>
-
-            <td>
-                ${winnerItem?.quote?.supplier?.business_name ?? 'SIN GANADOR'}
-            </td>
-
-            <td>
-                ${winnerItem?.brand?.description ?? '-'}
-            </td>
-
-            <td>
-                ${winnerItem?.presentation?.description ?? '-'}
-            </td>
-
-            <td>
-                ${winnerItem?.quantity ?? '-'}
-            </td>
-
-            <td>
-                ${winnerItem?.unit_price ?? '-'}
-            </td>
-
-            <td>
-                ${winnerItem?.total ?? '-'}
-            </td>
-
-        </tr>
-    `;
-    });
-
-    $('#viewComparisonBody').html(
-        comparisonHtml ||
-        '<tr><td colspan="7" class="text-center">Sin datos</td></tr>'
-    );
-
-    // ==========================
-    // SANITARIO
-    // ==========================
-    $('#viewSanitaryContainer').html(
-        '<div class="alert alert-info mb-0">Información sanitaria pendiente.</div>'
-    );
-
-    // ==========================
-    // RESUMEN ECONÓMICO
-    // ==========================
-    const economicSummary =
-        data.economic_summary ||
-        calculateWinnerEconomicSummary(data.winners || []);
-
-    const totalGravada =
-        parseFloat(economicSummary.gravada || 0);
-
-    const totalInafecta =
-        parseFloat(economicSummary.inafecta || 0);
-
-    const totalExonerada =
-        parseFloat(economicSummary.exonerada || 0);
-
-    const totalIgv =
-        parseFloat(economicSummary.igv || 0);
-
-    const total =
-        parseFloat(economicSummary.total || economicSummary.grand_total || 0);
-
-    $('#view_gravada').text(
-        'S/ ' + totalGravada.toFixed(2)
-    );
-
-    $('#view_inafecta').text(
-        'S/ ' + totalInafecta.toFixed(2)
-    );
-
-    $('#view_exonerada').text(
-        'S/ ' + totalExonerada.toFixed(2)
-    );
-
-    $('#view_igv').text(
-        'S/ ' + totalIgv.toFixed(2)
-    );
-
-    $('#view_total').text(
-        'S/ ' + total.toFixed(2)
-    );
+    $('#viewDocumentsContainer').html(documentsHtml);
+    $('#viewDocumentsEmpty').toggleClass('d-none', documents.length > 0);
 }
+
+function formatMarketStudyViewDate(value) {
+    if (!value) return '-';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+
+    return date.toLocaleDateString('es-PE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+function formatMarketStudyViewMoney(value) {
+    const number = parseFloat(value || 0);
+
+    return `S/ ${number.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })}`;
+}
+
+function formatMarketStudyViewNumber(value, decimals = null) {
+    if (value === null || value === undefined || value === '') return '-';
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) return escapeHtml(value);
+
+    const options = decimals === null
+        ? { maximumFractionDigits: 3 }
+        : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+
+    return number.toLocaleString('en-US', options);
+}
+
 
 function calculateWinnerEconomicSummary(winners) {
     let gravada = 0;

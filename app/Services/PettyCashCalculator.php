@@ -65,7 +65,7 @@ class PettyCashCalculator
         $availableBalance = round(max(0, (float) $availableBalance), 2);
         $fundToReplenish = $hasPreviousBalance
             ? max(0, round($approvedAmount - $availableBalance, 2))
-            : 0;
+            : $approvedAmount;
 
         return [
             'available_balance' => (float) $availableBalance,

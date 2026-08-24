@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Bank;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\User;
 use Spatie\Permission\Models\Permission;
@@ -19,6 +21,20 @@ beforeEach(function () {
         'code' => 'PEN',
         'description' => 'Soles',
         'symbol' => 'S/',
+        'status' => 'ACTIVE',
+    ]);
+    $this->bank = Bank::create([
+        'description' => 'BANCO DE PRUEBA',
+        'short_name' => 'TEST',
+        'status' => 'ACTIVE',
+    ]);
+    $this->account = CompanyBankAccount::create([
+        'company_id' => $this->company->id,
+        'bank_id' => $this->bank->id,
+        'currency_id' => $this->currency->id,
+        'account_holder' => 'DROPAIV S.A.C.',
+        'account_number' => '001-APERTURA',
+        'is_detraction' => 'NO',
         'status' => 'ACTIVE',
     ]);
     $this->viewer = User::factory()->create();
@@ -63,6 +79,8 @@ it('apertura la primera caja con el monto aprobado y permite cerrarla sin gastos
             'end_date' => '2026-07-31',
             'approved_fund' => 999,
             'previous_balance' => 999,
+            'fund_source_company_id' => $this->company->id,
+            'fund_source_bank_account_id' => $this->account->id,
             'responsible_name' => 'RESPONSABLE PRUEBA',
             'responsible_dni' => '12345678',
             'supervisor_name' => 'SUPERVISOR PRUEBA',
@@ -70,8 +88,10 @@ it('apertura la primera caja con el monto aprobado y permite cerrarla sin gastos
         ])
         ->assertCreated()
         ->assertJsonPath('data.opening_amount', '2000.00')
-        ->assertJsonPath('data.approved_fund', '0.00')
+        ->assertJsonPath('data.approved_fund', '2000.00')
         ->assertJsonPath('data.previous_balance', '0.00')
+        ->assertJsonPath('data.fund_source_company_id', $this->company->id)
+        ->assertJsonPath('data.fund_source_bank_account_id', $this->account->id)
         ->assertJsonPath('data.end_date', null);
 
     $boxId = $response->json('data.id');

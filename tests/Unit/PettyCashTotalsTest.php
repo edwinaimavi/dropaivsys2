@@ -20,7 +20,7 @@ it('calcula una reposicion parcial', function () {
 });
 
 it('suma el vuelto retornado como ingreso sin crear un segundo egreso', function () {
-    $calculator = new PettyCashCalculator();
+    $calculator = new PettyCashCalculator;
 
     expect($calculator->calculateValues(2000, 2000, 100, 0, 10))->toBe([
         'approved_amount' => 2000.0,
@@ -43,7 +43,7 @@ it('restaura el saldo y permite registrar una reposición excepcional superior',
 });
 
 it('calcula exactamente el caso real del fondo fijo', function () {
-    $calculator = new PettyCashCalculator();
+    $calculator = new PettyCashCalculator;
     $expenses = [200, 350, 125, 215, 120, 65, 35, 30, 25, 60, 35, 215, 15, 10, 5, 25, 45, 85, 300];
 
     expect(array_sum($expenses))->toBe(1960)
@@ -66,11 +66,11 @@ it('calcula exactamente el caso real del fondo fijo', function () {
 });
 
 it('calcula la primera apertura y el complemento de un periodo anterior', function () {
-    $calculator = new PettyCashCalculator();
+    $calculator = new PettyCashCalculator;
 
     expect($calculator->opening(2000))->toBe([
         'available_balance' => 0.0,
-        'fund_to_replenish' => 0.0,
+        'fund_to_replenish' => 2000.0,
         'initial_fund' => 2000.0,
     ])->and($calculator->opening(2000, 200))->toBe([
         'available_balance' => 200.0,
