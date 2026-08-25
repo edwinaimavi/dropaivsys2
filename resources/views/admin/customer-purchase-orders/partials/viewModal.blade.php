@@ -118,6 +118,36 @@
                 <div class="card border-0 shadow-sm mt-3">
                     <div class="card-header bg-white border-0">
                         <h6 class="mb-0 font-weight-bold">
+                            <i class="fas fa-file-invoice-dollar text-success mr-1"></i>
+                            Facturaci&oacute;n y cobros
+                        </h6>
+                    </div>
+                    <div class="card-body pt-0">
+                        <div class="row text-center mb-3">
+                            <div class="col"><small class="text-muted d-block">TOTAL OC</small><strong id="vpo_billing_order_total">0.00</strong></div>
+                            <div class="col"><small class="text-muted d-block">FACTURADO</small><strong id="vpo_billed_amount">0.00</strong></div>
+                            <div class="col"><small class="text-muted d-block">POR FACTURAR</small><strong id="vpo_unbilled_amount">0.00</strong></div>
+                            <div class="col"><small class="text-muted d-block">COBRADO</small><strong id="vpo_paid_amount" class="text-success">0.00</strong></div>
+                            <div class="col"><small class="text-muted d-block">POR COBRAR</small><strong id="vpo_pending_amount" class="text-danger">0.00</strong></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="bg-light"><tr><th>Factura local</th><th>Emisi&oacute;n</th><th>Vencimiento</th><th>Estado</th><th class="text-right">Total</th><th class="text-right">Cobrado</th><th class="text-right">Saldo</th><th>Factur&oacute;</th><th class="text-center">Acci&oacute;n</th></tr></thead>
+                                <tbody id="vpo_invoices_body"></tbody>
+                            </table>
+                        </div>
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="bg-light"><tr><th>Fecha cobro</th><th>Factura</th><th>Banco / cuenta</th><th>Operaci&oacute;n</th><th class="text-right">Monto</th><th>Usuario</th><th class="text-center">Constancia</th></tr></thead>
+                                <tbody id="vpo_collections_body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0 font-weight-bold">
                             <i class="fas fa-paperclip text-primary mr-1"></i>
                             Documentación de la Orden
                         </h6>

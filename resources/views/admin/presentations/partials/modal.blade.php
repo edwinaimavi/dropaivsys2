@@ -52,7 +52,7 @@
 
                 </div>
 
-                <button type="button" class="close ml-3" data-dismiss="modal" aria-label="Close" style="opacity:.9;">
+                <button type="button" class="close ml-3" data-dismiss="modal" aria-label="Cerrar" style="opacity:.9;">
 
                     <span aria-hidden="true">&times;</span>
 
@@ -272,13 +272,13 @@
 
                                             <option value="ACTIVE">
 
-                                                ACTIVO
+                                                Activo
 
                                             </option>
 
                                             <option value="INACTIVE">
 
-                                                INACTIVO
+                                                Inactivo
 
                                             </option>
 

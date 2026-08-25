@@ -52,7 +52,7 @@
                             <a href="{{ route('home') }}" class="text-decoration-none">
 
                                 <i class="fas fa-house-user"></i>
-                                Home
+                                Inicio
 
                             </a>
 
@@ -231,6 +231,56 @@
 
             font-size: 1rem;
 
+        }
+
+        #viewPresentationModal .presentation-view-header {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0 !important;
+            box-shadow: inset 0 -3px 0 #f59e0b;
+        }
+
+        #viewPresentationModal .presentation-view-title {
+            color: #0f172a !important;
+            opacity: 1 !important;
+            line-height: 1.35;
+        }
+
+        #viewPresentationModal .presentation-view-title i {
+            color: #f59e0b;
+        }
+
+        #viewPresentationModal .presentation-view-close {
+            color: #334155 !important;
+            text-shadow: none;
+        }
+
+        #viewPresentationModal .presentation-view-details th {
+            color: #475569 !important;
+            font-weight: 600 !important;
+        }
+
+        #viewPresentationModal .presentation-view-details td {
+            color: #1e293b !important;
+            font-weight: 400 !important;
+        }
+
+        #viewPresentationModal .presentation-status-badge {
+            border-radius: 999px !important;
+            border: 1px solid transparent;
+            box-shadow: none !important;
+            font-weight: 600 !important;
+        }
+
+        #viewPresentationModal .presentation-status-badge.is-active {
+            color: #166534;
+            background: #dcfce7;
+            border-color: #bbf7d0;
+        }
+
+        #viewPresentationModal .presentation-status-badge.is-inactive {
+            color: #991b1b;
+            background: #fee2e2;
+            border-color: #fecaca;
         }
 
         .icon_modal {

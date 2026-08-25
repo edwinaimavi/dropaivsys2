@@ -1676,7 +1676,7 @@ function applySelectedSupplierOrderHeader() {
     setWarehouseEntrySupplierLocked(true);
     setWarehouseEntryPaymentConditionLocked(true);
     $('#warehouse_entry_purchase_order_number').val(option.data('code') || '');
-    $('#warehouse_entry_company_id').val(option.data('company-id') || '').trigger('change.select2');
+    $('#warehouse_entry_company_id').val(option.data('company-id') || '').trigger('change');
     setWarehouseEntrySupplier(option.data('supplier-id') || '');
     $('#warehouse_entry_currency_id').val(option.data('currency-id') || '').trigger('change.select2').trigger('change');
     updateWarehouseEntryDeliveryCostContext(option.data('delivery-type') || '');
@@ -2507,15 +2507,14 @@ function renderWarehouseEntryExpenseBankAccounts(selectedAccountId = null) {
 
     const source = $('#warehouse_entry_expense_payment_source').val() || 'manual';
     const companyId = String($('#warehouse_entry_company_id').val() || '');
-    const currencyId = String($('#warehouse_entry_currency_id').val() || '');
     if (selectedAccountId !== null) {
         warehouseEntryExpenseBankAccountPendingId = String(selectedAccountId || '');
     }
     const currentId = String(select.val() || warehouseEntryExpenseBankAccountPendingId || '');
     const help = $('#warehouseEntryExpenseBankAccountHelp');
+    const companyName = $('#warehouse_entry_company_id option:selected').text().trim() || 'esta empresa';
     const accounts = warehouseEntryCompanyBankAccounts.filter(account =>
         String(account.company_id) === companyId
-        && (!currencyId || String(account.currency_id) === currencyId)
         && String(account.status || '').toUpperCase() === 'ACTIVE'
     );
 
@@ -2536,11 +2535,12 @@ function renderWarehouseEntryExpenseBankAccounts(selectedAccountId = null) {
         const currencyCode = String(account.currency?.code || '').toUpperCase();
         const symbol = account.currency?.symbol || currencyCode;
         const bank = account.bank?.short_name || account.bank?.description || 'Banco';
-        const label = `${bank} - ${currencyCode} - ${account.account_number} - Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`;
+        const label = `${bank} | ${currencyCode} | ${account.account_number} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`;
         const option = new Option(label, account.id, false, String(account.id) === currentId);
         $(option).attr({
             'data-company-id': account.company_id,
             'data-currency-id': account.currency_id,
+            'data-currency-code': currencyCode,
             'data-bank': bank,
             'data-account-number': account.account_number
         });
@@ -2553,13 +2553,9 @@ function renderWarehouseEntryExpenseBankAccounts(selectedAccountId = null) {
     select.prop('disabled', false).val(selectedId).trigger('change.select2');
 
     if (!accounts.length) {
-        help.text(currencyId
-            ? 'No hay cuentas bancarias activas para la empresa y moneda seleccionadas.'
-            : 'La empresa seleccionada no tiene cuentas bancarias activas disponibles.').addClass('text-danger');
-    } else if (!currencyId) {
-        help.text('Mostrando todas las cuentas activas de la empresa. Seleccione la moneda del ingreso para filtrarlas.').removeClass('text-danger');
+        help.text(`No hay cuentas bancarias activas registradas para ${companyName}.`).addClass('text-danger');
     } else {
-        help.text(`${accounts.length} cuenta${accounts.length === 1 ? '' : 's'} activa${accounts.length === 1 ? '' : 's'} disponible${accounts.length === 1 ? '' : 's'}.`).removeClass('text-danger');
+        help.text(`${accounts.length} cuenta${accounts.length === 1 ? '' : 's'} activa${accounts.length === 1 ? '' : 's'} disponible${accounts.length === 1 ? '' : 's'} para ${companyName}.`).removeClass('text-danger');
     }
 }
 

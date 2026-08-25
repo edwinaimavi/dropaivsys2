@@ -43,6 +43,9 @@
                                 <div class="col-md-3"><small>Forma pago</small><strong id="vei_payment_type">-</strong></div>
                                 <div class="col-md-3"><small>OC cliente</small><strong id="vei_purchase_order">-</strong></div>
                                 <div class="col-md-3"><small>Estado SUNAT</small><strong id="vei_sunat_status">Pendiente</strong></div>
+                                <div class="col-md-3"><small>Estado de cobro</small><strong id="vei_payment_status">Pendiente</strong></div>
+                                <div class="col-md-3"><small>Total cobrado</small><strong id="vei_paid_amount">0.00</strong></div>
+                                <div class="col-md-3"><small>Saldo pendiente</small><strong id="vei_pending_amount">0.00</strong></div>
                                 <div class="col-12"><small>Observaci&oacute;n</small><strong id="vei_observations">-</strong></div>
                             </div>
                         </div>
@@ -67,6 +70,25 @@
                                 </tr>
                             </thead>
                             <tbody id="vei_items_body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="electronic-invoice-card p-3 mt-3">
+                    <div class="electronic-invoice-card-title mb-2">Historial de cobros</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Cuenta bancaria</th>
+                                    <th>Operaci&oacute;n</th>
+                                    <th class="text-right">Monto</th>
+                                    <th>Registrado por</th>
+                                    <th class="text-center">Constancia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vei_collections_body"></tbody>
                         </table>
                     </div>
                 </div>

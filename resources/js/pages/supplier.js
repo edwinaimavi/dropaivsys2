@@ -4,6 +4,47 @@ let tableSupplier;
 
 let tableSupplierAccounts;
 
+function supplierDataTableLanguage() {
+
+    return {
+        processing: 'Procesando...',
+        search: 'Buscar:',
+        lengthMenu: 'Mostrar _MENU_ registros',
+        info: 'Mostrando _START_ a _END_ de _TOTAL_ registros',
+        infoEmpty: 'Mostrando 0 a 0 de 0 registros',
+        infoFiltered: '(filtrado de _MAX_ registros en total)',
+        loadingRecords: 'Cargando...',
+        zeroRecords: 'No se encontraron resultados',
+        emptyTable: 'No hay registros disponibles',
+        paginate: {
+            first: 'Primero',
+            previous: 'Anterior',
+            next: 'Siguiente',
+            last: 'Último'
+        }
+    };
+
+}
+
+function escapeSupplierText(value) {
+
+    return $('<div>').text(value ?? '').html();
+
+}
+
+function supplierCurrencyBadge(currency) {
+
+    if (!currency) {
+        return '—';
+    }
+
+    const code = escapeSupplierText(currency.code || 'MON');
+    const description = escapeSupplierText(currency.description || '—');
+
+    return `<span class="supplier-currency-badge"><strong>${code}</strong><span>|</span>${description}</span>`;
+
+}
+
 $(function () {
 
     $('[data-toggle="tooltip"]').tooltip();
@@ -162,9 +203,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         autoWidth: false,
 
-        language: {
-            url: "/vendor/datatables/js/i18n/es-ES.json"
-        },
+        language: supplierDataTableLanguage(),
 
         dom: `
         <'row mb-3'
@@ -203,7 +242,7 @@ document.addEventListener("DOMContentLoaded", function () {
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
-                text: '<i class="fas fa-print"></i> Print'
+                text: '<i class="fas fa-print"></i> Imprimir'
             }
 
         ],
@@ -590,13 +629,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     $.each(accounts, function (i, item) {
 
                         html += `
-<tr style="font-size:11px;">
+<tr class="supplier-detail-account-row">
 
     <td>${i + 1}</td>
 
     <td>${item.bank?.description ?? '—'}</td>
 
-    <td>${item.currency?.description ?? '—'}</td>
+    <td>${supplierCurrencyBadge(item.currency)}</td>
 
     <td>${item.account_holder ?? '—'}</td>
 
@@ -606,7 +645,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     <td>
         ${item.is_detraction === 'YES'
-                                ? '<span class="badge badge-warning">SI</span>'
+                                ? '<span class="badge badge-warning">SÍ</span>'
                                 : '<span class="badge badge-secondary">NO</span>'
                             }
     </td>
@@ -668,6 +707,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     destroy: true,
                     autoWidth: false,
                     responsive: true,
+                    language: supplierDataTableLanguage(),
                     columns: [
                         { data: 'DT_RowIndex', orderable: false, searchable: false },
                         { data: 'bank', name: 'bank' },
@@ -1099,6 +1139,7 @@ document.addEventListener("DOMContentLoaded", function () {
             destroy: true,
             autoWidth: false,
             responsive: true,
+            language: supplierDataTableLanguage(),
             columns: [
                 {
                     data: 'DT_RowIndex',

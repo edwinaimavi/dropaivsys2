@@ -66,6 +66,9 @@ class ElectronicInvoice extends Model
         'other_charges',
         'total_taxes',
         'total_amount',
+        'paid_amount',
+        'pending_amount',
+        'payment_status',
         'total_text',
         'api_payload',
         'api_response',
@@ -128,6 +131,8 @@ class ElectronicInvoice extends Model
         'other_charges' => 'decimal:10',
         'total_taxes' => 'decimal:10',
         'total_amount' => 'decimal:10',
+        'paid_amount' => 'decimal:10',
+        'pending_amount' => 'decimal:10',
     ];
 
     public function company() { return $this->belongsTo(Company::class); }
@@ -142,6 +147,7 @@ class ElectronicInvoice extends Model
     public function electronicSeries() { return $this->belongsTo(ElectronicInvoiceSeries::class, 'serie_id'); }
     public function items() { return $this->hasMany(ElectronicInvoiceItem::class); }
     public function payments() { return $this->hasMany(ElectronicInvoicePayment::class); }
+    public function collections() { return $this->hasMany(InvoiceCollection::class); }
     public function legends() { return $this->hasMany(ElectronicInvoiceLegend::class); }
     public function relatedDocuments() { return $this->hasMany(ElectronicInvoiceRelatedDocument::class); }
     public function files() { return $this->hasMany(ElectronicInvoiceFile::class); }
@@ -153,4 +159,22 @@ class ElectronicInvoice extends Model
     }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
     public function updater() { return $this->belongsTo(User::class, 'updated_by'); }
+
+    public function effectivePaymentStatus(): string
+    {
+        if ($this->status === 'draft') {
+            return 'draft';
+        }
+        if ($this->is_voided || in_array($this->status, ['cancelled', 'voided'], true)) {
+            return 'cancelled';
+        }
+        if ($this->payment_status === 'paid') {
+            return 'paid';
+        }
+        if ($this->due_date?->isPast() && (float) $this->pending_amount > 0) {
+            return 'overdue';
+        }
+
+        return $this->payment_status ?: 'pending';
+    }
 }

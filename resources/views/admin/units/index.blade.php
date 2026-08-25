@@ -51,7 +51,7 @@
                             <a href="{{ route('home') }}" class="text-decoration-none">
 
                                 <i class="fas fa-house-user"></i>
-                                Home
+                                Inicio
 
                             </a>
 
@@ -234,6 +234,56 @@
 
             font-size: 1rem;
 
+        }
+
+        #viewUnitModal .unit-view-header {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0 !important;
+            box-shadow: inset 0 -3px 0 #3b82f6;
+        }
+
+        #viewUnitModal .unit-view-title {
+            color: #0f172a !important;
+            opacity: 1 !important;
+            line-height: 1.35;
+        }
+
+        #viewUnitModal .unit-view-title i {
+            color: #2563eb;
+        }
+
+        #viewUnitModal .unit-view-close {
+            color: #334155 !important;
+            text-shadow: none;
+        }
+
+        #viewUnitModal .unit-view-details th {
+            color: #475569 !important;
+            font-weight: 600 !important;
+        }
+
+        #viewUnitModal .unit-view-details td {
+            color: #1e293b !important;
+            font-weight: 400 !important;
+        }
+
+        #viewUnitModal .unit-status-badge {
+            border-radius: 999px !important;
+            border: 1px solid transparent;
+            box-shadow: none !important;
+            font-weight: 600 !important;
+        }
+
+        #viewUnitModal .unit-status-badge.is-active {
+            color: #166534;
+            background: #dcfce7;
+            border-color: #bbf7d0;
+        }
+
+        #viewUnitModal .unit-status-badge.is-inactive {
+            color: #991b1b;
+            background: #fee2e2;
+            border-color: #fecaca;
         }
 
         .icon_modal {

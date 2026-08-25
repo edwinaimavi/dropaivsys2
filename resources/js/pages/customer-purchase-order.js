@@ -403,6 +403,7 @@ function initCustomerPurchaseOrderTable() {
             { data: 'grand_total', name: 'grand_total' },
             { data: 'delivery_period', name: 'delivery_end_date', orderable: true, searchable: false },
             { data: 'status', name: 'status' },
+            { data: 'billing_status', name: 'billing_status', orderable: false, searchable: false },
             { data: 'created_at', name: 'created_at' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],
@@ -429,19 +430,19 @@ function initCustomerPurchaseOrderTable() {
                 extend: 'excel',
                 className: 'btn btn-success btn-sm',
                 text: '<i class="fas fa-file-excel"></i> Excel',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], orthogonal: 'export' }
             },
             {
                 extend: 'pdf',
                 className: 'btn btn-danger btn-sm',
                 text: '<i class="fas fa-file-pdf"></i> PDF',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], orthogonal: 'export' }
             },
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
                 text: '<i class="fas fa-print"></i> Imprimir',
-                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], orthogonal: 'export' }
+                exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], orthogonal: 'export' }
             }
         ],
         drawCallback: function () {
@@ -2024,6 +2025,66 @@ function fillCustomerPurchaseOrderDetail(order) {
     $('#vpo_seller_email').text(order.seller_email || '—');
     $('#vpo_seller_observation').text(order.seller_observation || 'Sin observación');
     $('#vpo_created_by').text(creatorName);
+
+    const billingSummary = order.billing_summary || {};
+    $('#vpo_billing_order_total').text(`${currencyCode} ${formatDecimalView(billingSummary.order_total || 0)}`.trim());
+    $('#vpo_billed_amount').text(`${currencyCode} ${formatDecimalView(billingSummary.billed_amount || 0)}`.trim());
+    $('#vpo_unbilled_amount').text(`${currencyCode} ${formatDecimalView(billingSummary.unbilled_amount || 0)}`.trim());
+    $('#vpo_paid_amount').text(`${currencyCode} ${formatDecimalView(billingSummary.paid_amount || 0)}`.trim());
+    $('#vpo_pending_amount').text(`${currencyCode} ${formatDecimalView(billingSummary.pending_amount || 0)}`.trim());
+
+    const invoiceStatusLabels = {
+        pending: ['PENDIENTE DE COBRO', 'badge-warning text-dark'],
+        partial: ['COBRO PARCIAL', 'badge-info'],
+        paid: ['COBRADA', 'badge-success']
+    };
+    const invoices = billingSummary.invoices || [];
+    const invoiceRows = invoices.map(function (invoice) {
+        let paymentStatus = invoiceStatusLabels[invoice.payment_status] || invoiceStatusLabels.pending;
+        const dueDate = invoice.due_date ? new Date(`${String(invoice.due_date).slice(0, 10)}T23:59:59`) : null;
+        if (invoice.payment_status !== 'paid' && dueDate && dueDate < new Date()) {
+            paymentStatus = ['VENCIDA', 'badge-danger'];
+        }
+
+        return `
+            <tr>
+                <td class="font-weight-bold">${escapePurchaseOrderHtml(invoice.full_number || '-')}</td>
+                <td>${formatPurchaseOrderDisplayDate(invoice.issue_date)}</td>
+                <td>${formatPurchaseOrderDisplayDate(invoice.due_date)}</td>
+                <td><span class="badge ${paymentStatus[1]}">${paymentStatus[0]}</span></td>
+                <td class="text-right">${escapePurchaseOrderHtml(invoice.currency_code || currencyCode)} ${formatDecimalView(invoice.total_amount)}</td>
+                <td class="text-right text-success">${escapePurchaseOrderHtml(invoice.currency_code || currencyCode)} ${formatDecimalView(invoice.paid_amount)}</td>
+                <td class="text-right font-weight-bold">${escapePurchaseOrderHtml(invoice.currency_code || currencyCode)} ${formatDecimalView(invoice.pending_amount)}</td>
+                <td>${escapePurchaseOrderHtml([invoice.creator?.name, invoice.creator?.lastname].filter(Boolean).join(' ') || '-')}</td>
+                <td class="text-center">${invoice.pdf_url ? `<a href="${escapePurchaseOrderHtml(invoice.pdf_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-danger"><i class="fas fa-file-pdf"></i></a>` : '-'}</td>
+            </tr>
+        `;
+    }).join('');
+    $('#vpo_invoices_body').html(
+        invoiceRows || '<tr><td colspan="9" class="text-center text-muted py-3">Sin facturas generadas</td></tr>'
+    );
+
+    const collectionRows = invoices.flatMap(function (invoice) {
+        return (invoice.collections || []).map(function (collection) {
+            const bank = collection.account?.bank?.short_name || collection.account?.bank?.description || '-';
+            const account = collection.account?.account_number || '';
+            const creator = [collection.creator?.name, collection.creator?.lastname].filter(Boolean).join(' ') || '-';
+            return `
+                <tr>
+                    <td>${formatPurchaseOrderDisplayDate(collection.collection_date)}</td>
+                    <td>${escapePurchaseOrderHtml(invoice.full_number || '-')}</td>
+                    <td>${escapePurchaseOrderHtml([bank, account].filter(Boolean).join(' - '))}</td>
+                    <td>${escapePurchaseOrderHtml(collection.operation_number || '-')}</td>
+                    <td class="text-right">${escapePurchaseOrderHtml(collection.currency?.code || '')} ${formatDecimalView(collection.amount)}</td>
+                    <td>${escapePurchaseOrderHtml(creator)}</td>
+                    <td class="text-center">${collection.proof_url ? `<a href="${escapePurchaseOrderHtml(collection.proof_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-primary"><i class="fas fa-paperclip"></i></a>` : '-'}</td>
+                </tr>
+            `;
+        });
+    }).join('');
+    $('#vpo_collections_body').html(
+        collectionRows || '<tr><td colspan="7" class="text-center text-muted py-3">Sin cobros confirmados</td></tr>'
+    );
 
     const items = order.items || [];
     const supplyStatuses = {

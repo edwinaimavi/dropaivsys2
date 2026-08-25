@@ -187,6 +187,8 @@ class RoleSeeder extends Seeder
             'admin.customer-purchase-orders.show' => 'Ver detalle de ordenes de compra de clientes',
             'admin.customer-purchase-orders.pdf' => 'Ver PDF de ordenes de compra de clientes',
             'admin.customer-purchase-orders.load-items' => 'Cargar items de cotizacion',
+            'admin.customer-purchase-orders.invoice' => 'Facturar ordenes de compra de clientes',
+            'admin.customer-purchase-orders.invoices.index' => 'Ver facturas y cobros de ordenes de clientes',
 
             'admin.customer-order-profitability.index' => 'Ver rentabilidad de ordenes de clientes',
             'admin.customer-order-profitability.show' => 'Ver detalle de rentabilidad de ordenes de clientes',
@@ -239,6 +241,7 @@ class RoleSeeder extends Seeder
 
             'admin.electronic-invoices.index' => 'Ver facturacion electronica',
             'admin.electronic-invoices.store' => 'Crear comprobantes electronicos',
+            'admin.electronic-invoices.create' => 'Preparar comprobantes electronicos locales',
             'admin.electronic-invoices.show' => 'Ver detalle de comprobantes electronicos',
             'admin.electronic-invoices.update' => 'Actualizar comprobantes electronicos',
             'admin.electronic-invoices.destroy' => 'Eliminar comprobantes electronicos',
@@ -247,6 +250,9 @@ class RoleSeeder extends Seeder
             'admin.electronic-invoices.send' => 'Enviar comprobantes electronicos',
             'admin.electronic-invoices.xml' => 'Ver XML de comprobantes electronicos',
             'admin.electronic-invoices.cdr' => 'Ver CDR de comprobantes electronicos',
+            'admin.electronic-invoices.collect' => 'Confirmar cobros de facturas locales',
+            'admin.invoice-collections.store' => 'Registrar cobros de facturas locales',
+            'admin.invoice-collections.show' => 'Ver historial de cobros de facturas locales',
 
             'admin.electronic-invoice-settings.index' => 'Ver configuracion de facturacion electronica',
             'admin.electronic-invoice-settings.store' => 'Crear configuracion de facturacion electronica',

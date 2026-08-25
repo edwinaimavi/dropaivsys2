@@ -1,7 +1,7 @@
 @php
     $formatMoney = fn ($value) => trim(($invoice->currency?->symbol ?? '') . ' ' . number_format((float) $value, 3));
     $formatDate = fn ($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : '-';
-    $title = $invoice->document_type === '03' ? 'BOLETA DE VENTA ELECTRONICA' : 'FACTURA ELECTRONICA';
+    $title = $invoice->document_type === '03' ? 'BOLETA DE VENTA LOCAL' : 'FACTURA LOCAL';
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -140,13 +140,7 @@
     </table>
 
     <div class="footer">
-        @if ($invoice->status === 'draft')
-            Borrador interno generado por DropaivSys. No mueve stock y no ha sido enviado a SUNAT.
-        @elseif ($invoice->sunat_status === 'not_configured')
-            Comprobante interno no enviado a SUNAT. API no configurada.
-        @else
-            Comprobante interno no enviado a SUNAT. Pendiente de env&iacute;o.
-        @endif
+        Comprobante generado localmente. Pendiente de integraci&oacute;n electr&oacute;nica.
     </div>
 </body>
 </html>

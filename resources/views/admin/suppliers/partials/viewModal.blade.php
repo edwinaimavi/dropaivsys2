@@ -7,33 +7,16 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header border-0 py-2 px-3"
-                style="
-                    background:
-                    linear-gradient(
-                        135deg,
-                        #17a2b8,
-                        #007bff
-                    );
-                ">
+            <div class="modal-header supplier-view-header py-3 px-4">
 
-                <h5 class="modal-title text-white mb-0" id="viewSupplierModalLabel"
-                    style="
-                        font-size:15px;
-                        font-weight:600;
-                        letter-spacing:.3px;
-                    ">
+                <h5 class="modal-title supplier-view-title mb-0" id="viewSupplierModalLabel">
 
                     <i class="fas fa-truck mr-2"></i>
                     Información del Proveedor
 
                 </h5>
 
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close supplier-view-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 
@@ -173,7 +156,7 @@
 
                             <div class="table-responsive">
 
-                                <table class="table table-sm mb-0">
+                                <table class="table table-sm mb-0 supplier-detail-table">
 
                                     <tbody>
 
@@ -469,7 +452,7 @@
 
                                 <div class="table-responsive">
 
-                                    <table class="table table-sm mb-0">
+                                    <table class="table table-sm mb-0 supplier-detail-accounts-table">
 
                                         <thead>
 
@@ -526,7 +509,7 @@
 
                             <div class="col-md-4 mb-2">
 
-                                <div class="card border-0 bg-light shadow-sm">
+                                <div class="card border-0 bg-light shadow-sm supplier-detail-meta-card">
 
                                     <div class="card-body py-2 px-3">
 
@@ -554,7 +537,7 @@
 
                             <div class="col-md-4 mb-2">
 
-                                <div class="card border-0 bg-light shadow-sm">
+                                <div class="card border-0 bg-light shadow-sm supplier-detail-meta-card">
 
                                     <div class="card-body py-2 px-3">
 
@@ -582,7 +565,7 @@
 
                             <div class="col-md-4 mb-2">
 
-                                <div class="card border-0 bg-light shadow-sm">
+                                <div class="card border-0 bg-light shadow-sm supplier-detail-meta-card">
 
                                     <div class="card-body py-2 px-3">
 

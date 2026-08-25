@@ -7,20 +7,12 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header border-0 py-2 px-3"
-                style="
-                    background:
-                    linear-gradient(
-                        135deg,
-                        #fbc02d,
-                        #f57f17
-                    );
-                ">
+            <div class="modal-header presentation-view-header py-2 px-3">
 
-                <h5 class="modal-title text-white mb-0" id="viewPresentationModalLabel"
+                <h5 class="modal-title presentation-view-title mb-0" id="viewPresentationModalLabel"
                     style="
-                        font-size:15px;
-                        font-weight:600;
+                        font-size:18px;
+                        font-weight:700;
                         letter-spacing:.3px;
                     ">
 
@@ -29,7 +21,7 @@
 
                 </h5>
 
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"
+                <button type="button" class="close presentation-view-close" data-dismiss="modal" aria-label="Cerrar"
                     style="
                         opacity:1;
                         font-size:22px;
@@ -90,14 +82,14 @@
 
                             </div>
 
-                            <span id="vp_status" class="badge badge-warning px-3 py-1 shadow-sm text-white"
+                            <span id="vp_status" class="badge presentation-status-badge is-active px-3 py-1"
                                 style="
                                     border-radius:7px;
                                     font-size:10px;
                                     font-weight:500;
                                 ">
 
-                                ACTIVO
+                                Activo
 
                             </span>
 
@@ -173,7 +165,7 @@
 
                             <div class="table-responsive">
 
-                                <table class="table table-sm mb-0">
+                                <table class="table table-sm mb-0 presentation-view-details">
 
                                     <tbody>
 

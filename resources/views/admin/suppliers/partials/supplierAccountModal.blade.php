@@ -548,6 +548,8 @@
         font-weight: 700;
         color: #666;
         background: #f8f9fa;
+        padding: 12px 10px;
+        white-space: nowrap;
 
     }
 
@@ -555,7 +557,33 @@
 
         vertical-align: middle !important;
         font-size: 13px;
-        padding: 10px 8px;
+        padding: 12px 10px;
+        color: #334155;
+        white-space: nowrap;
+
+    }
+
+    #tableSupplierAccounts {
+
+        min-width: 980px;
+
+    }
+
+    #supplierAccountModal .dataTables_length label,
+    #supplierAccountModal .dataTables_filter label,
+    #supplierAccountModal .dataTables_info {
+
+        color: #475569;
+        font-size: 13px;
+        font-weight: 500;
+
+    }
+
+    #supplierAccountModal .dataTables_filter input,
+    #supplierAccountModal .dataTables_length select {
+
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
 
     }
 

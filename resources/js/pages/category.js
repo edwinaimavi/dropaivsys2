@@ -108,7 +108,16 @@ document.addEventListener("DOMContentLoaded", function () {
         autoWidth: false,
 
         language: {
-            url: "/vendor/datatables/js/i18n/es-ES.json"
+            url: "/vendor/datatables/js/i18n/es-ES.json",
+            search: "Buscar:",
+            lengthMenu: "Mostrar _MENU_ registros",
+            info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            infoEmpty: "Mostrando 0 a 0 de 0 registros",
+            zeroRecords: "No se encontraron registros",
+            paginate: {
+                previous: "Anterior",
+                next: "Siguiente"
+            }
         },
 
         dom: `
@@ -148,7 +157,7 @@ document.addEventListener("DOMContentLoaded", function () {
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
-                text: '<i class="fas fa-print"></i> Print'
+                text: '<i class="fas fa-print"></i> Imprimir'
             }
 
         ],
@@ -426,7 +435,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $('#vc_status')
             .removeClass('badge-success badge-danger badge-secondary')
             .addClass(badgeClass)
-            .text(status);
+            .text(categoryStatusLabel(status));
 
         // =========================================================
         // SUBCATEGORÍAS
@@ -454,8 +463,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 const badge =
                     item.status === 'ACTIVE'
-                        ? `<span class="badge badge-success px-2 py-1">ACTIVO</span>`
-                        : `<span class="badge badge-danger px-2 py-1">INACTIVO</span>`;
+                        ? `<span class="badge badge-success px-2 py-1">Activo</span>`
+                        : `<span class="badge badge-danger px-2 py-1">Inactivo</span>`;
 
                 html += `
             <tr>
@@ -598,7 +607,16 @@ document.addEventListener("DOMContentLoaded", function () {
             scrollX: true,
 
             language: {
-                url: "/vendor/datatables/js/i18n/es-ES.json"
+                url: "/vendor/datatables/js/i18n/es-ES.json",
+                search: "Buscar:",
+                lengthMenu: "Mostrar _MENU_ registros",
+                info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+                infoEmpty: "Mostrando 0 a 0 de 0 registros",
+                zeroRecords: "No se encontraron registros",
+                paginate: {
+                    previous: "Anterior",
+                    next: "Siguiente"
+                }
             }
 
         });
@@ -985,6 +1003,7 @@ function loadCategoryDetail(id, openModal = false) {
 
 function renderCategoryDetail(category) {
     const empty = '-';
+    const statusLabel = categoryStatusLabel(category.status);
 
     $('#vc_description').text(category.description || empty);
     $('#vc_type').text(category.type || empty);
@@ -992,7 +1011,7 @@ function renderCategoryDetail(category) {
     $('#vc_description_detail').text(category.description || empty);
     $('#vc_code').text(category.code || empty);
     $('#vc_type_detail').text(category.type || empty);
-    $('#vc_status_text').text(category.status || empty);
+    $('#vc_status_text').text(statusLabel || empty);
     $('#vc_observation').text(category.observation || 'Sin observaciones');
     $('#vc_created_by').text(category.created_by || 'No registrado');
     $('#vc_created_by_user').text(category.created_by || 'No registrado');
@@ -1002,14 +1021,10 @@ function renderCategoryDetail(category) {
     $('#vc_updated_at_footer').text(category.updated_at || empty);
 
     const status = category.status || '';
-    const badgeClass = status === 'ACTIVE'
-        ? 'badge-success'
-        : (status === 'INACTIVE' ? 'badge-danger' : 'badge-secondary');
-
     $('#vc_status')
-        .removeClass('badge-success badge-danger badge-secondary')
-        .addClass(badgeClass)
-        .text(status || empty);
+        .removeClass('badge-success badge-danger badge-secondary is-active is-inactive')
+        .addClass(status === 'ACTIVE' ? 'is-active' : (status === 'INACTIVE' ? 'is-inactive' : 'badge-secondary'))
+        .text(statusLabel || empty);
 
     renderCategorySubcategories(category.subcategories || []);
 }
@@ -1017,8 +1032,8 @@ function renderCategoryDetail(category) {
 function renderCategorySubcategories(subcategories) {
     const rows = (subcategories || []).map(function (item, index) {
         const badge = item.status === 'ACTIVE'
-            ? '<span class="badge badge-success px-2 py-1">ACTIVO</span>'
-            : '<span class="badge badge-danger px-2 py-1">INACTIVO</span>';
+            ? '<span class="badge category-status-badge is-active px-2 py-1">Activo</span>'
+            : '<span class="badge category-status-badge is-inactive px-2 py-1">Inactivo</span>';
 
         return `
             <tr>
@@ -1040,6 +1055,12 @@ function renderCategorySubcategories(subcategories) {
     `);
 
     $('#vc_total_subcategories').text(subcategories ? subcategories.length : 0);
+}
+
+function categoryStatusLabel(status) {
+    if (status === 'ACTIVE') return 'Activo';
+    if (status === 'INACTIVE') return 'Inactivo';
+    return status || '';
 }
 
 function escapeCategoryHtml(value) {

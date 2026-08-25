@@ -80,7 +80,16 @@ document.addEventListener("DOMContentLoaded", function () {
         autoWidth: false,
 
         language: {
-            url: "/vendor/datatables/js/i18n/es-ES.json"
+            url: "/vendor/datatables/js/i18n/es-ES.json",
+            search: "Buscar:",
+            lengthMenu: "Mostrar _MENU_ registros",
+            info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            infoEmpty: "Mostrando 0 a 0 de 0 registros",
+            zeroRecords: "No se encontraron registros",
+            paginate: {
+                previous: "Anterior",
+                next: "Siguiente"
+            }
         },
 
         dom: `
@@ -120,7 +129,7 @@ document.addEventListener("DOMContentLoaded", function () {
             {
                 extend: 'print',
                 className: 'btn btn-secondary btn-sm',
-                text: '<i class="fas fa-print"></i> Print'
+                text: '<i class="fas fa-print"></i> Imprimir'
             }
 
         ],
@@ -272,7 +281,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
                         title: 'Error',
 
-                        text: xhr.responseJSON?.message || 'Unexpected error',
+                        text: xhr.responseJSON?.message || 'Ocurrió un error inesperado.',
 
                         toast: true,
 
@@ -383,8 +392,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // STATUS
         const statusText = status === 'ACTIVE'
-            ? 'ACTIVO'
-            : 'INACTIVO';
+            ? 'Activo'
+            : 'Inactivo';
 
         $('#vu_status').text(statusText);
 
@@ -393,14 +402,14 @@ document.addEventListener("DOMContentLoaded", function () {
         if (status === 'ACTIVE') {
 
             $('#vu_status')
-                .removeClass('badge-danger')
-                .addClass('badge-success');
+                .removeClass('badge-success badge-danger is-inactive')
+                .addClass('is-active');
 
         } else {
 
             $('#vu_status')
-                .removeClass('badge-success')
-                .addClass('badge-danger');
+                .removeClass('badge-success badge-danger is-active')
+                .addClass('is-inactive');
         }
 
         $('#viewUnitModal').modal('show');

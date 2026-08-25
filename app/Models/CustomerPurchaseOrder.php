@@ -151,6 +151,11 @@ class CustomerPurchaseOrder extends Model
         return $this->hasMany(CustomerOrderProfitabilityAnalysis::class);
     }
 
+    public function electronicInvoices()
+    {
+        return $this->hasMany(ElectronicInvoice::class);
+    }
+
     public function scopeAvailableForSupplierPurchase($query)
     {
         return $query->whereHas('items', function ($items) {

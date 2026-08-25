@@ -104,7 +104,7 @@
 
                                 <span class="badge badge-success px-2 py-1 rounded-pill">
 
-                                    ACTIVO
+                                    Activo
 
                                 </span>
 
@@ -178,11 +178,11 @@
                                             <select id="subcategory_status" class="form-control form-control-modern">
 
                                                 <option value="ACTIVE">
-                                                    ACTIVO
+                                                    Activo
                                                 </option>
 
                                                 <option value="INACTIVE">
-                                                    INACTIVO
+                                                    Inactivo
                                                 </option>
 
                                             </select>

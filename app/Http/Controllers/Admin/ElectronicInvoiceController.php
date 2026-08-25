@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerBranch;
@@ -18,6 +19,8 @@ use App\Models\SunatCatalogItem;
 use App\Models\WarehouseEntry;
 use App\Models\Warehouse;
 use App\Services\WarehouseKardexService;
+use App\Services\InvoiceCollectionService;
+use App\Services\InvoiceFromCustomerOrderService;
 use App\Services\ElectronicBilling\ApiPeruBillingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -38,16 +41,18 @@ class ElectronicInvoiceController extends Controller
     public function __construct()
     {
         $this->middleware('can:admin.electronic-invoices.index')->only(['index', 'list', 'customerPurchaseOrderData']);
-        $this->middleware('can:admin.electronic-invoices.store')->only(['store']);
+        $this->middleware('can:admin.electronic-invoices.create')->only(['store']);
         $this->middleware('can:admin.electronic-invoices.show')->only(['show']);
         $this->middleware('can:admin.electronic-invoices.update')->only(['update']);
         $this->middleware('can:admin.electronic-invoices.destroy')->only(['destroy']);
         $this->middleware('can:admin.electronic-invoices.pdf')->only(['pdf']);
         $this->middleware('can:admin.electronic-invoices.payload')->only(['previewPayload']);
         $this->middleware('can:admin.electronic-invoices.send')->only(['sendToApi']);
+        $this->middleware('can:admin.electronic-invoices.collect')->only(['collectionAccounts']);
+        $this->middleware('can:admin.invoice-collections.store')->only(['collect']);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $companies = Company::query()->where('status', true)->orderBy('business_name')->get();
         $customers = Customer::query()->where('status', true)->orderBy('business_name')->orderBy('full_name')->get();
@@ -88,6 +93,19 @@ class ElectronicInvoiceController extends Controller
             ->where('status', 'ACTIVE')
             ->orderBy('item_code')
             ->get();
+        $bankAccounts = CompanyBankAccount::query()
+            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->where('status', 'ACTIVE')
+            ->orderBy('company_id')->orderBy('id')->get();
+        $collectionAlerts = [
+            'pending' => ElectronicInvoice::query()->where('status', self::STATUS_GENERATED)->where('is_voided', false)->where('payment_status', 'pending')->where(fn ($query) => $query->whereNull('due_date')->orWhereDate('due_date', '>=', today()))->count(),
+            'due_soon' => ElectronicInvoice::query()->where('status', self::STATUS_GENERATED)->where('is_voided', false)->whereIn('payment_status', ['pending', 'partial'])->whereBetween('due_date', [today(), today()->addDays(5)])->count(),
+            'partial' => ElectronicInvoice::query()->where('status', self::STATUS_GENERATED)->where('is_voided', false)->where('payment_status', 'partial')->count(),
+            'overdue' => ElectronicInvoice::query()->where('status', self::STATUS_GENERATED)->where('is_voided', false)->whereIn('payment_status', ['pending', 'partial'])->whereDate('due_date', '<', today())->count(),
+        ];
+        $initialCustomerPurchaseOrderId = $request->integer('customer_purchase_order_id') ?: null;
+        $initialCollectionInvoiceId = $request->integer('collect_invoice_id') ?: null;
+        $invoiceOrderFilterId = $request->integer('invoice_order_id') ?: null;
 
         return view('admin.electronic-invoices.index', compact(
             'companies',
@@ -101,54 +119,33 @@ class ElectronicInvoiceController extends Controller
             'customerPurchaseOrders',
             'warehouseEntries',
             'warehouses',
-            'taxAffectations'
+            'taxAffectations',
+            'bankAccounts',
+            'collectionAlerts',
+            'initialCustomerPurchaseOrderId',
+            'initialCollectionInvoiceId',
+            'invoiceOrderFilterId'
         ));
     }
 
-    public function customerPurchaseOrderData(CustomerPurchaseOrder $customerPurchaseOrder)
+    public function customerPurchaseOrderData(
+        CustomerPurchaseOrder $customerPurchaseOrder,
+        InvoiceFromCustomerOrderService $invoiceService
+    )
     {
         if (! in_array($customerPurchaseOrder->status, ['partial_entered', 'entered', 'attended', 'delivered'], true)) {
             return response()->json(['message' => 'La orden seleccionada todavía no está disponible para facturación.'], 422);
         }
 
-        $customerPurchaseOrder->load([
-            'customer', 'customerBranch', 'currency',
-            'items' => fn ($query) => $query->where('status', '!=', 'deleted')
-                ->with(['article', 'unit', 'presentation', 'brand']),
-        ]);
-
-        return response()->json([
-            'data' => [
-                'id' => $customerPurchaseOrder->id,
-                'customer_id' => $customerPurchaseOrder->customer_id,
-                'customer_branch_id' => $customerPurchaseOrder->customer_branch_id,
-                'quote_id' => $customerPurchaseOrder->quote_id,
-                'currency_id' => $customerPurchaseOrder->currency_id,
-                'purchase_order_number' => $customerPurchaseOrder->purchase_order_number ?: $customerPurchaseOrder->code,
-                'siaf_number' => $customerPurchaseOrder->siaf_file_number,
-                'process_number' => $customerPurchaseOrder->process_type,
-                'items' => $customerPurchaseOrder->items->map(fn ($item) => [
-                    'customer_purchase_order_item_id' => $item->id,
-                    'article_id' => $item->article_id,
-                    'product_code' => $item->article_code ?: $item->article?->code,
-                    'description' => $item->billing_name_snapshot ?: $item->article?->billing_name,
-                    'brand_name' => $item->brand?->description,
-                    'presentation_name' => $item->presentation?->description,
-                    'unit_code' => $item->unit?->abbreviation ?: 'NIU',
-                    'origin' => $item->origin,
-                    'expiration_date' => optional($item->expiration_date)->format('Y-m-d'),
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'tax_affectation_code' => $customerPurchaseOrder->affect_igv ? '10' : '20',
-                ])->values(),
-            ],
-        ]);
+        return response()->json(['data' => $invoiceService->prepare($customerPurchaseOrder)]);
     }
 
-    public function list()
+    public function list(Request $request)
     {
         $invoices = ElectronicInvoice::query()
             ->with('customer:id,business_name,full_name,first_name,last_name,document_number,ruc', 'currency:id,code,symbol')
+            ->when($request->integer('customer_purchase_order_id'), fn ($query, $orderId) =>
+                $query->where('customer_purchase_order_id', $orderId))
             ->orderByDesc('id');
 
         return DataTables::of($invoices)
@@ -156,6 +153,8 @@ class ElectronicInvoiceController extends Controller
             ->addColumn('type_label', fn (ElectronicInvoice $invoice) => $this->documentTypeLabel($invoice->document_type))
             ->addColumn('customer_name', fn (ElectronicInvoice $invoice) => $invoice->client_name ?: $this->customerName($invoice->customer))
             ->addColumn('customer_document', fn (ElectronicInvoice $invoice) => $invoice->client_document_number ?: '-')
+            ->addColumn('payment_status_label', fn (ElectronicInvoice $invoice) => $this->paymentStatusBadge($invoice))
+            ->addColumn('pending_amount_label', fn (ElectronicInvoice $invoice) => trim(($invoice->currency?->symbol ?? '').' '.number_format((float) $invoice->pending_amount, 2)))
             ->editColumn('total_amount', fn (ElectronicInvoice $invoice) =>
                 trim(($invoice->currency?->symbol ?? '') . ' ' . number_format((float) $invoice->total_amount, 3)))
             ->editColumn('sunat_status', fn (ElectronicInvoice $invoice) => $this->sunatBadge($invoice->sunat_status))
@@ -166,7 +165,7 @@ class ElectronicInvoiceController extends Controller
 
                 return view('admin.electronic-invoices.partials.acciones', compact('invoice', 'apiReady'))->render();
             })
-            ->rawColumns(['sunat_status', 'status', 'acciones'])
+            ->rawColumns(['sunat_status', 'status', 'payment_status_label', 'acciones'])
             ->make(true);
     }
 
@@ -187,17 +186,65 @@ class ElectronicInvoiceController extends Controller
             'serie',
             'items.article',
             'payments',
+            'collections.account.bank',
+            'collections.currency',
+            'collections.bankMovement',
+            'collections.creator',
             'legends',
             'relatedDocuments',
             'files',
             'apiLogs.executor',
             'statusHistories.user',
         ]);
+        $electronicInvoice->collections->each(function ($collection) {
+            $collection->setAttribute(
+                'proof_url',
+                $collection->proof_file_path ? Storage::disk('public')->url($collection->proof_file_path) : null
+            );
+        });
 
         return response()->json([
             'status' => 'success',
             'data' => $electronicInvoice,
         ]);
+    }
+
+    public function collectionAccounts(ElectronicInvoice $electronicInvoice)
+    {
+        return response()->json(['data' => CompanyBankAccount::query()
+            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->where('company_id', $electronicInvoice->company_id)
+            ->where('status', 'ACTIVE')
+            ->orderBy('id')->get()]);
+    }
+
+    public function collect(Request $request, ElectronicInvoice $electronicInvoice, InvoiceCollectionService $service)
+    {
+        $validated = $request->validate([
+            'company_bank_account_id' => ['required', 'integer', 'exists:company_bank_accounts,id'],
+            'collection_date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'operation_number' => ['nullable', 'string', 'max:100'],
+            'proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'observation' => ['nullable', 'string', 'max:1500'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
+        ], [
+            'company_bank_account_id.required' => 'Seleccione la cuenta bancaria donde ingresó el cobro.',
+            'amount.gt' => 'El monto cobrado debe ser mayor a cero.',
+            'proof.mimes' => 'La constancia debe ser PDF, JPG, JPEG, PNG o WEBP.',
+            'proof.max' => 'La constancia no debe superar los 10 MB.',
+        ]);
+
+        $collection = $service->register($electronicInvoice, $validated, $request->file('proof'), Auth::id());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Cobro confirmado e ingreso bancario registrado correctamente.',
+            'data' => $collection,
+            'invoice' => $electronicInvoice->fresh(),
+        ], 201);
     }
 
     public function edit(ElectronicInvoice $electronicInvoice)
@@ -212,6 +259,12 @@ class ElectronicInvoiceController extends Controller
 
     public function destroy(ElectronicInvoice $electronicInvoice, WarehouseKardexService $kardexService)
     {
+        if ($electronicInvoice->collections()->exists()) {
+            return response()->json([
+                'message' => 'No se puede anular una factura con cobros registrados. El historial bancario debe conservarse.',
+            ], 422);
+        }
+
         try {
             DB::transaction(function () use ($electronicInvoice, $kardexService) {
                 $previousStatus = $electronicInvoice->status;
@@ -390,6 +443,11 @@ class ElectronicInvoiceController extends Controller
                         'status' => 'Un comprobante generado no puede volver al estado borrador.',
                     ]);
                 }
+                if ($invoice && (float) $invoice->paid_amount > 0) {
+                    throw ValidationException::withMessages([
+                        'invoice' => 'No se puede modificar una factura que ya tiene cobros registrados.',
+                    ]);
+                }
                 $configuration = ElectronicInvoiceSetting::query()
                     ->where('company_id', $validated['company_id'])
                     ->where('is_active', true)
@@ -442,6 +500,23 @@ class ElectronicInvoiceController extends Controller
                 $currency = Currency::query()->findOrFail($validated['currency_id']);
                 $preparedItems = $this->prepareItems($validated['items']);
                 $totals = $this->calculateTotals($preparedItems);
+                $customerOrder = ! empty($validated['customer_purchase_order_id'])
+                    ? CustomerPurchaseOrder::query()->findOrFail($validated['customer_purchase_order_id'])
+                    : null;
+
+                if ($customerOrder) {
+                    if ((int) $customerOrder->company_id !== (int) $company->id
+                        || (int) $customerOrder->customer_id !== (int) $customer->id
+                        || (int) $customerOrder->currency_id !== (int) $currency->id) {
+                        throw ValidationException::withMessages([
+                            'customer_purchase_order_id' => 'La empresa, cliente y moneda deben coincidir con la orden de compra seleccionada.',
+                        ]);
+                    }
+                    if ($targetStatus === self::STATUS_GENERATED) {
+                        app(InvoiceFromCustomerOrderService::class)
+                            ->validateGeneratedInvoice($customerOrder, $validated['items'], $invoice, (float) $totals['total_amount']);
+                    }
+                }
 
                 if ($totals['total_amount'] <= 0) {
                     throw ValidationException::withMessages([
@@ -459,6 +534,10 @@ class ElectronicInvoiceController extends Controller
                     : ($invoice?->correlativo ?: 'BORRADOR-' . Str::upper(Str::random(8)));
                 $fullNumber = $serie->serie . '-' . $correlativo;
                 $previousStatus = $invoice?->status;
+                $paidAmount = (float) ($invoice?->paid_amount ?? 0);
+                $pendingAmount = $targetStatus === self::STATUS_GENERATED
+                    ? max(0, round($totals['total_amount'] - $paidAmount, 10))
+                    : 0;
 
                 $invoiceData = array_merge($totals, [
                     'company_id' => $company->id,
@@ -499,6 +578,9 @@ class ElectronicInvoiceController extends Controller
                     'delivery_note' => $this->upperOrNull($validated['delivery_note'] ?? null),
                     'observations' => $this->upperOrNull($validated['observations'] ?? null),
                     'status' => $targetStatus,
+                    'paid_amount' => $paidAmount,
+                    'pending_amount' => $pendingAmount,
+                    'payment_status' => $pendingAmount <= 0.00001 && $paidAmount > 0 ? 'paid' : 'pending',
                     'api_provider' => $configuration->provider,
                     'updated_by' => Auth::id(),
                 ]);
@@ -798,6 +880,21 @@ class ElectronicInvoiceController extends Controller
         [$label, $class, $icon] = $statuses[$status] ?? [strtoupper((string) $status), 'badge-light text-dark border', 'fas fa-info-circle'];
 
         return '<span class="badge ' . $class . ' rounded-pill px-3 py-2"><i class="' . $icon . ' mr-1"></i>' . e($label) . '</span>';
+    }
+
+    private function paymentStatusBadge(ElectronicInvoice $invoice): string
+    {
+        $statuses = [
+            'draft' => ['Borrador', 'badge-secondary', 'fas fa-pencil-alt'],
+            'pending' => ['Pendiente de cobro', 'badge-warning text-dark', 'fas fa-clock'],
+            'partial' => ['Cobro parcial', 'badge-info', 'fas fa-coins'],
+            'paid' => ['Cobrada', 'badge-success', 'fas fa-check-circle'],
+            'overdue' => ['Vencida', 'badge-danger', 'fas fa-exclamation-circle'],
+            'cancelled' => ['Anulada', 'badge-dark', 'fas fa-ban'],
+        ];
+        [$label, $class, $icon] = $statuses[$invoice->effectivePaymentStatus()] ?? $statuses['pending'];
+
+        return '<span class="badge '.$class.' rounded-pill px-3 py-2"><i class="'.$icon.' mr-1"></i>'.e($label).'</span>';
     }
 
     private function sunatBadge(?string $status): string

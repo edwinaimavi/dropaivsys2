@@ -144,11 +144,20 @@ it('ignora una cuenta bancaria residual cuando la fuente del costo es manual', f
         ->and($expense->bank_movement_id)->toBeNull();
 });
 
-it('devuelve todas las cuentas activas de la empresa sin filtrar por saldo', function () {
+it('devuelve todas las cuentas activas de la empresa sin filtrar por moneda ni saldo', function () {
+    $usd = Currency::create([
+        'code' => 'USD', 'description' => 'Dólares', 'symbol' => '$', 'status' => 'ACTIVE',
+    ]);
     $negativeBalanceAccount = CompanyBankAccount::create([
         'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
         'currency_id' => $this->currency->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
         'account_number' => '001-NEGATIVE', 'current_balance' => -25,
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
+    ]);
+    $usdAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $usd->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-USD-ENDPOINT', 'current_balance' => 100,
         'is_detraction' => 'NO', 'status' => 'ACTIVE',
     ]);
     $inactiveAccount = CompanyBankAccount::create([
@@ -161,18 +170,19 @@ it('devuelve todas las cuentas activas de la empresa sin filtrar por saldo', fun
     $response = $this->getJson(route('admin.warehouse-entries.company-bank-accounts', $this->company));
 
     $response->assertOk()
-        ->assertJsonCount(2, 'data')
+        ->assertJsonCount(3, 'data')
         ->assertJsonFragment(['id' => $this->account->id])
         ->assertJsonFragment(['id' => $negativeBalanceAccount->id])
+        ->assertJsonFragment(['id' => $usdAccount->id])
         ->assertJsonMissing(['id' => $inactiveAccount->id]);
 });
 
-it('exige para Banco una cuenta activa de la empresa y moneda del ingreso', function () {
+it('exige para Banco una cuenta activa de la empresa y permite otra moneda', function () {
     $otherCompany = Company::create([
         'business_name' => 'OTRA EMPRESA S.A.C.', 'ruc' => '20977777772', 'status' => true,
     ]);
     $otherCurrency = Currency::create([
-        'code' => 'USD', 'description' => 'DÃ³lares', 'symbol' => '$', 'status' => 'ACTIVE',
+        'code' => 'USD', 'description' => 'Dólares', 'symbol' => '$', 'status' => 'ACTIVE',
     ]);
     $foreignAccount = CompanyBankAccount::create([
         'company_id' => $otherCompany->id, 'bank_id' => $this->account->bank_id,
@@ -200,11 +210,13 @@ it('exige para Banco una cuenta activa de la empresa y moneda del ingreso', func
     )];
 
     expect(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($foreignAccount->id), [], []))
-        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La cuenta bancaria seleccionada no pertenece a la empresa del ingreso.')
-        ->and(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($otherCurrencyAccount->id), [], []))
-        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La cuenta bancaria seleccionada no corresponde a la moneda del ingreso.')
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La cuenta bancaria seleccionada no pertenece a la empresa DROPAIV FUENTES S.A.C.')
         ->and(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($inactiveAccount->id), [], []))
-        ->toThrow(\Illuminate\Validation\ValidationException::class, 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.');
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'Seleccione una cuenta bancaria activa de la empresa DROPAIV FUENTES S.A.C.');
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($otherCurrencyAccount->id), [], []);
+
+    expect($this->entry->expenses()->sole()->company_bank_account_id)->toBe($otherCurrencyAccount->id);
 });
 
 it('conserva trazabilidad al aprobar un gasto manual', function () {

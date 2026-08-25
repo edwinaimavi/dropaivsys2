@@ -92,9 +92,9 @@ class CategoryController extends Controller
 
                 $statusText = match ($category->status) {
 
-                    'ACTIVE' => 'ACTIVO',
+                    'ACTIVE' => 'Activo',
 
-                    'INACTIVE' => 'INACTIVO',
+                    'INACTIVE' => 'Inactivo',
 
                     default => $category->status
                 };
@@ -551,8 +551,8 @@ class CategoryController extends Controller
                     : 'danger';
 
                 $text = $subcategory->status === 'ACTIVE'
-                    ? 'ACTIVO'
-                    : 'INACTIVO';
+                    ? 'Activo'
+                    : 'Inactivo';
 
                 return '
                 <span class="badge badge-' . $color . ' px-3 py-2 rounded-pill">

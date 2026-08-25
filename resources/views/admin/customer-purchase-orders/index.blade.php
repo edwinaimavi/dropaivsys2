@@ -84,6 +84,7 @@
                             <th>TOTAL</th>
                             <th>PLAZO ENTREGA</th>
                             <th>ESTADO</th>
+                            <th>FACTURACI&Oacute;N / COBRO</th>
                             <th>F. REGISTRO</th>
                             <th width="150">ACCIONES</th>
                         </tr>

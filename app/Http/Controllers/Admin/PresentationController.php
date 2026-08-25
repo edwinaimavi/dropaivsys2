@@ -89,9 +89,9 @@ class PresentationController extends Controller
 
                 $statusText = match ($presentation->status) {
 
-                    'ACTIVE' => 'ACTIVO',
+                    'ACTIVE' => 'Activo',
 
-                    'INACTIVE' => 'INACTIVO',
+                    'INACTIVE' => 'Inactivo',
 
                     default => $presentation->status
                 };

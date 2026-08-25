@@ -1513,7 +1513,7 @@ class WarehouseEntryController extends Controller
             'expenses.*.invoice_file.max' => 'El archivo de la factura no debe superar los 10 MB.',
             'expenses.*.payment_proof_file.mimes' => 'El archivo de la constancia de pago debe ser PDF, JPG, JPEG, PNG o WEBP.',
             'expenses.*.payment_proof_file.max' => 'El archivo de la constancia de pago no debe superar los 10 MB.',
-            'expenses.*.company_bank_account_id.required_if' => 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.',
+            'expenses.*.company_bank_account_id.required_if' => 'Seleccione una cuenta bancaria activa de la empresa del ingreso.',
             'expenses.*.company_bank_account_id.exists' => 'La cuenta bancaria seleccionada no existe o no está activa.',
             'expenses.*.detraction_proof_file.file' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
             'expenses.*.detraction_proof_file.mimes' => 'La constancia de detracción debe ser un archivo PDF o imagen.',
@@ -1976,21 +1976,17 @@ class WarehouseEntryController extends Controller
                     }
                 }
                 if ($sourceType === WarehouseEntryExpense::SOURCE_BANK) {
+                    $companyName = $entry->company?->business_name ?? 'la empresa del ingreso';
                     $account = CompanyBankAccount::query()->where('status', 'ACTIVE')
                         ->find($data['company_bank_account_id'] ?? null);
                     if (! $account) {
                         throw ValidationException::withMessages([
-                            "expenses.$index.company_bank_account_id" => 'Seleccione una cuenta bancaria activa de la misma empresa y moneda.',
+                            "expenses.$index.company_bank_account_id" => "Seleccione una cuenta bancaria activa de la empresa {$companyName}.",
                         ]);
                     }
                     if ((int) $account->company_id !== (int) $entry->company_id) {
                         throw ValidationException::withMessages([
-                            "expenses.$index.company_bank_account_id" => 'La cuenta bancaria seleccionada no pertenece a la empresa del ingreso.',
-                        ]);
-                    }
-                    if ((int) $account->currency_id !== (int) $entry->currency_id) {
-                        throw ValidationException::withMessages([
-                            "expenses.$index.company_bank_account_id" => 'La cuenta bancaria seleccionada no corresponde a la moneda del ingreso.',
+                            "expenses.$index.company_bank_account_id" => "La cuenta bancaria seleccionada no pertenece a la empresa {$companyName}.",
                         ]);
                     }
                 }

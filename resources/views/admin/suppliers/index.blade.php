@@ -51,7 +51,7 @@
                             <a href="{{ route('home') }}" class="text-decoration-none">
 
                                 <i class="fas fa-house-user"></i>
-                                Home
+                                Inicio
 
                             </a>
 
@@ -276,6 +276,130 @@
             display: flex;
             align-items: center;
             justify-content: center;
+
+        }
+
+        #viewSupplierModal .supplier-view-header {
+
+            align-items: center;
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0 !important;
+            box-shadow: inset 4px 0 0 #0ea5e9;
+
+        }
+
+        #viewSupplierModal .supplier-view-title {
+
+            color: #0f172a !important;
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            letter-spacing: .1px;
+            opacity: 1;
+
+        }
+
+        #viewSupplierModal .supplier-view-title i {
+
+            color: #0284c7;
+
+        }
+
+        #viewSupplierModal .supplier-view-close {
+
+            color: #334155;
+            font-size: 24px;
+            opacity: .75;
+
+        }
+
+        #viewSupplierModal .supplier-view-close:hover {
+
+            color: #0f172a;
+            opacity: 1;
+
+        }
+
+        #viewSupplierModal .supplier-detail-table th {
+
+            color: #475569 !important;
+            font-weight: 600 !important;
+
+        }
+
+        #viewSupplierModal .supplier-detail-table td {
+
+            color: #0f172a !important;
+            font-weight: 400 !important;
+
+        }
+
+        #viewSupplierModal .supplier-detail-accounts-table {
+
+            min-width: 920px;
+
+        }
+
+        #viewSupplierModal .supplier-detail-accounts-table th,
+        #viewSupplierModal .supplier-detail-accounts-table td {
+
+            padding: .65rem .7rem;
+            vertical-align: middle;
+            white-space: nowrap;
+
+        }
+
+        #viewSupplierModal .supplier-detail-accounts-table th {
+
+            background: #f8fafc;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 700;
+
+        }
+
+        #viewSupplierModal .supplier-detail-account-row {
+
+            color: #334155;
+            font-size: 12px;
+
+        }
+
+        .supplier-currency-badge {
+
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .28rem .55rem;
+            color: #075985;
+            background: #e0f2fe;
+            border: 1px solid #bae6fd;
+            border-radius: 999px;
+            font-size: 11px;
+            line-height: 1;
+            white-space: nowrap;
+
+        }
+
+        .supplier-currency-badge strong {
+
+            color: #0c4a6e;
+            font-weight: 700;
+
+        }
+
+        #viewSupplierModal .supplier-detail-meta-card {
+
+            height: 100%;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 10px;
+            background: #f8fafc !important;
+
+        }
+
+        #viewSupplierModal .supplier-detail-meta-card small {
+
+            color: #64748b !important;
+            font-weight: 600;
 
         }
 

@@ -84,9 +84,9 @@ class UnitController extends Controller
 
                 $statusText = match ($unit->status) {
 
-                    'ACTIVE' => 'ACTIVO',
+                    'ACTIVE' => 'Activo',
 
-                    'INACTIVE' => 'INACTIVO',
+                    'INACTIVE' => 'Inactivo',
 
                     default => $unit->status
                 };

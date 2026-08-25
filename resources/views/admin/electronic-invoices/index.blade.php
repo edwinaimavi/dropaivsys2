@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('subtitle', 'Facturacion Electronica')
+@section('subtitle', 'Facturacion local')
 
 @section('header')
     <div class="container-fluid">
@@ -8,11 +8,11 @@
             <div>
                 <h1 class="mb-1 font-weight-bold text-dark">
                     <i class="fas fa-file-invoice-dollar text-success"></i>
-                    Facturaci&oacute;n Electr&oacute;nica
+                    Facturaci&oacute;n local
                 </h1>
-                <small class="text-muted">Comprobantes listos para futura integraci&oacute;n con APIs Per&uacute;</small>
+                <small class="text-muted">Facturas internas, cuentas por cobrar y confirmaci&oacute;n de ingresos bancarios</small>
             </div>
-            @can('admin.electronic-invoices.store')
+            @can('admin.electronic-invoices.create')
             <button id="btnCreateElectronicInvoice" class="btn btn-success shadow-sm px-4" type="button">
                 <i class="fas fa-plus-circle mr-1"></i>
                 Nuevo Comprobante
@@ -23,13 +23,19 @@
 @stop
 
 @section('content_body')
+    <div class="row mb-3">
+        <div class="col-md-3"><div class="small-box bg-warning"><div class="inner"><h3>{{ $collectionAlerts['pending'] }}</h3><p>Pendientes de cobro</p></div><div class="icon"><i class="fas fa-clock"></i></div></div></div>
+        <div class="col-md-3"><div class="small-box bg-warning"><div class="inner"><h3>{{ $collectionAlerts['due_soon'] }}</h3><p>Por vencer (5 d&iacute;as)</p></div><div class="icon"><i class="fas fa-calendar-alt"></i></div></div></div>
+        <div class="col-md-3"><div class="small-box bg-info"><div class="inner"><h3>{{ $collectionAlerts['partial'] }}</h3><p>Cobros parciales</p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
+        <div class="col-md-3"><div class="small-box bg-danger"><div class="inner"><h3>{{ $collectionAlerts['overdue'] }}</h3><p>Facturas vencidas</p></div><div class="icon"><i class="fas fa-exclamation-circle"></i></div></div></div>
+    </div>
     <div class="card border-0 shadow-lg rounded-xl">
         <div class="card-header bg-white border-0 pt-4 pb-2">
             <h5 class="mb-1 font-weight-bold text-dark">
                 <i class="fas fa-list text-success"></i>
                 Lista de comprobantes
             </h5>
-            <small class="text-muted">PDF local, payload preparado y estados SUNAT pendientes de integraci&oacute;n</small>
+            <small class="text-muted">PDF local y estado de cobranza; sin env&iacute;o electr&oacute;nico ni validaci&oacute;n SUNAT</small>
         </div>
         <div class="card-body pt-2">
             <div class="table-responsive">
@@ -44,6 +50,8 @@
                             <th>DOCUMENTO</th>
                             <th>MONEDA</th>
                             <th>TOTAL</th>
+                            <th>SALDO</th>
+                            <th>COBRO</th>
                             <th>ESTADO SUNAT</th>
                             <th>ESTADO</th>
                             <th>F. EMISI&Oacute;N</th>
@@ -58,6 +66,7 @@
 
     @include('admin.electronic-invoices.partials.modal')
     @include('admin.electronic-invoices.partials.viewModal')
+    @include('admin.electronic-invoices.partials.collectionModal')
 @stop
 
 @push('css')
@@ -380,9 +389,13 @@
             electronicInvoicePayload: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceSend: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceCustomerPurchaseOrder: "{{ url('admin/electronic-invoices/customer-purchase-order') }}",
+            electronicInvoiceCollections: "{{ url('admin/electronic-invoices') }}",
             electronicInvoiceSeriesNextNumber: "{{ route('admin.electronic-invoice-series.nextNumber') }}"
         });
         window.electronicInvoiceCompanyEnvironments = @json($companyEnvironments);
+        window.electronicInvoiceInitialCustomerOrderId = @json($initialCustomerPurchaseOrderId);
+        window.electronicInvoiceInitialCollectionInvoiceId = @json($initialCollectionInvoiceId);
+        window.electronicInvoiceOrderFilterId = @json($invoiceOrderFilterId);
     </script>
     @vite('resources/js/pages/electronic-invoice.js')
 @endpush

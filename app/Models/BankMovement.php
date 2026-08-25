@@ -112,6 +112,7 @@ class BankMovement extends Model
     {
         return [
             'CUSTOMER_PAYMENT' => 'Cobro de cliente',
+            'ELECTRONIC_INVOICE_COLLECTION' => 'Cobro de factura local',
             'SUPPLIER_PAYMENT' => 'Pago a proveedor',
             'SUPPLIER_ADVANCE' => 'Anticipo a proveedor',
             'PETTY_CASH_OPENING' => 'Apertura de Caja Chica',

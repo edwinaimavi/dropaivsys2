@@ -19,6 +19,7 @@ use App\Models\QuoteItem;
 use App\Models\Subcategory;
 use App\Models\Unit;
 use App\Models\User;
+use App\Services\InvoiceFromCustomerOrderService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -176,6 +177,9 @@ class CustomerPurchaseOrderController extends Controller
                 'customer:id,business_name,full_name,first_name,last_name',
                 'customerBranch:id,branch_name',
                 'currency:id,code,symbol,description',
+                'electronicInvoices.items',
+                'electronicInvoices.collections.account.bank',
+                'electronicInvoices.collections.creator',
                 'documents' => function ($query) {
                     $query->whereHas('documentType', function ($documentTypeQuery) {
                         $documentTypeQuery->where('description', 'ORDEN DE COMPRA');
@@ -403,16 +407,39 @@ class CustomerPurchaseOrderController extends Controller
                     e($status['label'])
                 );
             })
+            ->addColumn('billing_status', function (CustomerPurchaseOrder $order) {
+                $summary = app(InvoiceFromCustomerOrderService::class)->summary($order);
+                $order->setAttribute('billing_summary', $summary);
+                $billing = [
+                    'unbilled' => ['Sin facturar', 'badge-light text-dark border'],
+                    'partially_invoiced' => ['Facturada parcialmente', 'badge-info'],
+                    'fully_invoiced' => ['Facturada', 'badge-primary'],
+                ][$summary['billing_status']] ?? ['Sin facturar', 'badge-light text-dark border'];
+                $collection = [
+                    'unbilled' => ['Sin cobranza', 'text-muted'],
+                    'pending' => ['Pendiente de cobro', 'text-warning'],
+                    'partial' => ['Cobro parcial', 'text-info'],
+                    'paid' => ['Cobrada', 'text-success'],
+                ][$summary['collection_status']] ?? ['Sin cobranza', 'text-muted'];
+
+                return sprintf(
+                    '<div class="d-flex flex-column align-items-center"><span class="badge %s px-2 py-1">%s</span><small class="%s mt-1 font-weight-bold">%s</small></div>',
+                    $billing[1], e($billing[0]), $collection[1], e($collection[0])
+                );
+            })
             ->editColumn('created_at', function (CustomerPurchaseOrder $order) {
                 return $order->created_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '-';
             })
             ->addColumn('acciones', function (CustomerPurchaseOrder $order) {
+                if (! $order->getAttribute('billing_summary')) {
+                    $order->setAttribute('billing_summary', app(InvoiceFromCustomerOrderService::class)->summary($order));
+                }
                 return view(
                     'admin.customer-purchase-orders.partials.acciones',
                     compact('order')
                 )->render();
             })
-            ->rawColumns(['purchase_order_number', 'customer', 'delivery_period', 'status', 'acciones'])
+            ->rawColumns(['purchase_order_number', 'customer', 'delivery_period', 'status', 'billing_status', 'acciones'])
             ->make(true);
     }
 
@@ -816,8 +843,26 @@ class CustomerPurchaseOrderController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
+            'electronicInvoices.items',
+            'electronicInvoices.creator',
+            'electronicInvoices.collections.account.bank',
+            'electronicInvoices.collections.currency',
+            'electronicInvoices.collections.creator',
         ]);
         $this->appendSupplyProgress($customerPurchaseOrder);
+        $customerPurchaseOrder->electronicInvoices->each(function ($invoice) {
+            $invoice->setAttribute('pdf_url', route('admin.electronic-invoices.pdf', $invoice));
+            $invoice->collections->each(function ($collection) {
+                $collection->setAttribute(
+                    'proof_url',
+                    $collection->proof_file_path ? Storage::disk('public')->url($collection->proof_file_path) : null
+                );
+            });
+        });
+        $customerPurchaseOrder->setAttribute(
+            'billing_summary',
+            app(InvoiceFromCustomerOrderService::class)->summary($customerPurchaseOrder)
+        );
         $customerPurchaseOrder->documents->each(function (Document $document) {
             $document->setAttribute('url', Storage::disk('public')->url($document->file_path));
         });

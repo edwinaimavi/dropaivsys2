@@ -8,6 +8,16 @@
         @endcan
     </x-slot>
     <x-slot name="menu">
+        @if (auth()->user()->can('admin.electronic-invoices.collect') && auth()->user()->can('admin.invoice-collections.store'))
+            @if (!in_array($invoice->status, ['draft', 'cancelled', 'voided'], true) && (float) $invoice->pending_amount > 0)
+                <h6 class="dropdown-header">Cuenta por cobrar</h6>
+                <button type="button" class="dropdown-item collectElectronicInvoice" data-id="{{ $invoice->id }}">
+                    <i class="fas fa-university text-success"></i>
+                    {{ (float) $invoice->paid_amount > 0 ? 'Registrar otro cobro' : 'Confirmar ingreso' }}
+                </button>
+                <div class="dropdown-divider"></div>
+            @endif
+        @endif
         @canany(['admin.electronic-invoices.update', 'admin.electronic-invoices.payload', 'admin.electronic-invoices.send'])
             <h6 class="dropdown-header">Acciones operativas</h6>
             @can('admin.electronic-invoices.update')

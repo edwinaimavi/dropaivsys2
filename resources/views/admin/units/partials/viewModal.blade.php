@@ -7,12 +7,12 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header border-0 py-2 px-3" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);">
+            <div class="modal-header unit-view-header py-2 px-3">
 
-                <h5 class="modal-title text-white mb-0" id="viewUnitModalLabel"
+                <h5 class="modal-title unit-view-title mb-0" id="viewUnitModalLabel"
                     style="
-                        font-size:15px;
-                        font-weight:600;
+                        font-size:18px;
+                        font-weight:700;
                         letter-spacing:.3px;
                     ">
 
@@ -21,7 +21,7 @@
 
                 </h5>
 
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"
+                <button type="button" class="close unit-view-close" data-dismiss="modal" aria-label="Cerrar"
                     style="
                         opacity:1;
                         font-size:22px;
@@ -77,14 +77,14 @@
 
                             </div>
 
-                            <span id="vu_status" class="badge badge-primary px-3 py-1 shadow-sm"
+                            <span id="vu_status" class="badge unit-status-badge is-active px-3 py-1"
                                 style="
                                     border-radius:7px;
                                     font-size:10px;
                                     font-weight:500;
                                 ">
 
-                                ACTIVO
+                                Activo
 
                             </span>
 
@@ -160,7 +160,7 @@
 
                             <div class="table-responsive">
 
-                                <table class="table table-sm mb-0">
+                                <table class="table table-sm mb-0 unit-view-details">
 
                                     <tbody>
 

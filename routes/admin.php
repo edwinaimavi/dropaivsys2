@@ -746,6 +746,10 @@ Route::post('electronic-invoices/{electronicInvoice}/send', [ElectronicInvoiceCo
     ->name('electronic-invoices.send');
 Route::get('electronic-invoices/customer-purchase-order/{customerPurchaseOrder}', [ElectronicInvoiceController::class, 'customerPurchaseOrderData'])
     ->name('electronic-invoices.customer-purchase-order');
+Route::get('electronic-invoices/{electronicInvoice}/collection-accounts', [ElectronicInvoiceController::class, 'collectionAccounts'])
+    ->name('electronic-invoices.collection-accounts');
+Route::post('electronic-invoices/{electronicInvoice}/collections', [ElectronicInvoiceController::class, 'collect'])
+    ->name('electronic-invoices.collections.store');
 Route::resource('electronic-invoices', ElectronicInvoiceController::class)->except(['create']);
 
 Route::get('electronic-invoice-settings/list', [ElectronicInvoiceSettingController::class, 'list'])

@@ -35,7 +35,14 @@ class SupplierAccountController extends Controller
                 return $item->bank->description ?? '—';
             })
             ->addColumn('currency', function ($item) {
-                return $item->currency->description ?? '—';
+                if (!$item->currency) {
+                    return '—';
+                }
+
+                $code = e($item->currency->code ?? 'MON');
+                $description = e($item->currency->description ?? '—');
+
+                return '<span class="supplier-currency-badge"><strong>' . $code . '</strong><span>|</span>' . $description . '</span>';
             })
             ->editColumn('is_detraction', function ($item) {
                 return $item->is_detraction === 'YES'
@@ -53,6 +60,7 @@ class SupplierAccountController extends Controller
             ->rawColumns([
                 'status',
                 'is_detraction',
+                'currency',
                 'acciones'
             ])
             ->make(true);

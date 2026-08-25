@@ -6,6 +6,8 @@ $(function () {
     $('#electronicInvoiceModal').modal({ backdrop: 'static', keyboard: false, show: false });
     initElectronicInvoiceSelect2();
     initElectronicInvoiceTable();
+    $('#electronicInvoiceCollectionModal').modal({ backdrop: 'static', keyboard: false, show: false });
+    $('#electronicInvoiceCollectionModal select').select2({ width: '100%', dropdownParent: $('#electronicInvoiceCollectionModal') });
 
     $('#btnCreateElectronicInvoice').on('click', function () {
         resetElectronicInvoiceForm();
@@ -18,6 +20,10 @@ $(function () {
         const status = event.originalEvent?.submitter?.dataset?.status || $('#ei_requested_status').val() || 'draft';
         $('#ei_requested_status').val(status);
         saveElectronicInvoice(this);
+    });
+    $('#electronicInvoiceCollectionForm').on('submit', function (event) {
+        event.preventDefault();
+        saveElectronicInvoiceCollection(this);
     });
 
     $('#btnAddElectronicInvoiceItem').on('click', function () {
@@ -35,6 +41,8 @@ $(function () {
     $(document).on('change', '#ei_customer_branch_id', applyElectronicInvoiceBranch);
     $(document).on('change', '#ei_customer_purchase_order_id', applyElectronicInvoiceOrigin);
     $(document).on('change', '#ei_payment_type', toggleElectronicInvoicePayments);
+    $(document).on('change', '#eic_company_bank_account_id', syncElectronicInvoiceCollectionAccount);
+    $(document).on('change', '#eic_currency_id', toggleElectronicInvoiceCollectionExchangeRate);
     $(document).on('change', '.item-article', applyElectronicInvoiceArticle);
     $(document).on('input change', '.item-quantity, .item-price, .item-tax-affectation', calculateElectronicInvoiceTotals);
     $(document).on('click', '.removeElectronicInvoiceItem', function () {
@@ -62,6 +70,9 @@ $(function () {
     $(document).on('click', '.apiNotConfiguredElectronicInvoice', function () {
         Swal.fire('API no configurada', 'Configura APIs Perú antes de enviar a SUNAT.', 'info');
     });
+    $(document).on('click', '.collectElectronicInvoice', function () {
+        openElectronicInvoiceCollection($(this).data('id'));
+    });
     $(document).on('click', '.disabledElectronicInvoiceApiAction', function () {
         Swal.fire({
             icon: 'info',
@@ -70,6 +81,12 @@ $(function () {
             showConfirmButton: false
         });
     });
+
+    if (window.electronicInvoiceInitialCustomerOrderId) {
+        openElectronicInvoiceFromCustomerOrder(window.electronicInvoiceInitialCustomerOrderId);
+    } else if (window.electronicInvoiceInitialCollectionInvoiceId) {
+        openElectronicInvoiceCollection(window.electronicInvoiceInitialCollectionInvoiceId);
+    }
 });
 
 function initElectronicInvoiceSelect2() {
@@ -84,7 +101,12 @@ function initElectronicInvoiceTable() {
         processing: true,
         serverSide: true,
         responsive: true,
-        ajax: window.routes.electronicInvoiceList,
+        ajax: {
+            url: window.routes.electronicInvoiceList,
+            data: function (data) {
+                data.customer_purchase_order_id = window.electronicInvoiceOrderFilterId || '';
+            }
+        },
         columns: [
             { data: 'DT_RowIndex', orderable: false, searchable: false },
             { data: 'id', name: 'id', visible: false },
@@ -94,6 +116,8 @@ function initElectronicInvoiceTable() {
             { data: 'customer_document', name: 'client_document_number' },
             { data: 'currency_code', name: 'currency_code' },
             { data: 'total_amount', name: 'total_amount' },
+            { data: 'pending_amount_label', name: 'pending_amount' },
+            { data: 'payment_status_label', name: 'payment_status' },
             { data: 'sunat_status', name: 'sunat_status' },
             { data: 'status', name: 'status' },
             { data: 'issue_date', name: 'issue_date' },
@@ -211,6 +235,7 @@ function applyElectronicInvoiceOrigin() {
     $.get(`${window.routes.electronicInvoiceCustomerPurchaseOrder}/${option.val()}`)
         .done(function (response) {
             const order = response.data || {};
+            $('#ei_company_id').val(order.company_id || '').trigger('change.select2').trigger('change');
             $('#ei_customer_id').val(order.customer_id || '').trigger('change.select2').trigger('change');
             $('#ei_customer_branch_id').val(order.customer_branch_id || '').trigger('change.select2').trigger('change');
             $('#ei_quote_id').val(order.quote_id || '').trigger('change.select2');
@@ -222,7 +247,10 @@ function applyElectronicInvoiceOrigin() {
             $('#electronicInvoiceItemsTbody').empty();
             electronicInvoiceItemIndex = 0;
             (order.items || []).forEach(addElectronicInvoiceItemRow);
-            if (!(order.items || []).length) addElectronicInvoiceItemRow();
+            if (!(order.items || []).length) {
+                addElectronicInvoiceItemRow();
+                Swal.fire('Orden facturada', 'La orden no tiene cantidades pendientes por facturar.', 'info');
+            }
             calculateElectronicInvoiceTotals();
             updateElectronicInvoiceSummary();
         })
@@ -445,6 +473,9 @@ function fillElectronicInvoiceDetail(invoice) {
     $('#vei_unaffected_amount').text(formatElectronicInvoiceMoney(invoice.unaffected_amount));
     $('#vei_igv_amount').text(formatElectronicInvoiceMoney(invoice.igv_amount));
     $('#vei_total_footer').text(formatElectronicInvoiceMoney(invoice.total_amount));
+    $('#vei_paid_amount').text(formatElectronicInvoiceMoney(invoice.paid_amount));
+    $('#vei_pending_amount').text(formatElectronicInvoiceMoney(invoice.pending_amount));
+    $('#vei_payment_status').text(electronicInvoicePaymentStatusLabel(invoice));
 
     const rows = (invoice.items || []).map((item, index) => `
         <tr>
@@ -460,6 +491,112 @@ function fillElectronicInvoiceDetail(invoice) {
         </tr>
     `).join('');
     $('#vei_items_body').html(rows || '<tr><td colspan="9" class="text-center text-muted">Sin items</td></tr>');
+
+    const collections = (invoice.collections || []).map(collection => `
+        <tr>
+            <td>${formatElectronicInvoiceDisplayDate(collection.collection_date)}</td>
+            <td>${escapeElectronicInvoiceHtml([
+                collection.account?.bank?.short_name || collection.account?.bank?.description || '-',
+                collection.account?.account_number || ''
+            ].filter(Boolean).join(' - '))}</td>
+            <td>${escapeElectronicInvoiceHtml(collection.operation_number || '-')}</td>
+            <td class="text-right">${escapeElectronicInvoiceHtml(collection.currency?.code || '')} ${formatElectronicInvoiceMoney(collection.amount)}</td>
+            <td>${escapeElectronicInvoiceHtml([collection.creator?.name, collection.creator?.lastname].filter(Boolean).join(' ') || '-')}</td>
+            <td class="text-center">${collection.proof_url ? `<a href="${escapeElectronicInvoiceHtml(collection.proof_url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-primary"><i class="fas fa-paperclip"></i></a>` : '-'}</td>
+        </tr>
+    `).join('');
+    $('#vei_collections_body').html(collections || '<tr><td colspan="6" class="text-center text-muted">Sin cobros confirmados.</td></tr>');
+}
+
+function openElectronicInvoiceFromCustomerOrder(orderId) {
+    resetElectronicInvoiceForm();
+    $('#electronicInvoiceModalLabel').text('Facturar Orden de Compra de Cliente');
+    $('#ei_customer_purchase_order_id').val(String(orderId)).trigger('change.select2');
+    $('#electronicInvoiceModal').modal('show');
+    applyElectronicInvoiceOrigin();
+}
+
+function openElectronicInvoiceCollection(invoiceId) {
+    $.get(`${window.routes.electronicInvoiceShow}/${invoiceId}`)
+        .done(function (response) {
+            const invoice = response.data;
+            if ((parseFloat(invoice.pending_amount) || 0) <= 0) {
+                return Swal.fire('Factura cobrada', 'El comprobante ya no tiene saldo pendiente.', 'info');
+            }
+            const form = $('#electronicInvoiceCollectionForm')[0];
+            form.reset();
+            $('#electronicInvoiceCollectionErrors').addClass('d-none').empty();
+            $('#eic_invoice_id').val(invoice.id);
+            $('#eic_idempotency_key').val(generateElectronicInvoiceCollectionKey());
+            $('#eic_invoice_number').text(invoice.full_number || '-');
+            $('#eic_invoice_total').text(`${invoice.currency_code || ''} ${formatElectronicInvoiceMoney(invoice.total_amount)}`);
+            $('#eic_invoice_pending').text(`${invoice.currency_code || ''} ${formatElectronicInvoiceMoney(invoice.pending_amount)}`);
+            $('#eic_collection_date').val(new Date().toISOString().slice(0, 10));
+            $('#eic_currency_id').val(String(invoice.currency_id || '')).trigger('change.select2');
+            $('#eic_amount').val(formatElectronicInvoiceCollectionAmount(invoice.pending_amount));
+            $('#eic_company_bank_account_id option').each(function () {
+                const available = !this.value || String($(this).data('company-id')) === String(invoice.company_id);
+                $(this).prop('disabled', !available).toggle(available);
+            });
+            $('#eic_company_bank_account_id').val('').trigger('change.select2');
+            $('#electronicInvoiceCollectionModal').data('invoice-currency-code', invoice.currency_code || 'PEN').modal('show');
+            toggleElectronicInvoiceCollectionExchangeRate();
+        });
+}
+
+function syncElectronicInvoiceCollectionAccount() {
+    const option = $('#eic_company_bank_account_id option:selected');
+    if (option.val()) $('#eic_currency_id').val(String(option.data('currency-id'))).trigger('change.select2');
+    toggleElectronicInvoiceCollectionExchangeRate();
+}
+
+function toggleElectronicInvoiceCollectionExchangeRate() {
+    const invoiceCurrency = String($('#electronicInvoiceCollectionModal').data('invoice-currency-code') || '').toUpperCase();
+    const collectionCurrency = String($('#eic_currency_id option:selected').data('code') || '').toUpperCase();
+    const differs = Boolean(invoiceCurrency && collectionCurrency && invoiceCurrency !== collectionCurrency);
+    $('#eic_exchange_rate_group').toggleClass('d-none', !differs);
+    $('#eic_exchange_rate').prop('required', differs).val(differs ? $('#eic_exchange_rate').val() : '');
+}
+
+function saveElectronicInvoiceCollection(form) {
+    const invoiceId = $('#eic_invoice_id').val();
+    const button = $('#btnConfirmElectronicInvoiceCollection').prop('disabled', true);
+    $.ajax({
+        url: `${window.routes.electronicInvoiceCollections}/${invoiceId}/collections`,
+        type: 'POST',
+        data: new FormData(form),
+        processData: false,
+        contentType: false
+    }).done(function (response) {
+        $('#electronicInvoiceCollectionModal').modal('hide');
+        tableElectronicInvoice.ajax.reload(null, false);
+        Swal.fire({ icon: 'success', title: response.message, toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+    }).fail(function (xhr) {
+        const errors = xhr.responseJSON?.errors || {};
+        const messages = Object.values(errors).flat();
+        $('#electronicInvoiceCollectionErrors').toggleClass('d-none', !messages.length)
+            .html(messages.length ? `<ul class="mb-0">${messages.map(message => `<li>${escapeElectronicInvoiceHtml(message)}</li>`).join('')}</ul>` : '');
+        if (!messages.length) Swal.fire('No se pudo confirmar el cobro', xhr.responseJSON?.message || 'Revise los datos.', 'error');
+    }).always(function () {
+        button.prop('disabled', false);
+    });
+}
+
+function electronicInvoicePaymentStatusLabel(invoice) {
+    if (invoice.status === 'draft') return 'BORRADOR';
+    if (invoice.payment_status === 'paid') return 'COBRADA';
+    if (invoice.payment_status === 'partial') return 'COBRO PARCIAL';
+    return 'PENDIENTE DE COBRO';
+}
+
+function generateElectronicInvoiceCollectionKey() {
+    return window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : `invoice-collection-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function formatElectronicInvoiceCollectionAmount(value) {
+    return (parseFloat(value) || 0).toFixed(2);
 }
 
 function previewElectronicInvoicePayload(id) {
