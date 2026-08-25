@@ -33,6 +33,8 @@ class PettyCashExpenseExchangeController extends Controller
         $this->middleware('can:admin.petty-cash.receipt-exchanges.show')->only([
             'show', 'viewSettlementDocument', 'viewReturnProof',
         ]);
+        $this->middleware('can:admin.petty-cash.receipt-exchanges.update')->only('updateSettlementDocument');
+        $this->middleware('can:admin.petty-cash.receipt-exchanges.reverse')->only('reverseSettlementDocument');
         $this->middleware('can:admin.petty-cash.receipt-exchanges.destroy')->only('destroySettlementDocument');
     }
 
@@ -622,6 +624,7 @@ class PettyCashExpenseExchangeController extends Controller
         $returned = round((float) $exchange->returns()->sum('amount'), 2);
         $pending = max(0, round($original - $supported - $returned, 2));
         $settled = $pending <= 0.009;
+        $hasSettlementActivity = ($supported + $returned) > 0.009;
 
         $exchange->update([
             'original_amount' => $original,
@@ -630,15 +633,19 @@ class PettyCashExpenseExchangeController extends Controller
             'pending_amount' => $pending,
             'settlement_status' => $settled
                 ? PettyCashExpenseExchange::SETTLEMENT_SETTLED
-                : PettyCashExpenseExchange::SETTLEMENT_PARTIAL,
+                : ($hasSettlementActivity
+                    ? PettyCashExpenseExchange::SETTLEMENT_PARTIAL
+                    : PettyCashExpenseExchange::SETTLEMENT_PENDING),
             'settled_at' => $settled ? ($exchange->settled_at ?: now()) : null,
             'updated_by' => Auth::id(),
         ]);
-        $expenses->each(function (PettyCashExpense $expense) use ($exchange, $settled) {
+        $expenses->each(function (PettyCashExpense $expense) use ($exchange, $settled, $hasSettlementActivity) {
             $expense->update([
                 'exchange_status' => $settled
                     ? PettyCashExpense::EXCHANGE_COMPLETED
-                    : PettyCashExpense::EXCHANGE_PARTIAL,
+                    : ($hasSettlementActivity
+                        ? PettyCashExpense::EXCHANGE_PARTIAL
+                        : PettyCashExpense::EXCHANGE_PENDING),
                 'exchanged_at' => $settled ? ($expense->exchanged_at ?: now()) : null,
                 'exchange_id' => $exchange->id,
                 'updated_by' => Auth::id(),
@@ -651,6 +658,9 @@ class PettyCashExpenseExchangeController extends Controller
         $exchange->load([
             'documentIssuer', 'items.expense', 'documents', 'creator:id,name,lastname',
             'settlementDocuments.creator:id,name,lastname',
+            'settlementDocumentHistory.creator:id,name,lastname',
+            'settlementDocumentHistory.explicitEditor:id,name,lastname',
+            'settlementDocumentHistory.reverser:id,name,lastname',
             'returns.responsibleUser:id,name,lastname', 'returns.creator:id,name,lastname',
         ]);
         $exchange->documents->each(fn (Document $document) => $document->setAttribute(
@@ -666,7 +676,6 @@ class PettyCashExpenseExchangeController extends Controller
         PettyCashExpenseExchangeDocument $settlementDocument
     ) {
         abort_unless((int) $settlementDocument->exchange_id === (int) $exchange->id, 404);
-        abort_unless($settlementDocument->status === PettyCashExpenseExchangeDocument::STATUS_ACTIVE, 404);
         abort_unless($settlementDocument->file_path && Storage::disk('public')->exists($settlementDocument->file_path), 404);
 
         return Storage::disk('public')->response(
@@ -674,6 +683,243 @@ class PettyCashExpenseExchangeController extends Controller
             basename((string) ($settlementDocument->original_name ?: 'comprobante')),
             ['Content-Type' => $settlementDocument->mime_type ?: 'application/octet-stream']
         );
+    }
+
+    public function updateSettlementDocument(
+        Request $request,
+        PettyCashExpenseExchange $exchange,
+        PettyCashExpenseExchangeDocument $settlementDocument
+    ) {
+        $validated = $request->validate([
+            'issuer_ruc' => ['nullable', 'regex:/^\d{11}$/'],
+            'issuer_name' => ['required', 'string', 'max:255'],
+            'document_type' => ['required', Rule::in([
+                'FACTURA', 'BOLETA', 'RECIBO_HONORARIOS', 'OTRO_OFICIAL',
+            ])],
+            'series' => ['required', 'string', 'max:20'],
+            'number' => ['required', 'string', 'max:50'],
+            'issue_date' => ['required', 'date'],
+            'concept' => ['required', 'string', 'max:500'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'observation' => ['nullable', 'string', 'max:1000'],
+            'file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'remove_file' => ['nullable', 'boolean'],
+        ], [
+            'issuer_ruc.regex' => 'El RUC del emisor debe tener 11 dígitos.',
+            'amount.gt' => 'El importe del comprobante debe ser mayor a 0.',
+        ]);
+
+        $newPath = null;
+        $oldPathToDelete = null;
+        try {
+            $result = DB::transaction(function () use (
+                $request, $exchange, $settlementDocument, $validated, &$newPath, &$oldPathToDelete
+            ) {
+                $lockedExchange = PettyCashExpenseExchange::query()->lockForUpdate()->findOrFail($exchange->id);
+                $lockedDocument = PettyCashExpenseExchangeDocument::query()->lockForUpdate()->findOrFail($settlementDocument->id);
+                abort_unless((int) $lockedDocument->exchange_id === (int) $lockedExchange->id, 404);
+                abort_unless($lockedDocument->status === PettyCashExpenseExchangeDocument::STATUS_ACTIVE, 409);
+
+                $box = PettyCashBox::query()->lockForUpdate()->findOrFail($lockedExchange->petty_cash_box_id);
+                abort_if($box->status === PettyCashBox::STATUS_CANCELLED, 409, 'No se puede editar una rendición de una caja anulada.');
+                $expenses = PettyCashExpense::query()->where('exchange_id', $lockedExchange->id)->lockForUpdate()->get();
+                abort_if($expenses->isEmpty(), 404);
+
+                $ruc = trim((string) ($validated['issuer_ruc'] ?? '')) ?: null;
+                $type = mb_strtoupper(trim($validated['document_type']));
+                $series = mb_strtoupper(trim($validated['series']));
+                $number = mb_strtoupper(trim($validated['number']));
+                $duplicate = $lockedExchange->settlementDocuments()
+                    ->whereKeyNot($lockedDocument->id)
+                    ->where('issuer_ruc', $ruc)
+                    ->where('document_type', $type)
+                    ->where('series', $series)
+                    ->where('number', $number)
+                    ->lockForUpdate()
+                    ->exists();
+                if ($duplicate) {
+                    throw ValidationException::withMessages([
+                        'number' => 'Este comprobante ya fue registrado para la rendición.',
+                    ]);
+                }
+
+                $otherSupported = round((float) $lockedExchange->settlementDocuments()
+                    ->whereKeyNot($lockedDocument->id)->sum('amount'), 2);
+                $returned = round((float) $lockedExchange->returns()->sum('amount'), 2);
+                $original = round((float) $lockedExchange->original_amount, 2);
+                $maximum = max(0, round($original - $otherSupported - $returned, 2));
+                if ((float) $validated['amount'] > $maximum + 0.009) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'El importe no puede superar el saldo disponible de la rendición ('.number_format($maximum, 2).').',
+                    ]);
+                }
+
+                $issuer = null;
+                if ($ruc) {
+                    $issuer = DocumentIssuer::firstOrNew(['ruc' => $ruc]);
+                    if (! $issuer->exists) {
+                        $issuer->fill(['source' => 'manual', 'created_by' => Auth::id()]);
+                    }
+                    $issuer->business_name = mb_strtoupper(trim($validated['issuer_name']));
+                    $issuer->updated_by = Auth::id();
+                    $issuer->save();
+                }
+
+                $previous = $lockedDocument->only([
+                    'issuer_ruc', 'issuer_name', 'document_type', 'series', 'number',
+                    'issue_date', 'concept', 'observation', 'amount', 'file_path',
+                ]);
+                $file = $request->file('file');
+                $removeFile = (bool) ($validated['remove_file'] ?? false);
+                $fileData = [];
+                if ($file) {
+                    $newPath = $file->store("petty-cash/receipt-exchanges/{$lockedExchange->id}/official", 'public');
+                    $oldPathToDelete = $lockedDocument->file_path;
+                    $fileData = [
+                        'file_path' => $newPath,
+                        'original_name' => $file->getClientOriginalName(),
+                        'mime_type' => $file->getMimeType(),
+                        'file_size' => $file->getSize(),
+                    ];
+                } elseif ($removeFile) {
+                    $oldPathToDelete = $lockedDocument->file_path;
+                    $fileData = ['file_path' => null, 'original_name' => null, 'mime_type' => null, 'file_size' => null];
+                }
+
+                $lockedDocument->update(array_merge([
+                    'issuer_id' => $issuer?->id,
+                    'issuer_ruc' => $ruc,
+                    'issuer_name' => mb_strtoupper(trim($validated['issuer_name'])),
+                    'document_type' => $type,
+                    'series' => $series,
+                    'number' => $number,
+                    'issue_date' => $validated['issue_date'],
+                    'concept' => trim($validated['concept']),
+                    'observation' => trim((string) ($validated['observation'] ?? '')) ?: null,
+                    'amount' => round((float) $validated['amount'], 2),
+                    'updated_by' => Auth::id(),
+                    'edited_by' => Auth::id(),
+                    'edited_at' => now(),
+                ], $fileData));
+
+                $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
+                    'event' => 'settlement_document_updated',
+                    'description' => "Se editó {$lockedDocument->document_type} {$lockedDocument->document_full_number} de la rendición.",
+                    'metadata' => [
+                        'exchange_id' => $lockedExchange->id,
+                        'document_id' => $lockedDocument->id,
+                        'previous' => $previous,
+                        'current' => $lockedDocument->fresh()->only([
+                            'issuer_ruc', 'issuer_name', 'document_type', 'series', 'number',
+                            'issue_date', 'concept', 'observation', 'amount', 'file_path',
+                        ]),
+                    ],
+                    'created_by' => Auth::id(),
+                ]));
+
+                $this->refreshSettlementTotals($lockedExchange, $expenses);
+                $this->refreshBoxTotals($box);
+
+                return [
+                    'document' => $lockedDocument->fresh(['explicitEditor:id,name,lastname']),
+                    'exchange' => $lockedExchange->fresh(),
+                ];
+            });
+        } catch (\Throwable $exception) {
+            if ($newPath) {
+                Storage::disk('public')->delete($newPath);
+            }
+            throw $exception;
+        }
+
+        if ($oldPathToDelete && $oldPathToDelete !== $newPath) {
+            Storage::disk('public')->delete($oldPathToDelete);
+        }
+
+        return response()->json([
+            'message' => 'Rendición actualizada correctamente.',
+            'data' => $result,
+        ]);
+    }
+
+    public function reverseSettlementDocument(
+        Request $request,
+        PettyCashExpenseExchange $exchange,
+        PettyCashExpenseExchangeDocument $settlementDocument
+    ) {
+        $validated = $request->validate([
+            'reversal_reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ], [
+            'reversal_reason.required' => 'Debe indicar el motivo de la reversión.',
+            'reversal_reason.min' => 'El motivo de la reversión debe tener al menos 5 caracteres.',
+        ]);
+
+        $result = DB::transaction(function () use ($exchange, $settlementDocument, $validated) {
+            $lockedExchange = PettyCashExpenseExchange::query()->lockForUpdate()->findOrFail($exchange->id);
+            $lockedDocument = PettyCashExpenseExchangeDocument::query()->lockForUpdate()->findOrFail($settlementDocument->id);
+            abort_unless((int) $lockedDocument->exchange_id === (int) $lockedExchange->id, 404);
+            abort_unless($lockedDocument->status === PettyCashExpenseExchangeDocument::STATUS_ACTIVE, 409);
+
+            $box = PettyCashBox::query()->lockForUpdate()->findOrFail($lockedExchange->petty_cash_box_id);
+            abort_if($box->status === PettyCashBox::STATUS_CANCELLED, 409, 'No se puede revertir una rendición de una caja anulada.');
+            $requiresSpecialPermission = in_array($box->status, [
+                PettyCashBox::STATUS_CLOSED,
+                PettyCashBox::STATUS_REIMBURSED,
+            ], true);
+            abort_if(
+                $requiresSpecialPermission && ! Auth::user()?->can('admin.petty-cash.receipt-exchanges.reverse-closed'),
+                403,
+                'La caja está cerrada. Se requiere el permiso especial para revertir esta rendición.'
+            );
+
+            $expenses = PettyCashExpense::query()->where('exchange_id', $lockedExchange->id)->lockForUpdate()->get();
+            abort_if($expenses->isEmpty(), 404);
+            $previousStatus = $lockedExchange->settlement_status;
+            $reason = trim($validated['reversal_reason']);
+            $lockedDocument->update([
+                'status' => PettyCashExpenseExchangeDocument::STATUS_INACTIVE,
+                'updated_by' => Auth::id(),
+                'reversed_by' => Auth::id(),
+                'reversed_at' => now(),
+                'reversal_reason' => $reason,
+            ]);
+            $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
+                'event' => 'settlement_document_reversed',
+                'description' => "Se revirtió {$lockedDocument->document_type} {$lockedDocument->document_full_number}. Motivo: {$reason}",
+                'metadata' => [
+                    'exchange_id' => $lockedExchange->id,
+                    'document_id' => $lockedDocument->id,
+                    'amount' => (float) $lockedDocument->amount,
+                    'previous_settlement_status' => $previousStatus,
+                    'reversal_reason' => $reason,
+                ],
+                'created_by' => Auth::id(),
+            ]));
+
+            $this->refreshSettlementTotals($lockedExchange, $expenses);
+            $this->refreshBoxTotals($box);
+
+            return [
+                'document' => $lockedDocument->fresh(['reverser:id,name,lastname']),
+                'exchange' => $lockedExchange->fresh(),
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Rendición revertida. Los saldos fueron recalculados.',
+            'data' => $result,
+        ]);
+    }
+
+    private function refreshBoxTotals(PettyCashBox $box): void
+    {
+        $totals = $this->pettyCashCalculator->calculate($box);
+        $box->update([
+            'total_expenses' => $totals['total_expenses'],
+            'cash_balance' => $totals['current_balance'],
+            'reimbursement_amount' => $totals['pending_replenishment'],
+            'updated_by' => Auth::id(),
+        ]);
     }
 
     public function viewReturnProof(
@@ -692,42 +938,10 @@ class PettyCashExpenseExchangeController extends Controller
     }
 
     public function destroySettlementDocument(
+        Request $request,
         PettyCashExpenseExchange $exchange,
         PettyCashExpenseExchangeDocument $settlementDocument
     ) {
-        DB::transaction(function () use ($exchange, $settlementDocument) {
-            $lockedExchange = PettyCashExpenseExchange::query()->lockForUpdate()->findOrFail($exchange->id);
-            $lockedDocument = PettyCashExpenseExchangeDocument::query()->lockForUpdate()->findOrFail($settlementDocument->id);
-            abort_unless((int) $lockedDocument->exchange_id === (int) $lockedExchange->id, 404);
-            abort_unless($lockedDocument->status === PettyCashExpenseExchangeDocument::STATUS_ACTIVE, 404);
-
-            $expenses = PettyCashExpense::query()
-                ->where('exchange_id', $lockedExchange->id)
-                ->lockForUpdate()
-                ->get();
-            abort_if($expenses->isEmpty(), 404);
-            $lockedDocument->update([
-                'status' => PettyCashExpenseExchangeDocument::STATUS_INACTIVE,
-                'updated_by' => Auth::id(),
-            ]);
-            $expenses->each(fn (PettyCashExpense $expense) => $expense->events()->create([
-                'event' => 'settlement_document_removed',
-                'description' => "Se retiró {$lockedDocument->document_type} {$lockedDocument->document_full_number} de la rendición.",
-                'metadata' => ['exchange_id' => $lockedExchange->id, 'document_id' => $lockedDocument->id],
-                'created_by' => Auth::id(),
-            ]));
-            $this->refreshSettlementTotals($lockedExchange, $expenses);
-
-            $box = PettyCashBox::query()->lockForUpdate()->findOrFail($lockedExchange->petty_cash_box_id);
-            $totals = $this->pettyCashCalculator->calculate($box);
-            $box->update([
-                'total_expenses' => $totals['total_expenses'],
-                'cash_balance' => $totals['current_balance'],
-                'reimbursement_amount' => $totals['pending_replenishment'],
-                'updated_by' => Auth::id(),
-            ]);
-        });
-
-        return response()->json(['message' => 'Comprobante retirado de la rendición.']);
+        return $this->reverseSettlementDocument($request, $exchange, $settlementDocument);
     }
 }

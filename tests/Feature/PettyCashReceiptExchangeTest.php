@@ -45,7 +45,8 @@ beforeEach(function () {
         'admin.petty-cash.expenses.store', 'admin.petty-cash.expenses.update',
         'admin.petty-cash.expenses.approve',
         'admin.petty-cash.receipt-exchanges.index', 'admin.petty-cash.receipt-exchanges.store',
-        'admin.petty-cash.receipt-exchanges.show',
+        'admin.petty-cash.receipt-exchanges.show', 'admin.petty-cash.receipt-exchanges.update',
+        'admin.petty-cash.receipt-exchanges.reverse',
         'admin.warehouse-entries.expenses.store', 'admin.warehouse-entries.expenses.update',
         'admin.warehouse-entries.expenses.index', 'admin.warehouse-entries.expenses.documents.index',
         'admin.warehouse-entries.show',
@@ -1025,4 +1026,147 @@ it('consulta la API y guarda un emisor que no existe en el historial', function 
         ->and($issuer->business_name)->toBe('TRANSPORTES API S.A.C.')
         ->and($issuer->last_lookup_at)->not->toBeNull();
     Http::assertSentCount(1);
+});
+
+it('edita una rendición, conserva el archivo y recalcula el saldo sin duplicar documentos', function () {
+    Storage::fake('public');
+    $receipt = createReceiptExpense(100, '000501');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $this->post(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000501', 'issuer_name' => 'EMISOR ORIGINAL S.A.C.',
+            'document_type' => 'FACTURA', 'series' => 'F501', 'number' => '000001',
+            'issue_date' => '2026-08-20', 'concept' => 'CONCEPTO ORIGINAL', 'amount' => 100,
+            'file' => UploadedFile::fake()->create('sustento-original.pdf', 40, 'application/pdf'),
+        ]],
+    ], ['Accept' => 'application/json'])->assertCreated();
+
+    $receipt->refresh();
+    $exchange = PettyCashExpenseExchange::findOrFail($receipt->exchange_id);
+    $document = $exchange->settlementDocuments()->firstOrFail();
+    $originalPath = $document->file_path;
+
+    $this->putJson(route('admin.petty-cash.receipt-exchanges.documents.update', [$exchange, $document]), [
+        'issuer_ruc' => '20600000502', 'issuer_name' => 'EMISOR CORREGIDO S.A.C.',
+        'document_type' => 'BOLETA', 'series' => 'B502', 'number' => '000009',
+        'issue_date' => '2026-08-21', 'concept' => 'CONCEPTO CORREGIDO',
+        'observation' => 'Corrección digitada con sustento.', 'amount' => 80,
+    ])->assertOk()
+        ->assertJsonPath('data.exchange.supported_amount', '80.00')
+        ->assertJsonPath('data.exchange.pending_amount', '20.00')
+        ->assertJsonPath('data.exchange.settlement_status', 'PARTIAL');
+
+    $document->refresh();
+    expect($document->document_type)->toBe('BOLETA')
+        ->and($document->document_full_number)->toBe('B502-000009')
+        ->and($document->file_path)->toBe($originalPath)
+        ->and($document->edited_by)->toBe($this->user->id)
+        ->and($document->edited_at)->not->toBeNull()
+        ->and(PettyCashExpenseExchangeDocument::where('exchange_id', $exchange->id)->count())->toBe(1)
+        ->and($receipt->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PARTIAL)
+        ->and($receipt->events()->where('event', 'settlement_document_updated')->count())->toBe(1);
+    Storage::disk('public')->assertExists($originalPath);
+
+    $replacement = UploadedFile::fake()->image('sustento-corregido.jpg');
+    $this->post(route('admin.petty-cash.receipt-exchanges.documents.update', [$exchange, $document]), [
+        '_method' => 'PUT',
+        'issuer_ruc' => '20600000502', 'issuer_name' => 'EMISOR CORREGIDO S.A.C.',
+        'document_type' => 'BOLETA', 'series' => 'B502', 'number' => '000009',
+        'issue_date' => '2026-08-21', 'concept' => 'CONCEPTO CORREGIDO',
+        'observation' => 'Sustento reemplazado.', 'amount' => 80, 'file' => $replacement,
+    ], ['Accept' => 'application/json'])->assertOk();
+    $replacementPath = $document->fresh()->file_path;
+    expect($replacementPath)->not->toBe($originalPath);
+    Storage::disk('public')->assertMissing($originalPath);
+    Storage::disk('public')->assertExists($replacementPath);
+
+    $this->putJson(route('admin.petty-cash.receipt-exchanges.documents.update', [$exchange, $document]), [
+        'issuer_ruc' => '20600000502', 'issuer_name' => 'EMISOR CORREGIDO S.A.C.',
+        'document_type' => 'BOLETA', 'series' => 'B502', 'number' => '000009',
+        'issue_date' => '2026-08-21', 'concept' => 'CONCEPTO CORREGIDO',
+        'observation' => 'Archivo retirado por corrección.', 'amount' => 80, 'remove_file' => true,
+    ])->assertOk();
+    expect($document->fresh()->file_path)->toBeNull();
+    Storage::disk('public')->assertMissing($replacementPath);
+
+    $this->putJson(route('admin.petty-cash.receipt-exchanges.documents.update', [$exchange, $document]), [
+        'issuer_ruc' => '20600000502', 'issuer_name' => 'EMISOR CORREGIDO S.A.C.',
+        'document_type' => 'BOLETA', 'series' => 'B502', 'number' => '000009',
+        'issue_date' => '2026-08-21', 'concept' => 'MONTO EXCEDIDO', 'amount' => 101,
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'El importe no puede superar el saldo disponible de la rendición (100.00).');
+    expect($receipt->events()->where('event', 'settlement_document_updated')->count())->toBe(3);
+});
+
+it('reversa solo el comprobante elegido y devuelve la rendición completa a estado parcial', function () {
+    $receipt = createReceiptExpense(100, '000502');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $storeRoute = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+    foreach ([10, 50, 30] as $index => $amount) {
+        $this->postJson($storeRoute, [
+            'expense_id' => $receipt->id,
+            'settlement_documents' => [[
+                'issuer_ruc' => '2060000060'.($index + 1), 'issuer_name' => 'EMISOR '.($index + 1).' S.A.C.',
+                'document_type' => 'FACTURA', 'series' => 'F60'.($index + 1), 'number' => '00000'.($index + 1),
+                'issue_date' => '2026-08-22', 'concept' => 'SUSTENTO '.($index + 1), 'amount' => $amount,
+            ]],
+        ])->assertCreated();
+    }
+    $this->postJson($storeRoute, [
+        'expense_id' => $receipt->id, 'has_return' => true, 'return_amount' => 10,
+        'return_date' => '2026-08-22', 'return_responsible_name' => 'RESPONSABLE',
+    ])->assertCreated()->assertJsonPath('data.settlement_status', 'SETTLED');
+
+    $exchange = PettyCashExpenseExchange::findOrFail($receipt->fresh()->exchange_id);
+    $documents = PettyCashExpenseExchangeDocument::where('exchange_id', $exchange->id)->orderBy('id')->get();
+    $second = $documents[1];
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.documents.reverse', [$exchange, $second]), [
+        'reversal_reason' => 'La factura fue registrada con datos incorrectos.',
+    ])->assertOk()
+        ->assertJsonPath('data.exchange.supported_amount', '40.00')
+        ->assertJsonPath('data.exchange.returned_amount', '10.00')
+        ->assertJsonPath('data.exchange.pending_amount', '50.00')
+        ->assertJsonPath('data.exchange.settlement_status', 'PARTIAL');
+
+    expect($second->fresh()->status)->toBe(PettyCashExpenseExchangeDocument::STATUS_INACTIVE)
+        ->and($second->fresh()->reversed_by)->toBe($this->user->id)
+        ->and($second->fresh()->reversal_reason)->toContain('datos incorrectos')
+        ->and($documents[0]->fresh()->status)->toBe(PettyCashExpenseExchangeDocument::STATUS_ACTIVE)
+        ->and($documents[2]->fresh()->status)->toBe(PettyCashExpenseExchangeDocument::STATUS_ACTIVE)
+        ->and(PettyCashExpenseExchangeReturn::where('exchange_id', $exchange->id)->value('status'))->toBe(PettyCashExpenseExchangeReturn::STATUS_ACTIVE)
+        ->and($receipt->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PARTIAL)
+        ->and($receipt->events()->where('event', 'settlement_document_reversed')->count())->toBe(1);
+
+    $this->getJson(route('admin.petty-cash.show', $this->boxId))
+        ->assertOk()
+        ->assertJsonCount(3, 'data.expense_exchanges.0.settlement_document_history')
+        ->assertJsonPath('data.expense_exchanges.0.settlement_document_history.1.status', 'INACTIVE');
+});
+
+it('exige permiso especial para revertir rendiciones de una caja cerrada', function () {
+    $receipt = createReceiptExpense(20, '000503');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $this->postJson(route('admin.petty-cash.receipt-exchanges.store', $this->boxId), [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000503', 'issuer_name' => 'EMISOR CIERRE S.A.C.',
+            'document_type' => 'FACTURA', 'series' => 'F503', 'number' => '000001',
+            'issue_date' => '2026-08-22', 'concept' => 'CIERRE', 'amount' => 20,
+        ]],
+    ])->assertCreated();
+    $exchange = PettyCashExpenseExchange::findOrFail($receipt->fresh()->exchange_id);
+    $document = $exchange->settlementDocuments()->firstOrFail();
+    PettyCashBox::whereKey($this->boxId)->update(['status' => PettyCashBox::STATUS_CLOSED]);
+
+    $route = route('admin.petty-cash.receipt-exchanges.documents.reverse', [$exchange, $document]);
+    $this->postJson($route, ['reversal_reason' => 'Corrección posterior al cierre.'])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'La caja está cerrada. Se requiere el permiso especial para revertir esta rendición.');
+    expect($document->fresh()->status)->toBe(PettyCashExpenseExchangeDocument::STATUS_ACTIVE);
+
+    $permission = Permission::findOrCreate('admin.petty-cash.receipt-exchanges.reverse-closed', 'web');
+    $this->user->givePermissionTo($permission);
+    $this->postJson($route, ['reversal_reason' => 'Corrección posterior al cierre.'])->assertOk();
+    expect($document->fresh()->status)->toBe(PettyCashExpenseExchangeDocument::STATUS_INACTIVE);
 });

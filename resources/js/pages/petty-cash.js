@@ -17,6 +17,8 @@ $(function () {
     });
     const canEditExpenseDocument = Boolean(app.data('can-edit-expense-document'));
     const canDestroyReceiptExchange = Boolean(app.data('can-receipt-exchange-destroy'));
+    const canUpdateReceiptExchange = Boolean(app.data('can-receipt-exchange-update'));
+    const canReverseReceiptExchange = Boolean(app.data('can-receipt-exchange-reverse'));
     let currentBox = null;
     let table;
     let currentPettyCashStatusFilter = 'open';
@@ -144,7 +146,7 @@ $(function () {
         return $.ajax({ ...options, headers });
     };
     const loadBox = id => api({ url: `${base}/${id}`, method: 'GET' }).then(response => response.data);
-    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal, .petty-warehouse-expense-modal';
+    const stackedModalSelector = '.petty-detail-modal, .petty-expense-modal, .petty-approved-modal, .petty-replenishment-modal, .petty-receipt-exchange-modal, .petty-settlement-edit-modal, .petty-approval-modal, .petty-observation-detail-modal, .petty-expense-detail-modal, .petty-image-editor-modal, .petty-warehouse-expense-modal';
     const detailTooltipTemplate = '<div class="tooltip petty-cash-tooltip" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>';
     const settlementEmpty = (icon, title, text) => `<div class="petty-empty-state pcre-empty-state"><span><i class="fas ${icon}"></i></span><strong>${title}</strong><small>${text}</small></div>`;
     const selectedSettlementReceipts = () => {
@@ -453,6 +455,8 @@ $(function () {
             receipt_settlement_started: ['Rendición iniciada', 'fa-flag'],
             settlement_document_added: ['Comprobante oficial agregado', 'fa-file-invoice'],
             settlement_document_removed: ['Comprobante oficial retirado', 'fa-trash-alt'],
+            settlement_document_updated: ['Rendición editada', 'fa-file-signature'],
+            settlement_document_reversed: ['Rendición revertida', 'fa-undo-alt'],
             settlement_return_registered: ['Vuelto registrado', 'fa-undo-alt'],
             receipt_settlement_completed: ['Rendición completada', 'fa-check-double'],
             receipt_settlement_observed: ['Rendición observada', 'fa-exclamation-circle'],
@@ -1543,12 +1547,25 @@ $(function () {
         $('#pcv_exchange_empty').toggleClass('d-none', exchanges.length > 0);
         $('#pcv_exchange_history').html(exchanges.map(exchange => {
             if (exchange.settlement_status) {
-                const settlementDocs = exchange.settlement_documents || [];
+                const settlementDocs = exchange.settlement_document_history || exchange.settlement_documents || [];
                 const settlementReturns = exchange.returns || [];
                 const linkedReceipt = exchange.items?.[0];
                 const receiptNumber = [linkedReceipt?.receipt_series, linkedReceipt?.receipt_correlative].filter(Boolean).join('-') || '-';
                 const statusLabels = { PENDING: 'Pendiente', PARTIAL: 'Parcialmente rendido', SETTLED: 'Rendido', OBSERVED: 'Observado' };
-                const documentList = settlementDocs.map(document => `<li><strong>${escapeHtml(document.document_type)} ${escapeHtml(document.document_full_number)}</strong> · ${escapeHtml(document.issuer_name)} · ${money(document.amount, symbol)} ${document.view_url ? `<a target="_blank" rel="noopener" href="${document.view_url}" class="petty-document-btn ml-1"><i class="fas fa-paperclip"></i></a>` : ''}</li>`).join('');
+                const documentList = settlementDocs.map(document => {
+                    const active = document.status === 'ACTIVE';
+                    const viewAction = document.view_url
+                        ? `<a class="dropdown-item" target="_blank" rel="noopener" href="${document.view_url}"><i class="fas fa-eye mr-2 text-info"></i>Ver</a>`
+                        : '<span class="dropdown-item disabled"><i class="fas fa-eye-slash mr-2"></i>Sin archivo</span>';
+                    const editAction = active && canUpdateReceiptExchange
+                        ? `<button type="button" class="dropdown-item editSettlementDocument" data-exchange-id="${exchange.id}" data-document-id="${document.id}"><i class="fas fa-edit mr-2 text-primary"></i>Editar</button>`
+                        : '';
+                    const reverseAction = active && canReverseReceiptExchange
+                        ? `<button type="button" class="dropdown-item text-danger reverseSettlementDocument" data-exchange-id="${exchange.id}" data-document-id="${document.id}"><i class="fas fa-undo-alt mr-2"></i>Revertir</button>`
+                        : '';
+                    const reversed = active ? '' : `<span class="petty-settlement-reversed-badge"><i class="fas fa-ban mr-1"></i>Rendición revertida</span><small class="petty-settlement-document-meta">${dateTime(document.reversed_at)} · ${escapeHtml(document.reversal_reason || 'Sin motivo registrado')}</small>`;
+                    return `<li class="petty-settlement-document ${active ? '' : 'is-reversed'}"><div class="petty-settlement-document-main"><strong>${escapeHtml(document.document_type)} ${escapeHtml(document.document_full_number)}</strong><small class="petty-settlement-document-meta">${escapeHtml(document.issuer_name)} · ${date(document.issue_date)} · ${money(document.amount, symbol)}</small>${reversed}</div><div class="dropdown petty-settlement-document-actions"><button type="button" class="btn btn-light btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fas fa-ellipsis-v"></i></button><div class="dropdown-menu dropdown-menu-right">${viewAction}${editAction}${reverseAction}</div></div></li>`;
+                }).join('');
                 const returnList = settlementReturns.map(item => `<li><strong>${escapeHtml(item.movement_code || 'Retorno')} · Vuelto ${money(item.amount, symbol)}</strong> · ${date(item.return_date)} · ${escapeHtml(item.responsible_name || userName(item.responsible_user))} ${item.view_url ? `<a target="_blank" rel="noopener" href="${item.view_url}" class="petty-document-btn ml-1"><i class="fas fa-paperclip"></i></a>` : ''}</li>`).join('');
                 return `<article class="petty-exchange-history-item"><div><small>${date(exchange.exchange_date)}</small><strong>RECIBO ${escapeHtml(receiptNumber)}</strong><span class="petty-exchange-badge ${exchange.settlement_status === 'SETTLED' ? 'is-completed' : 'is-pending'}">${statusLabels[exchange.settlement_status] || exchange.settlement_status}</span><small>Entregado: ${money(exchange.original_amount, symbol)}</small><small>Sustentado: ${money(exchange.supported_amount, symbol)}</small><small>Vuelto: ${money(exchange.returned_amount, symbol)}</small><small>Pendiente: ${money(exchange.pending_amount, symbol)}</small></div><ul>${documentList || '<li>Sin comprobantes oficiales.</li>'}${returnList}</ul><div><small>${escapeHtml(userName(exchange.creator))}</small></div></article>`;
             }
@@ -1565,6 +1582,114 @@ $(function () {
         ].map(item => `<div><small>${item[0]}</small><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[2])}</span></div>`).join(''));
         initializeDetailTooltips();
     };
+
+    const settlementDocumentFromDetail = (exchangeId, documentId) => {
+        const exchange = (currentBox?.expense_exchanges || []).find(item => Number(item.id) === Number(exchangeId));
+        const documents = exchange?.settlement_document_history || exchange?.settlement_documents || [];
+        const document = documents.find(item => Number(item.id) === Number(documentId));
+        return document ? { exchange, document } : null;
+    };
+
+    $(document).on('click', '.editSettlementDocument', function () {
+        const selected = settlementDocumentFromDetail($(this).data('exchange-id'), $(this).data('document-id'));
+        if (!selected || selected.document.status !== 'ACTIVE') {
+            notify('warning', 'La rendición seleccionada ya no está disponible para edición.');
+            return;
+        }
+        const document = selected.document;
+        const form = $('#pettyCashSettlementEditForm')[0];
+        form.reset();
+        $('#pcse_update_url').val(document.update_url);
+        $('#pcse_document_type').val(document.document_type);
+        $('#pcse_series').val(document.series);
+        $('#pcse_number').val(document.number);
+        $('#pcse_issue_date').val(String(document.issue_date || '').slice(0, 10));
+        $('#pcse_issuer_ruc').val(document.issuer_ruc || '');
+        $('#pcse_issuer_name').val(document.issuer_name || '');
+        $('#pcse_concept').val(document.concept || '');
+        $('#pcse_amount').val(Number(document.amount || 0).toFixed(2));
+        $('#pcse_observation').val(document.observation || '');
+        $('#pcse_current_file').text(document.original_name || 'Sin archivo adjunto');
+        $('#pcse_remove_file').prop('checked', false).prop('disabled', !document.file_path);
+        $('#pettyCashSettlementEditModal').modal('show');
+    });
+
+    $(document).on('input', '#pcse_issuer_ruc', function () {
+        this.value = String(this.value || '').replace(/\D/g, '').slice(0, 11);
+    });
+
+    $('#pcse_file').on('change', function () {
+        if (this.files?.length) $('#pcse_remove_file').prop('checked', false);
+    });
+    $('#pcse_remove_file').on('change', function () {
+        if (this.checked) $('#pcse_file').val('');
+    });
+
+    $('#pettyCashSettlementEditForm').on('submit', function (event) {
+        event.preventDefault();
+        const form = $(this);
+        const data = new FormData(this);
+        data.append('_method', 'PUT');
+        loading(form, true);
+        api({
+            url: $('#pcse_update_url').val(),
+            method: 'POST',
+            data,
+            processData: false,
+            contentType: false
+        }).done(response => {
+            $('#pettyCashSettlementEditModal').modal('hide');
+            table.ajax.reload(null, false);
+            loadBox(currentBox.id).done(box => {
+                renderDetail(box);
+                $('#viewPettyCashModal .nav-link[href="#pcv_tab_exchanges"]').tab('show');
+            });
+            notify('success', response.message);
+        }).fail(notifyRequestError).always(() => loading(form, false));
+    });
+
+    $(document).on('click', '.reverseSettlementDocument', function () {
+        const selected = settlementDocumentFromDetail($(this).data('exchange-id'), $(this).data('document-id'));
+        if (!selected || selected.document.status !== 'ACTIVE') {
+            notify('warning', 'La rendición seleccionada ya fue revertida.');
+            return;
+        }
+        Swal.fire({
+            icon: 'warning',
+            title: 'Revertir rendición',
+            html: `El comprobante <strong>${escapeHtml(selected.document.document_type)} ${escapeHtml(selected.document.document_full_number)}</strong> dejará de sustentar el recibo. Los saldos se recalcularán automáticamente.`,
+            input: 'textarea',
+            inputLabel: 'Motivo obligatorio',
+            inputPlaceholder: 'Explique por qué se revierte esta rendición',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: 'Sí, revertir',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#c0392b',
+            preConfirm: reason => {
+                const value = String(reason || '').trim();
+                if (value.length < 5) {
+                    Swal.showValidationMessage('Ingrese un motivo de al menos 5 caracteres.');
+                    return false;
+                }
+                return value;
+            }
+        }).then(result => {
+            if (!result.isConfirmed) return;
+            api({
+                url: selected.document.reverse_url,
+                method: 'POST',
+                data: { reversal_reason: result.value }
+            }).done(response => {
+                table.ajax.reload(null, false);
+                loadBox(currentBox.id).done(box => {
+                    renderDetail(box);
+                    $('#viewPettyCashModal .nav-link[href="#pcv_tab_exchanges"]').tab('show');
+                });
+                notify('success', response.message);
+            }).fail(notifyRequestError);
+        });
+    });
 
     $(document).on('click', '#viewPettyCashModal .petty-document-btn', function () {
         $(this).tooltip('hide');

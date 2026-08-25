@@ -50,6 +50,10 @@ class PettyCashExpenseExchange extends Model
         return $this->hasMany(PettyCashExpenseExchangeDocument::class, 'exchange_id')
             ->where('status', PettyCashExpenseExchangeDocument::STATUS_ACTIVE);
     }
+    public function settlementDocumentHistory()
+    {
+        return $this->hasMany(PettyCashExpenseExchangeDocument::class, 'exchange_id')->latest('id');
+    }
     public function returns()
     {
         return $this->hasMany(PettyCashExpenseExchangeReturn::class, 'exchange_id')

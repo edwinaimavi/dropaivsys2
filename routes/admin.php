@@ -147,6 +147,14 @@ Route::get(
     'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}/view',
     [PettyCashExpenseExchangeController::class, 'viewSettlementDocument']
 )->name('petty-cash.receipt-exchanges.documents.view');
+Route::put(
+    'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}',
+    [PettyCashExpenseExchangeController::class, 'updateSettlementDocument']
+)->name('petty-cash.receipt-exchanges.documents.update');
+Route::post(
+    'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}/reverse',
+    [PettyCashExpenseExchangeController::class, 'reverseSettlementDocument']
+)->name('petty-cash.receipt-exchanges.documents.reverse');
 Route::delete(
     'petty-cash/receipt-exchanges/{exchange}/settlement-documents/{settlementDocument}',
     [PettyCashExpenseExchangeController::class, 'destroySettlementDocument']

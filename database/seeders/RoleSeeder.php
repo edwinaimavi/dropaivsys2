@@ -293,6 +293,9 @@ class RoleSeeder extends Seeder
             'admin.petty-cash.receipt-exchanges.index' => 'Ver canjes de recibos de caja chica',
             'admin.petty-cash.receipt-exchanges.store' => 'Crear canjes de recibos de caja chica',
             'admin.petty-cash.receipt-exchanges.show' => 'Ver detalle de canjes de recibos',
+            'admin.petty-cash.receipt-exchanges.update' => 'Editar rendiciones de recibos de caja chica',
+            'admin.petty-cash.receipt-exchanges.reverse' => 'Revertir rendiciones de recibos de caja chica',
+            'admin.petty-cash.receipt-exchanges.reverse-closed' => 'Revertir rendiciones de cajas chicas cerradas',
             'admin.petty-cash.receipt-exchanges.destroy' => 'Anular canjes de recibos de caja chica',
 
             'admin.banks.view' => 'Ver Bancos y Tesorería',
