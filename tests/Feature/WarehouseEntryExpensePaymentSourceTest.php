@@ -144,6 +144,29 @@ it('ignora una cuenta bancaria residual cuando la fuente del costo es manual', f
         ->and($expense->bank_movement_id)->toBeNull();
 });
 
+it('devuelve todas las cuentas activas de la empresa sin filtrar por saldo', function () {
+    $negativeBalanceAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $this->currency->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-NEGATIVE', 'current_balance' => -25,
+        'is_detraction' => 'NO', 'status' => 'ACTIVE',
+    ]);
+    $inactiveAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id, 'bank_id' => $this->account->bank_id,
+        'currency_id' => $this->currency->id, 'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-INACTIVE-ENDPOINT', 'current_balance' => 100,
+        'is_detraction' => 'NO', 'status' => 'INACTIVE',
+    ]);
+
+    $response = $this->getJson(route('admin.warehouse-entries.company-bank-accounts', $this->company));
+
+    $response->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonFragment(['id' => $this->account->id])
+        ->assertJsonFragment(['id' => $negativeBalanceAccount->id])
+        ->assertJsonMissing(['id' => $inactiveAccount->id]);
+});
+
 it('exige para Banco una cuenta activa de la empresa y moneda del ingreso', function () {
     $otherCompany = Company::create([
         'business_name' => 'OTRA EMPRESA S.A.C.', 'ruc' => '20977777772', 'status' => true,
