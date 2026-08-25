@@ -204,9 +204,7 @@ class PettyCashController extends Controller
         $approvedAmount = $this->requireActiveApprovedAmount($validated);
         $this->applyOpeningCalculation($validated, $approvedAmount);
         $this->validateOpeningFundSource($validated);
-        $files = (float) $validated['approved_fund'] > 0
-            ? (array) $request->file('fund_source_receipts', [])
-            : [];
+        $files = (array) ($validated['fund_source_receipts'] ?? []);
         $storedPaths = [];
 
         try {
@@ -422,11 +420,9 @@ class PettyCashController extends Controller
         $approvedAmountSnapshot = $hasMovements
             ? $pettyCash->approved_amount_snapshot
             : $approvedAmount->amount;
-        $this->validateOpeningFundSource($validated);
+        $this->validateOpeningFundSource($validated, $pettyCash);
 
-        $files = (float) $validated['approved_fund'] > 0
-            ? (array) $request->file('fund_source_receipts', [])
-            : [];
+        $files = (array) ($validated['fund_source_receipts'] ?? []);
         $storedPaths = [];
         try {
             DB::transaction(function () use ($pettyCash, $validated, $approvedAmount, $approvedAmountSnapshot, $files, &$storedPaths) {
@@ -1736,7 +1732,7 @@ class PettyCashController extends Controller
         }
         if ((int) $account->company_id !== (int) $validated['fund_source_company_id']) {
             throw ValidationException::withMessages([
-                'fund_source_bank_account_id' => 'La cuenta bancaria origen no pertenece a la empresa seleccionada.',
+                'fund_source_bank_account_id' => 'La cuenta bancaria origen no pertenece a la empresa origen seleccionada.',
             ]);
         }
         if ($account->status !== 'ACTIVE') {
@@ -1786,9 +1782,21 @@ class PettyCashController extends Controller
         $validated['opening_amount'] = $opening['initial_fund'];
     }
 
-    private function validateOpeningFundSource(array &$validated): void
+    private function validateOpeningFundSource(array &$validated, ?PettyCashBox $box = null): void
     {
-        if ((float) $validated['approved_fund'] > 0) {
+        $validated['fund_source_company_id'] = $validated['fund_source_company_id']
+            ?? $box?->fund_source_company_id;
+        $validated['fund_source_bank_account_id'] = $validated['fund_source_bank_account_id']
+            ?? $box?->fund_source_bank_account_id;
+        $validated['fund_source_exchange_rate'] = $validated['fund_source_exchange_rate']
+            ?? $box?->fund_source_exchange_rate;
+
+        $hasProvidedSource = ! empty($validated['fund_source_company_id'])
+            || ! empty($validated['fund_source_bank_account_id'])
+            || ! empty($validated['fund_source_receipts'])
+            || ! empty($validated['fund_source_exchange_rate']);
+
+        if ((float) $validated['approved_fund'] > 0 || $hasProvidedSource) {
             if (empty($validated['fund_source_company_id']) || empty($validated['fund_source_bank_account_id'])) {
                 throw ValidationException::withMessages([
                     'fund_source_company_id' => 'Seleccione la empresa y la cuenta bancaria de origen para completar el fondo aprobado.',

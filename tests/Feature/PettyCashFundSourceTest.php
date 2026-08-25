@@ -8,13 +8,15 @@ use App\Models\Currency;
 use App\Models\PettyCashApprovedAmount;
 use App\Models\PettyCashBox;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-    foreach (['admin.petty-cash.index', 'admin.petty-cash.store', 'admin.petty-cash.update'] as $permission) {
+    foreach (['admin.petty-cash.index', 'admin.petty-cash.store', 'admin.petty-cash.show', 'admin.petty-cash.update'] as $permission) {
         Permission::findOrCreate($permission, 'web');
     }
 
@@ -239,7 +241,7 @@ it('bloquea una cuenta bancaria de otra empresa y una cuenta inactiva', function
     ))->assertUnprocessable()
         ->assertJsonPath(
             'errors.fund_source_bank_account_id.0',
-            'La cuenta bancaria origen no pertenece a la empresa seleccionada.'
+            'La cuenta bancaria origen no pertenece a la empresa origen seleccionada.'
         );
 
     $this->postJson(route('admin.petty-cash.store'), pettyCashFundSourcePayload(
@@ -254,4 +256,46 @@ it('bloquea una cuenta bancaria de otra empresa y una cuenta inactiva', function
             'errors.fund_source_bank_account_id.0',
             'La cuenta bancaria origen no se encuentra activa.'
         );
+});
+
+it('conserva el origen y su comprobante cuando el fondo calculado por reponer es cero', function () {
+    Storage::fake('public');
+    $previous = closedPettyCashForFundSourceTest(
+        $this->praga, $this->pen, 'CC-PRAGA-SALDO-COMPLETO', 1000
+    );
+
+    $response = $this->post(route('admin.petty-cash.store'), pettyCashFundSourcePayload(
+        $this->praga,
+        $this->pen,
+        [
+            'previous_petty_cash_id' => $previous->id,
+            'fund_source_company_id' => $this->praga->id,
+            'fund_source_bank_account_id' => $this->pragaPenAccount->id,
+            'fund_source_receipts' => [UploadedFile::fake()->create('origen-praga.pdf', 100, 'application/pdf')],
+            'observations' => 'ORIGEN PRAGA CONSERVADO',
+        ]
+    ))->assertCreated();
+
+    $box = PettyCashBox::findOrFail($response->json('data.id'));
+    expect((float) $box->approved_fund)->toBe(0.0)
+        ->and($box->fund_source_company_id)->toBe($this->praga->id)
+        ->and($box->fund_source_bank_account_id)->toBe($this->pragaPenAccount->id)
+        ->and($box->documents()->count())->toBe(1);
+
+    $this->putJson(route('admin.petty-cash.update', $box), pettyCashFundSourcePayload(
+        $this->praga,
+        $this->pen,
+        [
+            'previous_petty_cash_id' => $previous->id,
+            'fund_source_company_id' => $this->praga->id,
+            'fund_source_bank_account_id' => $this->pragaPenAccount->id,
+            'observations' => 'ACTUALIZADO SIN REEMPLAZAR COMPROBANTE',
+        ]
+    ))->assertOk();
+
+    $this->getJson(route('admin.petty-cash.show', $box))
+        ->assertOk()
+        ->assertJsonPath('data.fund_source_company_id', $this->praga->id)
+        ->assertJsonPath('data.fund_source_bank_account_id', $this->pragaPenAccount->id)
+        ->assertJsonCount(1, 'data.documents');
 });

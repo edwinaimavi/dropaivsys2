@@ -7,5 +7,7 @@ it('mantiene visible y recarga el origen bancario en la primera apertura', funct
         ->toContain('const approved = hasPreviousBox ? Math.max(0, approvedAmount - previous) : approvedAmount;')
         ->toContain('$(\'#pc_fund_source_company_id\').val(companyId || \'\');')
         ->toContain('currency_id: currencyId')
+        ->toContain('const keepsSource = requiresSource || hasSavedSource || hasEnteredSource;')
+        ->toContain("data.set('fund_source_bank_account_id', sourceBankAccountId)")
         ->toContain('No hay cuentas bancarias activas para esta empresa y moneda.');
 });

@@ -823,10 +823,10 @@ $(function () {
         $(helpSelector).text('');
         if (!companyId) {
             select.html('<option value="">Seleccione primero una empresa</option>');
-            return;
+            return $.Deferred().resolve().promise();
         }
         select.html('<option value="">Cargando cuentas...</option>');
-        api({
+        return api({
             url: `${base}/source-companies/${companyId}/bank-accounts`,
             method: 'GET',
             data: currencyId ? { currency_id: currencyId } : {}
@@ -835,7 +835,11 @@ $(function () {
                 const accounts = response.data || [];
                 select.html('<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => `<option value="${account.id}" data-currency="${escapeHtml(account.currency_code || '')}">${escapeHtml(account.label)}</option>`).join(''))
                     .prop('disabled', !accounts.length).val(String(selectedId || ''));
-                $(helpSelector).text(accounts.length ? '' : 'No hay cuentas bancarias activas para esta empresa y moneda.');
+                const accountWasLoaded = Boolean(selectedId)
+                    && accounts.some(account => String(account.id) === String(selectedId));
+                $(helpSelector).text(accounts.length
+                    ? `${accountWasLoaded ? 'Cuenta bancaria origen cargada correctamente. ' : ''}${accounts.length} cuenta${accounts.length === 1 ? '' : 's'} activa${accounts.length === 1 ? '' : 's'} disponible${accounts.length === 1 ? '' : 's'} para esta empresa.`
+                    : 'No hay cuentas bancarias activas para esta empresa y moneda.');
                 select.trigger('change.bankExchangeRate');
             })
             .fail(xhr => $(helpSelector).text(errorMessage(xhr)));
@@ -946,16 +950,23 @@ $(function () {
         if (!$('#petty_cash_id').val()) $('#pc_side_balance').text(money(opening));
         const hasInitialFund = opening > 0;
         const requiresSource = approved > 0;
+        const hasSavedSource = Boolean($('#petty_cash_id').val() && currentBox?.fund_source_bank_account_id);
+        const hasEnteredSource = Boolean(
+            $('#pc_fund_source_bank_account_id').val()
+            || sourceReceipts.opening.files.length
+            || sourceReceipts.opening.existing.length
+        );
+        const keepsSource = requiresSource || hasSavedSource || hasEnteredSource;
         const hasCarriedBalance = hasPreviousBox && previous > 0;
-        $('#pc_fund_source_section').toggleClass('d-none', !hasInitialFund);
+        $('#pc_fund_source_section').toggleClass('d-none', !hasInitialFund && !keepsSource);
         $('#pc_carried_balance_source').toggleClass('d-none', !hasCarriedBalance);
         $('#pc_carried_balance_box').text(hasCarriedBalance
             ? ($('#pc_previous_balance_message').data('previous-code') || 'Caja anterior')
             : '-');
         $('#pc_carried_balance_amount').text(money(previous));
-        $('#pc_replenishment_source_fields').toggleClass('d-none', !requiresSource);
-        $('#pc_fund_source_company_id,#pc_fund_source_bank_account_id').prop('required', requiresSource);
-        if (!requiresSource) {
+        $('#pc_replenishment_source_fields').toggleClass('d-none', !keepsSource);
+        $('#pc_fund_source_company_id,#pc_fund_source_bank_account_id').prop('required', keepsSource);
+        if (!keepsSource) {
             $('#pc_fund_source_company_id').val('');
             $('#pc_fund_source_bank_account_id').prop('disabled', true).html('<option value="">Seleccione primero una empresa</option>');
             $('#pc_fund_source_account_help').text('');
@@ -1173,6 +1184,7 @@ $(function () {
     });
 
     $(document).on('click', '#btnCreatePettyCash', function () {
+        currentBox = null;
         const form = $('#pettyCashForm')[0];
         form.reset();
         $('#responsible_dni,#supervisor_dni').removeData('last-dni');
@@ -1364,6 +1376,10 @@ $(function () {
         }
         const id = $('#petty_cash_id').val();
         const data = new FormData(this);
+        const sourceCompanyId = $('#pc_fund_source_company_id').val();
+        const sourceBankAccountId = $('#pc_fund_source_bank_account_id').val();
+        if (sourceCompanyId) data.set('fund_source_company_id', sourceCompanyId);
+        if (sourceBankAccountId) data.set('fund_source_bank_account_id', sourceBankAccountId);
         if (id) data.append('_method', 'PUT');
         loading($(this), true);
         api({ url: id ? `${base}/${id}` : base, method: 'POST', data, processData: false, contentType: false })
