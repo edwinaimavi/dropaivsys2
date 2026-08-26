@@ -33,6 +33,12 @@ class WarehouseEntryCreditPayment extends Model
         'proof_size' => 'integer',
     ];
 
+    public function paymentDocuments()
+    {
+        return $this->hasMany(WarehouseEntryPaymentDocument::class)
+            ->latest('id');
+    }
+
     public function warehouseEntry() { return $this->belongsTo(WarehouseEntry::class); }
     public function supplierPurchaseOrder() { return $this->belongsTo(SupplierPurchaseOrder::class); }
     public function supplier() { return $this->belongsTo(Supplier::class); }

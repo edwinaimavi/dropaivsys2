@@ -314,8 +314,8 @@
                                     <div class="warehouse-entry-bank-payment-heading">
                                         <span><i class="fas fa-university"></i></span>
                                         <div>
-                                            <strong>Pago de la compra al proveedor</strong>
-                                            <small>Registra la cuenta de salida y genera el egreso pendiente de conciliaci&oacute;n en Tesorer&iacute;a.</small>
+                                            <strong>Pagos y constancias bancarias</strong>
+                                            <small>Distingue pagos reales de documentos de sustento. Adjuntar una constancia no genera otro egreso.</small>
                                         </div>
                                     </div>
                                     <div id="warehouseEntryBankPaymentCreditHelp" class="warehouse-entry-bank-payment-help d-none">
@@ -331,34 +331,13 @@
                                         </div>
                                         <div class="d-flex flex-wrap align-items-center justify-content-between mt-3">
                                             <div>
-                                                <strong class="d-block text-dark">Historial de pagos</strong>
-                                                <small class="text-muted">Cada pago genera su propio egreso bancario.</small>
+                                                <strong class="d-block text-dark">Saldo de la compra</strong>
+                                                <small class="text-muted">Un pago complementario s&iacute; genera su propio egreso bancario.</small>
                                             </div>
                                             <button type="button" id="btnRegisterWarehouseCreditPayment" class="btn btn-warning btn-sm mt-2 mt-md-0">
                                                 <i class="fas fa-money-check-alt mr-1"></i>
-                                                Registrar pago del cr&eacute;dito
+                                                Registrar pago complementario
                                             </button>
-                                        </div>
-                                        <div class="table-responsive mt-2">
-                                            <table class="table table-sm table-hover warehouse-entry-credit-payment-history mb-0">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Fecha</th>
-                                                        <th>Cuenta bancaria</th>
-                                                        <th>Medio</th>
-                                                        <th>Operaci&oacute;n</th>
-                                                        <th class="text-right">Monto aplicado</th>
-                                                        <th class="text-right">TC</th>
-                                                        <th class="text-right">Salida banco</th>
-                                                        <th>Usuario</th>
-                                                        <th>Constancia</th>
-                                                        <th>Estado</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="warehouseEntryCreditPaymentHistoryRows">
-                                                    <tr><td colspan="10" class="text-center text-muted py-3">Sin pagos registrados todav&iacute;a.</td></tr>
-                                                </tbody>
-                                            </table>
                                         </div>
                                     </div>
                                     <div id="warehouseEntryBankPaymentFields" class="row mt-3">
@@ -394,16 +373,21 @@
                                             <small class="form-text text-muted">Soles por unidad de moneda extranjera.</small>
                                             <span class="invalid-feedback"></span>
                                         </div>
-                                        <div class="form-group col-sm-6 col-lg-4">
-                                            <label>CONSTANCIA BANCARIA</label>
-                                            <div class="custom-file custom-file-sm">
-                                                <input type="file" id="warehouse_entry_bank_payment_proof" name="bank_payment_proof"
-                                                    class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
-                                                <label class="custom-file-label" for="warehouse_entry_bank_payment_proof">Seleccionar archivo</label>
+                                        <div id="warehouseEntryInitialPaymentDocumentsGroup" class="form-group col-lg-7">
+                                            <label class="mb-1">CONSTANCIAS INICIALES DEL PAGO</label>
+                                            <small class="form-text text-muted mt-0 mb-2">Puede adjuntar una o varias constancias bancarias. Se guardar&aacute;n al registrar el ingreso.</small>
+                                            <input type="file" id="warehousePaymentDocumentsInput" name="payment_documents[]"
+                                                class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple>
+                                            <button type="button" id="btnAddWarehousePaymentDocument" class="btn btn-outline-info btn-sm">
+                                                <i class="fas fa-plus mr-1"></i>Agregar constancia
+                                            </button>
+                                            <div class="mt-3">
+                                                <small class="d-block font-weight-bold text-muted mb-1">Constancias seleccionadas:</small>
+                                                <div id="warehouseEntryInitialPaymentDocumentsList" class="warehouse-entry-initial-payment-documents"></div>
+                                                <small id="warehouseEntryInitialPaymentDocumentsEmpty" class="form-text text-muted">Todav&iacute;a no hay constancias seleccionadas.</small>
                                             </div>
                                             <div id="warehouseEntryBankPaymentExistingProof" class="d-none mt-2 rounded border bg-light p-2"></div>
-                                            <small id="warehouseEntryBankPaymentWithoutProof" class="form-text text-muted">Sin constancia bancaria registrada.</small>
-                                            <small class="form-text text-muted">Puede reemplazar la constancia seleccionando un nuevo archivo.</small>
+                                            <small id="warehouseEntryBankPaymentWithoutProof" class="form-text text-muted d-none">Sin constancia bancaria registrada.</small>
                                             <span class="invalid-feedback"></span>
                                         </div>
                                         <div class="form-group col-lg-5">
@@ -414,6 +398,18 @@
                                         </div>
                                     </div>
                                     <div id="warehouseEntryBankPaymentStatus" class="warehouse-entry-bank-payment-status d-none"></div>
+                                    <div id="warehouseEntryPaymentsDocumentsSection" class="warehouse-entry-payment-documents-section d-none">
+                                        <div class="warehouse-entry-payment-documents-title">
+                                            <div>
+                                                <strong>Pagos relacionados</strong>
+                                                <small>Anticipos, pago de almac&eacute;n y pagos complementarios con sus constancias.</small>
+                                            </div>
+                                            <span class="badge badge-light border">Trazabilidad documental</span>
+                                        </div>
+                                        <div id="warehouseEntryPaymentsDocumentsList"></div>
+                                    </div>
+                                    <input type="file" id="warehouseEntryPaymentDocumentFile" class="d-none"
+                                        accept=".pdf,.jpg,.jpeg,.png,.webp">
                                 </div>
                             </div>
                         </div>

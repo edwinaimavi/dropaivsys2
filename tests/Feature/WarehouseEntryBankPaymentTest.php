@@ -1,25 +1,27 @@
 <?php
 
+use App\Models\Article;
 use App\Models\Bank;
 use App\Models\BankMovement;
-use App\Models\Article;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
+use App\Models\SupplierPurchaseOrderAdvancePayment;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryCreditPayment;
+use App\Models\WarehouseEntryPaymentDocument;
 use App\Services\WarehouseEntryBankPaymentService;
 use App\Services\WarehouseEntryCreditPaymentService;
 use Carbon\Carbon;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -295,6 +297,112 @@ it('reemplaza la referencia de la constancia sin generar otro egreso', function 
         ->and($sameMovement->file_original_name)->toBe('nueva-constancia.pdf')
         ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1)
         ->and((float) $this->account->fresh()->current_balance)->toBe($balance);
+});
+
+it('adjunta varias constancias al mismo pago sin generar otro egreso bancario', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
+    $legacyPath = "warehouse-entries/{$this->entry->id}/bank-payment/constancia-inicial.pdf";
+    Storage::disk('public')->put($legacyPath, 'CONSTANCIA INICIAL');
+    $this->entry->update([
+        'bank_payment_proof_path' => $legacyPath,
+        'bank_payment_proof_original_name' => 'constancia-inicial.pdf',
+        'bank_payment_proof_mime_type' => 'application/pdf',
+        'bank_payment_proof_size' => 18,
+    ]);
+    $movement = $this->service->sync($this->entry, $this->user->id);
+    $balance = (float) $this->account->fresh()->current_balance;
+
+    foreach (['adelanto.pdf', 'saldo-restante.pdf'] as $name) {
+        $this->actingAs($this->user)
+            ->post(route('admin.warehouse-entries.payment-documents.store', $this->entry), [
+                'payment_type' => 'warehouse',
+                'payment_id' => $movement->id,
+                'document' => UploadedFile::fake()->create($name, 100, 'application/pdf'),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('bank_movement_created', false)
+            ->assertJsonPath('message', 'Constancia agregada correctamente.');
+    }
+
+    expect(WarehouseEntryPaymentDocument::where('warehouse_entry_id', $this->entry->id)->count())->toBe(2)
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1)
+        ->and($movement->fresh()->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and((float) $this->account->fresh()->current_balance)->toBe($balance);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $this->entry))
+        ->assertOk()
+        ->assertJsonPath('data.payments_and_documents.0.type_label', 'Pago generado desde almacén')
+        ->assertJsonCount(3, 'data.payments_and_documents.0.documents')
+        ->assertJsonPath('data.payments_and_documents.0.documents.0.is_legacy', true);
+});
+
+it('elimina lógicamente una constancia múltiple sin borrar el archivo ni el pago', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $movement = $this->service->sync($this->entry, $this->user->id);
+    $this->actingAs($this->user)->post(
+        route('admin.warehouse-entries.payment-documents.store', $this->entry),
+        [
+            'payment_type' => 'warehouse',
+            'payment_id' => $movement->id,
+            'document' => UploadedFile::fake()->create('constancia.pdf', 100, 'application/pdf'),
+        ]
+    )->assertCreated();
+    $document = WarehouseEntryPaymentDocument::query()->firstOrFail();
+    $path = $document->file_path;
+
+    $this->actingAs($this->user)
+        ->deleteJson(route('admin.warehouse-entries.payment-documents.destroy', [$this->entry, $document]))
+        ->assertOk()
+        ->assertJsonPath('message', 'Constancia eliminada correctamente.');
+
+    expect($document->fresh()->trashed())->toBeTrue()
+        ->and($document->fresh()->deleted_by)->toBe($this->user->id)
+        ->and($movement->fresh()->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1);
+    Storage::disk('public')->assertExists($path);
+});
+
+it('retira una constancia legacy con auditoría sin borrar el archivo ni recrear el movimiento', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $path = "warehouse-entries/{$this->entry->id}/bank-payment/legacy.pdf";
+    Storage::disk('public')->put($path, 'LEGACY');
+    $this->entry->update([
+        'bank_payment_proof_path' => $path,
+        'bank_payment_proof_original_name' => 'legacy.pdf',
+        'bank_payment_proof_mime_type' => 'application/pdf',
+        'bank_payment_proof_size' => 6,
+    ]);
+    $movement = $this->service->sync($this->entry->fresh(), $this->user->id);
+    $balance = (float) $this->account->fresh()->current_balance;
+
+    $this->actingAs($this->user)
+        ->deleteJson(route('admin.warehouse-entries.payment-documents.legacy.destroy', $this->entry), [
+            'payment_type' => 'warehouse',
+            'payment_id' => $movement->id,
+        ])
+        ->assertOk()
+        ->assertJsonPath('bank_movement_created', false);
+
+    $audit = WarehouseEntryPaymentDocument::withTrashed()->firstOrFail();
+    expect($audit->trashed())->toBeTrue()
+        ->and($audit->deleted_by)->toBe($this->user->id)
+        ->and($this->entry->fresh()->bank_payment_proof_path)->toBeNull()
+        ->and($movement->fresh()->file_path)->toBeNull()
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe($balance);
+    Storage::disk('public')->assertExists($path);
 });
 
 it('bloquea eliminar la constancia de un ingreso anulado', function () {
@@ -626,7 +734,7 @@ it('bloquea un pago mayor al saldo pendiente', function () {
         )
         ->assertUnprocessable()
         ->assertJsonValidationErrors('applied_amount')
-        ->assertJsonPath('errors.applied_amount.0', 'El monto aplicado no puede superar el saldo pendiente.');
+        ->assertJsonPath('errors.applied_amount.0', 'El monto del pago no puede superar el saldo pendiente.');
 
     expect(WarehouseEntryCreditPayment::count())->toBe(0)
         ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(0);
@@ -720,6 +828,155 @@ it('entrega al selector únicamente cuentas activas de la empresa solicitada', f
     expect(collect($response->json('data'))->pluck('id'))
         ->not->toContain($inactive->id)
         ->not->toContain($otherAccount->id);
+});
+
+it('muestra el anticipo de la OC separado y permite agregarle otra constancia sin otro egreso', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
+    $order = warehousePaymentSupplierOrder($this->company, $this->supplier, $this->pen, 'contado', 'OCP-ANTICIPO');
+    $this->entry->update(['supplier_purchase_order_id' => $order->id]);
+    $legacyPath = "supplier-purchase-orders/{$order->id}/advance-payments/anticipo.pdf";
+    Storage::disk('public')->put($legacyPath, 'ANTICIPO');
+    $advance = SupplierPurchaseOrderAdvancePayment::create([
+        'supplier_purchase_order_id' => $order->id,
+        'company_bank_account_id' => $this->account->id,
+        'purchase_currency_id' => $this->pen->id,
+        'currency_id' => $this->pen->id,
+        'payment_date' => '2026-08-20',
+        'applied_amount' => 50,
+        'amount' => 50,
+        'amount_pen' => 50,
+        'exchange_rate' => 1,
+        'payment_method' => 'transferencia',
+        'operation_number' => 'ANT-001',
+        'proof_path' => $legacyPath,
+        'proof_original_name' => 'anticipo.pdf',
+        'proof_mime_type' => 'application/pdf',
+        'proof_size' => 8,
+        'status' => 'ACTIVE',
+        'created_by' => $this->user->id,
+        'updated_by' => $this->user->id,
+    ]);
+    $movement = $this->service->sync($this->entry->fresh(), $this->user->id);
+    $movementCount = BankMovement::count();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.warehouse-entries.payment-documents.store', $this->entry), [
+            'payment_type' => 'advance',
+            'payment_id' => $advance->id,
+            'document' => UploadedFile::fake()->create('anticipo-adicional.pdf', 100, 'application/pdf'),
+        ])
+        ->assertCreated()
+        ->assertJsonPath('bank_movement_created', false);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $this->entry))
+        ->assertOk()
+        ->assertJsonPath('data.payments_and_documents.0.type_label', 'Anticipo registrado en OC proveedor')
+        ->assertJsonCount(2, 'data.payments_and_documents.0.documents')
+        ->assertJsonPath('data.payments_and_documents.1.payment_id', $movement->id);
+    expect(BankMovement::count())->toBe($movementCount);
+});
+
+it('agrega constancias a un pago complementario sin duplicar su movimiento bancario', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'CREDITO-DOCUMENTOS',
+        today()->toDateString(),
+        100
+    );
+    $this->actingAs($this->user)
+        ->postJson(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($this->account, $this->pen, 50, 'pago-documentado')
+        )
+        ->assertCreated();
+    $payment = WarehouseEntryCreditPayment::query()->firstOrFail();
+    $movementCount = BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count();
+
+    foreach (['pago-1.pdf', 'pago-2.pdf'] as $name) {
+        $this->actingAs($this->user)
+            ->post(route('admin.warehouse-entries.payment-documents.store', $entry), [
+                'payment_type' => 'credit',
+                'payment_id' => $payment->id,
+                'document' => UploadedFile::fake()->create($name, 100, 'application/pdf'),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('bank_movement_created', false);
+    }
+
+    expect(WarehouseEntryPaymentDocument::where('warehouse_entry_credit_payment_id', $payment->id)->count())->toBe(2)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe($movementCount)
+        ->and($payment->bankMovement()->firstOrFail()->status)->toBe(BankMovement::STATUS_REGISTERED);
+});
+
+it('guarda varias constancias iniciales sobre un único movimiento bancario y las devuelve al reabrir', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.store', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.store', 'admin.warehouse-entries.show']);
+    [$warehouse, $article] = warehousePaymentInventoryData();
+
+    $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
+        'warehouse_id' => $warehouse->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->pen->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'MULTI-001',
+        'document_date' => '2026-08-14',
+        'affect_igv' => 1,
+        'generate_account_payable' => 0,
+        'payment_company_bank_account_id' => $this->account->id,
+        'bank_payment_date' => '2026-08-14',
+        'bank_payment_operation_number' => 'OP-MULTI-001',
+        'payment_documents' => [
+            UploadedFile::fake()->create('constancia-adelanto.pdf', 100, 'application/pdf'),
+            UploadedFile::fake()->image('constancia-saldo.jpg'),
+        ],
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 118,
+        ]],
+    ]);
+
+    $response->assertCreated()->assertJsonPath('status', 'success');
+    $entry = WarehouseEntry::query()->where('document_number', 'MULTI-001')->firstOrFail();
+    $movement = BankMovement::query()
+        ->where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)
+        ->where('source_id', $entry->id)
+        ->firstOrFail();
+    $documents = WarehouseEntryPaymentDocument::query()
+        ->where('warehouse_entry_id', $entry->id)
+        ->get();
+
+    expect($documents)->toHaveCount(2)
+        ->and($documents->pluck('bank_movement_id')->unique()->all())->toBe([$movement->id])
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)
+            ->where('source_id', $entry->id)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(882.0);
+    $documents->each(fn ($document) => Storage::disk('public')->assertExists($document->file_path));
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonCount(2, 'data.payments_and_documents.0.documents');
 });
 
 function warehousePaymentAccount(

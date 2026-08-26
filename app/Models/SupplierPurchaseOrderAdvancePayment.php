@@ -32,4 +32,18 @@ class SupplierPurchaseOrderAdvancePayment extends Model
     public function purchaseCurrency() { return $this->belongsTo(Currency::class, 'purchase_currency_id'); }
     public function currency() { return $this->belongsTo(Currency::class); }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
+
+    public function bankMovement()
+    {
+        return $this->hasOne(BankMovement::class, 'source_id')
+            ->where('source_type', 'SUPPLIER_ADVANCE')
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+            ->latestOfMany();
+    }
+
+    public function paymentDocuments()
+    {
+        return $this->hasMany(WarehouseEntryPaymentDocument::class)
+            ->latest('id');
+    }
 }

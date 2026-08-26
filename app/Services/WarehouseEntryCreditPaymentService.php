@@ -73,7 +73,7 @@ class WarehouseEntryCreditPaymentService
                 }
                 if ($appliedAmount > $summary['pending_amount']) {
                     throw ValidationException::withMessages([
-                        'applied_amount' => 'El monto aplicado no puede superar el saldo pendiente.',
+                        'applied_amount' => 'El monto del pago no puede superar el saldo pendiente.',
                     ]);
                 }
 

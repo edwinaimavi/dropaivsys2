@@ -682,6 +682,22 @@ Route::get(
     'warehouse-entries/{warehouseEntry}/credit-payments/{creditPayment}/proof',
     [WarehouseEntryController::class, 'viewCreditPaymentProof']
 )->name('warehouse-entries.credit-payments.proof');
+Route::post(
+    'warehouse-entries/{warehouseEntry}/payment-documents',
+    [WarehouseEntryController::class, 'storePaymentDocument']
+)->name('warehouse-entries.payment-documents.store');
+Route::get(
+    'warehouse-entries/{warehouseEntry}/payment-documents/{paymentDocument}',
+    [WarehouseEntryController::class, 'viewPaymentDocument']
+)->name('warehouse-entries.payment-documents.view');
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/payment-documents/{paymentDocument}',
+    [WarehouseEntryController::class, 'destroyPaymentDocument']
+)->name('warehouse-entries.payment-documents.destroy');
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/legacy-payment-document',
+    [WarehouseEntryController::class, 'destroyLegacyPaymentDocument']
+)->name('warehouse-entries.payment-documents.legacy.destroy');
 Route::get(
     'warehouse-entries/{warehouseEntry}/payment-proof',
     [WarehouseEntryController::class, 'viewBankPaymentProof']

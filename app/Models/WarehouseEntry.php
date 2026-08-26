@@ -123,6 +123,12 @@ class WarehouseEntry extends Model
             ->orderBy('id');
     }
 
+    public function paymentDocuments()
+    {
+        return $this->hasMany(WarehouseEntryPaymentDocument::class)
+            ->latest('id');
+    }
+
     public function items()
     {
         return $this->hasMany(WarehouseEntryItem::class)->where('status', '!=', 'deleted');

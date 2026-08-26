@@ -94,6 +94,11 @@ class BankMovement extends Model
         return $this->hasMany(BankReconciliationMovement::class);
     }
 
+    public function warehouseEntryPaymentDocuments()
+    {
+        return $this->hasMany(WarehouseEntryPaymentDocument::class);
+    }
+
     public static function typeLabel(?string $type): string
     {
         return [

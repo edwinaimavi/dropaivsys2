@@ -9,9 +9,9 @@
                 <div>
                     <h5 class="modal-title font-weight-bold">
                         <i class="fas fa-money-check-alt mr-2"></i>
-                        Registrar pago de cr&eacute;dito
+                        Registrar pago complementario
                     </h5>
-                    <small>Selecciona la cuenta bancaria de salida y registra la constancia del pago.</small>
+                    <small>Este registro crea un nuevo egreso bancario; luego podr&aacute;s agregar m&aacute;s constancias al mismo pago.</small>
                 </div>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
                     <span aria-hidden="true">&times;</span>

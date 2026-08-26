@@ -28,6 +28,8 @@ let warehouseEntryCreditPaymentEntry = null;
 let warehouseEntryCreditPaymentAccounts = [];
 let warehouseEntryCreditPaymentAccountsRequest = null;
 let warehouseEntryCreditPaymentReturnToAlerts = false;
+let warehouseEntryPaymentDocumentTarget = null;
+let warehouseEntryInitialPaymentDocuments = [];
 const warehouseEntryExpandedGroups = new Set();
 const CREDIT_DUE_WARNING_DAYS = 15;
 
@@ -241,9 +243,16 @@ document.addEventListener('DOMContentLoaded', function () {
         updateWarehouseEntryReview();
     });
     $(document).on('input', '#warehouse_entry_bank_payment_exchange_rate', resetWarehouseEntryNegativeBalanceConfirmation);
-    $(document).on('change', '#warehouse_entry_bank_payment_proof', function () {
-        const name = this.files?.[0]?.name || 'Seleccionar archivo';
-        $(this).siblings('.custom-file-label').text(name);
+    $(document).on('click', '#btnAddWarehousePaymentDocument', function () {
+        $('#warehousePaymentDocumentsInput').trigger('click');
+    });
+    $(document).on('change', '#warehousePaymentDocumentsInput', function () {
+        addWarehouseEntryInitialPaymentDocuments(this.files || []);
+        this.value = '';
+    });
+    $(document).on('click', '.btnRemoveWarehouseEntryInitialPaymentDocument', function () {
+        warehouseEntryInitialPaymentDocuments.splice(Number($(this).data('index')), 1);
+        renderWarehouseEntryInitialPaymentDocuments();
     });
     $(document).on('click', '#btnDeleteWarehouseEntryBankPaymentProof', function () {
         const entryId = $('#warehouse_entry_id').val();
@@ -265,8 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 url: `${window.routes.warehouseEntryShow}/${entryId}/payment-proof`,
                 type: 'DELETE'
             }).done(response => {
-                $('#warehouse_entry_bank_payment_proof').val('')
-                    .siblings('.custom-file-label').text('Seleccionar archivo');
+                $('#warehousePaymentDocumentsInput').val('');
                 renderWarehouseEntryBankPaymentProof();
                 if (warehouseEntryEditingPaymentMovement) {
                     warehouseEntryEditingPaymentMovement.file_path = null;
@@ -292,6 +300,30 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.prop('disabled', false);
             });
         });
+    });
+    $(document).on('click', '.btnAddWarehouseEntryPaymentDocument, .btnReplaceWarehouseEntryPaymentDocument', function () {
+        const button = $(this);
+        warehouseEntryPaymentDocumentTarget = {
+            paymentType: String(button.data('payment-type') || ''),
+            paymentId: button.data('payment-id') || '',
+            replaceDocumentId: button.data('document-id') || '',
+            replaceLegacy: Boolean(button.data('legacy'))
+        };
+        $('#warehouseEntryPaymentDocumentFile').val('').trigger('click');
+    });
+    $(document).on('change', '#warehouseEntryPaymentDocumentFile', uploadWarehouseEntryPaymentDocument);
+    $(document).on('click', '.btnDeleteWarehouseEntryPaymentDocument', function () {
+        deleteWarehouseEntryPaymentDocument($(this));
+    });
+    $(document).on('click', '.btnToggleWarehouseEntryPaymentDocuments', function () {
+        const button = $(this);
+        const list = button.closest('.warehouse-entry-payment-record').find('.warehouse-entry-payment-document-list');
+        const opening = list.hasClass('d-none');
+        const count = Number(button.data('document-count')) || 0;
+        list.toggleClass('d-none', !opening);
+        button.find('i').toggleClass('fa-chevron-down', !opening).toggleClass('fa-chevron-up', opening);
+        button.find('.warehouseEntryPaymentDocumentsToggleLabel')
+            .text(`${opening ? 'Ocultar' : 'Ver'} constancias (${count})`);
     });
     $(document).on('change', '#warehouse_entry_expense_provider_id', function () { $('#warehouse_entry_expense_provider_ruc').val($(this).find('option:selected').data('ruc') || ''); });
     $(document).on('change', '#warehouse_entry_expense_type', function () { renderWarehouseEntryExpenseTypes($(this).val()); });
@@ -1058,7 +1090,7 @@ function validateWarehouseEntryCreditPayment() {
         ['#warehouse_credit_payment_currency_id', Boolean(paymentCode), 'Seleccione la moneda del pago.'],
         ['#warehouse_credit_payment_bank_account_id', Boolean($('#warehouse_credit_payment_bank_account_id').val()), 'Seleccione la cuenta bancaria de salida.'],
         ['#warehouse_credit_payment_applied_amount', applied > 0, 'El monto aplicado debe ser mayor a cero.'],
-        ['#warehouse_credit_payment_applied_amount', applied <= pending, 'El monto aplicado no puede superar el saldo pendiente.'],
+        ['#warehouse_credit_payment_applied_amount', applied <= pending, 'El monto del pago no puede superar el saldo pendiente.'],
         ['#warehouse_credit_payment_exchange_rate', purchaseCode === paymentCode || rate > 0, 'Ingrese el tipo de cambio del pago, mayor a cero.'],
         ['#warehouse_credit_payment_date', Boolean($('#warehouse_credit_payment_date').val()), 'Ingrese la fecha del pago.'],
         ['#warehouse_credit_payment_method', Boolean($('#warehouse_credit_payment_method').val()), 'Seleccione el medio de pago.'],
@@ -1230,11 +1262,71 @@ function clearWarehouseEntryDeepLinkQuery() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+function addWarehouseEntryInitialPaymentDocuments(fileList) {
+    const files = Array.from(fileList || []);
+    const rejected = [];
+
+    files.forEach(function (file) {
+        const extension = getWarehouseEntryFileExtension(file.name);
+        if (!['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(extension)) {
+            rejected.push(`${file.name}: formato no permitido`);
+            return;
+        }
+        if (file.size > warehouseEntryMaxDocumentSize) {
+            rejected.push(`${file.name}: supera los 10 MB`);
+            return;
+        }
+
+        const duplicate = warehouseEntryInitialPaymentDocuments.some(existing =>
+            existing.name === file.name
+            && existing.size === file.size
+            && existing.lastModified === file.lastModified
+        );
+        if (!duplicate) warehouseEntryInitialPaymentDocuments.push(file);
+    });
+
+    renderWarehouseEntryInitialPaymentDocuments();
+    if (rejected.length) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Algunas constancias no fueron agregadas',
+            html: rejected.map(message => escapeWarehouseEntryHtml(message)).join('<br>')
+        });
+    }
+}
+
+function renderWarehouseEntryInitialPaymentDocuments() {
+    const container = $('#warehouseEntryInitialPaymentDocumentsList');
+    $('#warehouseEntryInitialPaymentDocumentsEmpty').toggleClass(
+        'd-none',
+        warehouseEntryInitialPaymentDocuments.length > 0
+    );
+
+    container.html(warehouseEntryInitialPaymentDocuments.map(function (file, index) {
+        const extension = getWarehouseEntryFileExtension(file.name);
+        const icon = extension === 'pdf' ? 'fa-file-pdf text-danger' : 'fa-file-image text-info';
+        return `<div class="d-flex align-items-center justify-content-between rounded border bg-light px-2 py-1 mb-1">
+            <span class="text-truncate mr-2" title="${escapeWarehouseEntryHtml(file.name)}">
+                <i class="fas ${icon} mr-1"></i>${escapeWarehouseEntryHtml(file.name)}
+                <small class="text-muted ml-1">${escapeWarehouseEntryHtml(formatWarehouseEntryFileSize(file.size))}</small>
+            </span>
+            <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryInitialPaymentDocument"
+                data-index="${index}"><i class="fas fa-times mr-1"></i>Quitar</button>
+        </div>`;
+    }).join(''));
+}
+
 function renderWarehouseEntryBankPaymentProof(entry = null) {
     const container = $('#warehouseEntryBankPaymentExistingProof');
     const emptyState = $('#warehouseEntryBankPaymentWithoutProof');
     const name = entry?.bank_payment_proof_original_name;
     const url = entry?.bank_payment_proof_url;
+
+    if ($('#warehouseEntryPaymentsDocumentsSection').length) {
+        container.addClass('d-none').empty();
+        emptyState.addClass('d-none');
+        return;
+    }
 
     if (!name) {
         container.addClass('d-none').empty();
@@ -1269,6 +1361,11 @@ function renderWarehouseEntryBankPaymentProof(entry = null) {
 
 function resetWarehouseEntryForm() {
     const form = $('#warehouseEntryForm');
+
+    warehouseEntryPaymentDocumentTarget = null;
+    warehouseEntryInitialPaymentDocuments = [];
+    $('#warehouseEntryPaymentsDocumentsSection').addClass('d-none');
+    $('#warehouseEntryPaymentsDocumentsList').empty();
 
     form[0]?.reset();
     $('#warehouse_entry_payment_condition').removeData('credit-days');
@@ -1305,7 +1402,9 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_generate_account_payable').val('0');
     $('#warehouse_entry_bank_payment_operation_number, #warehouse_entry_bank_payment_exchange_rate, #warehouse_entry_bank_payment_observation').val('');
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
-    $('#warehouse_entry_bank_payment_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
+    $('#warehousePaymentDocumentsInput').val('');
+    $('#warehouseEntryInitialPaymentDocumentsGroup').removeClass('d-none');
+    renderWarehouseEntryInitialPaymentDocuments();
     renderWarehouseEntryBankPaymentProof();
     $('#warehouseEntryBankPaymentStatus').addClass('d-none').empty();
     $('#warehouseEntryCreditPaymentPanel').addClass('d-none');
@@ -1521,6 +1620,10 @@ async function saveWarehouseEntry(form) {
         ? `${window.routes.warehouseEntryUpdate}/${id}`
         : window.routes.warehouseEntryStore;
     const formData = new FormData(form);
+    formData.delete('payment_documents[]');
+    warehouseEntryInitialPaymentDocuments.forEach(file => {
+        formData.append('payment_documents[]', file, file.name);
+    });
 
     // Al editar pueden permanecer metadatos de archivos existentes en el formulario.
     // Se reconstruyen ambas colecciones para enviar únicamente uploads nuevos.
@@ -1577,6 +1680,7 @@ async function saveWarehouseEntry(form) {
             tableWarehouseEntry.ajax.reload(null, false);
             loadWarehouseEntryCreditAlerts(false);
             warehouseEntryPendingDocuments = [];
+            warehouseEntryInitialPaymentDocuments = [];
 
             if (!id && response.pdf_url) {
                 window.open(response.pdf_url, '_blank');
@@ -1638,7 +1742,8 @@ function showWarehouseEntryValidationErrors(errors) {
     const errorNames = Object.keys(errors);
     const hasDocumentError = errorNames.some(name =>
         name.startsWith('warehouse_entry_documents.')
-        || name.startsWith('warehouse_entry_lot_documents.'));
+        || name.startsWith('warehouse_entry_lot_documents.')
+        || name.startsWith('payment_documents.'));
     const firstError = errorNames[0] || '';
     const errorTab = firstError.startsWith('items.')
         ? '#warehouse_entry_tab_items'
@@ -3691,10 +3796,14 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_bank_payment_exchange_rate').val(entry.bank_payment_exchange_rate || '');
     $('#warehouse_entry_bank_payment_observation').val(entry.bank_payment_observation || '');
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
+    warehouseEntryInitialPaymentDocuments = [];
+    $('#warehouseEntryInitialPaymentDocumentsGroup').addClass('d-none');
+    renderWarehouseEntryInitialPaymentDocuments();
     renderWarehouseEntryBankPaymentProof(entry);
     warehouseEntryEditingPaymentMovement = entry.bank_payment_movement || null;
     renderWarehouseEntryBankPaymentStatus(entry);
     renderWarehouseEntryCreditPaymentPanel(entry);
+    renderWarehouseEntryPaymentsDocuments(entry);
     $('#warehouse_entry_seller_name').val(entry.seller_name || '');
     $('#warehouse_entry_affect_igv').val(entry.affect_igv ? '1' : '0');
     $('#warehouse_entry_guide_series').val(entry.guide_series || '');
@@ -3867,6 +3976,221 @@ function renderWarehouseEntryCreditPaymentHistoryRow(payment) {
         <td class="text-center">${proof}</td>
         <td><span class="badge badge-info">${escapeWarehouseEntryHtml(movementStatus)}</span></td>
     </tr>`;
+}
+
+function renderWarehouseEntryPaymentsDocuments(entry) {
+    const section = $('#warehouseEntryPaymentsDocumentsSection');
+    const container = $('#warehouseEntryPaymentsDocumentsList');
+    const groups = Array.isArray(entry?.payments_and_documents) ? entry.payments_and_documents : [];
+
+    if (!entry?.id) {
+        section.addClass('d-none');
+        container.empty();
+        return;
+    }
+
+    section.removeClass('d-none');
+    container.html(groups.length
+        ? groups.map(renderWarehouseEntryPaymentRecord).join('')
+        : `<div class="warehouse-entry-payment-documents-empty">
+            <i class="fas fa-receipt"></i>
+            <span><strong>No hay pagos registrados todav&iacute;a.</strong><br>Cuando registre un pago, podr&aacute; adjuntar una o varias constancias.</span>
+        </div>`);
+}
+
+function renderWarehouseEntryPaymentRecord(payment) {
+    const documents = Array.isArray(payment.documents) ? payment.documents : [];
+    const reconciled = String(payment.status || '').toUpperCase() === 'CONCILIADO';
+    const bank = [payment.bank_name, payment.account_number].filter(Boolean).join(' · ') || 'Cuenta bancaria no disponible';
+    const applied = parseWarehouseEntryNumber(payment.applied_amount);
+    const paid = parseWarehouseEntryNumber(payment.amount);
+    const rate = parseWarehouseEntryNumber(payment.exchange_rate);
+    const amountLabel = `${payment.currency || ''} ${formatWarehouseEntryMoney(paid)}`.trim();
+    const appliedLabel = applied > 0 && (String(payment.purchase_currency || '') !== String(payment.currency || '') || Math.abs(applied - paid) > 0.0001)
+        ? `<span>Monto aplicado: <strong>${escapeWarehouseEntryHtml(payment.purchase_currency || '')} ${formatWarehouseEntryMoney(applied)}</strong></span>`
+        : '';
+    const rateLabel = rate > 0 && Math.abs(rate - 1) > 0.000001
+        ? `<span>TC: <strong>${rate.toFixed(6)}</strong></span>`
+        : '';
+
+    return `<div class="warehouse-entry-payment-record">
+        <div class="warehouse-entry-payment-record-head">
+            <div class="warehouse-entry-payment-record-identity">
+                <span class="warehouse-entry-payment-type-badge is-${escapeWarehouseEntryHtml(payment.payment_type)}">${escapeWarehouseEntryHtml(payment.badge || 'Pago')}</span>
+                <div>
+                    <strong>${escapeWarehouseEntryHtml(payment.type_label || 'Pago relacionado')}</strong>
+                    <small>${escapeWarehouseEntryHtml(bank)}</small>
+                </div>
+            </div>
+            <span class="badge ${reconciled ? 'badge-success' : 'badge-info'}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
+        </div>
+        <div class="warehouse-entry-payment-record-meta">
+            <span>Fecha: <strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(payment.payment_date))}</strong></span>
+            <span>Operaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.operation_number || '-')}</strong></span>
+            <span>Monto pagado: <strong>${escapeWarehouseEntryHtml(amountLabel)}</strong></span>
+            ${appliedLabel}${rateLabel}
+            <span>Usuario: <strong>${escapeWarehouseEntryHtml(payment.user || '-')}</strong></span>
+        </div>
+        <div class="warehouse-entry-payment-record-actions">
+            <button type="button" class="btn btn-outline-secondary btn-sm btnToggleWarehouseEntryPaymentDocuments"
+                data-document-count="${documents.length}">
+                <i class="fas fa-chevron-up mr-1"></i><span class="warehouseEntryPaymentDocumentsToggleLabel">Ocultar constancias (${documents.length})</span>
+            </button>
+            <button type="button" class="btn btn-outline-info btn-sm btnAddWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}">
+                <i class="fas fa-plus mr-1"></i>Agregar constancia
+            </button>
+        </div>
+        <div class="warehouse-entry-payment-document-list">
+            ${documents.length
+                ? documents.map(document => renderWarehouseEntryPaymentDocument(payment, document)).join('')
+                : '<div class="warehouse-entry-payment-document-empty">Sin constancias adjuntas.</div>'}
+        </div>
+    </div>`;
+}
+
+function renderWarehouseEntryPaymentDocument(payment, document) {
+    const extension = getWarehouseEntryFileExtension(document.original_name || '');
+    const icon = extension === 'pdf' ? 'fa-file-pdf text-danger' : 'fa-file-image text-info';
+    const view = document.view_url
+        ? `<a href="${escapeWarehouseEntryHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-success btn-xs" title="Ver constancia"><i class="fas fa-eye"></i></a>`
+        : '<button type="button" class="btn btn-outline-secondary btn-xs" disabled title="Archivo no disponible"><i class="fas fa-eye-slash"></i></button>';
+
+    return `<div class="warehouse-entry-payment-document-row">
+        <div class="warehouse-entry-payment-document-info">
+            <i class="fas ${icon}"></i>
+            <span>
+                <strong title="${escapeWarehouseEntryHtml(document.original_name || '-')}">${escapeWarehouseEntryHtml(document.original_name || '-')}</strong>
+                <small>${escapeWarehouseEntryHtml(formatWarehouseEntryFileSize(document.size))} · ${escapeWarehouseEntryHtml(document.uploaded_by || '-')}</small>
+            </span>
+        </div>
+        <div class="warehouse-entry-payment-document-actions">
+            ${view}
+            <button type="button" class="btn btn-outline-warning btn-xs btnReplaceWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
+                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
+                data-legacy="${document.is_legacy ? '1' : ''}" title="Reemplazar constancia"><i class="fas fa-sync-alt"></i></button>
+            <button type="button" class="btn btn-outline-danger btn-xs btnDeleteWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
+                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
+                data-legacy="${document.is_legacy ? '1' : ''}" title="Eliminar constancia"><i class="fas fa-trash-alt"></i></button>
+        </div>
+    </div>`;
+}
+
+function uploadWarehouseEntryPaymentDocument() {
+    const input = this;
+    const file = input.files?.[0];
+    const target = warehouseEntryPaymentDocumentTarget;
+    const entryId = $('#warehouse_entry_id').val();
+    if (!file || !target) return;
+
+    const extension = getWarehouseEntryFileExtension(file.name);
+    if (!['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(extension) || file.size > warehouseEntryMaxDocumentSize) {
+        input.value = '';
+        warehouseEntryPaymentDocumentTarget = null;
+        Swal.fire('Archivo no permitido', 'La constancia debe ser PDF, JPG, JPEG, PNG o WEBP y no debe superar los 10 MB.', 'warning');
+        return;
+    }
+    if (!entryId) {
+        input.value = '';
+        warehouseEntryPaymentDocumentTarget = null;
+        Swal.fire('Ingreso no guardado', 'No se pueden agregar constancias adicionales hasta guardar el ingreso.', 'warning');
+        return;
+    }
+
+    const data = new FormData();
+    data.append('payment_type', target.paymentType);
+    data.append('payment_id', target.paymentId);
+    data.append('document', file);
+    if (target.replaceDocumentId) data.append('replace_document_id', target.replaceDocumentId);
+    if (target.replaceLegacy) data.append('replace_legacy', '1');
+
+    $('#warehouseEntryPaymentsDocumentsSection').addClass('is-loading');
+    $.ajax({
+        url: `${window.routes.warehouseEntryShow}/${entryId}/payment-documents`,
+        type: 'POST',
+        data,
+        processData: false,
+        contentType: false
+    }).done(function (response) {
+        refreshWarehouseEntryPaymentsDocuments(entryId);
+        Swal.fire({
+            icon: 'success',
+            title: response.message || 'Constancia agregada correctamente.',
+            text: response.detail || 'No se generó movimiento bancario; solo se adjuntó la constancia.',
+            timer: 2600,
+            showConfirmButton: false
+        });
+    }).fail(function (xhr) {
+        $('#warehouseEntryPaymentsDocumentsSection').removeClass('is-loading');
+        Swal.fire('No se pudo adjuntar', xhr.responseJSON?.message || 'Revise el archivo e intente nuevamente.', 'error');
+    }).always(function () {
+        input.value = '';
+        warehouseEntryPaymentDocumentTarget = null;
+    });
+}
+
+function deleteWarehouseEntryPaymentDocument(button) {
+    const entryId = $('#warehouse_entry_id').val();
+    const legacy = Boolean(button.data('legacy'));
+    const documentId = button.data('document-id');
+    if (!entryId) return;
+
+    Swal.fire({
+        icon: 'warning',
+        title: '¿Deseas eliminar esta constancia?',
+        text: 'El pago y su movimiento bancario se mantendrán sin cambios.',
+        input: 'textarea',
+        inputLabel: 'Motivo de eliminación (opcional)',
+        inputPlaceholder: 'Indique el motivo si necesita dejar una observación...',
+        inputAttributes: { maxlength: 500 },
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc3545'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        button.prop('disabled', true);
+        const url = legacy
+            ? `${window.routes.warehouseEntryShow}/${entryId}/legacy-payment-document`
+            : `${window.routes.warehouseEntryShow}/${entryId}/payment-documents/${documentId}`;
+        const data = {
+            deletion_reason: String(result.value || '').trim(),
+            ...(legacy ? {
+            payment_type: button.data('payment-type'),
+            payment_id: button.data('payment-id')
+            } : {})
+        };
+
+        $.ajax({ url, type: 'DELETE', data }).done(function (response) {
+            refreshWarehouseEntryPaymentsDocuments(entryId);
+            Swal.fire({
+                icon: 'success',
+                title: response.message || 'Constancia eliminada correctamente.',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2400
+            });
+        }).fail(function (xhr) {
+            button.prop('disabled', false);
+            Swal.fire('No se pudo eliminar', xhr.responseJSON?.message || 'Revise la constancia e intente nuevamente.', 'error');
+        });
+    });
+}
+
+function refreshWarehouseEntryPaymentsDocuments(entryId) {
+    $.get(`${window.routes.warehouseEntryShow}/${entryId}`).done(function (response) {
+        renderWarehouseEntryPaymentsDocuments(response.data);
+        renderWarehouseEntryBankPaymentProof(response.data);
+        $('#warehouseEntryPaymentsDocumentsSection').removeClass('is-loading');
+    }).fail(function () {
+        $('#warehouseEntryPaymentsDocumentsSection').removeClass('is-loading');
+    });
 }
 
 function loadWarehouseEntryDetail(id) {
