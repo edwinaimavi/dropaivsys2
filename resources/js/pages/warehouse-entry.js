@@ -28,8 +28,10 @@ let warehouseEntryCreditPaymentEntry = null;
 let warehouseEntryCreditPaymentAccounts = [];
 let warehouseEntryCreditPaymentAccountsRequest = null;
 let warehouseEntryCreditPaymentReturnToAlerts = false;
+let warehouseEntryCreditPaymentEditingPayment = null;
 let warehouseEntryPaymentDocumentTarget = null;
 let warehouseEntryInitialPaymentDocuments = [];
+let warehouseEntryPendingPaymentItems = [];
 const warehouseEntryExpandedGroups = new Set();
 const CREDIT_DUE_WARNING_DAYS = 15;
 
@@ -233,6 +235,13 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_currency_id', function () {
         updateWarehouseEntryCurrency();
         updateWarehouseEntryBankPaymentExchangeRate();
+        warehouseEntryPendingPaymentItems.forEach(item => {
+            if (!item.currency_id) item.currency_id = String($('#warehouse_entry_currency_id').val() || '');
+        });
+        renderWarehouseEntryPendingPaymentItems();
+        $('#warehouseEntryPendingPaymentsList .warehouse-entry-pending-payment-card').each(function () {
+            syncWarehouseEntryPendingPaymentItem($(this));
+        });
         resetWarehouseEntryNegativeBalanceConfirmation();
         filterWarehouseEntryGeneralCashBoxes();
         loadWarehouseEntryExpenseBankAccounts();
@@ -243,16 +252,29 @@ document.addEventListener('DOMContentLoaded', function () {
         updateWarehouseEntryReview();
     });
     $(document).on('input', '#warehouse_entry_bank_payment_exchange_rate', resetWarehouseEntryNegativeBalanceConfirmation);
-    $(document).on('click', '#btnAddWarehousePaymentDocument', function () {
-        $('#warehousePaymentDocumentsInput').trigger('click');
+    $(document).on('click', '.btnRemoveWarehouseEntryPendingPayment', function () {
+        warehouseEntryPendingPaymentItems.splice(Number($(this).data('index')), 1);
+        renderWarehouseEntryPendingPaymentItems();
+        updateWarehouseEntryReview();
     });
-    $(document).on('change', '#warehousePaymentDocumentsInput', function () {
-        addWarehouseEntryInitialPaymentDocuments(this.files || []);
-        this.value = '';
+    $(document).on('click', '.btnChangeWarehouseEntryPendingPaymentFile', function () {
+        $(this).closest('.warehouse-entry-pending-payment-card').find('.warehouse-entry-pending-payment-proof').trigger('click');
     });
-    $(document).on('click', '.btnRemoveWarehouseEntryInitialPaymentDocument', function () {
-        warehouseEntryInitialPaymentDocuments.splice(Number($(this).data('index')), 1);
-        renderWarehouseEntryInitialPaymentDocuments();
+    $(document).on('change', '.warehouse-entry-pending-payment-proof', function () {
+        const index = Number($(this).closest('.warehouse-entry-pending-payment-card').data('index'));
+        const file = this.files?.[0] || null;
+        if (file && !warehouseEntryPaymentFileIsValid(file)) {
+            this.value = '';
+            Swal.fire('Archivo no permitido', 'La constancia debe ser PDF, JPG, JPEG, PNG o WEBP y no superar los 10 MB.', 'warning');
+            return;
+        }
+        warehouseEntryPendingPaymentItems[index].file = file;
+        $(this).closest('.warehouse-entry-pending-payment-card')
+            .find('.warehouse-entry-pending-payment-file-name')
+            .text(file?.name || 'Seleccione una constancia');
+    });
+    $(document).on('input change', '.warehouse-entry-pending-payment-field', function () {
+        syncWarehouseEntryPendingPaymentItem($(this).closest('.warehouse-entry-pending-payment-card'));
     });
     $(document).on('click', '#btnDeleteWarehouseEntryBankPaymentProof', function () {
         const entryId = $('#warehouse_entry_id').val();
@@ -470,7 +492,22 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('click', '#btnRegisterWarehouseCreditPayment', function () {
-        openWarehouseEntryCreditPayment($('#warehouse_entry_id').val(), false);
+        const entryId = $('#warehouse_entry_id').val();
+        if (entryId) {
+            openWarehouseEntryCreditPayment(entryId, false);
+            return;
+        }
+        addWarehouseEntryPendingPaymentItem();
+    });
+    $(document).on('click', '.btnEditWarehouseEntryBankPayment', function () {
+        openWarehouseEntryCreditPayment(
+            $('#warehouse_entry_id').val(),
+            false,
+            Number($(this).data('payment-id'))
+        );
+    });
+    $(document).on('click', '.btnReverseWarehouseEntryBankPayment', function () {
+        reverseWarehouseEntryBankPayment(Number($(this).data('payment-id')));
     });
 
     $(document).on('change', '#warehouse_credit_payment_currency_id', function () {
@@ -914,22 +951,30 @@ function openWarehouseEntryCreditPaymentFromAlert(id) {
     modal.modal('hide');
 }
 
-function openWarehouseEntryCreditPayment(id, fromAlerts = false) {
+function openWarehouseEntryCreditPayment(id, fromAlerts = false, paymentId = null) {
     if (!id) return;
 
     $.get(`${window.routes.warehouseEntryShow}/${id}`)
         .done(function (response) {
             const entry = response.data;
             const summary = entry.credit_payment_summary || {};
-            if (parseWarehouseEntryNumber(summary.pending_amount) <= 0) {
-                Swal.fire('Crédito pagado', 'Este ingreso ya no tiene saldo pendiente.', 'info');
+            const editingPayment = paymentId
+                ? (entry.credit_payments || []).find(payment => Number(payment.id) === Number(paymentId))
+                : null;
+            if (paymentId && !editingPayment) {
+                Swal.fire('Pago no disponible', 'El pago seleccionado ya no se encuentra activo.', 'warning');
+                return;
+            }
+            if (!editingPayment && parseWarehouseEntryNumber(summary.pending_amount) <= 0) {
+                Swal.fire('Compra pagada', 'Este ingreso ya no tiene saldo pendiente. Solo puede agregar documentos a los pagos existentes.', 'info');
                 if (fromAlerts) loadWarehouseEntryCreditAlerts(false, true);
                 return;
             }
 
             warehouseEntryCreditPaymentEntry = entry;
+            warehouseEntryCreditPaymentEditingPayment = editingPayment;
             warehouseEntryCreditPaymentReturnToAlerts = fromAlerts;
-            resetWarehouseEntryCreditPaymentForm(entry);
+            resetWarehouseEntryCreditPaymentForm(entry, editingPayment);
             loadWarehouseEntryCreditPaymentAccounts(entry.company_id);
             $('#warehouseEntryCreditPaymentModal').modal('show');
         })
@@ -939,7 +984,7 @@ function openWarehouseEntryCreditPayment(id, fromAlerts = false) {
         });
 }
 
-function resetWarehouseEntryCreditPaymentForm(entry) {
+function resetWarehouseEntryCreditPaymentForm(entry, payment = null) {
     const form = $('#warehouseEntryCreditPaymentForm');
     const summary = entry.credit_payment_summary || {};
     const currency = entry.currency || {};
@@ -950,16 +995,26 @@ function resetWarehouseEntryCreditPaymentForm(entry) {
     form[0]?.reset();
     clearWarehouseEntryCreditPaymentValidation();
     $('#warehouse_credit_payment_entry_id').val(entry.id);
+    $('#warehouse_credit_payment_id').val(payment?.id || '');
     $('#warehouse_credit_payment_idempotency_key').val(generateWarehouseEntryCreditPaymentKey());
-    $('#warehouse_credit_payment_date').val(formatWarehouseEntryDate(new Date().toISOString()));
-    $('#warehouse_credit_payment_method').val('transferencia');
-    $('#warehouse_credit_payment_currency_id').val(String(entry.currency_id || ''));
+    $('#warehouse_credit_payment_date').val(payment?.payment_date
+        ? formatWarehouseEntryDate(payment.payment_date)
+        : formatWarehouseEntryDate(new Date().toISOString()));
+    $('#warehouse_credit_payment_method').val(payment?.payment_method || 'transferencia');
+    $('#warehouse_credit_payment_currency_id').val(String(payment?.payment_currency_id || entry.currency_id || ''));
     $('#warehouse_credit_payment_applied_amount')
-        .attr('max', parseWarehouseEntryNumber(summary.pending_amount).toFixed(4))
-        .val('');
-    $('#warehouse_credit_payment_exchange_rate').val('1');
+        .attr('max', (parseWarehouseEntryNumber(summary.pending_amount) + parseWarehouseEntryNumber(payment?.applied_amount)).toFixed(4))
+        .val(payment?.applied_amount || '');
+    $('#warehouse_credit_payment_exchange_rate').val(payment?.exchange_rate || '1');
     $('#warehouse_credit_payment_amount').val('0.00');
     $('#warehouse_credit_payment_proof').val('').siblings('.custom-file-label').text('Seleccionar archivo');
+    $('#warehouse_credit_payment_operation_number').val(payment?.operation_number || '');
+    $('#warehouse_credit_payment_observation').val(payment?.observation || '');
+    $('#warehouseCreditPaymentModalTitle').text(payment ? 'Editar datos del pago' : 'Agregar pago / constancia');
+    $('#warehouseCreditPaymentModalSubtitle').text(payment
+        ? 'La corrección anula el movimiento anterior y genera su reemplazo sin perder trazabilidad.'
+        : 'Este registro crea un nuevo egreso bancario; luego podrá agregar documentos al mismo pago.');
+    $('#warehouseCreditPaymentProofRequired').toggle(!payment);
     $('#warehouseCreditPaymentEntryCode').text(entry.entry_number || '-');
     $('#warehouseCreditPaymentOrderCode').text(entry.supplier_purchase_order?.code || entry.purchase_order_number || '-');
     $('#warehouseCreditPaymentSupplier').text(supplier);
@@ -973,6 +1028,7 @@ function resetWarehouseEntryCreditPaymentForm(entry) {
     $('#warehouse_credit_payment_bank_account_id').empty().append(new Option('Cargando cuentas...', '')).prop('disabled', true);
     $('#warehouseCreditPaymentBankHelp').text('Cargando cuentas bancarias activas...').removeClass('text-danger');
     updateWarehouseEntryCreditPaymentExchangeRate();
+    calculateWarehouseEntryCreditPaymentAmount();
     setWarehouseEntryCreditPaymentSaving(false);
 }
 
@@ -1021,6 +1077,10 @@ function filterWarehouseEntryCreditPaymentAccounts() {
         if (balance < 0) $(option).css('color', '#dc3545');
         select.append(option);
     });
+
+    if (warehouseEntryCreditPaymentEditingPayment) {
+        select.val(String(warehouseEntryCreditPaymentEditingPayment.company_bank_account_id || ''));
+    }
 
     select.prop('disabled', !currencyId || accounts.length === 0);
     $('#warehouseCreditPaymentBankHelp')
@@ -1094,7 +1154,8 @@ function validateWarehouseEntryCreditPayment() {
         ['#warehouse_credit_payment_exchange_rate', purchaseCode === paymentCode || rate > 0, 'Ingrese el tipo de cambio del pago, mayor a cero.'],
         ['#warehouse_credit_payment_date', Boolean($('#warehouse_credit_payment_date').val()), 'Ingrese la fecha del pago.'],
         ['#warehouse_credit_payment_method', Boolean($('#warehouse_credit_payment_method').val()), 'Seleccione el medio de pago.'],
-        ['#warehouse_credit_payment_operation_number', Boolean(String($('#warehouse_credit_payment_operation_number').val() || '').trim()), 'Ingrese el número de operación o constancia.']
+        ['#warehouse_credit_payment_operation_number', Boolean(String($('#warehouse_credit_payment_operation_number').val() || '').trim()), 'Ingrese el número de operación o constancia.'],
+        ['#warehouse_credit_payment_proof', Boolean(warehouseEntryCreditPaymentEditingPayment || $('#warehouse_credit_payment_proof')[0]?.files?.length), 'Adjunte el archivo de constancia del pago.']
     ];
     const invalid = checks.find(check => !check[1]);
     if (!invalid) return true;
@@ -1110,19 +1171,24 @@ function saveWarehouseEntryCreditPayment(form) {
     if (!warehouseEntryCreditPaymentEntry || !validateWarehouseEntryCreditPayment()) return;
 
     const entryId = warehouseEntryCreditPaymentEntry.id;
+    const paymentId = warehouseEntryCreditPaymentEditingPayment?.id;
     const returnToAlerts = warehouseEntryCreditPaymentReturnToAlerts;
     setWarehouseEntryCreditPaymentSaving(true);
+    const data = new FormData(form);
+    if (paymentId) data.append('_method', 'PUT');
     $.ajax({
-        url: `${window.routes.warehouseEntryShow}/${entryId}/credit-payments`,
+        url: paymentId
+            ? `${window.routes.warehouseEntryShow}/${entryId}/credit-payments/${paymentId}`
+            : `${window.routes.warehouseEntryShow}/${entryId}/credit-payments`,
         type: 'POST',
-        data: new FormData(form),
+        data,
         processData: false,
         contentType: false
     })
         .done(function (response) {
             tableWarehouseEntry?.ajax.reload(null, false);
             if (!returnToAlerts) loadWarehouseEntryCreditAlerts(false);
-            Swal.fire({ icon: 'success', title: 'Pago registrado', text: response.message, timer: 2400, showConfirmButton: false });
+            Swal.fire({ icon: 'success', title: paymentId ? 'Pago actualizado' : 'Pago registrado', text: response.message, timer: 2400, showConfirmButton: false });
 
             if ($('#warehouseEntryModal').hasClass('show')) {
                 $.get(`${window.routes.warehouseEntryShow}/${entryId}`).done(function (entryResponse) {
@@ -1143,10 +1209,10 @@ function saveWarehouseEntryCreditPayment(form) {
                     field.addClass('is-invalid');
                     field.closest('.form-group').find('.invalid-feedback').first().text(message || '');
                 });
-                Swal.fire('No se pudo registrar', messages[0] || 'Revise los datos del pago.', 'warning');
+                Swal.fire('No se pudo guardar', messages[0] || 'Revise los datos del pago.', 'warning');
                 return;
             }
-            Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo registrar el pago del crédito.', 'error');
+            Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo guardar el pago.', 'error');
         })
         .always(function () {
             setWarehouseEntryCreditPaymentSaving(false);
@@ -1158,6 +1224,45 @@ function setWarehouseEntryCreditPaymentSaving(saving) {
     button.prop('disabled', saving).html(saving
         ? '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...'
         : '<i class="fas fa-save mr-1"></i>Guardar pago');
+}
+
+function reverseWarehouseEntryBankPayment(paymentId) {
+    const entryId = $('#warehouse_entry_id').val();
+    if (!entryId || !paymentId) return;
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Revertir pago',
+        text: 'El movimiento bancario será anulado y el saldo pendiente se recalculará.',
+        input: 'textarea',
+        inputLabel: 'Motivo de la reversa',
+        inputPlaceholder: 'Explique por qué se revierte este pago...',
+        inputAttributes: { maxlength: 1000 },
+        showCancelButton: true,
+        confirmButtonText: 'Revertir pago',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc3545',
+        preConfirm: value => {
+            if (String(value || '').trim().length < 5) {
+                Swal.showValidationMessage('Ingrese un motivo de al menos 5 caracteres.');
+                return false;
+            }
+            return String(value).trim();
+        }
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        $.ajax({
+            url: `${window.routes.warehouseEntryShow}/${entryId}/credit-payments/${paymentId}`,
+            type: 'DELETE',
+            data: { reason: result.value }
+        }).done(function (response) {
+            tableWarehouseEntry?.ajax.reload(null, false);
+            Swal.fire({ icon: 'success', title: 'Pago revertido', text: response.message, timer: 2200, showConfirmButton: false });
+            refreshWarehouseEntryPaymentsDocuments(entryId);
+        }).fail(function (xhr) {
+            Swal.fire('No se pudo revertir', xhr.responseJSON?.message || 'Revise el estado del pago.', 'error');
+        });
+    });
 }
 
 function toggleWarehouseEntryCustomerOrderGroup(key) {
@@ -1316,6 +1421,162 @@ function renderWarehouseEntryInitialPaymentDocuments() {
     }).join(''));
 }
 
+function warehouseEntryPaymentFileIsValid(file) {
+    if (!(file instanceof File)) return false;
+    const extension = getWarehouseEntryFileExtension(file.name);
+    return ['pdf', 'jpg', 'jpeg', 'png', 'webp'].includes(extension)
+        && file.size <= warehouseEntryMaxDocumentSize;
+}
+
+function addWarehouseEntryPendingPaymentItem() {
+    const purchaseCurrencyId = String($('#warehouse_entry_currency_id').val() || '');
+    warehouseEntryPendingPaymentItems.push({
+        bank_account_id: '',
+        payment_date: formatWarehouseEntryDate(new Date().toISOString()),
+        operation_number: '',
+        currency_id: purchaseCurrencyId,
+        paid_amount: '0.0000',
+        exchange_rate: '1',
+        applied_amount: '',
+        payment_method: 'transferencia',
+        observation: '',
+        file: null,
+        idempotency_key: generateWarehouseEntryCreditPaymentKey()
+    });
+    renderWarehouseEntryPendingPaymentItems();
+    const card = $('#warehouseEntryPendingPaymentsList .warehouse-entry-pending-payment-card').last();
+    card[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function warehouseEntryPendingPaymentCurrencyOptions(selectedId) {
+    return $('#warehouse_entry_currency_id option').map(function () {
+        const value = String(this.value || '');
+        const selected = value === String(selectedId || '') ? ' selected' : '';
+        return `<option value="${escapeWarehouseEntryHtml(value)}" data-code="${escapeWarehouseEntryHtml($(this).data('code') || '')}" data-symbol="${escapeWarehouseEntryHtml($(this).data('symbol') || '')}"${selected}>${escapeWarehouseEntryHtml($(this).text())}</option>`;
+    }).get().join('');
+}
+
+function warehouseEntryPendingPaymentAccountOptions(currencyId, selectedId) {
+    const accounts = warehouseEntryCompanyBankAccounts.filter(account =>
+        String(account.currency_id) === String(currencyId || '')
+        && String(account.status || '').toUpperCase() === 'ACTIVE'
+    );
+    return '<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => {
+        const bank = account.bank?.short_name || account.bank?.description || 'Banco';
+        const currency = account.currency?.code || '';
+        const symbol = account.currency?.symbol || currency;
+        const selected = String(account.id) === String(selectedId || '') ? ' selected' : '';
+        return `<option value="${escapeWarehouseEntryHtml(account.id)}" data-currency-id="${escapeWarehouseEntryHtml(account.currency_id)}" data-currency-code="${escapeWarehouseEntryHtml(currency)}" data-balance="${escapeWarehouseEntryHtml(account.current_balance)}"${selected}>${escapeWarehouseEntryHtml(`${bank} | ${account.account_number} | ${currency} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`)}</option>`;
+    }).join('');
+}
+
+function renderWarehouseEntryPendingPaymentItems() {
+    const container = $('#warehouseEntryPendingPaymentsList');
+    const isNew = !$('#warehouse_entry_id').val();
+    $('#warehouseEntryPendingPaymentsBuilder').toggleClass('d-none', !isNew);
+    $('#warehouseEntryPendingPaymentsEmpty').toggleClass('d-none', warehouseEntryPendingPaymentItems.length > 0);
+    if (!isNew) {
+        container.empty();
+        return;
+    }
+
+    container.html(warehouseEntryPendingPaymentItems.map(function (item, index) {
+        const purchaseCode = warehouseEntrySelectedCurrencyCode();
+        const paymentOption = $('#warehouse_entry_currency_id option[value="' + item.currency_id + '"]');
+        const paymentCode = String(paymentOption.data('code') || '').toUpperCase();
+        const sameCurrency = Boolean(purchaseCode && paymentCode && purchaseCode === paymentCode);
+        const outputSymbol = paymentOption.data('symbol') || paymentCode || '-';
+        const fileName = item.file?.name || 'Seleccione una constancia';
+        return `<div class="warehouse-entry-pending-payment-card" data-index="${index}" data-currency-id="${escapeWarehouseEntryHtml(item.currency_id)}">
+            <div class="warehouse-entry-pending-payment-head">
+                <div><strong><i class="fas fa-money-check-alt text-warning mr-1"></i>Pago ${index + 1}</strong><small>Este pago crear&aacute; un egreso bancario independiente al guardar.</small></div>
+                <button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryPendingPayment" data-index="${index}"><i class="fas fa-times mr-1"></i>Quitar pago</button>
+            </div>
+            <div class="row">
+                <div class="form-group col-lg-5">
+                    <label>BANCO / CUENTA BANCARIA DE SALIDA *</label>
+                    <select name="payment_items[${index}][bank_account_id]" data-field="bank_account_id" class="form-control form-control-sm warehouse-entry-pending-payment-field">
+                        ${warehouseEntryPendingPaymentAccountOptions(item.currency_id, item.bank_account_id)}
+                    </select><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>FECHA DE PAGO *</label>
+                    <input type="date" name="payment_items[${index}][payment_date]" data-field="payment_date" value="${escapeWarehouseEntryHtml(item.payment_date)}" class="form-control form-control-sm warehouse-entry-pending-payment-field"><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-4">
+                    <label>NRO. OPERACI&Oacute;N / CONSTANCIA *</label>
+                    <input type="text" name="payment_items[${index}][operation_number]" data-field="operation_number" value="${escapeWarehouseEntryHtml(item.operation_number)}" maxlength="100" class="form-control form-control-sm text-uppercase warehouse-entry-pending-payment-field"><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>MONEDA DEL PAGO *</label>
+                    <select name="payment_items[${index}][currency_id]" data-field="currency_id" class="form-control form-control-sm warehouse-entry-pending-payment-field">${warehouseEntryPendingPaymentCurrencyOptions(item.currency_id)}</select><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>MONTO PAGADO *</label>
+                    <div class="input-group input-group-sm"><div class="input-group-prepend"><span class="input-group-text warehouse-entry-pending-payment-symbol">${escapeWarehouseEntryHtml(outputSymbol)}</span></div><input type="number" name="payment_items[${index}][paid_amount]" data-field="paid_amount" value="${escapeWarehouseEntryHtml(item.paid_amount)}" class="form-control text-right warehouse-entry-pending-payment-paid" readonly></div><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>TIPO DE CAMBIO *</label>
+                    <input type="number" name="payment_items[${index}][exchange_rate]" data-field="exchange_rate" value="${escapeWarehouseEntryHtml(item.exchange_rate)}" min="0.000001" step="0.000001" class="form-control form-control-sm text-right warehouse-entry-pending-payment-field"${sameCurrency ? ' readonly' : ''}><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>MONTO APLICADO *</label>
+                    <input type="number" name="payment_items[${index}][applied_amount]" data-field="applied_amount" value="${escapeWarehouseEntryHtml(item.applied_amount)}" min="0.0001" step="0.0001" class="form-control form-control-sm text-right warehouse-entry-pending-payment-field"><small class="form-text text-muted">En moneda de la compra (${escapeWarehouseEntryHtml(purchaseCode || '-')}).</small><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-sm-6 col-lg-3">
+                    <label>MEDIO DE PAGO *</label>
+                    <select name="payment_items[${index}][payment_method]" data-field="payment_method" class="form-control form-control-sm warehouse-entry-pending-payment-field">
+                        <option value="transferencia"${item.payment_method === 'transferencia' ? ' selected' : ''}>Transferencia</option><option value="deposito"${item.payment_method === 'deposito' ? ' selected' : ''}>Dep&oacute;sito</option><option value="cheque"${item.payment_method === 'cheque' ? ' selected' : ''}>Cheque</option><option value="otro"${item.payment_method === 'otro' ? ' selected' : ''}>Otro</option>
+                    </select><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-lg-5">
+                    <label>ARCHIVO DE CONSTANCIA *</label>
+                    <input type="file" name="payment_items[${index}][file]" class="d-none warehouse-entry-pending-payment-proof" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                    <div class="warehouse-entry-pending-payment-file"><i class="fas fa-paperclip text-info"></i><span class="warehouse-entry-pending-payment-file-name" title="${escapeWarehouseEntryHtml(fileName)}">${escapeWarehouseEntryHtml(fileName)}</span><button type="button" class="btn btn-outline-info btn-xs btnChangeWarehouseEntryPendingPaymentFile">${item.file ? 'Cambiar archivo' : 'Seleccionar archivo'}</button></div><span class="invalid-feedback"></span>
+                </div>
+                <div class="form-group col-lg-7">
+                    <label>OBSERVACI&Oacute;N</label>
+                    <input type="text" name="payment_items[${index}][observation]" data-field="observation" value="${escapeWarehouseEntryHtml(item.observation)}" maxlength="1500" class="form-control form-control-sm text-uppercase warehouse-entry-pending-payment-field"><span class="invalid-feedback"></span>
+                </div>
+            </div>
+        </div>`;
+    }).join(''));
+}
+
+function syncWarehouseEntryPendingPaymentItem(card) {
+    const index = Number(card.data('index'));
+    const item = warehouseEntryPendingPaymentItems[index];
+    if (!item) return;
+    card.find('[data-field]').each(function () {
+        item[$(this).data('field')] = String($(this).val() ?? '');
+    });
+
+    const previousCurrencyId = String(card.data('currency-id') || '');
+    if (previousCurrencyId !== String(item.currency_id || '')) {
+        const account = warehouseEntryCompanyBankAccounts.find(value => String(value.id) === String(item.bank_account_id));
+        if (!account || String(account.currency_id) !== String(item.currency_id)) item.bank_account_id = '';
+        card.data('currency-id', item.currency_id);
+        card.find('[data-field="bank_account_id"]')
+            .html(warehouseEntryPendingPaymentAccountOptions(item.currency_id, item.bank_account_id));
+    }
+
+    const purchaseCode = warehouseEntrySelectedCurrencyCode();
+    const paymentOption = $('#warehouse_entry_currency_id option[value="' + item.currency_id + '"]');
+    const paymentCode = String(paymentOption.data('code') || '').toUpperCase();
+    const sameCurrency = Boolean(purchaseCode && paymentCode && purchaseCode === paymentCode);
+    if (sameCurrency) item.exchange_rate = '1';
+    const rate = parseWarehouseEntryNumber(item.exchange_rate);
+    const applied = parseWarehouseEntryNumber(item.applied_amount);
+    let paid = 0;
+    if (sameCurrency) paid = applied;
+    else if (purchaseCode !== 'PEN' && paymentCode === 'PEN' && rate > 0) paid = applied * rate;
+    else if (purchaseCode === 'PEN' && paymentCode !== 'PEN' && rate > 0) paid = applied / rate;
+    item.paid_amount = paid.toFixed(4);
+    card.find('[data-field="exchange_rate"]').val(item.exchange_rate).prop('readonly', sameCurrency);
+    card.find('[data-field="paid_amount"]').val(item.paid_amount);
+    card.find('.warehouse-entry-pending-payment-symbol').text(paymentOption.data('symbol') || paymentCode || '-');
+}
+
 function renderWarehouseEntryBankPaymentProof(entry = null) {
     const container = $('#warehouseEntryBankPaymentExistingProof');
     const emptyState = $('#warehouseEntryBankPaymentWithoutProof');
@@ -1364,6 +1625,7 @@ function resetWarehouseEntryForm() {
 
     warehouseEntryPaymentDocumentTarget = null;
     warehouseEntryInitialPaymentDocuments = [];
+    warehouseEntryPendingPaymentItems = [];
     $('#warehouseEntryPaymentsDocumentsSection').addClass('d-none');
     $('#warehouseEntryPaymentsDocumentsList').empty();
 
@@ -1405,6 +1667,7 @@ function resetWarehouseEntryForm() {
     $('#warehousePaymentDocumentsInput').val('');
     $('#warehouseEntryInitialPaymentDocumentsGroup').removeClass('d-none');
     renderWarehouseEntryInitialPaymentDocuments();
+    renderWarehouseEntryPendingPaymentItems();
     renderWarehouseEntryBankPaymentProof();
     $('#warehouseEntryBankPaymentStatus').addClass('d-none').empty();
     $('#warehouseEntryCreditPaymentPanel').addClass('d-none');
@@ -1484,6 +1747,9 @@ function validateWarehouseEntryRequiredData() {
         );
     }
 
+    return validateWarehouseEntryPendingPaymentItems();
+
+    /* Compatibilidad visual anterior, reemplazada por payment_items[].
     if ($('#warehouse_entry_generate_account_payable').val() !== '1') {
         if (!$('#warehouse_entry_payment_company_bank_account_id').val()) {
             return showWarehouseEntryClientValidation(
@@ -1512,6 +1778,63 @@ function validateWarehouseEntryRequiredData() {
         }
     }
 
+    return true;
+    */
+}
+
+function validateWarehouseEntryPendingPaymentItems() {
+    if ($('#warehouse_entry_id').val()) return true;
+    const isCredit = $('#warehouse_entry_generate_account_payable').val() === '1';
+    if (!isCredit && !warehouseEntryPendingPaymentItems.length) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_data',
+            'Agregue al menos un pago / constancia para registrar una compra al contado.',
+            $('#btnRegisterWarehouseCreditPayment')
+        );
+    }
+
+    $('#warehouseEntryPendingPaymentsList .warehouse-entry-pending-payment-card').each(function () {
+        syncWarehouseEntryPendingPaymentItem($(this));
+    });
+    const purchaseCode = warehouseEntrySelectedCurrencyCode();
+    const seenOperations = new Set();
+    let totalApplied = 0;
+    for (let index = 0; index < warehouseEntryPendingPaymentItems.length; index += 1) {
+        const item = warehouseEntryPendingPaymentItems[index];
+        const field = name => $(`[name="payment_items[${index}][${name}]"]`);
+        const account = warehouseEntryCompanyBankAccounts.find(value => String(value.id) === String(item.bank_account_id));
+        const paymentOption = $('#warehouse_entry_currency_id option[value="' + item.currency_id + '"]');
+        const paymentCode = String(paymentOption.data('code') || '').toUpperCase();
+        const applied = parseWarehouseEntryNumber(item.applied_amount);
+        const paid = parseWarehouseEntryNumber(item.paid_amount);
+        const rate = parseWarehouseEntryNumber(item.exchange_rate);
+        const required = [
+            ['bank_account_id', item.bank_account_id, `Seleccione la cuenta bancaria del Pago ${index + 1}.`],
+            ['payment_date', item.payment_date, `Ingrese la fecha del Pago ${index + 1}.`],
+            ['operation_number', item.operation_number, `Ingrese el número de operación del Pago ${index + 1}.`],
+            ['currency_id', item.currency_id, `Seleccione la moneda del Pago ${index + 1}.`]
+        ];
+        const missing = required.find(value => !String(value[1] || '').trim());
+        if (missing) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', missing[2], field(missing[0]));
+        if (!account || String(account.currency_id) !== String(item.currency_id)) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `La cuenta del Pago ${index + 1} no corresponde a su moneda.`, field('bank_account_id'));
+        if (applied <= 0) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `El monto aplicado del Pago ${index + 1} debe ser mayor a cero.`, field('applied_amount'));
+        if (purchaseCode !== paymentCode && rate <= 0) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `Ingrese el tipo de cambio del Pago ${index + 1}.`, field('exchange_rate'));
+        if (paid <= 0) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `El monto pagado del Pago ${index + 1} no es válido.`, field('paid_amount'));
+        if (!warehouseEntryPaymentFileIsValid(item.file)) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `Adjunte la constancia del Pago ${index + 1}.`, field('file'));
+        const operationKey = [item.bank_account_id, item.payment_date, String(item.operation_number).trim().toUpperCase(), paid.toFixed(4)].join('|');
+        if (seenOperations.has(operationKey)) return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', `La operación del Pago ${index + 1} está duplicada.`, field('operation_number'));
+        seenOperations.add(operationKey);
+        totalApplied += applied;
+    }
+
+    const purchaseTotal = parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val());
+    if (totalApplied > purchaseTotal + 0.0001) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_data',
+            'La suma de montos aplicados no puede superar el total de la compra.',
+            $('#warehouseEntryPendingPaymentsList .warehouse-entry-pending-payment-card').last().find('[data-field="applied_amount"]')
+        );
+    }
     return true;
 }
 
@@ -1621,8 +1944,15 @@ async function saveWarehouseEntry(form) {
         : window.routes.warehouseEntryStore;
     const formData = new FormData(form);
     formData.delete('payment_documents[]');
-    warehouseEntryInitialPaymentDocuments.forEach(file => {
-        formData.append('payment_documents[]', file, file.name);
+    Array.from(formData.keys())
+        .filter(key => key.startsWith('payment_items['))
+        .forEach(key => formData.delete(key));
+    if (!id) warehouseEntryPendingPaymentItems.forEach(function (item, index) {
+        Object.entries(item).forEach(function ([field, value]) {
+            if (field === 'file') return;
+            formData.append(`payment_items[${index}][${field}]`, value ?? '');
+        });
+        formData.append(`payment_items[${index}][file]`, item.file, item.file.name);
     });
 
     // Al editar pueden permanecer metadatos de archivos existentes en el formulario.
@@ -1681,6 +2011,7 @@ async function saveWarehouseEntry(form) {
             loadWarehouseEntryCreditAlerts(false);
             warehouseEntryPendingDocuments = [];
             warehouseEntryInitialPaymentDocuments = [];
+            warehouseEntryPendingPaymentItems = [];
 
             if (!id && response.pdf_url) {
                 window.open(response.pdf_url, '_blank');
@@ -2462,8 +2793,9 @@ function updateWarehouseEntryReview() {
     if (!itemCount) alerts.push('Agregue al menos un artículo.');
 
     if ($('#warehouse_entry_generate_account_payable').val() !== '1'
-        && !$('#warehouse_entry_payment_company_bank_account_id').val()) {
-        alerts.push('Seleccione la cuenta bancaria utilizada para pagar al proveedor.');
+        && !$('#warehouse_entry_id').val()
+        && !warehouseEntryPendingPaymentItems.length) {
+        alerts.push('Agregue al menos un pago / constancia.');
     }
 
     $('#warehouseEntrySideItemCount').text(itemCount);
@@ -2472,9 +2804,11 @@ function updateWarehouseEntryReview() {
     $('#warehouseEntrySideCompany').text($('#warehouse_entry_company_id').val() ? companyText : 'Seleccione empresa');
 
     const selectedText = selector => $(selector).find('option:selected').text().trim() || '-';
-    const paymentSummary = $('#warehouse_entry_generate_account_payable').val() === '1'
-        ? 'Cuenta por pagar / sin debito bancario'
-        : selectedText('#warehouse_entry_payment_company_bank_account_id');
+    const paymentSummary = !$('#warehouse_entry_id').val() && warehouseEntryPendingPaymentItems.length
+        ? `${warehouseEntryPendingPaymentItems.length} pago(s) preparado(s)`
+        : ($('#warehouse_entry_generate_account_payable').val() === '1'
+            ? 'Cuenta por pagar / sin debito bancario'
+            : selectedText('#warehouse_entry_payment_company_bank_account_id'));
     const alertHtml = alerts.length
         ? `<div class="warehouse-entry-review-alert"><i class="fas fa-exclamation-triangle"></i><div><strong>Revisión pendiente</strong><ul>${alerts.map(alert => `<li>${escapeWarehouseEntryHtml(alert)}</li>`).join('')}</ul></div></div>`
         : '<div class="warehouse-entry-review-ok"><i class="fas fa-check-circle"></i><div><strong>Ingreso listo para guardar</strong><small>No se detectaron inconsistencias en artículos o lotes.</small></div></div>';
@@ -2563,6 +2897,7 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
             });
             select.val(accounts.some(account => String(account.id) === currentId) ? currentId : '').trigger('change.select2');
             renderWarehouseEntryExpenseBankAccounts();
+            renderWarehouseEntryPendingPaymentItems();
             if (!accounts.length) {
                 help.text('La empresa seleccionada no tiene cuentas bancarias activas disponibles.').addClass('text-danger');
             } else {
@@ -2678,14 +3013,19 @@ function filterWarehouseEntryGeneralCashBoxes() {
 
 function toggleWarehouseEntryBankPayment() {
     const isCredit = $('#warehouse_entry_generate_account_payable').val() === '1';
+    const isNew = !$('#warehouse_entry_id').val();
     $('#warehouseEntryBankPaymentCreditHelp').toggleClass('d-none', !isCredit);
     $('#warehouseEntryCreditPaymentPanel').toggleClass('d-none', !isCredit || !$('#warehouse_entry_id').val());
-    $('#warehouseEntryBankPaymentFields').toggleClass('d-none', isCredit)
-        .find(':input').prop('disabled', isCredit);
-
-    if (!isCredit) {
-        $('#warehouse_entry_bank_payment_negative_balance_confirmed').prop('disabled', false);
+    $('#warehouseEntryBankPaymentFields').addClass('d-none')
+        .find(':input').prop('disabled', true);
+    $('#warehouseEntryPendingPaymentsBuilder').toggleClass('d-none', !isNew);
+    if (isNew) {
+        $('#btnRegisterWarehouseCreditPayment')
+            .prop('disabled', false)
+            .attr('title', 'Agregar otro pago real antes de guardar el ingreso');
     }
+
+    renderWarehouseEntryPendingPaymentItems();
     updateWarehouseEntryBankPaymentExchangeRate();
     updateWarehouseEntryReview();
 }
@@ -3797,8 +4137,10 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_bank_payment_observation').val(entry.bank_payment_observation || '');
     $('#warehouse_entry_bank_payment_negative_balance_confirmed').val('0');
     warehouseEntryInitialPaymentDocuments = [];
+    warehouseEntryPendingPaymentItems = [];
     $('#warehouseEntryInitialPaymentDocumentsGroup').addClass('d-none');
     renderWarehouseEntryInitialPaymentDocuments();
+    renderWarehouseEntryPendingPaymentItems();
     renderWarehouseEntryBankPaymentProof(entry);
     warehouseEntryEditingPaymentMovement = entry.bank_payment_movement || null;
     renderWarehouseEntryBankPaymentStatus(entry);
@@ -3912,6 +4254,16 @@ function warehouseEntryBankPaymentCard(entry, title) {
 function renderWarehouseEntryBankPaymentStatus(entry) {
     const container = $('#warehouseEntryBankPaymentStatus');
     const movement = entry.bank_payment_movement;
+    const relatedPayments = Array.isArray(entry.payments_and_documents)
+        ? entry.payments_and_documents.filter(payment => payment.active !== false)
+        : [];
+
+    if (relatedPayments.length) {
+        container.removeClass('d-none is-pending is-reconciled has-payment').addClass('is-reconciled').html(
+            `<i class="fas fa-check-circle"></i><strong>${relatedPayments.length} pago(s) bancario(s) registrado(s).</strong> Revise las tarjetas y constancias mostradas debajo.`
+        );
+        return;
+    }
 
     if (entry.generate_account_payable) {
         container.removeClass('d-none is-pending is-reconciled has-payment').html(
@@ -3935,17 +4287,19 @@ function renderWarehouseEntryBankPaymentStatus(entry) {
 function renderWarehouseEntryCreditPaymentPanel(entry) {
     const panel = $('#warehouseEntryCreditPaymentPanel');
     const isCredit = Boolean(entry.generate_account_payable);
+    const summary = entry.credit_payment_summary || {};
+    const pending = parseWarehouseEntryNumber(summary.pending_amount);
+    $('#btnRegisterWarehouseCreditPayment')
+        .prop('disabled', pending <= 0)
+        .attr('title', pending <= 0 ? 'La compra no tiene saldo pendiente; agregue documentos a un pago existente.' : 'Registrar un nuevo pago real');
     panel.toggleClass('d-none', !isCredit);
     if (!isCredit) return;
 
-    const summary = entry.credit_payment_summary || {};
     const currency = entry.currency?.symbol || entry.currency?.code || '';
-    const pending = parseWarehouseEntryNumber(summary.pending_amount);
     $('#warehouseEntryCreditCondition').text(entry.payment_condition_label || entry.payment_condition || '-');
     $('#warehouseEntryCreditDueDate').text(formatWarehouseEntryDisplayDate(entry.credit_due_date || entry.expected_payment_date));
     $('#warehouseEntryCreditPaymentStatus').text(summary.status_label || 'Pendiente');
     $('#warehouseEntryCreditPendingAmount').text(`${currency} ${formatWarehouseEntryMoney(pending)}`.trim());
-    $('#btnRegisterWarehouseCreditPayment').prop('disabled', pending <= 0);
 
     const payments = Array.isArray(entry.credit_payments) ? entry.credit_payments : [];
     $('#warehouseEntryCreditPaymentHistoryRows').html(payments.length
@@ -3989,13 +4343,30 @@ function renderWarehouseEntryPaymentsDocuments(entry) {
         return;
     }
 
+    const summary = renderWarehouseEntryPaymentFinancialSummary(entry);
     section.removeClass('d-none');
-    container.html(groups.length
+    container.html(summary + (groups.length
         ? groups.map(renderWarehouseEntryPaymentRecord).join('')
         : `<div class="warehouse-entry-payment-documents-empty">
             <i class="fas fa-receipt"></i>
             <span><strong>No hay pagos registrados todav&iacute;a.</strong><br>Cuando registre un pago, podr&aacute; adjuntar una o varias constancias.</span>
-        </div>`);
+        </div>`));
+}
+
+function renderWarehouseEntryPaymentFinancialSummary(entry) {
+    const summary = entry?.credit_payment_summary || {};
+    const purchaseCurrency = entry?.currency?.symbol || entry?.currency?.code || '';
+    const outflows = Array.isArray(entry?.payment_totals_by_currency) ? entry.payment_totals_by_currency : [];
+    const outflowLabel = outflows.length
+        ? outflows.map(total => `${escapeWarehouseEntryHtml(total.currency || '')} ${formatWarehouseEntryMoney(total.amount)}`.trim()).join(' + ')
+        : '-';
+
+    return `<div class="warehouse-entry-payment-financial-summary">
+        <div><small>Total compra</small><strong>${escapeWarehouseEntryHtml(purchaseCurrency)} ${formatWarehouseEntryMoney(summary.total_amount)}</strong></div>
+        <div><small>Total pagado aplicado</small><strong>${escapeWarehouseEntryHtml(purchaseCurrency)} ${formatWarehouseEntryMoney(summary.paid_amount)}</strong></div>
+        <div><small>Saldo pendiente</small><strong>${escapeWarehouseEntryHtml(purchaseCurrency)} ${formatWarehouseEntryMoney(summary.pending_amount)}</strong></div>
+        <div><small>Salida real por moneda</small><strong>${outflowLabel}</strong></div>
+    </div>`;
 }
 
 function renderWarehouseEntryPaymentRecord(payment) {
@@ -4006,11 +4377,27 @@ function renderWarehouseEntryPaymentRecord(payment) {
     const paid = parseWarehouseEntryNumber(payment.amount);
     const rate = parseWarehouseEntryNumber(payment.exchange_rate);
     const amountLabel = `${payment.currency || ''} ${formatWarehouseEntryMoney(paid)}`.trim();
-    const appliedLabel = applied > 0 && (String(payment.purchase_currency || '') !== String(payment.currency || '') || Math.abs(applied - paid) > 0.0001)
+    const appliedLabel = applied > 0
         ? `<span>Monto aplicado: <strong>${escapeWarehouseEntryHtml(payment.purchase_currency || '')} ${formatWarehouseEntryMoney(applied)}</strong></span>`
         : '';
     const rateLabel = rate > 0 && Math.abs(rate - 1) > 0.000001
         ? `<span>TC: <strong>${rate.toFixed(6)}</strong></span>`
+        : '';
+    const active = payment.active !== false;
+    const statusClass = !active ? 'badge-secondary' : (reconciled ? 'badge-success' : 'badge-info');
+    const paymentActions = payment.payment_type === 'credit' && active
+        ? `<button type="button" class="btn btn-outline-warning btn-sm btnEditWarehouseEntryBankPayment" data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"><i class="fas fa-edit mr-1"></i>Editar datos</button>
+           <button type="button" class="btn btn-outline-danger btn-sm btnReverseWarehouseEntryBankPayment" data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"><i class="fas fa-undo-alt mr-1"></i>Revertir pago</button>`
+        : '';
+    const addDocumentAction = active
+        ? `<button type="button" class="btn btn-outline-info btn-sm btnAddWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}">
+                <i class="fas fa-plus mr-1"></i>Agregar documento
+           </button>`
+        : '';
+    const reversal = !active && payment.delete_reason
+        ? `<div class="alert alert-light border mt-2 mb-0 py-2"><strong>Motivo de reversa:</strong> ${escapeWarehouseEntryHtml(payment.delete_reason)}</div>`
         : '';
 
     return `<div class="warehouse-entry-payment-record">
@@ -4022,26 +4409,26 @@ function renderWarehouseEntryPaymentRecord(payment) {
                     <small>${escapeWarehouseEntryHtml(bank)}</small>
                 </div>
             </div>
-            <span class="badge ${reconciled ? 'badge-success' : 'badge-info'}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
+            <span class="badge ${statusClass}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
         </div>
         <div class="warehouse-entry-payment-record-meta">
             <span>Fecha: <strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(payment.payment_date))}</strong></span>
             <span>Operaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.operation_number || '-')}</strong></span>
+            <span>Medio: <strong>${escapeWarehouseEntryHtml(payment.payment_method || '-')}</strong></span>
             <span>Monto pagado: <strong>${escapeWarehouseEntryHtml(amountLabel)}</strong></span>
             ${appliedLabel}${rateLabel}
             <span>Usuario: <strong>${escapeWarehouseEntryHtml(payment.user || '-')}</strong></span>
+            ${payment.observation ? `<span>Observaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.observation)}</strong></span>` : ''}
         </div>
         <div class="warehouse-entry-payment-record-actions">
             <button type="button" class="btn btn-outline-secondary btn-sm btnToggleWarehouseEntryPaymentDocuments"
                 data-document-count="${documents.length}">
                 <i class="fas fa-chevron-up mr-1"></i><span class="warehouseEntryPaymentDocumentsToggleLabel">Ocultar constancias (${documents.length})</span>
             </button>
-            <button type="button" class="btn btn-outline-info btn-sm btnAddWarehouseEntryPaymentDocument"
-                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
-                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}">
-                <i class="fas fa-plus mr-1"></i>Agregar constancia
-            </button>
+            ${addDocumentAction}
+            ${paymentActions}
         </div>
+        ${reversal}
         <div class="warehouse-entry-payment-document-list">
             ${documents.length
                 ? documents.map(document => renderWarehouseEntryPaymentDocument(payment, document)).join('')
@@ -4056,6 +4443,18 @@ function renderWarehouseEntryPaymentDocument(payment, document) {
     const view = document.view_url
         ? `<a href="${escapeWarehouseEntryHtml(document.view_url)}" target="_blank" rel="noopener" class="btn btn-outline-success btn-xs" title="Ver constancia"><i class="fas fa-eye"></i></a>`
         : '<button type="button" class="btn btn-outline-secondary btn-xs" disabled title="Archivo no disponible"><i class="fas fa-eye-slash"></i></button>';
+    const editActions = payment.active === false
+        ? ''
+        : `<button type="button" class="btn btn-outline-warning btn-xs btnReplaceWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
+                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
+                data-legacy="${document.is_legacy ? '1' : ''}" title="Reemplazar constancia"><i class="fas fa-sync-alt"></i></button>
+            <button type="button" class="btn btn-outline-danger btn-xs btnDeleteWarehouseEntryPaymentDocument"
+                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
+                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
+                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
+                data-legacy="${document.is_legacy ? '1' : ''}" title="Eliminar constancia"><i class="fas fa-trash-alt"></i></button>`;
 
     return `<div class="warehouse-entry-payment-document-row">
         <div class="warehouse-entry-payment-document-info">
@@ -4067,16 +4466,7 @@ function renderWarehouseEntryPaymentDocument(payment, document) {
         </div>
         <div class="warehouse-entry-payment-document-actions">
             ${view}
-            <button type="button" class="btn btn-outline-warning btn-xs btnReplaceWarehouseEntryPaymentDocument"
-                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
-                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
-                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
-                data-legacy="${document.is_legacy ? '1' : ''}" title="Reemplazar constancia"><i class="fas fa-sync-alt"></i></button>
-            <button type="button" class="btn btn-outline-danger btn-xs btnDeleteWarehouseEntryPaymentDocument"
-                data-payment-type="${escapeWarehouseEntryHtml(payment.payment_type)}"
-                data-payment-id="${escapeWarehouseEntryHtml(payment.payment_id)}"
-                data-document-id="${document.is_legacy ? '' : escapeWarehouseEntryHtml(document.id)}"
-                data-legacy="${document.is_legacy ? '1' : ''}" title="Eliminar constancia"><i class="fas fa-trash-alt"></i></button>
+            ${editActions}
         </div>
     </div>`;
 }
@@ -4187,6 +4577,7 @@ function refreshWarehouseEntryPaymentsDocuments(entryId) {
     $.get(`${window.routes.warehouseEntryShow}/${entryId}`).done(function (response) {
         renderWarehouseEntryPaymentsDocuments(response.data);
         renderWarehouseEntryBankPaymentProof(response.data);
+        renderWarehouseEntryCreditPaymentPanel(response.data);
         $('#warehouseEntryPaymentsDocumentsSection').removeClass('is-loading');
     }).fail(function () {
         $('#warehouseEntryPaymentsDocumentsSection').removeClass('is-loading');
@@ -4369,6 +4760,11 @@ function renderWarehouseEntryDetailPaymentGroup(payment) {
     const bank = [payment.bank_name, payment.account_number].filter(Boolean).join(' · ') || 'Cuenta bancaria no disponible';
     const amount = `${payment.currency || ''} ${formatWarehouseEntryMoney(payment.amount)}`.trim();
     const reconciled = String(payment.status || '').toUpperCase() === 'CONCILIADO';
+    const active = payment.active !== false;
+    const statusClass = !active ? 'badge-secondary' : (reconciled ? 'badge-success' : 'badge-info');
+    const applied = parseWarehouseEntryNumber(payment.applied_amount);
+    const rate = parseWarehouseEntryNumber(payment.exchange_rate);
+    const appliedLabel = `${payment.purchase_currency || ''} ${formatWarehouseEntryMoney(applied)}`.trim();
 
     return `<div class="warehouse-entry-payment-record">
         <div class="warehouse-entry-payment-record-head">
@@ -4379,14 +4775,21 @@ function renderWarehouseEntryDetailPaymentGroup(payment) {
                     <small>${escapeWarehouseEntryHtml(bank)}</small>
                 </div>
             </div>
-            <span class="badge ${reconciled ? 'badge-success' : 'badge-info'}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
+            <span class="badge ${statusClass}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
         </div>
         <div class="warehouse-entry-payment-record-meta">
             <span>Fecha: <strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(payment.payment_date))}</strong></span>
             <span>Operaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.operation_number || '-')}</strong></span>
+            <span>Medio: <strong>${escapeWarehouseEntryHtml(payment.payment_method || '-')}</strong></span>
             <span>Monto: <strong>${escapeWarehouseEntryHtml(amount)}</strong></span>
+            <span>Monto aplicado: <strong>${escapeWarehouseEntryHtml(appliedLabel)}</strong></span>
+            <span>TC: <strong>${rate > 0 ? rate.toFixed(6) : '-'}</strong></span>
             <span>Usuario: <strong>${escapeWarehouseEntryHtml(payment.user || '-')}</strong></span>
+            ${payment.observation ? `<span>Observaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.observation)}</strong></span>` : ''}
         </div>
+        ${!active && payment.delete_reason
+            ? `<div class="alert alert-light border mt-2 mb-0 py-2"><strong>Motivo de reversa:</strong> ${escapeWarehouseEntryHtml(payment.delete_reason)}</div>`
+            : ''}
     </div>`;
 }
 

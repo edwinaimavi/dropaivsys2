@@ -123,6 +123,14 @@ class WarehouseEntry extends Model
             ->orderBy('id');
     }
 
+    public function creditPaymentHistory()
+    {
+        return $this->hasMany(WarehouseEntryCreditPayment::class)
+            ->withTrashed()
+            ->orderBy('payment_date')
+            ->orderBy('id');
+    }
+
     public function paymentDocuments()
     {
         return $this->hasMany(WarehouseEntryPaymentDocument::class)

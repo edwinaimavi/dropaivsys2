@@ -3,10 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WarehouseEntryCreditPayment extends Model
 {
+    use SoftDeletes;
+
     public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_REVERSED = 'REVERSED';
 
     public const PAYMENT_METHODS = [
         'transferencia' => 'Transferencia',
@@ -22,6 +26,7 @@ class WarehouseEntryCreditPayment extends Model
         'payment_method', 'operation_number', 'proof_path', 'proof_original_name',
         'proof_mime_type', 'proof_size', 'observation', 'bank_movement_id',
         'idempotency_key', 'status', 'created_by', 'updated_by',
+        'deleted_by', 'delete_reason',
     ];
 
     protected $casts = [
@@ -47,4 +52,5 @@ class WarehouseEntryCreditPayment extends Model
     public function paymentCurrency() { return $this->belongsTo(Currency::class, 'payment_currency_id'); }
     public function bankMovement() { return $this->belongsTo(BankMovement::class); }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
+    public function deleter() { return $this->belongsTo(User::class, 'deleted_by'); }
 }

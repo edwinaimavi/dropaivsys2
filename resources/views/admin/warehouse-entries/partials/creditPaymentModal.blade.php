@@ -3,15 +3,16 @@
         <form id="warehouseEntryCreditPaymentForm" class="modal-content border-0 shadow-lg" novalidate>
             @csrf
             <input type="hidden" id="warehouse_credit_payment_entry_id">
+            <input type="hidden" id="warehouse_credit_payment_id">
             <input type="hidden" id="warehouse_credit_payment_idempotency_key" name="idempotency_key">
 
             <div class="modal-header warehouse-credit-payment-header text-white">
                 <div>
                     <h5 class="modal-title font-weight-bold">
                         <i class="fas fa-money-check-alt mr-2"></i>
-                        Registrar pago complementario
+                        <span id="warehouseCreditPaymentModalTitle">Agregar pago / constancia</span>
                     </h5>
-                    <small>Este registro crea un nuevo egreso bancario; luego podr&aacute;s agregar m&aacute;s constancias al mismo pago.</small>
+                    <small id="warehouseCreditPaymentModalSubtitle">Este registro crea un nuevo egreso bancario; luego podr&aacute;s agregar documentos al mismo pago.</small>
                 </div>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
                     <span aria-hidden="true">&times;</span>
@@ -96,7 +97,7 @@
                         <span class="invalid-feedback"></span>
                     </div>
                     <div class="form-group col-md-6">
-                        <label>ARCHIVO DE CONSTANCIA</label>
+                        <label>ARCHIVO DE CONSTANCIA <span id="warehouseCreditPaymentProofRequired">*</span></label>
                         <div class="custom-file custom-file-sm">
                             <input type="file" id="warehouse_credit_payment_proof" name="proof"
                                 class="custom-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp">

@@ -6,6 +6,7 @@ use App\Models\BankMovement;
 use App\Models\CompanyBankAccount;
 use App\Models\WarehouseEntry;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class WarehouseEntryBankPaymentService
@@ -61,6 +62,8 @@ class WarehouseEntryBankPaymentService
             if ($existing && $this->matches($existing, $movementData)) {
                 return $existing->fresh(['account.bank', 'account.currency', 'originalCurrency']);
             }
+
+            $this->assertUniqueBankOperation($movementData, $existing?->id);
 
             if ($existing) {
                 $this->bankMovementService->cancelMovementForSourceCorrection(
@@ -195,7 +198,9 @@ class WarehouseEntryBankPaymentService
             'direction' => BankMovement::DIRECTION_OUT,
             'concept' => 'Pago a proveedor por ingreso de almacén',
             'description' => $entry->bank_payment_observation,
-            'operation_number' => $entry->bank_payment_operation_number,
+            'operation_number' => filled($entry->bank_payment_operation_number)
+                ? Str::upper(trim((string) $entry->bank_payment_operation_number))
+                : null,
             'document_type' => $entry->document_type,
             'document_series' => $entry->document_series,
             'document_number' => $entry->document_number,
@@ -230,5 +235,29 @@ class WarehouseEntryBankPaymentService
 
         return (string) $movement->movement_date?->toDateString() === (string) $data['movement_date']
             && (string) $movement->document_date?->toDateString() === (string) ($data['document_date'] ?? '');
+    }
+
+    private function assertUniqueBankOperation(array $movementData, ?int $exceptMovementId = null): void
+    {
+        if (! filled($movementData['operation_number'] ?? null)
+            || ! filled($movementData['movement_date'] ?? null)) {
+            return;
+        }
+
+        $duplicate = BankMovement::query()
+            ->where('company_bank_account_id', $movementData['company_bank_account_id'])
+            ->whereDate('movement_date', $movementData['movement_date'])
+            ->whereRaw('UPPER(operation_number) = ?', [Str::upper(trim((string) $movementData['operation_number']))])
+            ->where('amount', round((float) $movementData['amount'], 4))
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)
+            ->when($exceptMovementId, fn ($query) => $query->whereKeyNot($exceptMovementId))
+            ->lockForUpdate()
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'bank_payment_operation_number' => 'Ya existe un movimiento bancario activo con la misma cuenta, fecha, operación y monto.',
+            ]);
+        }
     }
 }

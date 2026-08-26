@@ -105,6 +105,8 @@ class WarehouseEntryController extends Controller
             'destroyDocument',
             'destroyBankPaymentProof',
             'storeCreditPayment',
+            'updateCreditPayment',
+            'reverseCreditPayment',
             'storePaymentDocument',
             'destroyPaymentDocument',
             'destroyLegacyPaymentDocument',
@@ -819,6 +821,13 @@ class WarehouseEntryController extends Controller
             'creditPayments.paymentCurrency:id,code,symbol',
             'creditPayments.bankMovement:id,code,status',
             'creditPayments.creator:id,name,lastname,email',
+            'creditPaymentHistory.companyBankAccount.bank:id,description,short_name',
+            'creditPaymentHistory.companyBankAccount.currency:id,code,symbol',
+            'creditPaymentHistory.purchaseCurrency:id,code,symbol',
+            'creditPaymentHistory.paymentCurrency:id,code,symbol',
+            'creditPaymentHistory.bankMovement:id,code,status',
+            'creditPaymentHistory.creator:id,name,lastname,email',
+            'creditPaymentHistory.deleter:id,name,lastname,email',
             'paymentDocuments.uploader:id,name,lastname,email',
             'creator:id,name,lastname,email',
             'updater:id,name,lastname,email',
@@ -875,6 +884,9 @@ class WarehouseEntryController extends Controller
             'pending_amount' => $creditPresentation['pending_amount'],
             'status' => $creditPresentation['payment_status'],
             'status_label' => $creditPresentation['payment_status_label'],
+            'advance_paid_amount' => $creditPresentation['advance_paid_amount'] ?? 0,
+            'warehouse_paid_amount' => $creditPresentation['warehouse_paid_amount'] ?? 0,
+            'complementary_paid_amount' => $creditPresentation['complementary_paid_amount'] ?? 0,
         ]);
         $warehouseEntry->setAttribute(
             'payment_condition_label',
@@ -917,9 +929,33 @@ class WarehouseEntryController extends Controller
                 WarehouseEntryCreditPayment::PAYMENT_METHODS[$payment->payment_method] ?? Str::headline($payment->payment_method)
             );
         });
+        $warehouseEntry->creditPaymentHistory->each(function (WarehouseEntryCreditPayment $payment) use ($warehouseEntry) {
+            $payment->setAttribute(
+                'proof_url',
+                $payment->proof_path
+                    ? route('admin.warehouse-entries.credit-payments.proof', [$warehouseEntry, $payment->id])
+                    : null
+            );
+            $payment->setAttribute(
+                'payment_method_label',
+                WarehouseEntryCreditPayment::PAYMENT_METHODS[$payment->payment_method] ?? Str::headline($payment->payment_method)
+            );
+        });
 
         $paymentsAndDocuments = $this->warehouseEntryPaymentsAndDocuments($warehouseEntry);
         $warehouseEntry->setAttribute('payments_and_documents', $paymentsAndDocuments);
+        $warehouseEntry->setAttribute(
+            'payment_totals_by_currency',
+            collect($paymentsAndDocuments)
+                ->filter(fn (array $payment) => (bool) ($payment['active'] ?? true))
+                ->groupBy(fn (array $payment) => (string) ($payment['currency'] ?? ''))
+                ->map(fn ($payments, $currency) => [
+                    'currency' => $currency,
+                    'amount' => round((float) $payments->sum('amount'), 4),
+                ])
+                ->values()
+                ->all()
+        );
         $warehouseEntry->setAttribute(
             'payment_documents_summary',
             $this->warehouseEntryPaymentDocumentsSummary($paymentsAndDocuments)
@@ -960,7 +996,7 @@ class WarehouseEntryController extends Controller
             'payment_date' => ['required', 'date'],
             'payment_method' => ['required', Rule::in(array_keys(WarehouseEntryCreditPayment::PAYMENT_METHODS))],
             'operation_number' => ['required', 'string', 'max:100'],
-            'proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'proof' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'observation' => ['nullable', 'string', 'max:1500'],
             'idempotency_key' => ['required', 'string', 'max:100'],
         ], [
@@ -972,6 +1008,7 @@ class WarehouseEntryController extends Controller
             'payment_date.required' => 'Ingrese la fecha del pago.',
             'payment_method.required' => 'Seleccione el medio de pago.',
             'operation_number.required' => 'Ingrese el número de operación o constancia.',
+            'proof.required' => 'Adjunte el archivo de constancia del pago.',
             'proof.mimes' => 'La constancia debe ser un archivo PDF, JPG, JPEG, PNG o WEBP.',
             'proof.max' => 'La constancia no debe superar los 10 MB.',
         ]);
@@ -1004,7 +1041,7 @@ class WarehouseEntryController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'El pago del crédito fue registrado y el egreso bancario fue generado.',
+            'message' => 'El pago y su constancia fueron registrados; el egreso bancario fue generado.',
             'data' => $payment,
             'credit_payment_summary' => [
                 'total_amount' => $presentation['total_amount'],
@@ -1014,6 +1051,65 @@ class WarehouseEntryController extends Controller
                 'status_label' => $presentation['payment_status_label'],
             ],
         ], 201);
+    }
+
+    public function updateCreditPayment(
+        Request $request,
+        WarehouseEntry $warehouseEntry,
+        WarehouseEntryCreditPayment $creditPayment
+    ) {
+        abort_unless((int) $creditPayment->warehouse_entry_id === (int) $warehouseEntry->id, 404);
+        $validated = $request->validate([
+            'company_bank_account_id' => ['required', 'integer', 'exists:company_bank_accounts,id'],
+            'payment_currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'applied_amount' => ['required', 'numeric', 'gt:0'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'payment_date' => ['required', 'date'],
+            'payment_method' => ['required', Rule::in(array_keys(WarehouseEntryCreditPayment::PAYMENT_METHODS))],
+            'operation_number' => ['required', 'string', 'max:100'],
+            'proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'observation' => ['nullable', 'string', 'max:1500'],
+        ]);
+
+        $payment = $this->warehouseEntryCreditPaymentService->update(
+            $warehouseEntry,
+            $creditPayment,
+            $validated,
+            $request->file('proof'),
+            Auth::id()
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Los datos del pago fueron actualizados y el movimiento bancario quedó corregido.',
+            'data' => $payment,
+        ]);
+    }
+
+    public function reverseCreditPayment(
+        Request $request,
+        WarehouseEntry $warehouseEntry,
+        WarehouseEntryCreditPayment $creditPayment
+    ) {
+        abort_unless((int) $creditPayment->warehouse_entry_id === (int) $warehouseEntry->id, 404);
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ], [
+            'reason.required' => 'Ingrese el motivo de la reversa del pago.',
+            'reason.min' => 'El motivo de la reversa debe tener al menos 5 caracteres.',
+        ]);
+
+        $this->warehouseEntryCreditPaymentService->reverse(
+            $warehouseEntry,
+            $creditPayment,
+            $validated['reason'],
+            Auth::id()
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'El pago fue revertido y su movimiento bancario fue anulado.',
+        ]);
     }
 
     public function viewBankPaymentProof(WarehouseEntry $warehouseEntry)
@@ -1067,12 +1163,12 @@ class WarehouseEntryController extends Controller
 
     public function viewCreditPaymentProof(
         WarehouseEntry $warehouseEntry,
-        WarehouseEntryCreditPayment $creditPayment
+        int $creditPayment
     ) {
+        $creditPayment = WarehouseEntryCreditPayment::withTrashed()->findOrFail($creditPayment);
         abort_unless((int) $creditPayment->warehouse_entry_id === (int) $warehouseEntry->id, 404);
         abort_unless(
-            $creditPayment->status === WarehouseEntryCreditPayment::STATUS_ACTIVE
-                && filled($creditPayment->proof_path)
+            filled($creditPayment->proof_path)
                 && Storage::disk('public')->exists($creditPayment->proof_path),
             404
         );
@@ -1115,6 +1211,8 @@ class WarehouseEntryController extends Controller
                     $validated['payment_type'],
                     isset($validated['payment_id']) ? (int) $validated['payment_id'] : null
                 );
+                $replacePrimaryReference = false;
+                $replacedPath = null;
 
                 if (! empty($validated['replace_document_id'])) {
                     $replaced = WarehouseEntryPaymentDocument::query()
@@ -1122,6 +1220,8 @@ class WarehouseEntryController extends Controller
                         ->lockForUpdate()
                         ->findOrFail($validated['replace_document_id']);
                     abort_unless($this->paymentDocumentMatchesTarget($replaced, $target), 422);
+                    $replacedPath = $replaced->file_path;
+                    $replacePrimaryReference = $this->paymentDocumentIsPrimaryReference($replaced, $target);
                     $replaced->update(['deleted_by' => Auth::id()]);
                     $replaced->delete();
                 }
@@ -1140,7 +1240,7 @@ class WarehouseEntryController extends Controller
                     'public'
                 );
 
-                return WarehouseEntryPaymentDocument::create([
+                $document = WarehouseEntryPaymentDocument::create([
                     'warehouse_entry_id' => $entry->id,
                     ...$target['columns'],
                     'document_type' => WarehouseEntryPaymentDocument::TYPE_PAYMENT_PROOF,
@@ -1153,6 +1253,12 @@ class WarehouseEntryController extends Controller
                         : null,
                     'uploaded_by' => Auth::id(),
                 ]);
+
+                if ($replacePrimaryReference) {
+                    $this->replacePrimaryPaymentDocumentReference($target, $file, $storedPath, $replacedPath);
+                }
+
+                return $document;
             });
         } catch (\Throwable $exception) {
             if ($storedPath) {
@@ -1197,6 +1303,7 @@ class WarehouseEntryController extends Controller
             abort_unless($entry->status === self::STATUS_REGISTERED, 422);
             $document = WarehouseEntryPaymentDocument::query()->lockForUpdate()->findOrFail($paymentDocument->id);
             abort_unless((int) $document->warehouse_entry_id === (int) $entry->id, 404);
+            $this->clearPrimaryPaymentDocumentReference($entry, $document);
             $document->update([
                 'deleted_by' => Auth::id(),
                 'observation' => filled($validated['deletion_reason'] ?? null)
@@ -1552,6 +1659,8 @@ class WarehouseEntryController extends Controller
         }
 
         $documentRules = $this->newDocumentUploadRules($request);
+        $hasInitialPaymentItems = ! $entry
+            && count((array) $request->input('payment_items', [])) > 0;
 
         $validated = $request->validate([
             'supplier_purchase_order_id' => ['nullable', 'exists:supplier_purchase_orders,id'],
@@ -1578,13 +1687,13 @@ class WarehouseEntryController extends Controller
                 'date',
             ],
             'payment_company_bank_account_id' => [
-                Rule::requiredIf(! $request->boolean('generate_account_payable')),
+                Rule::requiredIf(! $request->boolean('generate_account_payable') && ! $hasInitialPaymentItems),
                 'nullable',
                 'integer',
                 'exists:company_bank_accounts,id',
             ],
             'bank_payment_date' => [
-                Rule::requiredIf(! $request->boolean('generate_account_payable')),
+                Rule::requiredIf(! $request->boolean('generate_account_payable') && ! $hasInitialPaymentItems),
                 'nullable',
                 'date',
             ],
@@ -1593,6 +1702,18 @@ class WarehouseEntryController extends Controller
             'bank_payment_proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'payment_documents' => ['nullable', 'array'],
             'payment_documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'payment_items' => ['nullable', 'array', 'max:20'],
+            'payment_items.*.bank_account_id' => ['required', 'integer', 'exists:company_bank_accounts,id'],
+            'payment_items.*.payment_date' => ['required', 'date'],
+            'payment_items.*.operation_number' => ['required', 'string', 'max:100'],
+            'payment_items.*.currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'payment_items.*.paid_amount' => ['required', 'numeric', 'gt:0'],
+            'payment_items.*.exchange_rate' => ['required', 'numeric', 'gt:0'],
+            'payment_items.*.applied_amount' => ['required', 'numeric', 'gt:0'],
+            'payment_items.*.payment_method' => ['required', Rule::in(array_keys(WarehouseEntryCreditPayment::PAYMENT_METHODS))],
+            'payment_items.*.observation' => ['nullable', 'string', 'max:1500'],
+            'payment_items.*.idempotency_key' => ['required', 'string', 'max:100', 'distinct'],
+            'payment_items.*.file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'bank_payment_observation' => ['nullable', 'string', 'max:1500'],
             'bank_payment_negative_balance_confirmed' => ['nullable', 'boolean'],
             'seller_name' => ['nullable', 'string', 'max:255'],
@@ -1724,6 +1845,16 @@ class WarehouseEntryController extends Controller
             'payment_documents.*.file' => 'Cada constancia debe ser un archivo válido.',
             'payment_documents.*.mimes' => 'Las constancias deben ser PDF, JPG, JPEG, PNG o WEBP.',
             'payment_documents.*.max' => 'Cada constancia no debe superar los 10 MB.',
+            'payment_items.*.bank_account_id.required' => 'Seleccione la cuenta bancaria de cada pago.',
+            'payment_items.*.payment_date.required' => 'Ingrese la fecha de cada pago.',
+            'payment_items.*.operation_number.required' => 'Ingrese el número de operación de cada pago.',
+            'payment_items.*.currency_id.required' => 'Seleccione la moneda de cada pago.',
+            'payment_items.*.paid_amount.gt' => 'El monto pagado debe ser mayor a cero.',
+            'payment_items.*.exchange_rate.gt' => 'El tipo de cambio debe ser mayor a cero.',
+            'payment_items.*.applied_amount.gt' => 'El monto aplicado debe ser mayor a cero.',
+            'payment_items.*.file.required' => 'Adjunte la constancia de cada pago.',
+            'payment_items.*.file.mimes' => 'Las constancias deben ser PDF, JPG, JPEG, PNG o WEBP.',
+            'payment_items.*.file.max' => 'Cada constancia no debe superar los 10 MB.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -1744,7 +1875,8 @@ class WarehouseEntryController extends Controller
                 &$generatedDocumentId,
                 &$pdfError,
                 &$storedBankPaymentPath,
-                &$storedPaymentDocumentPaths
+                &$storedPaymentDocumentPaths,
+                $hasInitialPaymentItems
             ) {
                 $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
                 $previousCustomerPurchaseOrderIds = $entry
@@ -1945,14 +2077,38 @@ class WarehouseEntryController extends Controller
                     $request->file('warehouse_entry_lot_documents', [])
                 );
 
-                $bankPaymentMovement = $this->warehouseEntryBankPaymentService->sync($entry, Auth::id());
-                if (! $generateAccountPayable && $bankPaymentMovement) {
-                    $this->storeInitialPaymentDocuments(
-                        $entry,
-                        $bankPaymentMovement,
-                        $request->file('payment_documents', []),
-                        $storedPaymentDocumentPaths
-                    );
+                if (! $isUpdate && $hasInitialPaymentItems) {
+                    foreach ($validated['payment_items'] ?? [] as $paymentIndex => $paymentItem) {
+                        $payment = $this->warehouseEntryCreditPaymentService->create(
+                            $entry,
+                            [
+                                'company_bank_account_id' => $paymentItem['bank_account_id'],
+                                'payment_currency_id' => $paymentItem['currency_id'],
+                                'applied_amount' => $paymentItem['applied_amount'],
+                                'exchange_rate' => $paymentItem['exchange_rate'],
+                                'payment_date' => $paymentItem['payment_date'],
+                                'payment_method' => $paymentItem['payment_method'],
+                                'operation_number' => $paymentItem['operation_number'],
+                                'observation' => $paymentItem['observation'] ?? null,
+                                'idempotency_key' => $paymentItem['idempotency_key'],
+                            ],
+                            $request->file("payment_items.{$paymentIndex}.file"),
+                            Auth::id()
+                        );
+                        if ($payment->proof_path) {
+                            $storedPaymentDocumentPaths[] = $payment->proof_path;
+                        }
+                    }
+                } else {
+                    $bankPaymentMovement = $this->warehouseEntryBankPaymentService->sync($entry, Auth::id());
+                    if (! $generateAccountPayable && $bankPaymentMovement) {
+                        $this->storeInitialPaymentDocuments(
+                            $entry,
+                            $bankPaymentMovement,
+                            $request->file('payment_documents', []),
+                            $storedPaymentDocumentPaths
+                        );
+                    }
                 }
 
                 $freshEntry = $entry->fresh([
@@ -3028,18 +3184,23 @@ class WarehouseEntryController extends Controller
             ? $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
             : $this->creditDaysFromCondition($condition);
         $conditionLabel = $this->paymentConditionLabel($condition, $creditDays);
+        $paymentSummary = $this->warehouseEntryCreditPaymentService->summary($entry);
 
         if (! $this->isCreditPaymentCondition($condition)) {
+            $cashStatus = $paymentSummary['pending_amount'] <= 0.0001 ? 'paid' : 'pending';
             return [
                 'credit_days' => 0,
                 'due_date' => null,
                 'days_remaining' => null,
-                'is_pending' => false,
-                'total_amount' => 0.0,
-                'paid_amount' => 0.0,
-                'pending_amount' => 0.0,
-                'payment_status' => 'cash',
-                'payment_status_label' => 'Contado',
+                'is_pending' => $cashStatus === 'pending',
+                'total_amount' => $paymentSummary['total_amount'],
+                'paid_amount' => $paymentSummary['paid_amount'],
+                'pending_amount' => $paymentSummary['pending_amount'],
+                'advance_paid_amount' => $paymentSummary['advance_paid_amount'],
+                'warehouse_paid_amount' => $paymentSummary['warehouse_paid_amount'],
+                'complementary_paid_amount' => $paymentSummary['complementary_paid_amount'],
+                'payment_status' => $cashStatus,
+                'payment_status_label' => $cashStatus === 'paid' ? 'Pagado' : 'Pendiente',
                 'status' => 'cash',
                 'label' => 'Pago al contado',
                 'html' => sprintf(
@@ -3053,7 +3214,6 @@ class WarehouseEntryController extends Controller
         $remainingDays = $dueDate
             ? (int) today()->diffInDays(Carbon::parse($dueDate), false)
             : null;
-        $paymentSummary = $this->warehouseEntryCreditPaymentService->summary($entry);
         $paymentStatus = $paymentSummary['status'] !== 'paid'
             && $remainingDays !== null
             && $remainingDays < 0
@@ -3105,6 +3265,9 @@ class WarehouseEntryController extends Controller
             'total_amount' => $paymentSummary['total_amount'],
             'paid_amount' => $paymentSummary['paid_amount'],
             'pending_amount' => $paymentSummary['pending_amount'],
+            'advance_paid_amount' => $paymentSummary['advance_paid_amount'],
+            'warehouse_paid_amount' => $paymentSummary['warehouse_paid_amount'],
+            'complementary_paid_amount' => $paymentSummary['complementary_paid_amount'],
             'payment_status' => $paymentStatus,
             'payment_status_label' => $paymentStatusLabel,
             'status' => $status,
@@ -3650,6 +3813,85 @@ class WarehouseEntryController extends Controller
         return true;
     }
 
+    private function paymentDocumentIsPrimaryReference(
+        WarehouseEntryPaymentDocument $document,
+        array $target
+    ): bool {
+        $model = $target['legacy_model'];
+        $pathField = $model instanceof WarehouseEntry ? 'bank_payment_proof_path' : 'proof_path';
+
+        return filled($model->{$pathField})
+            && (string) $model->{$pathField} === (string) $document->file_path;
+    }
+
+    private function replacePrimaryPaymentDocumentReference(
+        array $target,
+        UploadedFile $file,
+        string $storedPath,
+        ?string $replacedPath
+    ): void {
+        $model = $target['legacy_model'];
+        $prefix = $model instanceof WarehouseEntry ? 'bank_payment_proof_' : 'proof_';
+        $model->update([
+            $prefix.'path' => $storedPath,
+            $prefix.'original_name' => $file->getClientOriginalName(),
+            $prefix.'mime_type' => $file->getMimeType(),
+            $prefix.'size' => $file->getSize(),
+        ]);
+
+        $movement = $target['movement'];
+        if ($movement && (string) $movement->file_path === (string) $replacedPath) {
+            $movement->update([
+                'file_path' => $storedPath,
+                'file_original_name' => $file->getClientOriginalName(),
+                'file_mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'updated_by' => Auth::id(),
+            ]);
+        }
+    }
+
+    private function clearPrimaryPaymentDocumentReference(
+        WarehouseEntry $entry,
+        WarehouseEntryPaymentDocument $document
+    ): void {
+        $model = match (true) {
+            filled($document->warehouse_entry_credit_payment_id) => WarehouseEntryCreditPayment::query()
+                ->where('warehouse_entry_id', $entry->id)
+                ->find($document->warehouse_entry_credit_payment_id),
+            filled($document->supplier_purchase_order_advance_payment_id) => SupplierPurchaseOrderAdvancePayment::query()
+                ->where('supplier_purchase_order_id', $entry->supplier_purchase_order_id)
+                ->find($document->supplier_purchase_order_advance_payment_id),
+            default => $entry,
+        };
+        if (! $model) {
+            return;
+        }
+
+        $prefix = $model instanceof WarehouseEntry ? 'bank_payment_proof_' : 'proof_';
+        $pathField = $prefix.'path';
+        if ((string) $model->{$pathField} !== (string) $document->file_path) {
+            return;
+        }
+
+        $model->update([
+            $pathField => null,
+            $prefix.'original_name' => null,
+            $prefix.'mime_type' => null,
+            $prefix.'size' => null,
+        ]);
+        $movement = BankMovement::query()->lockForUpdate()->find($document->bank_movement_id);
+        if ($movement && (string) $movement->file_path === (string) $document->file_path) {
+            $movement->update([
+                'file_path' => null,
+                'file_original_name' => null,
+                'file_mime_type' => null,
+                'file_size' => null,
+                'updated_by' => Auth::id(),
+            ]);
+        }
+    }
+
     private function archiveLegacyPaymentDocument(
         WarehouseEntry $entry,
         string $paymentType,
@@ -3776,7 +4018,9 @@ class WarehouseEntryController extends Controller
                 $payment->creator,
                 $payment->created_at
             );
-            if ($legacy) {
+            if ($legacy && ! $groupDocuments->contains(
+                fn (array $document) => (string) ($document['file_path'] ?? '') === (string) $legacy['file_path']
+            )) {
                 $groupDocuments->prepend($legacy);
             }
             $account = $payment->companyBankAccount;
@@ -3795,6 +4039,9 @@ class WarehouseEntryController extends Controller
                 'applied_amount' => $payment->applied_amount,
                 'exchange_rate' => $payment->exchange_rate,
                 'status' => $payment->bankMovement?->status ?: 'REGISTRADO',
+                'active' => true,
+                'observation' => $payment->observation,
+                'payment_method' => $payment->payment_method,
                 'user' => $this->paymentUserName($payment->creator),
                 'documents' => $groupDocuments->all(),
             ];
@@ -3819,7 +4066,9 @@ class WarehouseEntryController extends Controller
                 $entry->creator,
                 $entry->created_at
             );
-            if ($legacy) {
+            if ($legacy && ! $groupDocuments->contains(
+                fn (array $document) => (string) ($document['file_path'] ?? '') === (string) $legacy['file_path']
+            )) {
                 $groupDocuments->prepend($legacy);
             }
             $groups[] = [
@@ -3837,12 +4086,15 @@ class WarehouseEntryController extends Controller
                 'applied_amount' => $movement->original_amount,
                 'exchange_rate' => $movement->original_exchange_rate,
                 'status' => $movement->status,
+                'active' => $movement->status !== BankMovement::STATUS_CANCELLED,
+                'observation' => $entry->bank_payment_observation,
+                'payment_method' => $entry->payment_method,
                 'user' => $this->paymentUserName($movement->creator ?: $entry->creator),
                 'documents' => $groupDocuments->all(),
             ];
         }
 
-        foreach ($entry->creditPayments as $payment) {
+        foreach ($entry->creditPaymentHistory as $payment) {
             $groupDocuments = $documents
                 ->where('warehouse_entry_credit_payment_id', $payment->id)
                 ->map($documentPayload)
@@ -3858,15 +4110,19 @@ class WarehouseEntryController extends Controller
                 $payment->creator,
                 $payment->created_at
             );
-            if ($legacy) {
+            if ($legacy && ! $groupDocuments->contains(
+                fn (array $document) => (string) ($document['file_path'] ?? '') === (string) $legacy['file_path']
+            )) {
                 $groupDocuments->prepend($legacy);
             }
             $account = $payment->companyBankAccount;
+            $active = ! $payment->trashed()
+                && $payment->status === WarehouseEntryCreditPayment::STATUS_ACTIVE;
             $groups[] = [
                 'payment_type' => 'credit',
                 'payment_id' => $payment->id,
-                'type_label' => 'Pago complementario',
-                'badge' => 'Complementario',
+                'type_label' => 'Pago registrado para el ingreso',
+                'badge' => 'Pago',
                 'payment_date' => $payment->payment_date,
                 'bank_name' => $account?->bank?->short_name ?: $account?->bank?->description,
                 'account_number' => $account?->account_number,
@@ -3876,7 +4132,15 @@ class WarehouseEntryController extends Controller
                 'purchase_currency' => $payment->purchaseCurrency?->symbol ?: $payment->purchaseCurrency?->code,
                 'applied_amount' => $payment->applied_amount,
                 'exchange_rate' => $payment->exchange_rate,
-                'status' => $payment->bankMovement?->status ?: 'REGISTRADO',
+                'status' => $active
+                    ? ($payment->bankMovement?->status ?: 'REGISTRADO')
+                    : 'REVERTIDO',
+                'active' => $active,
+                'observation' => $payment->observation,
+                'payment_method' => $payment->payment_method,
+                'delete_reason' => $payment->delete_reason,
+                'deleted_at' => $payment->deleted_at,
+                'deleted_by' => $this->paymentUserName($payment->deleter),
                 'user' => $this->paymentUserName($payment->creator),
                 'documents' => $groupDocuments->all(),
             ];

@@ -678,6 +678,14 @@ Route::post(
     'warehouse-entries/{warehouseEntry}/credit-payments',
     [WarehouseEntryController::class, 'storeCreditPayment']
 )->name('warehouse-entries.credit-payments.store');
+Route::put(
+    'warehouse-entries/{warehouseEntry}/credit-payments/{creditPayment}',
+    [WarehouseEntryController::class, 'updateCreditPayment']
+)->name('warehouse-entries.credit-payments.update');
+Route::delete(
+    'warehouse-entries/{warehouseEntry}/credit-payments/{creditPayment}',
+    [WarehouseEntryController::class, 'reverseCreditPayment']
+)->name('warehouse-entries.credit-payments.reverse');
 Route::get(
     'warehouse-entries/{warehouseEntry}/credit-payments/{creditPayment}/proof',
     [WarehouseEntryController::class, 'viewCreditPaymentProof']

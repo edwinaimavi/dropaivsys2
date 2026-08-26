@@ -313,10 +313,13 @@
                                 <div class="warehouse-entry-bank-payment-card mt-2">
                                     <div class="warehouse-entry-bank-payment-heading">
                                         <span><i class="fas fa-university"></i></span>
-                                        <div>
+                                        <div class="flex-grow-1">
                                             <strong>Pagos y constancias bancarias</strong>
-                                            <small>Distingue pagos reales de documentos de sustento. Adjuntar una constancia no genera otro egreso.</small>
+                                            <small>Cada pago registra sus propios datos y genera un solo egreso bancario.</small>
                                         </div>
+                                        <button type="button" id="btnRegisterWarehouseCreditPayment" class="btn btn-warning btn-sm ml-2">
+                                            <i class="fas fa-plus mr-1"></i>Agregar pago / constancia
+                                        </button>
                                     </div>
                                     <div id="warehouseEntryBankPaymentCreditHelp" class="warehouse-entry-bank-payment-help d-none">
                                         <i class="fas fa-clock"></i>
@@ -329,18 +332,19 @@
                                             <div><small>Estado</small><strong id="warehouseEntryCreditPaymentStatus">Pendiente</strong></div>
                                             <div><small>Saldo pendiente</small><strong id="warehouseEntryCreditPendingAmount">0.00</strong></div>
                                         </div>
-                                        <div class="d-flex flex-wrap align-items-center justify-content-between mt-3">
-                                            <div>
-                                                <strong class="d-block text-dark">Saldo de la compra</strong>
-                                                <small class="text-muted">Un pago complementario s&iacute; genera su propio egreso bancario.</small>
-                                            </div>
-                                            <button type="button" id="btnRegisterWarehouseCreditPayment" class="btn btn-warning btn-sm mt-2 mt-md-0">
-                                                <i class="fas fa-money-check-alt mr-1"></i>
-                                                Registrar pago complementario
-                                            </button>
+                                        <div class="mt-3">
+                                            <strong class="d-block text-dark">Saldo de la compra</strong>
+                                            <small class="text-muted">Cada pago real genera su propio egreso bancario.</small>
                                         </div>
                                     </div>
-                                    <div id="warehouseEntryBankPaymentFields" class="row mt-3">
+                                    <div id="warehouseEntryPendingPaymentsBuilder" class="mt-3">
+                                        <div id="warehouseEntryPendingPaymentsList"></div>
+                                        <div id="warehouseEntryPendingPaymentsEmpty" class="warehouse-entry-payment-documents-empty border rounded py-3">
+                                            <i class="fas fa-money-check-alt"></i>
+                                            <span><strong>No hay pagos nuevos agregados.</strong><br>Use “Agregar pago / constancia” para registrar el primer pago.</span>
+                                        </div>
+                                    </div>
+                                    <div id="warehouseEntryBankPaymentFields" class="row mt-3 d-none" aria-hidden="true">
                                         <input type="hidden" id="warehouse_entry_bank_payment_negative_balance_confirmed"
                                             name="bank_payment_negative_balance_confirmed" value="0">
                                         <div class="form-group col-lg-6">
@@ -373,13 +377,13 @@
                                             <small class="form-text text-muted">Soles por unidad de moneda extranjera.</small>
                                             <span class="invalid-feedback"></span>
                                         </div>
-                                        <div id="warehouseEntryInitialPaymentDocumentsGroup" class="form-group col-lg-7">
-                                            <label class="mb-1">CONSTANCIAS INICIALES DEL PAGO</label>
-                                            <small class="form-text text-muted mt-0 mb-2">Puede adjuntar una o varias constancias bancarias. Se guardar&aacute;n al registrar el ingreso.</small>
+                                        <div id="warehouseEntryInitialPaymentDocumentsGroup" class="form-group col-lg-7 d-none">
+                                            <label class="mb-1">DOCUMENTOS LEGACY DEL PAGO</label>
+                                            <small class="form-text text-muted mt-0 mb-2">Compatibilidad con ingresos registrados anteriormente.</small>
                                             <input type="file" id="warehousePaymentDocumentsInput" name="payment_documents[]"
                                                 class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple>
                                             <button type="button" id="btnAddWarehousePaymentDocument" class="btn btn-outline-info btn-sm">
-                                                <i class="fas fa-plus mr-1"></i>Agregar constancia
+                                                <i class="fas fa-plus mr-1"></i>Agregar documento
                                             </button>
                                             <div class="mt-3">
                                                 <small class="d-block font-weight-bold text-muted mb-1">Constancias seleccionadas:</small>
@@ -404,7 +408,6 @@
                                                 <strong>Pagos relacionados</strong>
                                                 <small>Anticipos, pago de almac&eacute;n y pagos complementarios con sus constancias.</small>
                                             </div>
-                                            <span class="badge badge-light border">Trazabilidad documental</span>
                                         </div>
                                         <div id="warehouseEntryPaymentsDocumentsList"></div>
                                     </div>

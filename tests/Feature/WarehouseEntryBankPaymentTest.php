@@ -475,7 +475,91 @@ it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario'
         ->and((float) $this->account->fresh()->current_balance)->toBe(882.0);
 });
 
+it('guarda tres payment items completos desde un ingreso nuevo y crea tres egresos', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.store', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.store', 'admin.warehouse-entries.show']);
+    [$warehouse, $article] = warehousePaymentInventoryData();
+    $order = warehousePaymentSupplierOrder(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'contado',
+        'OCP-PAYMENT-ITEMS'
+    );
+    $paymentItems = [];
+    foreach ([18, 40, 60] as $index => $amount) {
+        $paymentItems[] = [
+            'bank_account_id' => $this->account->id,
+            'payment_date' => '2026-08-20',
+            'operation_number' => 'OP-ITEM-'.($index + 1),
+            'currency_id' => $this->pen->id,
+            'paid_amount' => $amount,
+            'exchange_rate' => 1,
+            'applied_amount' => $amount,
+            'payment_method' => 'transferencia',
+            'observation' => 'PAGO '.($index + 1),
+            'idempotency_key' => 'warehouse-new-item-'.($index + 1),
+            'file' => UploadedFile::fake()->create('pago-'.($index + 1).'.pdf', 50, 'application/pdf'),
+        ];
+    }
+
+    $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
+        'supplier_purchase_order_id' => $order->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'PAYMENT-ITEMS-001',
+        'document_date' => '2026-08-20',
+        'affect_igv' => 1,
+        'payment_items' => $paymentItems,
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 118,
+        ]],
+    ]);
+
+    $response->assertCreated()->assertJsonPath('status', 'success');
+    $entry = WarehouseEntry::query()->where('document_number', 'PAYMENT-ITEMS-001')->firstOrFail();
+    expect($entry->bankPaymentMovements()->count())->toBe(0)
+        ->and(WarehouseEntryCreditPayment::where('warehouse_entry_id', $entry->id)->count())->toBe(3)
+        ->and(WarehouseEntryPaymentDocument::where('warehouse_entry_id', $entry->id)->count())->toBe(3)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(3)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(882.0);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonCount(3, 'data.payments_and_documents')
+        ->assertJsonPath('data.credit_payment_summary.paid_amount', 118)
+        ->assertJsonPath('data.credit_payment_summary.pending_amount', 0)
+        ->assertJsonCount(1, 'data.payments_and_documents.0.documents')
+        ->assertJsonCount(1, 'data.payments_and_documents.1.documents')
+        ->assertJsonCount(1, 'data.payments_and_documents.2.documents');
+});
+
+it('muestra en nuevo ingreso el botón de pago real y oculta el bloque antiguo de constancias iniciales', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.index', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.index');
+
+    $this->actingAs($this->user)
+        ->get(route('admin.warehouse-entries.index'))
+        ->assertOk()
+        ->assertSee('Agregar pago / constancia')
+        ->assertSee('warehouseEntryPendingPaymentsBuilder', false)
+        ->assertSee('warehouseEntryPendingPaymentsList', false)
+        ->assertDontSee('Constancias iniciales del pago');
+});
+
 it('hereda crédito de la OC, calcula vencimiento y no genera egreso aunque manipulen el request', function () {
+    $this->travelTo(Carbon::parse('2026-07-21'));
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.store', 'web');
     $this->user->givePermissionTo('admin.warehouse-entries.store');
@@ -569,6 +653,7 @@ it('muestra en el listado la alerta de vencimiento del crédito', function () {
         'credito_30_dias',
         'OCP-CREDITO-LISTA'
     );
+    $order->update(['payment_due_date' => '2026-08-20']);
     $entry = WarehouseEntry::create([
         'entry_number' => 'ING-CREDITO-LISTA',
         'supplier_purchase_order_id' => $order->id,
@@ -706,7 +791,10 @@ it('registra pagos parciales, genera egresos y completa el saldo sin duplicar el
         ->assertJsonPath('credit_payment_summary.pending_amount', 0);
 
     $this->actingAs($this->user)
-        ->postJson(route('admin.warehouse-entries.credit-payments.store', $entry), $secondPayload)
+        ->postJson(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($this->account, $this->pen, 9951.97, 'pago-parcial-2')
+        )
         ->assertCreated()
         ->assertJsonPath('credit_payment_summary.status', 'paid');
 
@@ -717,6 +805,206 @@ it('registra pagos parciales, genera egresos y completa el saldo sin duplicar el
         ->getJson(route('admin.warehouse-entries.credit-alerts'))
         ->assertOk()
         ->assertJsonPath('total', 0);
+});
+
+it('registra tres pagos reales independientes y calcula saldo y salidas por moneda', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'TRES-PAGOS',
+        today()->addDays(10)->toDateString(),
+        1000
+    );
+
+    foreach ([100, 200, 300] as $index => $amount) {
+        $this->actingAs($this->user)
+            ->post(
+                route('admin.warehouse-entries.credit-payments.store', $entry),
+                warehouseCreditPaymentPayload($this->account, $this->pen, $amount, 'pago-'.($index + 1))
+            )
+            ->assertCreated();
+    }
+
+    expect(WarehouseEntryCreditPayment::where('warehouse_entry_id', $entry->id)->count())->toBe(3)
+        ->and(WarehouseEntryPaymentDocument::where('warehouse_entry_id', $entry->id)->count())->toBe(3)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(3)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(400.0);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonCount(3, 'data.payments_and_documents')
+        ->assertJsonPath('data.credit_payment_summary.paid_amount', 600)
+        ->assertJsonPath('data.credit_payment_summary.pending_amount', 400)
+        ->assertJsonPath('data.payment_totals_by_currency.0.currency', 'S/')
+        ->assertJsonPath('data.payment_totals_by_currency.0.amount', 600)
+        ->assertJsonCount(1, 'data.payments_and_documents.0.documents')
+        ->assertJsonCount(1, 'data.payments_and_documents.1.documents')
+        ->assertJsonCount(1, 'data.payments_and_documents.2.documents');
+});
+
+it('exige constancia y bloquea una operación bancaria duplicada', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'PAGO-DUPLICADO',
+        today()->addDays(10)->toDateString(),
+        500
+    );
+    $withoutProof = warehouseCreditPaymentPayload($this->account, $this->pen, 100, 'sin-constancia');
+    unset($withoutProof['proof']);
+
+    $this->actingAs($this->user)
+        ->postJson(route('admin.warehouse-entries.credit-payments.store', $entry), $withoutProof)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proof');
+
+    $first = warehouseCreditPaymentPayload($this->account, $this->pen, 100, 'duplicado-1');
+    $first['operation_number'] = 'OP-DUPLICADA';
+    $this->actingAs($this->user)
+        ->post(route('admin.warehouse-entries.credit-payments.store', $entry), $first)
+        ->assertCreated();
+
+    $duplicate = warehouseCreditPaymentPayload($this->account, $this->pen, 100, 'duplicado-2');
+    $duplicate['operation_number'] = 'OP-DUPLICADA';
+    $this->actingAs($this->user)
+        ->postJson(route('admin.warehouse-entries.credit-payments.store', $entry), $duplicate)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('operation_number');
+
+    expect(WarehouseEntryCreditPayment::where('warehouse_entry_id', $entry->id)->count())->toBe(1)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(900.0);
+});
+
+it('elimina la constancia principal sin eliminar el pago ni tocar el saldo bancario', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'ELIMINAR-CONSTANCIA-PAGO',
+        today()->addDays(10)->toDateString(),
+        500
+    );
+    $this->actingAs($this->user)
+        ->post(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($this->account, $this->pen, 100, 'pago-eliminar-documento')
+        )
+        ->assertCreated();
+    $payment = WarehouseEntryCreditPayment::query()->firstOrFail();
+    $movement = $payment->bankMovement()->firstOrFail();
+    $document = WarehouseEntryPaymentDocument::query()->firstOrFail();
+    $path = $document->file_path;
+
+    $this->actingAs($this->user)
+        ->deleteJson(
+            route('admin.warehouse-entries.payment-documents.destroy', [$entry, $document]),
+            ['deletion_reason' => 'Documento incorrecto']
+        )
+        ->assertOk()
+        ->assertJsonPath('bank_movement_created', false);
+
+    expect($document->fresh()->trashed())->toBeTrue()
+        ->and($payment->fresh()->proof_path)->toBeNull()
+        ->and($movement->fresh()->file_path)->toBeNull()
+        ->and($movement->fresh()->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and(WarehouseEntryCreditPayment::whereKey($payment->id)->exists())->toBeTrue()
+        ->and((float) $this->account->fresh()->current_balance)->toBe(900.0);
+    Storage::disk('public')->assertExists($path);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonCount(0, 'data.payments_and_documents.0.documents');
+});
+
+it('corrige y revierte un pago conservando constancia y trazabilidad', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
+    $entry = warehouseCreditAlertEntry(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'CORREGIR-REVERTIR',
+        today()->addDays(10)->toDateString(),
+        500
+    );
+    $this->actingAs($this->user)
+        ->post(
+            route('admin.warehouse-entries.credit-payments.store', $entry),
+            warehouseCreditPaymentPayload($this->account, $this->pen, 200, 'pago-a-corregir')
+        )
+        ->assertCreated();
+    $payment = WarehouseEntryCreditPayment::query()->firstOrFail();
+    $originalMovement = $payment->bankMovement()->firstOrFail();
+    $proofPath = $payment->proof_path;
+
+    $updatePayload = warehouseCreditPaymentPayload($this->account, $this->pen, 150, 'dato-no-usado');
+    unset($updatePayload['proof'], $updatePayload['idempotency_key']);
+    $updatePayload['operation_number'] = 'OP-CORREGIDA';
+    $this->actingAs($this->user)
+        ->putJson(
+            route('admin.warehouse-entries.credit-payments.update', [$entry, $payment]),
+            $updatePayload
+        )
+        ->assertOk()
+        ->assertJsonPath('data.operation_number', 'OP-CORREGIDA');
+
+    $payment->refresh();
+    $replacementMovement = $payment->bankMovement()->firstOrFail();
+    expect($originalMovement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
+        ->and($replacementMovement->id)->not->toBe($originalMovement->id)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(850.0);
+
+    $this->actingAs($this->user)
+        ->deleteJson(
+            route('admin.warehouse-entries.credit-payments.reverse', [$entry, $payment]),
+            ['reason' => 'Pago registrado en cuenta equivocada']
+        )
+        ->assertOk();
+
+    $reversed = WarehouseEntryCreditPayment::withTrashed()->findOrFail($payment->id);
+    expect($reversed->trashed())->toBeTrue()
+        ->and($reversed->status)->toBe(WarehouseEntryCreditPayment::STATUS_REVERSED)
+        ->and($reversed->deleted_by)->toBe($this->user->id)
+        ->and($reversed->delete_reason)->toBe('PAGO REGISTRADO EN CUENTA EQUIVOCADA')
+        ->and($replacementMovement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
+        ->and($replacementMovement->fresh()->reversal)->not->toBeNull()
+        ->and((float) $this->account->fresh()->current_balance)->toBe(1000.0)
+        ->and(WarehouseEntryPaymentDocument::where('warehouse_entry_credit_payment_id', $payment->id)->count())->toBe(1);
+    Storage::disk('public')->assertExists($proofPath);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonPath('data.credit_payment_summary.paid_amount', 0)
+        ->assertJsonPath('data.credit_payment_summary.pending_amount', 500)
+        ->assertJsonPath('data.payments_and_documents.0.status', 'REVERTIDO')
+        ->assertJsonPath('data.payments_and_documents.0.active', false)
+        ->assertJsonCount(1, 'data.payments_and_documents.0.documents');
 });
 
 it('bloquea un pago mayor al saldo pendiente', function () {
@@ -926,16 +1214,17 @@ it('agrega constancias a un pago complementario sin duplicar su movimiento banca
             ->assertJsonPath('bank_movement_created', false);
     }
 
-    expect(WarehouseEntryPaymentDocument::where('warehouse_entry_credit_payment_id', $payment->id)->count())->toBe(2)
+    expect(WarehouseEntryPaymentDocument::where('warehouse_entry_credit_payment_id', $payment->id)->count())->toBe(3)
         ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe($movementCount)
         ->and($payment->bankMovement()->firstOrFail()->status)->toBe(BankMovement::STATUS_REGISTERED);
 
     $this->actingAs($this->user)
         ->getJson(route('admin.warehouse-entries.show', $entry))
         ->assertOk()
-        ->assertJsonCount(2, 'data.payment_documents_summary')
+        ->assertJsonCount(3, 'data.payment_documents_summary')
         ->assertJsonPath('data.payment_documents_summary.0.source_type', 'credit')
-        ->assertJsonPath('data.payment_documents_summary.1.source_type', 'credit');
+        ->assertJsonPath('data.payment_documents_summary.1.source_type', 'credit')
+        ->assertJsonPath('data.payment_documents_summary.2.source_type', 'credit');
 });
 
 it('guarda varias constancias iniciales sobre un único movimiento bancario y las devuelve al reabrir', function () {
@@ -1115,6 +1404,7 @@ function warehouseCreditAlertEntry(
         $paymentCondition,
         "OCP-{$code}"
     );
+    $order->update(['payment_due_date' => $dueDate]);
 
     return WarehouseEntry::create(array_merge([
         'entry_number' => "ING-{$code}",
@@ -1148,6 +1438,7 @@ function warehouseCreditPaymentPayload(
         'payment_method' => 'transferencia',
         'operation_number' => 'OP-'.strtoupper($idempotencyKey),
         'observation' => 'Pago de prueba',
+        'proof' => UploadedFile::fake()->create("{$idempotencyKey}.pdf", 50, 'application/pdf'),
         'idempotency_key' => $idempotencyKey,
     ];
 }
