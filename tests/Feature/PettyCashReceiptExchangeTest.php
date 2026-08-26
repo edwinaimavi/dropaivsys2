@@ -899,6 +899,104 @@ it('mantiene parcial una rendición conjunta y permite completarla con vuelto si
         ->and((float) $box->reimbursement_amount)->toBe(40.0);
 });
 
+it('completa una rendición parcial solo con el vuelto e ignora filas de comprobante vacías', function () {
+    $receipt = createReceiptExpense(100, '000422');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $route = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000013',
+            'issuer_name' => 'EMISOR PARCIAL S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F013',
+            'number' => '000070',
+            'issue_date' => '2026-08-22',
+            'concept' => 'SUSTENTO PARCIAL',
+            'amount' => 70,
+        ]],
+    ])->assertCreated()
+        ->assertJsonPath('data.supported_amount', '70.00')
+        ->assertJsonPath('data.returned_amount', '0.00')
+        ->assertJsonPath('data.pending_amount', '30.00')
+        ->assertJsonPath('data.settlement_status', 'PARTIAL');
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'has_return' => true,
+        'return_amount' => 30,
+        'return_date' => '2026-08-22',
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors('return_responsible_name');
+
+    $returnPayload = [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '',
+            'issuer_name' => '',
+            'document_type' => '',
+            'series' => '',
+            'number' => '',
+            'issue_date' => '2026-08-22',
+            'concept' => '',
+            'amount' => '',
+        ]],
+        'has_return' => true,
+        'return_amount' => 30,
+        'return_date' => '2026-08-22',
+        'return_responsible_name' => 'RESPONSABLE',
+    ];
+    $this->postJson($route, $returnPayload)->assertCreated()
+        ->assertJsonPath('data.supported_amount', '70.00')
+        ->assertJsonPath('data.returned_amount', '30.00')
+        ->assertJsonPath('data.pending_amount', '0.00')
+        ->assertJsonPath('data.settlement_status', 'SETTLED')
+        ->assertJsonCount(1, 'data.settlement_documents')
+        ->assertJsonCount(1, 'data.returns');
+
+    $this->postJson($route, $returnPayload)->assertUnprocessable();
+
+    $exchange = PettyCashExpenseExchange::findOrFail($receipt->fresh()->exchange_id);
+    expect($exchange->settlementDocuments()->count())->toBe(1)
+        ->and($exchange->returns()->count())->toBe(1)
+        ->and($receipt->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_COMPLETED);
+});
+
+it('mantiene parcial la rendición cuando el vuelto es menor al pendiente real', function () {
+    $receipt = createReceiptExpense(100, '000423');
+    $this->postJson(route('admin.petty-cash.expenses.approve', $receipt))->assertOk();
+    $route = route('admin.petty-cash.receipt-exchanges.store', $this->boxId);
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'settlement_documents' => [[
+            'issuer_ruc' => '20600000014',
+            'issuer_name' => 'EMISOR VUELTO PARCIAL S.A.C.',
+            'document_type' => 'FACTURA',
+            'series' => 'F014',
+            'number' => '000070',
+            'issue_date' => '2026-08-22',
+            'concept' => 'SUSTENTO PARCIAL',
+            'amount' => 70,
+        ]],
+    ])->assertCreated();
+
+    $this->postJson($route, [
+        'expense_id' => $receipt->id,
+        'has_return' => true,
+        'return_amount' => 10,
+        'return_date' => '2026-08-22',
+        'return_responsible_name' => 'RESPONSABLE',
+    ])->assertCreated()
+        ->assertJsonPath('data.supported_amount', '70.00')
+        ->assertJsonPath('data.returned_amount', '10.00')
+        ->assertJsonPath('data.pending_amount', '20.00')
+        ->assertJsonPath('data.settlement_status', 'PARTIAL');
+
+    expect($receipt->fresh()->exchange_status)->toBe(PettyCashExpense::EXCHANGE_PARTIAL);
+});
+
 it('bloquea un comprobante que supera el total de varios recibos seleccionados', function () {
     $first = createReceiptExpense(20, '000430');
     $second = createReceiptExpense(30, '000431');

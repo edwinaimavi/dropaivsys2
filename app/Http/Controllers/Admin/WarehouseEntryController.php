@@ -918,9 +918,11 @@ class WarehouseEntryController extends Controller
             );
         });
 
+        $paymentsAndDocuments = $this->warehouseEntryPaymentsAndDocuments($warehouseEntry);
+        $warehouseEntry->setAttribute('payments_and_documents', $paymentsAndDocuments);
         $warehouseEntry->setAttribute(
-            'payments_and_documents',
-            $this->warehouseEntryPaymentsAndDocuments($warehouseEntry)
+            'payment_documents_summary',
+            $this->warehouseEntryPaymentDocumentsSummary($paymentsAndDocuments)
         );
 
         if (! Auth::user()?->can('admin.warehouse-entries.expenses.index')) {
@@ -3715,6 +3717,7 @@ class WarehouseEntryController extends Controller
             return [
                 'id' => $document->id,
                 'is_legacy' => false,
+                'file_path' => $document->file_path,
                 'original_name' => $document->original_name,
                 'mime_type' => $document->mime_type,
                 'size' => $document->size,
@@ -3744,6 +3747,7 @@ class WarehouseEntryController extends Controller
             return [
                 'id' => "legacy:{$type}:{$id}",
                 'is_legacy' => true,
+                'file_path' => $path,
                 'original_name' => $name ?: basename($path),
                 'mime_type' => $mime,
                 'size' => $size,
@@ -3879,6 +3883,61 @@ class WarehouseEntryController extends Controller
         }
 
         return $groups;
+    }
+
+    private function warehouseEntryPaymentDocumentsSummary(array $groups): array
+    {
+        $summary = [];
+        $seenIds = [];
+        $seenPaths = [];
+        $seenNames = [];
+
+        foreach ($groups as $group) {
+            foreach ($group['documents'] ?? [] as $document) {
+                $idKey = ! ($document['is_legacy'] ?? false) && filled($document['id'] ?? null)
+                    ? (string) $document['id']
+                    : '';
+                $pathKey = Str::lower(trim((string) ($document['file_path'] ?? '')));
+                $nameKey = Str::lower(trim((string) ($document['original_name'] ?? '')));
+
+                if (($idKey !== '' && isset($seenIds[$idKey]))
+                    || ($pathKey !== '' && isset($seenPaths[$pathKey]))
+                    || ($nameKey !== '' && isset($seenNames[$nameKey]))) {
+                    continue;
+                }
+
+                if ($idKey !== '') {
+                    $seenIds[$idKey] = true;
+                }
+                if ($pathKey !== '') {
+                    $seenPaths[$pathKey] = true;
+                }
+                if ($nameKey !== '') {
+                    $seenNames[$nameKey] = true;
+                }
+
+                $summary[] = [
+                    'id' => $document['id'] ?? null,
+                    'source_type' => $group['payment_type'] ?? 'legacy',
+                    'source_label' => $group['badge'] ?? $group['type_label'] ?? 'Pago',
+                    'bank_name' => $group['bank_name'] ?? null,
+                    'account_number' => $group['account_number'] ?? null,
+                    'operation_number' => $group['operation_number'] ?? null,
+                    'payment_date' => $group['payment_date'] ?? null,
+                    'amount' => $group['amount'] ?? null,
+                    'currency' => $group['currency'] ?? null,
+                    'file_name' => $document['original_name'] ?? null,
+                    'file_url' => $document['view_url'] ?? null,
+                    'mime_type' => $document['mime_type'] ?? null,
+                    'size' => $document['size'] ?? null,
+                    'uploaded_by' => $document['uploaded_by'] ?? null,
+                    'created_at' => $document['uploaded_at'] ?? null,
+                    'is_legacy' => (bool) ($document['is_legacy'] ?? false),
+                ];
+            }
+        }
+
+        return $summary;
     }
 
     private function paymentUserName($user): string

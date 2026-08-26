@@ -196,33 +196,123 @@ $(function () {
             </header>
             <div class="pcre-document-grid">
                 <div class="pcre-field pcre-doc-emitter">
-                    <label><i class="fas fa-building"></i> Emisor</label>
+                    <label><i class="fas fa-building"></i> Emisor *</label>
                     <div class="input-group input-group-sm"><input name="settlement_documents[${index}][issuer_ruc]" class="form-control pcre-row-ruc" inputmode="numeric" maxlength="11" placeholder="RUC de 11 dígitos"><div class="input-group-append"><button type="button" class="btn btn-outline-success pcre-search-row-issuer" title="Buscar RUC"><i class="fas fa-search"></i></button></div></div>
-                    <input name="settlement_documents[${index}][issuer_name]" class="form-control text-uppercase pcre-row-issuer-name mt-1" maxlength="255" required placeholder="Razón social">
+                    <input name="settlement_documents[${index}][issuer_name]" class="form-control text-uppercase pcre-row-issuer-name mt-1" maxlength="255" placeholder="Razón social">
                     <small class="pcre-row-issuer-help text-muted"></small>
                 </div>
                 <div class="pcre-field pcre-doc-number">
-                    <label><i class="fas fa-hashtag"></i> Tipo y número</label>
-                    <select name="settlement_documents[${index}][document_type]" class="form-control pcre-document-type" required><option value="">Seleccione el tipo</option><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option><option value="OTRO_OFICIAL">Otro oficial</option></select>
-                    <div class="pcre-field-row"><input name="settlement_documents[${index}][series]" class="form-control text-uppercase pcre-document-series" maxlength="20" required placeholder="Serie"><input name="settlement_documents[${index}][number]" class="form-control text-uppercase pcre-document-number" maxlength="50" required placeholder="Correlativo"></div>
+                    <label><i class="fas fa-hashtag"></i> Tipo y número *</label>
+                    <select name="settlement_documents[${index}][document_type]" class="form-control pcre-document-type"><option value="">Seleccione el tipo</option><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option><option value="OTRO_OFICIAL">Otro oficial</option></select>
+                    <div class="pcre-field-row"><input name="settlement_documents[${index}][series]" class="form-control text-uppercase pcre-document-series" maxlength="20" placeholder="Serie"><input name="settlement_documents[${index}][number]" class="form-control text-uppercase pcre-document-number" maxlength="50" placeholder="Correlativo"></div>
                 </div>
                 <div class="pcre-field pcre-doc-concept">
-                    <label><i class="far fa-calendar-alt"></i> Fecha y concepto</label>
-                    <input type="date" name="settlement_documents[${index}][issue_date]" class="form-control pcre-document-date" required value="${new Date().toISOString().slice(0, 10)}">
-                    <textarea name="settlement_documents[${index}][concept]" class="form-control pcre-document-concept mt-1" maxlength="500" required placeholder="Concepto o descripción"></textarea>
+                    <label><i class="far fa-calendar-alt"></i> Fecha y concepto *</label>
+                    <input type="date" name="settlement_documents[${index}][issue_date]" class="form-control pcre-document-date">
+                    <textarea name="settlement_documents[${index}][concept]" class="form-control pcre-document-concept mt-1" maxlength="500" placeholder="Concepto o descripción"></textarea>
                 </div>
                 <div class="pcre-field pcre-doc-amount">
-                    <label><i class="fas fa-coins"></i> Importe</label>
-                    <input type="number" step="0.01" min="0.01" name="settlement_documents[${index}][amount]" class="form-control text-right pcre-document-amount" required placeholder="0.00">
+                    <label><i class="fas fa-coins"></i> Importe *</label>
+                    <input type="number" step="0.01" min="0.01" name="settlement_documents[${index}][amount]" class="form-control text-right pcre-document-amount" placeholder="0.00">
                 </div>
                 <div class="pcre-field pcre-doc-file">
                     <label><i class="fas fa-paperclip"></i> Archivo</label>
                     <label class="pcre-file-drop"><input type="file" name="settlement_documents[${index}][file]" class="pcre-document-file" accept=".pdf,.jpg,.jpeg,.png,.webp"><span class="pcre-file-icon"><i class="fas fa-cloud-upload-alt"></i></span><span class="pcre-file-copy"><strong>Adjuntar sustento</strong><small class="pcre-file-name">PDF o imagen, máx. 10 MB</small></span><span class="pcre-file-action">Elegir</span></label>
                 </div>
             </div>
+            <div class="alert alert-danger pcre-document-errors d-none" role="alert"></div>
         </article>`);
         $('#pcre_documents_empty').addClass('d-none');
         updateReceiptExchangeSelection();
+    };
+    const settlementDocumentHasData = row => {
+        const item = $(row);
+        return [
+            '.pcre-row-ruc', '.pcre-row-issuer-name', '.pcre-document-type',
+            '.pcre-document-series', '.pcre-document-number', '.pcre-document-concept',
+            '.pcre-document-amount'
+        ].some(selector => String(item.find(selector).val() || '').trim() !== '')
+            || Boolean(item.find('.pcre-document-file')[0]?.files?.length);
+    };
+    const prepareSettlementDocumentRows = () => {
+        const activeRows = [];
+        const emptyRows = [];
+        let valid = true;
+
+        $('.pcre-document-row').each(function () {
+            const row = $(this);
+            const controls = row.find(':input[name]');
+            controls.prop('disabled', false).removeAttr('required').removeClass('is-invalid');
+            row.find('.pcre-document-errors').addClass('d-none').empty();
+
+            if (!settlementDocumentHasData(this)) {
+                controls.prop('disabled', true);
+                emptyRows.push(this);
+                return;
+            }
+
+            activeRows.push(this);
+            const errors = [];
+            const requireValue = (selector, message) => {
+                const input = row.find(selector);
+                if (String(input.val() || '').trim() === '') {
+                    input.addClass('is-invalid');
+                    errors.push(message);
+                }
+            };
+            requireValue('.pcre-row-ruc', 'Ingrese el RUC del emisor.');
+            requireValue('.pcre-row-issuer-name', 'Ingrese la razón social.');
+            requireValue('.pcre-document-type', 'Seleccione el tipo de comprobante.');
+            requireValue('.pcre-document-series', 'Ingrese la serie.');
+            requireValue('.pcre-document-number', 'Ingrese el correlativo.');
+            requireValue('.pcre-document-date', 'Ingrese la fecha de emisión.');
+            requireValue('.pcre-document-concept', 'Ingrese el concepto.');
+            requireValue('.pcre-document-amount', 'Ingrese un importe mayor a cero.');
+
+            const ruc = String(row.find('.pcre-row-ruc').val() || '').replace(/\D/g, '');
+            if (ruc && ruc.length !== 11) {
+                row.find('.pcre-row-ruc').addClass('is-invalid');
+                errors.push('El RUC del emisor debe tener 11 dígitos.');
+            }
+            const amount = Number(row.find('.pcre-document-amount').val() || 0);
+            if (row.find('.pcre-document-amount').val() && amount <= 0) {
+                row.find('.pcre-document-amount').addClass('is-invalid');
+                errors.push('El importe debe ser mayor a cero.');
+            }
+
+            if (errors.length) {
+                valid = false;
+                row.find('.pcre-document-errors').removeClass('d-none').html(errors.map(error => `<div><i class="fas fa-exclamation-circle mr-1"></i>${escapeHtml(error)}</div>`).join(''));
+            }
+        });
+
+        return { activeRows, emptyRows, valid };
+    };
+    const validateSettlementReturn = hasReturn => {
+        const controls = $('#pcre_return_fields :input[name]');
+        controls.prop('disabled', !hasReturn).removeAttr('required').removeClass('is-invalid');
+        const errorBox = $('#pcre_return_errors').addClass('d-none').empty();
+        if (!hasReturn) return true;
+
+        const errors = [];
+        const amount = Number($('#pcre_return_amount').val() || 0);
+        if (amount <= 0) {
+            $('#pcre_return_amount').addClass('is-invalid');
+            errors.push('Ingrese un monto retornado mayor a cero.');
+        }
+        if (!$('#pcre_return_date').val()) {
+            $('#pcre_return_date').addClass('is-invalid');
+            errors.push('Ingrese la fecha del retorno.');
+        }
+        if (!String($('#pcre_return_responsible_name').val() || '').trim()) {
+            $('#pcre_return_responsible_name').addClass('is-invalid');
+            errors.push('Ingrese el responsable que devuelve el vuelto.');
+        }
+        if (errors.length) {
+            errorBox.removeClass('d-none').html(errors.map(error => `<div><i class="fas fa-exclamation-circle mr-1"></i>${escapeHtml(error)}</div>`).join(''));
+        }
+
+        return errors.length === 0;
     };
     const updateReceiptExchangeSelection = () => {
         const receipts = selectedSettlementReceipts();
@@ -2461,6 +2551,8 @@ $(function () {
             $('#pcre_document_rows').empty();
             $('#pcre_documents_empty').removeClass('d-none');
             $('#pcre_return_fields').addClass('d-none');
+            $('#pcre_return_fields :input[name]').prop('disabled', true).removeClass('is-invalid');
+            $('#pcre_return_errors').addClass('d-none').empty();
             $('#pcre_return_file').closest('.pcre-file-drop').removeClass('is-selected').find('.pcre-file-name').text('PDF o imagen, máx. 10 MB');
             $('#pcre_box_id').val(boxId);
             $('#pcre_receipts').html(pendingExchangeReceipts.length ? pendingExchangeReceipts.map(receipt => {
@@ -2485,7 +2577,6 @@ $(function () {
             renderExistingSettlement(selectedSettlementReceipts());
             $('#pcre_return_responsible_name').val(firstReceipt?.supplier_name || '');
             $('#pcre_return_date').val(new Date().toISOString().slice(0, 10));
-            addSettlementDocumentRow();
             updateReceiptExchangeSelection();
             $('#pettyCashReceiptExchangeModal .petty-settlement-tabs .nav-link').first().tab('show');
             $('#pettyCashReceiptExchangeModal').modal('show');
@@ -2521,13 +2612,15 @@ $(function () {
     });
     $('#pcre_add_document').on('click', addSettlementDocumentRow);
     $(document).on('click', '.removeSettlementDocumentRow', function () {
-        $(this).closest('.pcre-document-row').remove();
+        $(this).closest('.pcre-document-row').find(':input').prop('disabled', true).removeAttr('required').end().remove();
         $('#pcre_documents_empty').toggleClass('d-none', $('.pcre-document-row').length > 0);
         updateReceiptExchangeSelection();
     });
     $(document).on('input change', '.pcre-document-row :input, #pcre_return_amount, #pcre_return_date, #pcre_return_responsible_name', updateReceiptExchangeSelection);
     $('#pcre_has_return').on('change', function () {
         $('#pcre_return_fields').toggleClass('d-none', !this.checked);
+        $('#pcre_return_fields :input[name]').prop('disabled', !this.checked).removeClass('is-invalid');
+        $('#pcre_return_errors').addClass('d-none').empty();
         if (this.checked && !$('#pcre_return_date').val()) $('#pcre_return_date').val(new Date().toISOString().slice(0, 10));
         updateReceiptExchangeSelection();
     });
@@ -2598,10 +2691,23 @@ $(function () {
             notify('warning', 'Seleccione al menos un recibo interno para rendir.');
             return;
         }
-        const hasDocuments = $('.pcre-document-row').length > 0;
         const hasReturn = $('#pcre_has_return').is(':checked');
+        const preparedDocuments = prepareSettlementDocumentRows();
+        const returnIsValid = validateSettlementReturn(hasReturn);
+        const restoreEmptyRows = () => preparedDocuments.emptyRows.forEach(
+            row => $(row).find(':input[name]').prop('disabled', false)
+        );
+        const hasDocuments = preparedDocuments.activeRows.length > 0;
+        if (!preparedDocuments.valid || !returnIsValid) {
+            const target = !preparedDocuments.valid ? '#pcre_tab_documents' : '#pcre_tab_return';
+            $(`#pettyCashReceiptExchangeModal .petty-settlement-tabs .nav-link[href="${target}"]`).tab('show');
+            notify('warning', 'Revise los campos marcados antes de guardar la rendición.');
+            restoreEmptyRows();
+            return;
+        }
         if (!hasDocuments && !hasReturn) {
             notify('warning', 'Agregue al menos un comprobante o registre el vuelto.');
+            restoreEmptyRows();
             return;
         }
         const exchanges = selectedSettlementExchanges(receipts);
@@ -2618,18 +2724,22 @@ $(function () {
         const newReturn = hasReturn ? Number($('#pcre_return_amount').val() || 0) : 0;
         if (newSupported + newReturn <= 0) {
             notify('warning', 'Agregue al menos un comprobante o registre el vuelto.');
+            restoreEmptyRows();
             return;
         }
         if (newReturn > pendingAfterDocuments + 0.009) {
             notify('error', 'El vuelto no puede superar el saldo pendiente de rendición.');
+            restoreEmptyRows();
             return;
         }
         if (existingSupported + existingReturned + newSupported + newReturn > original + 0.009) {
             notify('error', 'La suma de comprobantes y vuelto no puede superar el monto pendiente seleccionado.');
+            restoreEmptyRows();
             return;
         }
         const form = $(this);
         const data = new FormData(this);
+        restoreEmptyRows();
         loading(form, true);
         api({ url: `${base}/${$('#pcre_box_id').val()}/receipt-exchanges`, method: 'POST', data, processData: false, contentType: false })
             .done(response => {

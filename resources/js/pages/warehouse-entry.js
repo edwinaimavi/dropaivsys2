@@ -4324,6 +4324,31 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
 function renderWarehouseEntryDetailBankPayment(entry) {
     const container = $('#vwe_bank_payment_summary');
     const movement = entry.bank_payment_movement;
+    const payments = Array.isArray(entry.payments_and_documents) ? entry.payments_and_documents : [];
+    const documents = Array.isArray(entry.payment_documents_summary)
+        ? entry.payment_documents_summary
+        : warehouseEntryDetailPaymentDocumentsFromGroups(payments);
+
+    if (payments.length) {
+        container.addClass('has-payment').html(`
+            ${payments.map(renderWarehouseEntryDetailPaymentGroup).join('')}
+            <div class="warehouse-entry-payment-documents-section mt-3">
+                <div class="warehouse-entry-payment-documents-title">
+                    <div>
+                        <strong>Constancias bancarias</strong>
+                        <small>Sustento documental de los pagos relacionados con este ingreso.</small>
+                    </div>
+                    <span class="badge badge-light border">${documents.length} archivo(s)</span>
+                </div>
+                <div class="warehouse-entry-payment-document-list">
+                    ${documents.length
+                        ? documents.map(renderWarehouseEntryDetailPaymentDocument).join('')
+                        : '<div class="warehouse-entry-payment-document-empty"><i class="fas fa-file-excel mr-1"></i>Sin constancia bancaria</div>'}
+                </div>
+            </div>
+        `);
+        return;
+    }
 
     if (entry.generate_account_payable) {
         container.removeClass('has-payment');
@@ -4338,6 +4363,83 @@ function renderWarehouseEntryDetailBankPayment(entry) {
 
     container.addClass('has-payment')
         .html(warehouseEntryBankPaymentCard(entry, 'Pago de compra al proveedor'));
+}
+
+function renderWarehouseEntryDetailPaymentGroup(payment) {
+    const bank = [payment.bank_name, payment.account_number].filter(Boolean).join(' · ') || 'Cuenta bancaria no disponible';
+    const amount = `${payment.currency || ''} ${formatWarehouseEntryMoney(payment.amount)}`.trim();
+    const reconciled = String(payment.status || '').toUpperCase() === 'CONCILIADO';
+
+    return `<div class="warehouse-entry-payment-record">
+        <div class="warehouse-entry-payment-record-head">
+            <div class="warehouse-entry-payment-record-identity">
+                <span class="warehouse-entry-payment-type-badge is-${escapeWarehouseEntryHtml(payment.payment_type || 'warehouse')}">${escapeWarehouseEntryHtml(payment.badge || 'Pago')}</span>
+                <div>
+                    <strong>${escapeWarehouseEntryHtml(payment.type_label || 'Pago relacionado')}</strong>
+                    <small>${escapeWarehouseEntryHtml(bank)}</small>
+                </div>
+            </div>
+            <span class="badge ${reconciled ? 'badge-success' : 'badge-info'}">${escapeWarehouseEntryHtml(payment.status || 'REGISTRADO')}</span>
+        </div>
+        <div class="warehouse-entry-payment-record-meta">
+            <span>Fecha: <strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate(payment.payment_date))}</strong></span>
+            <span>Operaci&oacute;n: <strong>${escapeWarehouseEntryHtml(payment.operation_number || '-')}</strong></span>
+            <span>Monto: <strong>${escapeWarehouseEntryHtml(amount)}</strong></span>
+            <span>Usuario: <strong>${escapeWarehouseEntryHtml(payment.user || '-')}</strong></span>
+        </div>
+    </div>`;
+}
+
+function warehouseEntryDetailPaymentDocumentsFromGroups(payments) {
+    const seenIds = new Set();
+    const seenNames = new Set();
+
+    return payments.flatMap(payment => (payment.documents || []).map(document => ({
+        ...document,
+        source_type: payment.payment_type,
+        source_label: payment.badge || payment.type_label,
+        bank_name: payment.bank_name,
+        account_number: payment.account_number,
+        operation_number: payment.operation_number,
+        payment_date: payment.payment_date,
+        amount: payment.amount,
+        currency: payment.currency,
+        file_name: document.original_name,
+        file_url: document.view_url,
+        created_at: document.uploaded_at
+    }))).filter(document => {
+        const id = document.is_legacy ? '' : String(document.id || '');
+        const name = String(document.file_name || '').trim().toLocaleLowerCase();
+        if ((id && seenIds.has(id)) || (name && seenNames.has(name))) return false;
+        if (id) seenIds.add(id);
+        if (name) seenNames.add(name);
+        return true;
+    });
+}
+
+function renderWarehouseEntryDetailPaymentDocument(document) {
+    const extension = getWarehouseEntryFileExtension(document.file_name || '');
+    const icon = extension === 'pdf' ? 'fa-file-pdf text-danger' : 'fa-file-image text-info';
+    const metadata = [
+        document.source_label,
+        document.operation_number ? `Op. ${document.operation_number}` : '',
+        formatWarehouseEntryFileSize(document.size),
+        document.uploaded_by
+    ].filter(Boolean).join(' · ');
+    const view = document.file_url
+        ? `<a href="${escapeWarehouseEntryHtml(document.file_url)}" target="_blank" rel="noopener" class="btn btn-outline-success btn-xs"><i class="fas fa-eye mr-1"></i>Ver</a>`
+        : '<button type="button" class="btn btn-outline-secondary btn-xs" disabled><i class="fas fa-eye-slash mr-1"></i>No disponible</button>';
+
+    return `<div class="warehouse-entry-payment-document-row">
+        <div class="warehouse-entry-payment-document-info">
+            <i class="fas ${icon}"></i>
+            <span>
+                <strong title="${escapeWarehouseEntryHtml(document.file_name || '-')}">${escapeWarehouseEntryHtml(document.file_name || '-')}</strong>
+                <small>${escapeWarehouseEntryHtml(metadata || 'Constancia bancaria')}</small>
+            </span>
+        </div>
+        <div class="warehouse-entry-payment-document-actions">${view}</div>
+    </div>`;
 }
 
 function refreshWarehouseEntryLotDocumentItems() {

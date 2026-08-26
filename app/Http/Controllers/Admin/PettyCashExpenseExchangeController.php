@@ -250,12 +250,14 @@ class PettyCashExpenseExchangeController extends Controller
 
     private function storeSettlement(Request $request, PettyCashBox $pettyCash)
     {
+        $this->removeEmptySettlementDocuments($request);
+
         $validated = $request->validate([
             'expense_id' => ['nullable', 'required_without:expense_ids', 'integer', 'exists:petty_cash_expenses,id'],
             'expense_ids' => ['nullable', 'required_without:expense_id', 'array', 'min:1'],
             'expense_ids.*' => ['required', 'integer', 'distinct', 'exists:petty_cash_expenses,id'],
             'settlement_documents' => ['nullable', 'array', 'max:30'],
-            'settlement_documents.*.issuer_ruc' => ['nullable', 'regex:/^\d{11}$/'],
+            'settlement_documents.*.issuer_ruc' => ['required', 'regex:/^\d{11}$/'],
             'settlement_documents.*.issuer_name' => ['required', 'string', 'max:255'],
             'settlement_documents.*.document_type' => ['required', Rule::in([
                 'FACTURA', 'BOLETA', 'RECIBO_HONORARIOS', 'OTRO_OFICIAL',
@@ -267,10 +269,10 @@ class PettyCashExpenseExchangeController extends Controller
             'settlement_documents.*.amount' => ['required', 'numeric', 'gt:0'],
             'settlement_documents.*.file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'has_return' => ['nullable', 'boolean'],
-            'return_amount' => ['nullable', 'required_if:has_return,1', 'numeric', 'gt:0'],
-            'return_date' => ['nullable', 'required_if:has_return,1', 'date'],
+            'return_amount' => [Rule::requiredIf($request->boolean('has_return')), 'numeric', 'gt:0'],
+            'return_date' => [Rule::requiredIf($request->boolean('has_return')), 'date'],
             'return_responsible_user_id' => ['nullable', 'integer', 'exists:users,id'],
-            'return_responsible_name' => ['nullable', 'string', 'max:255'],
+            'return_responsible_name' => [Rule::requiredIf($request->boolean('has_return')), 'string', 'max:255'],
             'return_observation' => ['nullable', 'string', 'max:1000'],
             'return_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ], [
@@ -278,17 +280,19 @@ class PettyCashExpenseExchangeController extends Controller
             'expense_ids.required_without' => 'Seleccione al menos un recibo interno para registrar la rendición.',
             'expense_ids.min' => 'Seleccione al menos un recibo interno para registrar la rendición.',
             'settlement_documents.*.amount.gt' => 'El importe de cada comprobante debe ser mayor a 0.',
+            'settlement_documents.*.issuer_ruc.required' => 'Ingrese el RUC del emisor.',
             'settlement_documents.*.issuer_ruc.regex' => 'El RUC del emisor debe tener 11 dígitos.',
-            'return_amount.required_if' => 'Ingrese el monto retornado.',
+            'return_amount.required' => 'Ingrese el monto retornado.',
             'return_amount.gt' => 'El monto retornado debe ser mayor a 0.',
-            'return_date.required_if' => 'Ingrese la fecha del retorno.',
+            'return_date.required' => 'Ingrese la fecha del retorno.',
+            'return_responsible_name.required' => 'Ingrese el responsable que devuelve el vuelto.',
         ]);
 
         $expenseIds = array_values(array_unique(array_map(
             'intval',
             $validated['expense_ids'] ?? [$validated['expense_id']]
         )));
-        $documents = array_values($validated['settlement_documents'] ?? []);
+        $documents = $validated['settlement_documents'] ?? [];
         $hasReturn = (bool) ($validated['has_return'] ?? false);
         if (empty($documents) && ! $hasReturn) {
             throw ValidationException::withMessages([
@@ -612,6 +616,27 @@ class PettyCashExpenseExchangeController extends Controller
                 : 'Rendición parcial guardada correctamente.',
             'data' => $exchange,
         ], 201);
+    }
+
+    private function removeEmptySettlementDocuments(Request $request): void
+    {
+        $documents = collect((array) $request->input('settlement_documents', []))
+            ->filter(function ($document, $index) use ($request) {
+                $document = is_array($document) ? $document : [];
+                $meaningfulFields = [
+                    'issuer_ruc', 'issuer_name', 'document_type', 'series',
+                    'number', 'concept', 'amount',
+                ];
+
+                $hasData = collect($meaningfulFields)->contains(
+                    fn (string $field) => trim((string) ($document[$field] ?? '')) !== ''
+                );
+
+                return $hasData || $request->hasFile("settlement_documents.$index.file");
+            })
+            ->all();
+
+        $request->merge(['settlement_documents' => $documents]);
     }
 
     private function refreshSettlementTotals(

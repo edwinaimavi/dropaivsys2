@@ -339,7 +339,12 @@ it('adjunta varias constancias al mismo pago sin generar otro egreso bancario', 
         ->assertOk()
         ->assertJsonPath('data.payments_and_documents.0.type_label', 'Pago generado desde almacén')
         ->assertJsonCount(3, 'data.payments_and_documents.0.documents')
-        ->assertJsonPath('data.payments_and_documents.0.documents.0.is_legacy', true);
+        ->assertJsonPath('data.payments_and_documents.0.documents.0.is_legacy', true)
+        ->assertJsonCount(3, 'data.payment_documents_summary')
+        ->assertJsonPath('data.payment_documents_summary.0.file_name', 'constancia-inicial.pdf')
+        ->assertJsonPath('data.payment_documents_summary.1.file_name', 'saldo-restante.pdf')
+        ->assertJsonPath('data.payment_documents_summary.2.file_name', 'adelanto.pdf')
+        ->assertJsonPath('data.payment_documents_summary.0.source_type', 'warehouse');
 });
 
 it('elimina lógicamente una constancia múltiple sin borrar el archivo ni el pago', function () {
@@ -878,6 +883,10 @@ it('muestra el anticipo de la OC separado y permite agregarle otra constancia si
         ->assertOk()
         ->assertJsonPath('data.payments_and_documents.0.type_label', 'Anticipo registrado en OC proveedor')
         ->assertJsonCount(2, 'data.payments_and_documents.0.documents')
+        ->assertJsonCount(2, 'data.payment_documents_summary')
+        ->assertJsonPath('data.payment_documents_summary.0.source_type', 'advance')
+        ->assertJsonPath('data.payment_documents_summary.0.file_name', 'anticipo.pdf')
+        ->assertJsonPath('data.payment_documents_summary.1.file_name', 'anticipo-adicional.pdf')
         ->assertJsonPath('data.payments_and_documents.1.payment_id', $movement->id);
     expect(BankMovement::count())->toBe($movementCount);
 });
@@ -885,8 +894,10 @@ it('muestra el anticipo de la OC separado y permite agregarle otra constancia si
 it('agrega constancias a un pago complementario sin duplicar su movimiento bancario', function () {
     Storage::fake('public');
     app(PermissionRegistrar::class)->forgetCachedPermissions();
-    Permission::findOrCreate('admin.warehouse-entries.update', 'web');
-    $this->user->givePermissionTo('admin.warehouse-entries.update');
+    foreach (['admin.warehouse-entries.update', 'admin.warehouse-entries.show'] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(['admin.warehouse-entries.update', 'admin.warehouse-entries.show']);
     $entry = warehouseCreditAlertEntry(
         $this->company,
         $this->supplier,
@@ -918,6 +929,13 @@ it('agrega constancias a un pago complementario sin duplicar su movimiento banca
     expect(WarehouseEntryPaymentDocument::where('warehouse_entry_credit_payment_id', $payment->id)->count())->toBe(2)
         ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe($movementCount)
         ->and($payment->bankMovement()->firstOrFail()->status)->toBe(BankMovement::STATUS_REGISTERED);
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonCount(2, 'data.payment_documents_summary')
+        ->assertJsonPath('data.payment_documents_summary.0.source_type', 'credit')
+        ->assertJsonPath('data.payment_documents_summary.1.source_type', 'credit');
 });
 
 it('guarda varias constancias iniciales sobre un único movimiento bancario y las devuelve al reabrir', function () {
