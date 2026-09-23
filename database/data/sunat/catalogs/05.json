@@ -1,0 +1,28 @@
+{
+  "catalog_code": "05",
+  "catalog_name": "TIPO DE EXISTENCIA",
+  "description": "En los casos que se brinden servicios de producción, deberá asignarse un código diferente al tipo de existencia que utilice internamente la empresa.",
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "01", "description": "MERCADERIAS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "02", "description": "PRODUCTOS TERMINADOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "03", "description": "MATERIAS PRIMAS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "04", "description": "ENVASES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "05", "description": "MATERIALES AUXILIARES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "06", "description": "SUMINISTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "07", "description": "REPUESTOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "08", "description": "EMBALAJES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "09", "description": "SUBPRODUCTOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "10", "description": "DESECHOS Y DESPERDICIOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "91", "description": "OTROS 1", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "92", "description": "OTROS 2", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "93", "description": "OTROS 3", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "94", "description": "OTROS 4", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "95", "description": "OTROS 5", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "96", "description": "OTROS 6", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "97", "description": "OTROS 7", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "98", "description": "OTROS 8", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "99", "description": "OTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

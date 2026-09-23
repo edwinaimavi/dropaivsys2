@@ -234,6 +234,27 @@
 
 
 
+                                <div class="form-row">
+                                    <div class="form-group col-md-12">
+                                        <label for="sunat_unit_item_id" class="small font-weight-bold text-secondary">
+                                            UNIDAD SUNAT (TABLA 06)
+                                        </label>
+                                        <select id="sunat_unit_item_id" name="sunat_unit_item_id"
+                                            class="form-control form-control-sm">
+                                            <option value="">PENDIENTE DE CONFIGURACIÓN</option>
+                                            @foreach ($sunatUnits as $sunatUnit)
+                                                <option value="{{ $sunatUnit->id }}">
+                                                    {{ $sunatUnit->item_code }} — {{ $sunatUnit->description }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        <span class="invalid-feedback" id="sunat_unit_item_id-error"></span>
+                                        <small class="form-text text-muted">
+                                            Esta equivalencia se usará en Kardex y en nuevos comprobantes electrónicos.
+                                        </small>
+                                    </div>
+                                </div>
+
                                 <!-- OBSERVACIÓN -->
                                 <div class="form-row">
 

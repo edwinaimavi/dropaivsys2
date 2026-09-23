@@ -577,6 +577,9 @@ function fillShippingAgencyDetail(agency, agencyTypeLabel) {
     const statusText = agency.status === 'ACTIVE' ? 'ACTIVO' : 'INACTIVO';
     const statusClass = agency.status === 'ACTIVE' ? 'badge-info' : 'badge-danger';
 
+    $('#vsa_header_subtitle').text(
+        [agency.code, agency.business_name].filter(Boolean).join(' · ') || '-'
+    );
     $('#vsa_code').text(agency.code || '-');
     $('#vsa_status').text(statusText).attr('class', `badge ${statusClass} rounded-pill px-3 py-2`);
     $('#vsa_ruc').text(agency.ruc || '-');

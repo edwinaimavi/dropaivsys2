@@ -1,0 +1,18 @@
+{
+  "catalog_code": "22",
+  "catalog_name": "CATALOGO DE ESTADOS FINANCIEROS",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "01", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - SECTOR DIVERSAS - INDIVIDUAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "02", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - SECTOR SEGUROS - INDIVIDUAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "03", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - SECTOR BANCOS Y FINANCIERAS - INDIVIDUAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "04", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - ADMINISTRADORAS DE FONDOS DE PENSIONES (AFP)", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "05", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - AGENTES DE INTERMEDIACION", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "06", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - FONDOS DE INVERSION", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "07", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - PATRIMONIO EN FIDEICOMISOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "08", "description": "SUPERINTENDENCIA DEL MERCADO DE VALORES - ICLV", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "09", "description": "OTROS NO CONSIDERADOS EN LOS ANTERIORES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

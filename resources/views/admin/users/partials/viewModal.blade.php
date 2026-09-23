@@ -83,6 +83,7 @@
                                     <div class="col-sm-6"><div class="users-detail-field"><i class="far fa-calendar-plus"></i><span><small>Fecha de creaci&oacute;n</small><strong id="vu_created_at">-</strong></span></div></div>
                                     <div class="col-sm-6"><div class="users-detail-field"><i class="far fa-calendar-check"></i><span><small>&Uacute;ltima actualizaci&oacute;n</small><strong id="vu_updated_at">-</strong></span></div></div>
                                     <div class="col-12"><div class="users-detail-field"><i class="fas fa-at"></i><span><small>Email de acceso</small><strong id="vu_access_email" class="text-break">-</strong></span></div></div>
+                                    <div class="col-12"><div class="users-detail-field"><i class="fas fa-building"></i><span><small>Empresas autorizadas</small><strong id="vu_companies">Sin empresas asignadas</strong></span></div></div>
                                     <div class="col-12"><div class="users-detail-field users-detail-principal-field" id="vu_principal_field"><i class="fas fa-shield-alt"></i><span><small>Protecci&oacute;n de cuenta</small><strong id="vu_principal_indicator">Usuario regular</strong></span></div></div>
                                 </div>
                             </div>

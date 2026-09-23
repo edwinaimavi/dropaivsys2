@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\User;
 use App\Models\CustomerPurchaseOrder;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -106,6 +106,8 @@ beforeEach(function () {
         'brand_id' => $this->brandId,
         'legal_name' => 'ARTÍCULO TEST',
         'billing_name' => 'ARTÍCULO TEST',
+        'sales_tax_affectation_code' => '10',
+        'is_taxable' => true,
         'status' => 'ACTIVE',
         'created_at' => $now,
         'updated_at' => $now,
@@ -135,6 +137,7 @@ beforeEach(function () {
         'quantity' => 10,
         'unit_price' => 20,
         'line_total' => 200,
+        'tax_affectation_code' => '10',
         'created_at' => $now,
         'updated_at' => $now,
     ]);
@@ -154,6 +157,61 @@ test('supplier purchase availability query is evaluated by pending item quantity
 
     expect(CustomerPurchaseOrder::query()->availableForSupplierPurchase()->pluck('id')->all())
         ->toContain($orderId);
+});
+
+test('customer order page exposes the shared invoice modal only to the invoice action permission', function () {
+    Permission::findOrCreate('admin.customer-purchase-orders.invoice', 'web');
+    $this->user->givePermissionTo('admin.customer-purchase-orders.invoice');
+
+    $this->actingAs($this->user)
+        ->get(route('admin.customer-purchase-orders.index'))
+        ->assertOk()
+        ->assertSee('id="electronicInvoiceModal"', false)
+        ->assertSee('id="electronicInvoiceForm"', false)
+        ->assertSee('electronicInvoiceCustomerPurchaseOrder', false)
+        ->assertSee('electronicInvoiceCompanyEnvironments', false);
+});
+
+test('invoice action rendered by the customer order list opens the modal without a navigation url', function () {
+    Permission::findOrCreate('admin.customer-purchase-orders.invoice', 'web');
+    $this->user->givePermissionTo('admin.customer-purchase-orders.invoice');
+    $orderId = DB::table('customer_purchase_orders')->insertGetId([
+        'code' => 'P-MODAL-001',
+        'company_id' => $this->companyId,
+        'customer_id' => $this->customerId,
+        'customer_branch_id' => $this->branchId,
+        'order_type' => 'articles',
+        'currency_id' => $this->currencyId,
+        'grand_total' => 200,
+        'status' => 'attended',
+        'created_by' => $this->user->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('customer_purchase_order_items')->insert([
+        'customer_purchase_order_id' => $orderId,
+        'article_id' => $this->articleId,
+        'billing_name_snapshot' => 'ARTÍCULO MODAL',
+        'quantity' => 10,
+        'unit_price' => 20,
+        'line_total' => 200,
+        'status' => 'active',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->user)->getJson(route('admin.customer-purchase-orders.list', [
+        'draw' => 1,
+        'start' => 0,
+        'length' => 10,
+        'status_filter' => 'attended',
+    ]))->assertOk();
+
+    $actions = $response->json('data.0.acciones');
+    expect($actions)
+        ->toContain('invoiceCustomerPurchaseOrder')
+        ->toContain('data-customer-purchase-order-id="'.$orderId.'"')
+        ->not->toContain('customer_purchase_order_id='.$orderId);
 });
 
 test('customer purchase order backend flow works', function () {
@@ -214,6 +272,7 @@ test('customer purchase order backend flow works', function () {
             'quantity' => 1800,
             'unit_price' => '23.950',
             'line_total' => '43110.000',
+            'tax_affectation_code' => '10',
         ]],
     ];
 
@@ -275,6 +334,9 @@ test('customer purchase order backend flow works', function () {
 
     $this->getJson(route('admin.customer-purchase-orders.show', $orderId))
         ->assertOk()
+        ->assertJsonPath('data.seller_type', 'EXTERNAL')
+        ->assertJsonPath('data.seller_user_id', null)
+        ->assertJsonPath('data.seller_full_name', 'JUAN PÉREZ RAMOS')
         ->assertJsonPath('data.items.0.quantity', '1800.00')
         ->assertJsonPath('data.items.0.unit_price', '23.9500000000')
         ->assertJsonPath('data.items.0.line_total', '43110.0000000000');
@@ -284,18 +346,34 @@ test('customer purchase order backend flow works', function () {
     $payload['items'][0]['quantity'] = 2;
     $payload['items'][0]['line_total'] = 40;
     $payload['seller_type'] = 'USER';
+
+    $missingSellerUserPayload = $payload;
+    unset($missingSellerUserPayload['seller_user_id']);
+    $this->putJson(
+        route('admin.customer-purchase-orders.update', $orderId),
+        $missingSellerUserPayload
+    )
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('seller_user_id')
+        ->assertJsonPath(
+            'errors.seller_user_id.0',
+            'Seleccione un usuario interno o elija “No está registrado / buscar por DNI”.'
+        );
+
     $payload['seller_user_id'] = $this->user->id;
-    $payload['seller_dni'] = $this->user->dni;
-    $payload['seller_names'] = $this->user->name;
-    $payload['seller_lastnames'] = $this->user->lastname;
-    $payload['seller_full_name'] = trim($this->user->name . ' ' . $this->user->lastname);
+    $payload['seller_dni'] = '99999999';
+    $payload['seller_names'] = 'DATOS';
+    $payload['seller_lastnames'] = 'ALTERADOS';
+    $payload['seller_full_name'] = 'DATOS ALTERADOS';
 
     $this->putJson(
         route('admin.customer-purchase-orders.update', $orderId),
         $payload
     )
         ->assertOk()
-        ->assertJsonPath('data.subtotal_exonerated', '47.9000000000')
+        ->assertJsonPath('data.subtotal_exonerated', '0.0000000000')
+        ->assertJsonPath('data.subtotal_taxed', '40.5932203389')
+        ->assertJsonPath('data.igv', '7.3067796611')
         ->assertJsonPath('data.grand_total', '47.9000000000');
 
     $this->assertDatabaseHas('customer_purchase_orders', [
@@ -303,7 +381,54 @@ test('customer purchase order backend flow works', function () {
         'seller_type' => 'USER',
         'seller_user_id' => $this->user->id,
         'seller_dni' => $this->user->dni,
+        'seller_names' => mb_strtoupper($this->user->name),
+        'seller_full_name' => mb_strtoupper(trim($this->user->name.' '.$this->user->lastname)),
     ]);
+
+    $this->getJson(route('admin.customer-purchase-orders.show', $orderId))
+        ->assertOk()
+        ->assertJsonPath('data.seller_type', 'USER')
+        ->assertJsonPath('data.seller_user_id', $this->user->id)
+        ->assertJsonPath('data.seller_user.id', $this->user->id);
+
+    $this->get(route('admin.customer-purchase-orders.pdf', $orderId))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+
+    $internalCreatePayload = $payload;
+    $internalCreatePayload['purchase_order_number'] = 'OC-002';
+    $internalOrderResponse = $this->postJson(
+        route('admin.customer-purchase-orders.store'),
+        $internalCreatePayload
+    )
+        ->assertCreated()
+        ->assertJsonPath('data.seller_type', 'USER')
+        ->assertJsonPath('data.seller_user_id', $this->user->id)
+        ->assertJsonPath('data.grand_total', '47.9000000000');
+
+    $internalOrderId = $internalOrderResponse->json('data.id');
+    $externalEditPayload = $internalCreatePayload;
+    $externalEditPayload['seller_type'] = 'EXTERNAL';
+    unset($externalEditPayload['seller_user_id']);
+    $externalEditPayload['seller_dni'] = '70587639';
+    $externalEditPayload['seller_names'] = 'JUAN';
+    $externalEditPayload['seller_lastnames'] = 'PÉREZ RAMOS';
+    $externalEditPayload['seller_full_name'] = 'JUAN PÉREZ RAMOS';
+    $externalEditPayload['seller_phone'] = '999888777';
+    $externalEditPayload['seller_email'] = 'juan@example.com';
+
+    $this->putJson(
+        route('admin.customer-purchase-orders.update', $internalOrderId),
+        $externalEditPayload
+    )
+        ->assertOk()
+        ->assertJsonPath('data.seller_type', 'EXTERNAL')
+        ->assertJsonPath('data.seller_user_id', null)
+        ->assertJsonPath('data.items.0.quantity', '2.00')
+        ->assertJsonPath('data.grand_total', '47.9000000000');
+
+    $this->deleteJson(route('admin.customer-purchase-orders.destroy', $internalOrderId))
+        ->assertOk();
 
     $this->deleteJson(route('admin.customer-purchase-orders.destroy', $orderId))
         ->assertOk();
@@ -316,6 +441,41 @@ test('customer purchase order backend flow works', function () {
         'id' => $this->quoteId,
         'status' => 'sent',
     ]);
+});
+
+test('seller selector only exposes active users and dni lookup ignores inactive users', function () {
+    $activeSeller = User::factory()->create([
+        'dni' => '45749059',
+        'name' => 'Edwin Alcides',
+        'lastname' => 'Cigüeñas Piña',
+        'email' => 'edwin.seller@example.com',
+        'status' => 1,
+    ]);
+    $inactiveSeller = User::factory()->create([
+        'dni' => '45749060',
+        'name' => 'Gestor',
+        'lastname' => 'Inactivo',
+        'email' => 'inactive.seller@example.com',
+        'status' => 0,
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('admin.customer-purchase-orders.index'))
+        ->assertOk()
+        ->assertSee('No está registrado / buscar por DNI')
+        ->assertSee('Edwin Alcides Cigüeñas Piña')
+        ->assertSee('DNI 45749059')
+        ->assertSee('edwin.seller@example.com')
+        ->assertDontSee('inactive.seller@example.com');
+
+    $this->getJson(route('admin.customer-purchase-orders.seller-user', $activeSeller->dni))
+        ->assertOk()
+        ->assertJsonPath('found', true)
+        ->assertJsonPath('data.id', $activeSeller->id);
+
+    $this->getJson(route('admin.customer-purchase-orders.seller-user', $inactiveSeller->dni))
+        ->assertOk()
+        ->assertJsonPath('found', false);
 });
 
 test('deleting one of multiple active orders keeps quote approved', function () {
@@ -384,7 +544,7 @@ test('filters active and attended orders and only marks active overdue orders as
         ->assertSee('delivery-period-completed', false)
         ->assertDontSee('delivery-period-danger', false);
     expect($attendedResponse->json('data.0.delivery_period'))
-        ->toContain('Atendida')
+        ->toContain('Atendida / Despachada')
         ->toContain('Regularizado con 4 días de atraso');
 
     $this->getJson(route('admin.customer-purchase-orders.list', ['status_filter' => 'overdue']))

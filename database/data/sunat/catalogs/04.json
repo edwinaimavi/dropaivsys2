@@ -1,0 +1,1967 @@
+{
+    "catalog_code":  "04",
+    "catalog_name":  "TIPO DE MONEDA",
+    "description":  null,
+    "source":  "sunat_pdf",
+    "is_active":  true,
+    "items":  [
+                  {
+                      "code":  "AED",
+                      "description":  "UAE Dirham",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Emiratos Arabes Unidos"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AFN",
+                      "description":  "Afghani",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Afganistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ALL",
+                      "description":  "Lek",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Albania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AMD",
+                      "description":  "Armenian Dram",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Armenia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ANG",
+                      "description":  "Netherlands Antillian Guilder",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Antillas Holandesas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AOA",
+                      "description":  "Kwanza",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Angola"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ARS",
+                      "description":  "Argentine Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Argentina"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AUD",
+                      "description":  "Australian Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Australia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AWG",
+                      "description":  "Aruban Guilder",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Aruba"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "AZN",
+                      "description":  "Azerbaijani Manat",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Azerbaiyán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BAM",
+                      "description":  "Convertible Marks",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bosnia y Herzegovina"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BBD",
+                      "description":  "Barbados Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Barbados"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BDT",
+                      "description":  "Taka",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bangladesh"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BGN",
+                      "description":  "Bulgarian Lev",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bulgaria"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BHD",
+                      "description":  "Bahraini Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bahréin"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BIF",
+                      "description":  "Burundi Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Burundi"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BMD",
+                      "description":  "Bermudian Dollar (customarily known as Bermuda Dollar)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bermudas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BND",
+                      "description":  "Brunei Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Brunéi Darussalam"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BOB",
+                      "description":  "Boliviano",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bolivia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BOV",
+                      "description":  "Mvdol",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bolivia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BRL",
+                      "description":  "Brazilian Real",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Brasil"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BSD",
+                      "description":  "Bahamian Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bahamas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BTN",
+                      "description":  "Ngultrum",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bután"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BWP",
+                      "description":  "Pula",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Botsuana"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BYR",
+                      "description":  "Belarussian Ruble",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Bielorrusia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "BZD",
+                      "description":  "Belize Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Belice"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CAD",
+                      "description":  "Canadian Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Canadá"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CDF",
+                      "description":  "Congolese Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "República Democrática del Congo"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CHE",
+                      "description":  "WIR Euro",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Suiza"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CHF",
+                      "description":  "Swiss Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Suiza"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CHW",
+                      "description":  "WIR Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Suiza"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CLF",
+                      "description":  "Unidades de fomento",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Chile"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CLP",
+                      "description":  "Chilean Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Chile"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CNY",
+                      "description":  "Yuan Renminbi",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "China (República Popular)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "COP",
+                      "description":  "Colombian Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Colombia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "COU",
+                      "description":  "Unidad de Valor Real",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Colombia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CRC",
+                      "description":  "Costa Rican Colon",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Costa Rica"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CUC",
+                      "description":  "Peso Convertible",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Cuba"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CUP",
+                      "description":  "Cuban Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Cuba"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CVE",
+                      "description":  "Cape Verde Escudo",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Cabo Verde"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "CZK",
+                      "description":  "Czech Koruna",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "República Checa"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "DJF",
+                      "description":  "Djibouti Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Yibuti"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "DKK",
+                      "description":  "Danish Krone",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Dinamarca"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "DOP",
+                      "description":  "Dominican Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "República Dominicana"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "DZD",
+                      "description":  "Algerian Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Argelia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "EEK",
+                      "description":  "Kroon",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Estonia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "EGP",
+                      "description":  "Egyptian Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Egipto"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ERN",
+                      "description":  "Nakfa",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Eritrea"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ETB",
+                      "description":  "Ethiopian Birr",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Etiopía"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "EUR",
+                      "description":  "Euro",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Unión Europea"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "FJD",
+                      "description":  "Fiji Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Fiji"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "FKP",
+                      "description":  "Falkland Islands Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Islas Malvinas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GBP",
+                      "description":  "Pound Sterling",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Reino Unido"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GEL",
+                      "description":  "Lari",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Georgia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GHS",
+                      "description":  "Cedi",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Ghana"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GIP",
+                      "description":  "Gibraltar Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Gibraltar"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GMD",
+                      "description":  "Dalasi",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Gambia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GNF",
+                      "description":  "Guinea Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Guinea"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GTQ",
+                      "description":  "Quetzal",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Guatemala"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "GYD",
+                      "description":  "Guyana Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Guyana"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "HKD",
+                      "description":  "Hong Kong Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Hong Kong"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "HNL",
+                      "description":  "Lempira",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Honduras"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "HRK",
+                      "description":  "Croatian Kuna",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Croacia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "HTG",
+                      "description":  "Gourde",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Haití"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "HUF",
+                      "description":  "Forint",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Hungría"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "IDR",
+                      "description":  "Rupiah",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Indonesia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ILS",
+                      "description":  "New Israeli Sheqel",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Israel"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "INR",
+                      "description":  "Indian Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "India"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "IQD",
+                      "description":  "Iraqi Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Iraq"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "IRR",
+                      "description":  "Iranian Rial",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Irán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ISK",
+                      "description":  "Iceland Krona",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Islandia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "JMD",
+                      "description":  "Jamaican Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Jamaica"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "JOD",
+                      "description":  "Jordanian Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Jordania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "JPY",
+                      "description":  "Yen",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Japón"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KES",
+                      "description":  "Kenyan Shilling",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Kenia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KGS",
+                      "description":  "Som",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Kirguistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KHR",
+                      "description":  "Riel",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Camboya"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KMF",
+                      "description":  "Comoro Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Comoras"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KPW",
+                      "description":  "North Korean Won",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Corea (del Norte)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KRW",
+                      "description":  "Won",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Corea (del Sur)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KWD",
+                      "description":  "Kuwaiti Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Kuwait"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KYD",
+                      "description":  "Cayman Islands Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Islas Caimán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "KZT",
+                      "description":  "Tenge",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Kazajistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LAK",
+                      "description":  "Kip",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Laos"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LBP",
+                      "description":  "Lebanese Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Líbano"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LKR",
+                      "description":  "Sri Lanka Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Sri Lanka"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LRD",
+                      "description":  "Liberian Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Liberia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LSL",
+                      "description":  "Loti",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Lesoto"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LTL",
+                      "description":  "Lithuanian Litas",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Lituania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LVL",
+                      "description":  "Latvian Lats",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Letonia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "LYD",
+                      "description":  "Libyan Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Libia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MAD",
+                      "description":  "Moroccan Dirham",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Marruecos"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MDL",
+                      "description":  "Moldovan Leu",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Moldavia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MGA",
+                      "description":  "Malagasy Ariary",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Madagascar"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MKD",
+                      "description":  "Denar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Macedonia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MMK",
+                      "description":  "Kyat",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Myanmar (Birmania)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MNT",
+                      "description":  "Tugrik",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Mongolia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MOP",
+                      "description":  "Pataca",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Macao"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MRO",
+                      "description":  "Ouguiya",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Mauritania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MUR",
+                      "description":  "Mauritius Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Mauricio"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MVR",
+                      "description":  "Rufiyaa",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Maldivas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MWK",
+                      "description":  "Kwacha",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Malawi"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MXN",
+                      "description":  "Mexican Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "México"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MXV",
+                      "description":  "Mexican Unidad de Inversion (UDI)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "México"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MYR",
+                      "description":  "Malaysian Ringgit",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Malasia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "MZN",
+                      "description":  "Metical",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Mozambique"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NAD",
+                      "description":  "Namibia Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Namibia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NGN",
+                      "description":  "Naira",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Nigeria"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NIO",
+                      "description":  "Cordoba Oro",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Nicaragua"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NOK",
+                      "description":  "Norwegian Krone",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Noruega"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NPR",
+                      "description":  "Nepalese Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Nepal"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "NZD",
+                      "description":  "New Zealand Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Nueva Zelanda"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "OMR",
+                      "description":  "Rial Omani",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Omán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PAB",
+                      "description":  "Balboa",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Panamá"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PEN",
+                      "description":  "Nuevo Sol o Sol",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Perú"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PGK",
+                      "description":  "Kina",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Papúa Nueva Guinea"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PHP",
+                      "description":  "Philippine Peso",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Filipinas"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PKR",
+                      "description":  "Pakistan Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Pakistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PLN",
+                      "description":  "Zloty",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Polonia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "PYG",
+                      "description":  "Guarani",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Paraguay"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "QAR",
+                      "description":  "Qatari Rial",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Qatar"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "RON",
+                      "description":  "New Leu",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Rumania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "RSD",
+                      "description":  "Serbian Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Serbia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "RUB",
+                      "description":  "Russian Ruble",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Rusia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "RWF",
+                      "description":  "Rwanda Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Ruanda"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SAR",
+                      "description":  "Saudi Riyal",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Arabia Saudita"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SBD",
+                      "description":  "Solomon Islands Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Islas Salomón"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SCR",
+                      "description":  "Seychelles Rupee",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Seychelles"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SDG",
+                      "description":  "Sudanese Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Sudán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SEK",
+                      "description":  "Swedish Krona",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Suecia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SGD",
+                      "description":  "Singapore Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Singapur"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SHP",
+                      "description":  "Saint Helena Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Santa Helena"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SLL",
+                      "description":  "Leone",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Sierra Leona"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SOS",
+                      "description":  "Somali Shilling",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Somalia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SRD",
+                      "description":  "Surinam Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Surinam"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "STD",
+                      "description":  "Dobra",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Santo Tomé y Príncipe"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SVC",
+                      "description":  "El Salvador Colon",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "El Salvador"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SYP",
+                      "description":  "Syrian Pound",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Siria"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "SZL",
+                      "description":  "Lilangeni",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Suazilandia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "THB",
+                      "description":  "Baht",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Tailandia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TJS",
+                      "description":  "Somoni",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Tayikistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TMT",
+                      "description":  "Manat",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Turkmenistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TND",
+                      "description":  "Tunisian Dinar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Túnez"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TOP",
+                      "description":  "Pa\u0027anga",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Tonga"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TRY",
+                      "description":  "Turkish Lira",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Turquía"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TTD",
+                      "description":  "Trinidad and Tobago Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Trinidad y Tobago"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TWD",
+                      "description":  "New Taiwan Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Taiwán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "TZS",
+                      "description":  "Tanzanian Shilling",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Tanzania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "UAH",
+                      "description":  "Hryvnia",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Ucrania"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "UGX",
+                      "description":  "Uganda Shilling",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Uganda"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "USD",
+                      "description":  "US Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Estados Unidos (EEUU)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "USN",
+                      "description":  "US Dollar (Next day)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Estados Unidos (EEUU)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "USS",
+                      "description":  "US Dollar (Same day)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Estados Unidos (EEUU)"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "UYI",
+                      "description":  "Uruguay Peso en Unidades Indexadas",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Uruguay"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "UYU",
+                      "description":  "Peso Uruguayo",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Uruguay"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "UZS",
+                      "description":  "Uzbekistan Sum",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Uzbekistán"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "VEF",
+                      "description":  "Bolivar Fuerte",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Venezuela"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "VND",
+                      "description":  "Dong",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Vietnam"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "VUV",
+                      "description":  "Vatu",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Vanuatu"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "WST",
+                      "description":  "Tala",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Samoa del Oeste"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XAF",
+                      "description":  "CFA Franc BEAC",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XAG",
+                      "description":  "Silver",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XAU",
+                      "description":  "Gold",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XBA",
+                      "description":  "Bond Markets Units European Composite Unit (EURCO)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XBB",
+                      "description":  "European Monetary Unit (E.M.U.-6)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XBC",
+                      "description":  "European Unit of Account 9(E.U.A.-9)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XBD",
+                      "description":  "European Unit of Account 17(E.U.A.-17)",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XCD",
+                      "description":  "East Caribbean Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XDR",
+                      "description":  "SDR",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XFU",
+                      "description":  "UIC-Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XOF",
+                      "description":  "CFA Franc BCEAO",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XPD",
+                      "description":  "Palladium",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XPF",
+                      "description":  "CFP Franc",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "XPT",
+                      "description":  "Platinum",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "-"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "YER",
+                      "description":  "Yemeni Rial",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Yemen"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ZAR",
+                      "description":  "Rand",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Sudáfrica"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ZMK",
+                      "description":  "Zambian Kwacha",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Zambia"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  },
+                  {
+                      "code":  "ZWL",
+                      "description":  "Zimbabwe Dollar",
+                      "short_name":  null,
+                      "extra_data":  {
+                                         "country_or_reference_zone":  "Zimbabue"
+                                     },
+                      "source":  "sunat_pdf",
+                      "is_official":  true,
+                      "is_active":  true
+                  }
+              ]
+}

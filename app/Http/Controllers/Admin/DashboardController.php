@@ -54,7 +54,7 @@ class DashboardController extends Controller
             'articlesWithStock' => $this->safeCountWhere(WarehouseStock::class, function (Builder $query) {
                 $query->where('current_quantity', '>', 0);
             }),
-            'inventoryValue' => $this->safeSum(WarehouseStock::class, 'total_cost'),
+            'inventoryValue' => WarehouseStock::currentInventoryValue(),
             'lowStockItems' => $this->safeCountWhere(WarehouseStock::class, function (Builder $query) {
                 $query->whereNotNull('min_stock')
                     ->whereColumn('current_quantity', '<=', 'min_stock');

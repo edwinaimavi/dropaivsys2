@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Unit extends Model
@@ -27,6 +28,7 @@ class Unit extends Model
 
         'abbreviation',
         'description',
+        'sunat_unit_item_id',
         'decimal_quantity',
         'observation',
         'status',
@@ -90,5 +92,10 @@ class Unit extends Model
     public function presentations()
     {
         return $this->hasMany(Presentation::class);
+    }
+
+    public function sunatUnit(): BelongsTo
+    {
+        return $this->belongsTo(SunatCatalogItem::class, 'sunat_unit_item_id');
     }
 }

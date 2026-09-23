@@ -85,15 +85,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 $('#billing_name').val()
             );
 
-            formData.append(
-                'minimum_stock',
-                $('#minimum_stock').val()
-            );
-
-            formData.append(
-                'is_taxable',
-                $('#is_taxable').val()
-            );
+            formData.append('item_kind', $('#item_kind').val());
+            formData.append('is_inventory_item', $('#is_inventory_item').val());
+            formData.append('sunat_existence_type_item_id', $('#sunat_existence_type_item_id').val());
+            formData.append('sunat_inventory_catalog_item_id', $('#sunat_inventory_catalog_item_id').val());
+            formData.append('sunat_inventory_catalog_code', $('#sunat_inventory_catalog_code').val());
+            formData.append('sunat_inventory_catalog_use_internal_code', $('#sunat_inventory_catalog_use_internal_code').val() || '0');
+            formData.append('sunat_standard_catalog_item_id', $('#sunat_standard_catalog_item_id').val());
+            formData.append('sunat_standard_code', $('#sunat_standard_code').val());
 
             formData.append(
                 'has_batch',
@@ -336,6 +335,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         $('#articleForm')[0].reset();
 
+        $('#item_kind, #is_inventory_item').val('');
+        $('#sunat_existence_type_item_id').val(null).trigger('change');
+        $('#sunat_inventory_catalog_item_id, #sunat_standard_catalog_item_id').val(null).trigger('change');
+        $('#sunat_inventory_catalog_code, #sunat_standard_code').val('');
+        $('#sunat_inventory_catalog_use_internal_code').val('0');
+        $('#articleSunatAdvancedCollapse').collapse('hide');
+        syncInventoryClassification();
+
         $('#article_id').val('');
 
         $('#code').val('');
@@ -415,6 +422,102 @@ document.addEventListener('DOMContentLoaded', function () {
 
     }
 
+    function syncInventoryClassification() {
+        const service = $('#item_kind').val() === 'service';
+        const inventorySelect = $('#is_inventory_item');
+
+        if (service) {
+            inventorySelect.val('0').prop('disabled', true);
+            $('#inventoryClassificationHelp').text('Los servicios no participan en stock ni generan Kardex.');
+        } else {
+            inventorySelect.prop('disabled', false);
+            $('#inventoryClassificationHelp').text('Defina expresamente si el producto participa en inventario.');
+        }
+
+        const requiresSunatType = !service
+            && $('#item_kind').val() === 'product'
+            && inventorySelect.val() === '1';
+        const sunatType = $('#sunat_existence_type_item_id');
+        const mainCatalog = $('#sunat_inventory_catalog_item_id');
+        const mainCode = $('#sunat_inventory_catalog_code');
+        const standardCatalog = $('#sunat_standard_catalog_item_id');
+        const standardCode = $('#sunat_standard_code');
+
+        $('#sunatExistenceTypeGroup').toggleClass('d-none', !requiresSunatType);
+        sunatType.prop('disabled', !requiresSunatType).prop('required', requiresSunatType);
+        $('#sunatInventoryIdentificationGroup').toggleClass('d-none', !requiresSunatType);
+        mainCatalog.prop('disabled', !requiresSunatType).prop('required', requiresSunatType);
+        mainCode.prop('disabled', !requiresSunatType).prop('required', requiresSunatType);
+        standardCatalog.prop('disabled', !requiresSunatType);
+        standardCode.prop('disabled', !requiresSunatType);
+        $('#useInternalArticleCode').prop('disabled', !requiresSunatType);
+
+        if (!requiresSunatType) {
+            sunatType.val(null).trigger('change');
+            mainCatalog.val(null).trigger('change.select2');
+            mainCode.val('');
+            standardCatalog.val(null).trigger('change.select2');
+            standardCode.val('');
+            $('#sunat_inventory_catalog_use_internal_code').val('0');
+        } else {
+            // Para el uso normal del sistema se propone automáticamente
+            // "9 — OTROS" + código interno. El usuario puede abrir la
+            // configuración SUNAT avanzada y cambiarlo si realmente utiliza
+            // un catálogo estándar.
+            if (!mainCatalog.val()) {
+                const ownCatalogOption = mainCatalog.find('option').filter(function () {
+                    return String($(this).data('item-code')) === '9';
+                }).first();
+
+                if (ownCatalogOption.length) {
+                    mainCatalog.val(ownCatalogOption.val()).trigger('change.select2');
+                }
+            }
+
+            const selectedCode = String(mainCatalog.find(':selected').data('item-code') || '');
+            if (selectedCode === '9' && !$.trim(mainCode.val())) {
+                mainCode.val($.trim($('#code').val()));
+                $('#sunat_inventory_catalog_use_internal_code').val('1');
+            }
+        }
+
+        const isOther = mainCatalog.find(':selected').data('item-code') === 9
+            || String(mainCatalog.find(':selected').data('item-code')) === '9';
+        $('#sunatInventoryOwnCodeHelp').toggleClass('d-none', !requiresSunatType || !isOther);
+    }
+
+    $(document).on('change', '#item_kind, #is_inventory_item, #sunat_inventory_catalog_item_id', syncInventoryClassification);
+
+    $(document).on('input', '#sunat_inventory_catalog_code', function () {
+        $('#sunat_inventory_catalog_use_internal_code').val('0');
+    });
+
+    $(document).on('input', '#code', function () {
+        if ($('#sunat_inventory_catalog_use_internal_code').val() === '1') {
+            $('#sunat_inventory_catalog_code').val($.trim($(this).val()));
+        }
+    });
+
+    $(document).on('click', '#useInternalArticleCode', function () {
+        $('#sunat_inventory_catalog_code').val($.trim($('#code').val())).trigger('input');
+        $('#sunat_inventory_catalog_use_internal_code').val('1');
+    });
+
+    if ($.fn.select2) {
+        $('#sunat_existence_type_item_id').select2({
+            dropdownParent: $('#articleModal'),
+            width: '100%',
+            placeholder: 'Buscar por código o descripción',
+            allowClear: true
+        });
+        $('#sunat_inventory_catalog_item_id, #sunat_standard_catalog_item_id').select2({
+            dropdownParent: $('#articleModal'),
+            width: '100%',
+            placeholder: 'Buscar por código o descripción',
+            allowClear: true
+        });
+    }
+
 
 
     // =========================================================
@@ -492,8 +595,10 @@ document.addEventListener('DOMContentLoaded', function () {
             },
 
             {
-                data: 'is_taxable',
-                name: 'is_taxable'
+                data: 'inventory_classification',
+                name: 'inventory_classification',
+                orderable: false,
+                searchable: false
             },
 
             {
@@ -651,7 +756,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             success: function (response) {
 
-                $('#code').val(response.code);
+                $('#code').val(response.code).trigger('input');
 
             },
 
@@ -701,6 +806,10 @@ document.addEventListener('DOMContentLoaded', function () {
 `);
 
         $('#articleForm')[0].reset();
+
+        $('#item_kind, #is_inventory_item').val('');
+        $('#sunat_existence_type_item_id').val(null).trigger('change');
+        syncInventoryClassification();
 
         $('#article_id').val('');
 
@@ -960,6 +1069,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 let article =
                     response.data;
 
+                $('#va_header_subtitle')
+                    .text([article.code, article.legal_name].filter(Boolean).join(' · ') || '-');
+
                 $('#va_id')
                     .text(article.id);
 
@@ -1021,17 +1133,30 @@ document.addEventListener('DOMContentLoaded', function () {
                             ?.description ?? '-'
                     );
 
-                $('#va_minimum_stock')
-                    .text(
-                        article.minimum_stock
-                    );
-
-                $('#va_is_taxable')
-                    .text(
-                        article.is_taxable
-                            ? 'SI'
-                            : 'NO'
-                    );
+                const pendingClassification = article.item_kind === null && article.is_inventory_item === null;
+                $('#va_item_kind').text(pendingClassification
+                    ? 'PENDIENTE (LEGACY)'
+                    : (article.item_kind === 'service' ? 'SERVICIO' : 'PRODUCTO'));
+                $('#va_is_inventory_item').text(pendingClassification
+                    ? 'PENDIENTE (LEGACY)'
+                    : (article.is_inventory_item ? 'INVENTARIABLE' : 'NO INVENTARIABLE'));
+                $('#va_sunat_existence_type').text(article.item_kind === 'product' && article.is_inventory_item
+                    ? (article.sunat_existence_type
+                        ? `${article.sunat_existence_type.item_code} — ${article.sunat_existence_type.description}`
+                        : 'PENDIENTE')
+                    : 'NO APLICA');
+                const inventoryApplies = article.item_kind === 'product' && article.is_inventory_item;
+                $('#va_sunat_inventory_catalog').text(inventoryApplies
+                    ? (article.sunat_inventory_catalog_item
+                        ? `${article.sunat_inventory_catalog_item.item_code} — ${article.sunat_inventory_catalog_item.description}`
+                        : 'PENDIENTE')
+                    : 'NO APLICA');
+                $('#va_sunat_inventory_code').text(inventoryApplies
+                    ? (article.sunat_inventory_catalog_code || 'PENDIENTE')
+                    : 'NO APLICA');
+                $('#va_sunat_standard_code').text(article.sunat_standard_catalog_item && article.sunat_standard_code
+                    ? `${article.sunat_standard_catalog_item.item_code} — ${article.sunat_standard_catalog_item.description}: ${article.sunat_standard_code}`
+                    : 'No configurado');
 
                 $('#va_has_batch')
                     .text(
@@ -1483,14 +1608,23 @@ document.addEventListener('DOMContentLoaded', function () {
                             article.billing_name
                         );
 
-                    $('#minimum_stock')
-                        .val(
-                            article.minimum_stock
-                        );
-
-                    $('#is_taxable').val(
-                        article.is_taxable ? '1' : '0'
-                    );
+                    $('#item_kind').val(article.item_kind ?? '');
+                    $('#is_inventory_item').val(article.is_inventory_item === null
+                        ? ''
+                        : (article.is_inventory_item ? '1' : '0'));
+                    syncInventoryClassification();
+                    $('#sunat_existence_type_item_id')
+                        .val(article.sunat_existence_type_item_id ?? null)
+                        .trigger('change');
+                    $('#sunat_inventory_catalog_item_id')
+                        .val(article.sunat_inventory_catalog_item_id ?? null)
+                        .trigger('change');
+                    $('#sunat_inventory_catalog_code').val(article.sunat_inventory_catalog_code ?? '');
+                    $('#sunat_inventory_catalog_use_internal_code').val('0');
+                    $('#sunat_standard_catalog_item_id')
+                        .val(article.sunat_standard_catalog_item_id ?? null)
+                        .trigger('change');
+                    $('#sunat_standard_code').val(article.sunat_standard_code ?? '');
 
                     $('#has_batch').val(
                         article.has_batch ? '1' : '0'

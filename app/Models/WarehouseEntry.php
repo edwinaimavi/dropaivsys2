@@ -9,21 +9,40 @@ class WarehouseEntry extends Model
 {
     use SoftDeletes;
 
+    public const PAYMENT_METHODS = [
+        'deposito_cuenta' => 'Depósito en cuenta',
+        'transferencia' => 'Transferencia bancaria',
+        'efectivo' => 'Efectivo',
+        'tarjeta' => 'Tarjeta',
+        'yape_plin' => 'Yape / Plin',
+        'otro' => 'Otro',
+    ];
+
+    public const PAYMENT_CONDITIONS = [
+        'contado' => 'Contado',
+        'credito' => 'Crédito',
+    ];
+
     protected $fillable = [
         'entry_number',
         'supplier_purchase_order_id',
+        'entry_mode',
         'warehouse_id',
         'company_id',
         'supplier_id',
         'customer_id',
         'currency_id',
+        'exchange_rate',
         'purchase_order_number',
         'document_type',
+        'sunat_document_type_code',
         'document_series',
         'document_number',
         'document_date',
+        'movement_date',
         'payment_method',
         'payment_condition',
+        'credit_days',
         'generate_account_payable',
         'payable_amount',
         'expected_payment_date',
@@ -53,18 +72,30 @@ class WarehouseEntry extends Model
 
     protected $casts = [
         'document_date' => 'date',
+        'movement_date' => 'datetime',
         'expected_payment_date' => 'date',
         'bank_payment_date' => 'date',
         'generate_account_payable' => 'boolean',
+        'credit_days' => 'integer',
         'bank_payment_negative_balance_confirmed' => 'boolean',
         'affect_igv' => 'boolean',
         'payable_amount' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'igv' => 'decimal:2',
         'grand_total' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
         'bank_payment_exchange_rate' => 'decimal:6',
         'bank_payment_proof_size' => 'integer',
     ];
+
+    public static function sunatDocumentTypeCode(?string $documentType): ?string
+    {
+        return match (strtoupper(trim((string) $documentType))) {
+            'FACTURA', '01' => '01',
+            'BOLETA', '03' => '03',
+            default => null,
+        };
+    }
 
     public function supplierPurchaseOrder()
     {
@@ -140,6 +171,20 @@ class WarehouseEntry extends Model
     public function items()
     {
         return $this->hasMany(WarehouseEntryItem::class)->where('status', '!=', 'deleted');
+    }
+
+    public function allocations()
+    {
+        return $this->hasMany(WarehouseEntryItemAllocation::class)
+            ->where('status', 'active');
+    }
+
+    public function customerPurchaseOrders()
+    {
+        return $this->belongsToMany(
+            CustomerPurchaseOrder::class,
+            'customer_purchase_order_warehouse_entry'
+        )->withTimestamps();
     }
 
     public function creator()

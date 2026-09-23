@@ -61,11 +61,12 @@
         <div class="card-body pt-2">
             <div class="customer-order-status-filters mb-3" role="group" aria-label="Filtrar órdenes por estado">
                 <button type="button" class="customer-order-filter is-active" data-status-filter="active">Activas</button>
-                <button type="button" class="customer-order-filter" data-status-filter="registered">Registradas</button>
-                <button type="button" class="customer-order-filter" data-status-filter="in_purchase">En compra</button>
-                <button type="button" class="customer-order-filter" data-status-filter="partial_entered">Ingreso parcial</button>
-                <button type="button" class="customer-order-filter" data-status-filter="attended">Atendidas</button>
-                <button type="button" class="customer-order-filter" data-status-filter="entered">Abastecidas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="registered" title="Orden registrada, pendiente de compra al proveedor.">Registradas</button>
+                <button type="button" class="customer-order-filter" data-status-filter="in_purchase" title="Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.">Compra en proceso</button>
+                <button type="button" class="customer-order-filter" data-status-filter="partial_entered" title="Llegó parte de la mercadería al almacén.">Ingreso parcial</button>
+                <button type="button" class="customer-order-filter" data-status-filter="entered" title="Mercadería ingresada, falta atención o despacho.">Abastecidas en almacén</button>
+                <button type="button" class="customer-order-filter" data-status-filter="partial_dispatched" title="Parte de la mercadería ya salió; aún queda saldo pendiente.">Despacho parcial</button>
+                <button type="button" class="customer-order-filter" data-status-filter="attended" title="Mercadería despachada o atención cerrada.">Atendidas / Despachadas</button>
                 <button type="button" class="customer-order-filter" data-status-filter="overdue">Vencidas</button>
                 <button type="button" class="customer-order-filter" data-status-filter="all">Todas</button>
             </div>
@@ -83,6 +84,7 @@
                             <th>MONEDA</th>
                             <th>TOTAL</th>
                             <th>PLAZO ENTREGA</th>
+                            <th>OPERACIÓN</th>
                             <th>ESTADO</th>
                             <th>FACTURACI&Oacute;N / COBRO</th>
                             <th>F. REGISTRO</th>
@@ -98,6 +100,11 @@
     @include('admin.customer-purchase-orders.partials.modal')
     @include('admin.customer-purchase-orders.partials.viewModal')
     @include('admin.customer-purchase-orders.partials.closeAttentionModal')
+    @include('admin.customer-purchase-orders.partials.dispatchModal')
+    @include('admin.customer-returns.partials.modal')
+    @can('admin.customer-purchase-orders.invoice')
+        @include('admin.electronic-invoices.partials.modal')
+    @endcan
 @stop
 
 @push('css')
@@ -351,14 +358,44 @@
             customerPurchaseOrderCustomersQuickStore: "{{ route('admin.customer-purchase-orders.customers.quick-store') }}",
             customerPurchaseOrderSellerUser: "{{ url('admin/customer-purchase-orders/seller-user') }}",
             customerPurchaseOrderCloseAttention: "{{ url('admin/customer-purchase-orders') }}",
+            customerPurchaseOrderDispatchData: "{{ url('admin/customer-purchase-orders') }}",
+            customerPurchaseOrderDispatchStore: "{{ url('admin/customer-purchase-orders') }}",
+            customerPurchaseOrderDispatchReverse: "{{ url('admin/customer-purchase-orders') }}",
+            customerPurchaseOrderDispatchDocuments: "{{ url('admin/customer-purchase-orders') }}",
             customerPurchaseOrderCustomerDocumentConsult: "{{ url('admin/document-lookup/TYPE_PLACEHOLDER/DOC_PLACEHOLDER') }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
+            sunatExistenceTypes: "{{ route('admin.articles.sunat-existence-types') }}",
+            sunatInventoryCatalogs: "{{ route('admin.articles.sunat-inventory-catalogs') }}",
             quickStoreBrand: "{{ route('admin.brands.quick-store') }}",
             quickStorePresentation: "{{ route('admin.presentations.quick-store') }}",
             quickStoreUnit: "{{ route('admin.units.quick-store') }}",
-            generateArticleCode: "{{ route('admin.articles.generateCode') }}"
+            generateArticleCode: "{{ route('admin.articles.generateCode') }}",
+            electronicInvoiceStore: "{{ route('admin.electronic-invoices.store') }}",
+            electronicInvoiceShow: "{{ url('admin/electronic-invoices') }}",
+            electronicInvoiceUpdate: "{{ url('admin/electronic-invoices') }}",
+            electronicInvoiceCustomerPurchaseOrder: "{{ url('admin/electronic-invoices/customer-purchase-order') }}",
+            electronicInvoiceSeriesNextNumber: "{{ route('admin.electronic-invoice-series.nextNumber') }}"
         };
+        window.electronicInvoiceCompanyEnvironments = @json($companyEnvironments ?? []);
         window.purchaseOrderDocumentTypes = @json($documentTypes);
+        window.customerPurchaseOrderCanDispatch = @json(auth()->user()?->can('admin.customer-purchase-orders.dispatch') ?? false);
+        window.customerPurchaseOrderCanReverseDispatch = @json(auth()->user()?->can('admin.customer-purchase-orders.dispatch.reverse') ?? false);
+        window.customerPurchaseOrderCanViewDispatchDocuments = @json(auth()->user()?->can('admin.customer-purchase-orders.dispatch.documents.view') ?? false);
+        window.customerPurchaseOrderCanManageDispatchDocuments = @json(auth()->user()?->can('admin.customer-purchase-orders.dispatch.documents.manage') ?? false);
+        window.customerReturnRoutes = {
+            list: @json(route('admin.customer-returns.list')),
+            base: @json(url('admin/customer-returns')),
+            dispatchData: @json(url('admin/customer-returns/dispatches'))
+        };
+        window.customerReturnPermissions = {
+            create: @json(auth()->user()?->can('devoluciones_clientes.crear') ?? false),
+            edit: @json(auth()->user()?->can('devoluciones_clientes.editar') ?? false),
+            confirm: @json(auth()->user()?->can('devoluciones_clientes.confirmar') ?? false),
+            cancel: @json(auth()->user()?->can('devoluciones_clientes.cancelar') ?? false),
+            reverse: @json(auth()->user()?->can('devoluciones_clientes.reversar') ?? false),
+            documents: @json(auth()->user()?->can('devoluciones_clientes.documentos') ?? false)
+        };
+        window.customerReturnDocumentTypes = @json(app(\App\Services\CustomerReturnDocumentService::class)->types());
     </script>
 
     @vite(['resources/js/pages/customer-purchase-order.js'])

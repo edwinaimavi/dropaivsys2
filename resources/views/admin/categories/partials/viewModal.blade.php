@@ -1,5 +1,5 @@
 <!-- VIEW CATEGORY MODAL -->
-<div class="modal fade" id="viewCategoryModal" tabindex="-1" role="dialog" aria-labelledby="viewCategoryModalLabel"
+<div class="modal fade dp-detail-modal" id="viewCategoryModal" tabindex="-1" role="dialog" aria-labelledby="viewCategoryModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -7,25 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header category-view-header py-2 px-3">
+            <div class="modal-header dp-detail-modal-header category-view-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-tags"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title category-view-title" id="viewCategoryModalLabel">
+                            Informaci&oacute;n de Categor&iacute;a
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vcat_header_subtitle">C&oacute;digo y descripci&oacute;n</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title category-view-title mb-0" id="viewCategoryModalLabel"
-                    style="
-                        font-size:18px;
-                        font-weight:700;
-                        letter-spacing:.3px;
-                    ">
-
-                    <i class="fas fa-tags mr-2"></i>
-                    Información de Categoría
-
-                </h5>
-
-                <button type="button" class="close category-view-close" data-dismiss="modal" aria-label="Cerrar"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close dp-detail-modal-close category-view-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 

@@ -373,6 +373,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 ? btn.data('business_name')
                 : (btn.data('first_name') + ' ' + btn.data('last_name'));
 
+        const headerDocument = [btn.data('document_type'), btn.data('document_number')]
+            .filter(Boolean)
+            .join(' ');
+
+        $('#vc_header_subtitle').text(
+            [headerDocument, fullName].filter(Boolean).join(' · ') || '—'
+        );
+
         $('#vc_id').text(btn.data('id') || '—');
 
         $('#vc_full_name').text(fullName || '—');
@@ -1558,6 +1566,14 @@ document.addEventListener("DOMContentLoaded", function () {
             personType === 'juridica'
                 ? btn.data('business_name')
                 : (btn.data('first_name') + ' ' + btn.data('last_name'));
+
+        const headerDocument = [btn.data('document_type'), btn.data('document_number')]
+            .filter(Boolean)
+            .join(' ');
+
+        $('#vc_header_subtitle').text(
+            [headerDocument, fullName].filter(Boolean).join(' · ') || '—'
+        );
 
         $('#vc_id').text(btn.data('id') || '—');
         $('#vc_full_name').text(fullName || '—');

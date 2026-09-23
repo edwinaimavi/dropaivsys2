@@ -78,8 +78,10 @@ class BankTreasuryController extends Controller
         $query = CompanyBankAccount::query()
             ->with(['company:id,business_name,trade_name', 'bank:id,description,short_name', 'currency:id,code,symbol'])
             ->withSum(['movements as total_income' => fn ($query) => $query
+                ->operationalFlow()
                 ->where('direction', BankMovement::DIRECTION_IN)], 'amount')
             ->withSum(['movements as total_expense' => fn ($query) => $query
+                ->operationalFlow()
                 ->where('direction', BankMovement::DIRECTION_OUT)], 'amount')
             ->when($request->integer('company_id'), fn ($query, $id) => $query->where('company_id', $id))
             ->when($request->integer('currency_id'), fn ($query, $id) => $query->where('currency_id', $id))
@@ -122,8 +124,10 @@ class BankTreasuryController extends Controller
             ->rawColumns(['current_balance', 'status', 'actions'])
             ->with(['summary' => [
                 'total_banks_pen' => $ledgerBalancePen,
-                'period_income_pen' => (float) (clone $periodMovements)->where('direction', 'IN')->sum('amount_pen'),
-                'period_expense_pen' => (float) (clone $periodMovements)->where('direction', 'OUT')->sum('amount_pen'),
+                'period_income_pen' => (float) (clone $periodMovements)->operationalFlow()
+                    ->where('direction', 'IN')->sum('amount_pen'),
+                'period_expense_pen' => (float) (clone $periodMovements)->operationalFlow()
+                    ->where('direction', 'OUT')->sum('amount_pen'),
                 'available_balance_pen' => (float) $positiveBalancesPen,
                 'pending_reconciliation' => BankMovement::query()
                     ->whereIn('company_bank_account_id', $summaryAccountIds)
@@ -140,25 +144,35 @@ class BankTreasuryController extends Controller
         ]);
         $movements = Auth::user()?->can('admin.banks.movements') ? $account->movements()->with(['creator:id,name,lastname', 'canceller:id,name,lastname', 'reversal:id,code'])
             ->latest('movement_date')->latest('id')->limit(150)->get()
-            ->each(function (BankMovement $movement) {
-                $movement->setAttribute('type_label', BankMovement::typeLabel($movement->movement_type));
-                $movement->setAttribute('source_label', BankMovement::sourceLabel($movement->source_type));
-                $movement->setAttribute('file_url', $movement->file_path
-                    ? route('admin.banks.files', ['type' => 'movement', 'id' => $movement->id]) : null);
-                $movement->setAttribute('source_url', match ($movement->source_type) {
-                    'WAREHOUSE_ENTRY_PAYMENT' => route('admin.warehouse-entries.index', [
-                        'from_warehouse_entry' => $movement->source_id,
+            : collect();
+        $warehouseExpenseEntryIds = WarehouseEntryExpense::query()
+            ->whereIn('id', $movements->where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->pluck('source_id'))
+            ->pluck('warehouse_entry_id', 'id');
+        $movements->each(function (BankMovement $movement) use ($warehouseExpenseEntryIds) {
+            $movement->setAttribute('type_label', BankMovement::typeLabel($movement->movement_type));
+            $movement->setAttribute('source_label', BankMovement::sourceLabel($movement->source_type));
+            $movement->setAttribute('file_url', $movement->file_path
+                ? route('admin.banks.files', ['type' => 'movement', 'id' => $movement->id]) : null);
+            $movement->setAttribute('source_url', match ($movement->source_type) {
+                'WAREHOUSE_ENTRY_PAYMENT' => route('admin.warehouse-entries.index', [
+                    'from_warehouse_entry' => $movement->source_id,
+                    'auto_open' => 1,
+                ]),
+                'GENERAL_CASH_FUNDING' => Auth::user()?->can('admin.general-cash.show')
+                    ? route('admin.general-cash.index', [
+                        'from_movement' => $movement->source_id,
                         'auto_open' => 1,
-                    ]),
-                    'GENERAL_CASH_FUNDING' => Auth::user()?->can('admin.general-cash.show')
-                        ? route('admin.general-cash.index', [
-                            'from_movement' => $movement->source_id,
-                            'auto_open' => 1,
-                        ])
-                        : null,
-                    default => null,
-                });
-            }) : collect();
+                    ])
+                    : null,
+                'WAREHOUSE_ENTRY_EXPENSE' => $warehouseExpenseEntryIds->get($movement->source_id)
+                    ? route('admin.warehouse-entries.index', [
+                        'from_warehouse_entry' => $warehouseExpenseEntryIds->get($movement->source_id),
+                        'auto_open' => 1,
+                    ])
+                    : null,
+                default => null,
+            });
+        });
         $transfers = Auth::user()?->can('admin.banks.transfers') ? BankTransfer::query()
             ->with(['fromAccount.bank:id,description,short_name', 'toAccount.bank:id,description,short_name', 'currency:id,code,symbol', 'destinationCurrency:id,code,symbol'])
             ->where(fn ($query) => $query->where('from_company_bank_account_id', $account->id)

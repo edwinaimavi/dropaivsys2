@@ -41,6 +41,7 @@ beforeEach(function () {
         'ruc' => '20123456789',
         'status' => true,
     ]);
+    $this->user->companies()->attach($this->company->id);
     $this->supplier = Supplier::create([
         'ruc' => '20987654321',
         'business_name' => 'PROVEEDOR DE PRUEBA S.A.C.',
@@ -77,8 +78,7 @@ it('abre el flujo de creación precargada cuando la OC proveedor no tiene ingres
     ]));
 
     $response->assertOk()
-        ->assertViewHas('warehouseEntryDeepLink', fn (array $deepLink) =>
-            $deepLink['action'] === 'create'
+        ->assertViewHas('warehouseEntryDeepLink', fn (array $deepLink) => $deepLink['action'] === 'create'
             && $deepLink['supplier_purchase_order_id'] === $this->supplierOrder->id
             && $deepLink['warehouse_entry_id'] === null
         );
@@ -93,8 +93,7 @@ it('abre la edición cuando la OC proveedor ya tiene un ingreso asociado', funct
     ]));
 
     $response->assertOk()
-        ->assertViewHas('warehouseEntryDeepLink', fn (array $deepLink) =>
-            $deepLink['action'] === 'edit'
+        ->assertViewHas('warehouseEntryDeepLink', fn (array $deepLink) => $deepLink['action'] === 'edit'
             && $deepLink['supplier_purchase_order_id'] === $this->supplierOrder->id
             && $deepLink['warehouse_entry_id'] === $entry->id
         );
@@ -133,6 +132,84 @@ it('reutiliza la carga de la OC proveedor para precargar cabecera e items', func
         ->assertJsonPath('document_type', 'FACTURA')
         ->assertJsonPath('affect_igv', true)
         ->assertJsonPath('items.0.supplier_purchase_order_item_id', $orderItem->id);
+});
+
+it('hidrata y persiste la cabecera tributaria canonica de una OC completa de 100', function () {
+    $this->supplierOrder->update([
+        'payment_condition' => 'credito_7_dias',
+        'subtotal' => '84.75',
+        'igv' => '15.25',
+        'grand_total' => '100.00',
+    ]);
+    $firstArticle = warehouseEntryDeepLinkArticle();
+    $secondArticle = Article::create([
+        'code' => 'ART-DEEP-002',
+        'category_id' => $firstArticle->category_id,
+        'unit_id' => $firstArticle->unit_id,
+        'legal_name' => 'SEGUNDO ARTICULO DE PRUEBA',
+        'billing_name' => 'SEGUNDO ARTICULO DE PRUEBA',
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('ART-DEEP-002'),
+        'status' => 'ACTIVE',
+    ]);
+    $orderItems = collect([
+        [$firstArticle, '10.00', '5.000000'],
+        [$secondArticle, '20.00', '2.500000'],
+    ])->map(fn (array $row) => SupplierPurchaseOrderItem::create([
+        'supplier_purchase_order_id' => $this->supplierOrder->id,
+        'article_id' => $row[0]->id,
+        'article_code' => $row[0]->code,
+        'billing_name_snapshot' => $row[0]->billing_name,
+        'unit_id' => $row[0]->unit_id,
+        'quantity' => $row[1],
+        'unit_price' => $row[2],
+        'subtotal' => '42.372881',
+        'tax_amount' => '7.627119',
+        'line_total' => '50.000000',
+        'total_with_igv' => '50.000000',
+        'taxable_base' => '42.372881',
+        'igv_percent' => '18.00',
+        'igv_amount' => '7.627119',
+        'status' => 'active',
+    ]));
+
+    $this->postJson(route('admin.warehouse-entries.loadSupplierOrderItems'), [
+        'supplier_purchase_order_id' => $this->supplierOrder->id,
+    ])->assertOk()
+        ->assertJsonPath('tax_totals.subtotal', '84.75')
+        ->assertJsonPath('tax_totals.igv', '15.25')
+        ->assertJsonPath('tax_totals.grand_total', '100.00');
+
+    $warehouse = Warehouse::create([
+        'code' => 'ALM-TAX-TEST',
+        'name' => 'ALMACEN TRIBUTOS',
+        'status' => 'ACTIVE',
+    ]);
+    $this->company->warehouses()->attach($warehouse->id, ['is_active' => true]);
+    $response = $this->postJson(route('admin.warehouse-entries.store'), [
+        'supplier_purchase_order_id' => $this->supplierOrder->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'generate_account_payable' => 1,
+        'expected_payment_date' => today()->addDays(7)->toDateString(),
+        'items' => $orderItems->values()->map(fn (SupplierPurchaseOrderItem $item) => [
+            'supplier_purchase_order_item_id' => $item->id,
+            'article_id' => $item->article_id,
+            'billing_name_snapshot' => $item->billing_name_snapshot,
+            'unit_id' => $item->unit_id,
+            'ordered_quantity' => $item->quantity,
+            'quantity' => $item->quantity,
+            'unit_price' => $item->unit_price,
+        ])->all(),
+    ])->assertCreated();
+
+    $entry = WarehouseEntry::query()->findOrFail($response->json('data.id'));
+    expect($entry->subtotal)->toBe('84.75')
+        ->and($entry->igv)->toBe('15.25')
+        ->and($entry->grand_total)->toBe('100.00')
+        ->and($entry->items()->pluck('quantity')->all())->toBe(['10.00', '20.00'])
+        ->and($entry->items()->pluck('unit_price')->all())->toBe(['5.000000', '2.500000']);
 });
 
 it('al editar muestra la condición vigente de la OC proveedor y recalcula su vencimiento', function () {
@@ -350,6 +427,7 @@ function warehouseEntryDeepLinkArticle(): Article
         'abbreviation' => 'UND',
         'description' => 'UNIDAD',
         'decimal_quantity' => false,
+        'sunat_unit_item_id' => testSunatUnitItemId(),
         'status' => 'ACTIVE',
     ]);
 
@@ -359,6 +437,9 @@ function warehouseEntryDeepLinkArticle(): Article
         'unit_id' => $unit->id,
         'legal_name' => 'ARTÍCULO DE PRUEBA',
         'billing_name' => 'ARTÍCULO DE PRUEBA',
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('ART-DEEP-001'),
         'status' => 'ACTIVE',
     ]);
 }

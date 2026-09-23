@@ -1,0 +1,11 @@
+{
+  "catalog_code": "18",
+  "catalog_name": "TIPO DE ACTIVO FIJO",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "NO REVALUADO O REVALUADO SIN EFECTO TRIBUTARIO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "REVALUADO CON EFECTO TRIBUTARIO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

@@ -1,5 +1,5 @@
 {{-- VIEW CUSTOMER MODAL --}}
-<div class="modal fade" id="viewCustomerModal" tabindex="-1" role="dialog" aria-labelledby="viewCustomerModalLabel"
+<div class="modal fade dp-detail-modal" id="viewCustomerModal" tabindex="-1" role="dialog" aria-labelledby="viewCustomerModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
@@ -7,25 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             {{-- HEADER --}}
-            <div class="modal-header border-0 py-2 px-3" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);">
+            <div class="modal-header dp-detail-modal-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-users"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title" id="viewCustomerModalLabel">
+                            Informaci&oacute;n del Cliente
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vc_header_subtitle">Documento y nombre del cliente</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title text-white mb-0" id="viewCustomerModalLabel"
-                    style="
-                        font-size:15px;
-                        font-weight:600;
-                        letter-spacing:.3px;
-                    ">
-
-                    <i class="fas fa-users mr-2"></i>
-                    Información del Cliente
-
-                </h5>
-
-                <button type="button" class="close text-white" data-dismiss="modal"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span>&times;</span>
 

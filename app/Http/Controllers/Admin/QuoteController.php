@@ -20,10 +20,14 @@ use App\Models\CustomerBranch;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\MarketStudy;
+use App\Models\SunatCatalogItem;
 use App\Models\Unit;
 use App\Models\Presentation;
 use App\Models\Brand;
 use App\Services\ArticleCodeGenerator;
+use App\Services\ArticleInventoryPolicy;
+use App\Services\ArticleSunatInventoryCatalogPolicy;
+use App\Services\ArticleSalesTaxPolicy;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Validation\ValidationException;
@@ -32,9 +36,23 @@ class QuoteController extends Controller
 {
     private readonly ArticleCodeGenerator $articleCodeGenerator;
 
-    public function __construct(?ArticleCodeGenerator $articleCodeGenerator = null)
+    private readonly ArticleInventoryPolicy $articleInventoryPolicy;
+
+    private readonly ArticleSunatInventoryCatalogPolicy $sunatInventoryCatalogPolicy;
+
+    private readonly ArticleSalesTaxPolicy $salesTaxPolicy;
+
+    public function __construct(
+        ?ArticleCodeGenerator $articleCodeGenerator = null,
+        ?ArticleInventoryPolicy $articleInventoryPolicy = null,
+        ?ArticleSunatInventoryCatalogPolicy $sunatInventoryCatalogPolicy = null,
+        ?ArticleSalesTaxPolicy $salesTaxPolicy = null
+    )
     {
         $this->articleCodeGenerator = $articleCodeGenerator ?? app(ArticleCodeGenerator::class);
+        $this->articleInventoryPolicy = $articleInventoryPolicy ?? app(ArticleInventoryPolicy::class);
+        $this->sunatInventoryCatalogPolicy = $sunatInventoryCatalogPolicy ?? app(ArticleSunatInventoryCatalogPolicy::class);
+        $this->salesTaxPolicy = $salesTaxPolicy ?? app(ArticleSalesTaxPolicy::class);
 
         $this->middleware('can:admin.quotes.index')->only([
             'index',
@@ -496,6 +514,7 @@ class QuoteController extends Controller
                     'discount_amount' => '0.00',
                     'line_total' => number_format($lineTotal, 2, '.', ''),
 
+                    'tax_affectation_code' => null,
                     'is_winner' => 1,
                 ];
             });
@@ -515,7 +534,7 @@ class QuoteController extends Controller
                     'study_items.cost_condition_snapshot',
                     'articles.code as article_code',
                     'articles.billing_name as article_billing_name',
-                    'articles.unit_id',
+                        'articles.unit_id',
                     'articles.presentation_id',
                     'articles.brand_id',
                     'units.description as unit_name',
@@ -541,6 +560,7 @@ class QuoteController extends Controller
                         'unit_price' => '0.00',
                         'discount_percentage' => '0.00',
                         'discount_amount' => '0.00',
+                        'tax_affectation_code' => null,
                         'line_total' => '0.00',
                         'is_winner' => 0,
                     ];
@@ -628,6 +648,8 @@ class QuoteController extends Controller
             'legal_name' => ['required', 'string', 'max:255'],
             'commercial_name' => ['nullable', 'string', 'max:255'],
             'billing_name' => ['required', 'string', 'max:255'],
+            'item_kind' => ['required', Rule::in([Article::KIND_PRODUCT, Article::KIND_SERVICE])],
+            'is_inventory_item' => ['required_if:item_kind,' . Article::KIND_PRODUCT, 'nullable', 'boolean'],
         ], [
             'code.required' => 'El código del artículo es obligatorio.',
             'code.unique' => 'El código del artículo ya existe.',
@@ -636,6 +658,38 @@ class QuoteController extends Controller
             'legal_name.required' => 'El nombre legal es obligatorio.',
             'billing_name.required' => 'El nombre de facturación es obligatorio.',
         ]);
+
+        if ($validated['item_kind'] === Article::KIND_SERVICE && $request->boolean('is_inventory_item')) {
+            throw ValidationException::withMessages([
+                'is_inventory_item' => 'Un servicio no puede participar en inventario.',
+            ]);
+        }
+
+        $validated = array_merge(
+            $validated,
+            $this->articleInventoryPolicy->normalize($validated['item_kind'], $request->input('is_inventory_item'))
+        );
+        $validated['sunat_existence_type_item_id'] = $this->articleInventoryPolicy->validateSunatExistenceType(
+            $validated['item_kind'],
+            (bool) $validated['is_inventory_item'],
+            $request->input('sunat_existence_type_item_id')
+        );
+        $validated = array_merge($validated, $this->sunatInventoryCatalogPolicy->validate(
+            $validated['item_kind'],
+            (bool) $validated['is_inventory_item'],
+            $request->input('sunat_inventory_catalog_item_id'),
+            $request->input('sunat_inventory_catalog_code'),
+            $request->input('sunat_standard_catalog_item_id'),
+            $request->input('sunat_standard_code')
+        ));
+        $refreshSunatOwnCode = $automaticCode
+            && $request->boolean('sunat_inventory_catalog_use_internal_code')
+            && ! empty($validated['sunat_inventory_catalog_item_id'])
+            && SunatCatalogItem::query()
+                ->whereKey($validated['sunat_inventory_catalog_item_id'])
+                ->where('catalog_code', ArticleSunatInventoryCatalogPolicy::CATALOG_CODE)
+                ->where('item_code', '9')
+                ->exists();
 
         unset($validated['code_mode']);
 
@@ -666,7 +720,13 @@ class QuoteController extends Controller
                 'legal_name' => $validated['legal_name'],
                 'commercial_name' => $validated['commercial_name'] ?: $validated['legal_name'],
                 'billing_name' => $validated['billing_name'],
-                'is_taxable' => 1,
+                'item_kind' => $validated['item_kind'],
+                'is_inventory_item' => $validated['is_inventory_item'],
+                'sunat_existence_type_item_id' => $validated['sunat_existence_type_item_id'],
+                'sunat_inventory_catalog_item_id' => $validated['sunat_inventory_catalog_item_id'],
+                'sunat_inventory_catalog_code' => $validated['sunat_inventory_catalog_code'],
+                'sunat_standard_catalog_item_id' => $validated['sunat_standard_catalog_item_id'],
+                'sunat_standard_code' => $validated['sunat_standard_code'],
                 'minimum_stock' => 0,
                 'has_batch' => 0,
                 'has_expiration' => 0,
@@ -680,10 +740,15 @@ class QuoteController extends Controller
                 $articleAttributes['code'] = $validated['code'];
             }
 
-            $article = ($automaticCode
+            $article = $automaticCode
                 ? $this->articleCodeGenerator->create($articleAttributes)
-                : Article::create($articleAttributes))
-                ->fresh(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
+                : Article::create($articleAttributes);
+
+            if ($refreshSunatOwnCode && $article->sunat_inventory_catalog_code !== $article->code) {
+                $article->update(['sunat_inventory_catalog_code' => $article->code]);
+            }
+
+            $article = $article->fresh(['unit:id,description,abbreviation', 'presentation:id,description', 'brand:id,description']);
 
             DB::commit();
 
@@ -906,7 +971,7 @@ class QuoteController extends Controller
             'show_code_type' => ['required', Rule::in(['internal', 'customer', 'both'])],
             'orientation' => ['required', Rule::in(['vertical', 'horizontal'])],
             'billing_type' => ['required', Rule::in(['local', 'export'])],
-            'affect_igv' => ['required', 'boolean'],
+            'affect_igv' => ['nullable', 'boolean'],
             'validity_date' => ['nullable', 'date'],
             'delivery_days' => ['nullable', 'integer', 'min:0'],
             'delivery_time' => ['nullable', 'string', 'max:255'],
@@ -943,6 +1008,7 @@ class QuoteController extends Controller
             'items.*.discount_percentage' => ['nullable', 'numeric', 'min:0'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'items.*.line_total' => ['nullable', 'numeric', 'min:0'],
+            'items.*.tax_affectation_code' => ['required', Rule::in(ArticleSalesTaxPolicy::ALLOWED)],
             'items.*.is_winner' => ['nullable', 'boolean'],
         ], [
             'customer_id.required' => 'Debe seleccionar un cliente.',
@@ -964,9 +1030,10 @@ class QuoteController extends Controller
         try {
             DB::beginTransaction();
 
-            $totals = $this->calculateTotals(
-                $validated['items'],
-                (bool) $validated['affect_igv']
+            $preparedItems = $this->prepareSalesTaxItems($validated['items'], $quote);
+            $totals = $this->calculateTotals($preparedItems);
+            $affectIgv = collect($preparedItems)->contains(
+                fn (array $item) => $item['tax_affectation_code'] === ArticleSalesTaxPolicy::TAXABLE
             );
 
             $quoteData = [
@@ -981,7 +1048,7 @@ class QuoteController extends Controller
                 'show_code_type' => $validated['show_code_type'],
                 'orientation' => $validated['orientation'],
                 'billing_type' => $validated['billing_type'],
-                'affect_igv' => (bool) $validated['affect_igv'],
+                'affect_igv' => $affectIgv,
                 'validity_date' => $validated['validity_date'] ?? null,
                 'delivery_days' => $validated['delivery_days'] ?? null,
                 'delivery_time' => $this->upperOrNull($validated['delivery_time'] ?? null),
@@ -990,6 +1057,7 @@ class QuoteController extends Controller
                 'issuer_department' => $this->upperOrNull($validated['issuer_department'] ?? null),
                 'contact_number' => $this->upperOrNull($validated['contact_number'] ?? null),
                 'subtotal_exonerated' => $totals['subtotal_exonerated'],
+                'subtotal_unaffected' => $totals['subtotal_unaffected'],
                 'subtotal_taxed' => $totals['subtotal_taxed'],
                 'igv' => $totals['igv'],
                 'grand_total' => $totals['grand_total'],
@@ -1007,7 +1075,7 @@ class QuoteController extends Controller
                 $quote = Quote::create($quoteData);
             }
 
-            foreach ($validated['items'] as $item) {
+            foreach ($preparedItems as $item) {
                 $quantity = (float) ($item['quantity'] ?? 0);
                 $unitPrice = (float) ($item['unit_price'] ?? 0);
                 $discountPercentage = (float) ($item['discount_percentage'] ?? 0);
@@ -1034,6 +1102,7 @@ class QuoteController extends Controller
                     'discount_percentage' => $discountPercentage,
                     'discount_amount' => $discountAmount,
                     'line_total' => $lineTotal,
+                    'tax_affectation_code' => $item['tax_affectation_code'],
                     'is_winner' => (bool) ($item['is_winner'] ?? false),
                 ]);
             }
@@ -1150,41 +1219,65 @@ class QuoteController extends Controller
             ->exists();
     }
 
-    private function calculateTotals(array $items, bool $affectIgv): array
+    private function prepareSalesTaxItems(array $items, ?Quote $quote = null): array
     {
-        $subtotal = 0;
+        $articleIds = collect($items)->pluck('article_id')->filter()->map(fn ($id) => (int) $id)->unique();
+        $availableArticleIds = Article::query()->whereKey($articleIds)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return collect($items)->map(function (array $item) use ($availableArticleIds) {
+            $articleId = (int) ($item['article_id'] ?? 0);
+            if (! in_array($articleId, $availableArticleIds, true)) {
+                throw ValidationException::withMessages([
+                    'items' => 'Uno de los artículos de la cotización ya no está disponible.',
+                ]);
+            }
+
+            // La afectación tributaria pertenece a ESTA línea de venta.
+            // No se toma del maestro Article ni se vuelve a inferir desde él.
+            $item['tax_affectation_code'] = $this->salesTaxPolicy->validate(
+                $item['tax_affectation_code'] ?? null,
+                'items'
+            );
+
+            return $item;
+        })->all();
+    }
+
+    private function calculateTotals(array $items): array
+    {
+        $subtotalTaxed = 0.0;
+        $subtotalExonerated = 0.0;
+        $subtotalUnaffected = 0.0;
+        $igv = 0.0;
+        $grandTotal = 0.0;
 
         foreach ($items as $item) {
             $quantity = (float) ($item['quantity'] ?? 0);
             $unitPrice = (float) ($item['unit_price'] ?? 0);
             $discountPercentage = (float) ($item['discount_percentage'] ?? 0);
-
             $gross = round($quantity * $unitPrice, 2);
             $discountAmount = round($gross * ($discountPercentage / 100), 2);
+            $lineTotal = round(max($gross - $discountAmount, 0), 2);
+            $affectation = (string) ($item['tax_affectation_code'] ?? '');
 
-            $subtotal += round(max($gross - $discountAmount, 0), 2);
-        }
-
-        if ($affectIgv) {
-            // En cotizaciones el precio unitario ya incluye IGV. Solo se
-            // desglosa la base imponible; el impuesto no se suma nuevamente.
-            $grandTotal = round($subtotal, 2);
-            $subtotalTaxed = round($grandTotal / 1.18, 2);
-            $igv = round($grandTotal - $subtotalTaxed, 2);
-
-            return [
-                'subtotal_exonerated' => 0,
-                'subtotal_taxed' => $subtotalTaxed,
-                'igv' => $igv,
-                'grand_total' => $grandTotal,
-            ];
+            $grandTotal += $lineTotal;
+            if ($affectation === ArticleSalesTaxPolicy::TAXABLE) {
+                $base = round($lineTotal / 1.18, 2);
+                $subtotalTaxed += $base;
+                $igv += round($lineTotal - $base, 2);
+            } elseif ($affectation === ArticleSalesTaxPolicy::EXONERATED) {
+                $subtotalExonerated += $lineTotal;
+            } elseif ($affectation === ArticleSalesTaxPolicy::UNAFFECTED) {
+                $subtotalUnaffected += $lineTotal;
+            }
         }
 
         return [
-            'subtotal_exonerated' => round($subtotal, 2),
-            'subtotal_taxed' => 0,
-            'igv' => 0,
-            'grand_total' => round($subtotal, 2),
+            'subtotal_exonerated' => round($subtotalExonerated, 2),
+            'subtotal_unaffected' => round($subtotalUnaffected, 2),
+            'subtotal_taxed' => round($subtotalTaxed, 2),
+            'igv' => round($igv, 2),
+            'grand_total' => round($grandTotal, 2),
         ];
     }
 
@@ -1218,6 +1311,9 @@ class QuoteController extends Controller
             'legal_name' => $article->legal_name,
             'commercial_name' => $article->commercial_name,
             'billing_name' => $article->billing_name,
+            'item_kind' => $article->item_kind,
+            'is_inventory_item' => $article->is_inventory_item,
+            'sunat_existence_type_item_id' => $article->sunat_existence_type_item_id,
             'unit_id' => $article->unit_id,
             'unit_text' => $article->unit
                 ? trim(($article->unit->abbreviation ? $article->unit->abbreviation . ' | ' : '') . $article->unit->description)
@@ -1228,7 +1324,6 @@ class QuoteController extends Controller
             'brand_text' => $article->brand?->description ?? '',
             'origin' => '',
             'cost_price' => 0,
-            'is_taxable' => (bool) $article->is_taxable,
         ];
     }
 

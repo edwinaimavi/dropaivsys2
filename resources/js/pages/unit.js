@@ -56,6 +56,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 name: 'description'
             },
 
+            {
+                data: 'sunat_unit',
+                name: 'sunat_unit',
+                orderable: false
+            },
+
         /*     {
                 data: 'decimal_quantity',
                 name: 'decimal_quantity'
@@ -146,6 +152,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
         }
 
+    });
+
+    $('#sunat_unit_item_id').select2({
+        theme: 'bootstrap4',
+        width: '100%',
+        allowClear: true,
+        placeholder: 'Buscar código o descripción SUNAT',
+        dropdownParent: $('#unitModal')
     });
 
     // =========================================================
@@ -319,6 +333,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('#observation').val($(this).data('observation'));
 
+        $('#sunat_unit_item_id').val($(this).data('sunat_unit_item_id') || '').trigger('change');
+
         $('.icon_modal').html(`
             <i class="far fa-edit text-primary"></i>
         `);
@@ -341,6 +357,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('#unit_id').val('');
 
+        $('#sunat_unit_item_id').val('').trigger('change');
+
         $('#unitModalLabel').html('NUEVA UNIDAD');
 
         $('.icon_modal').html(`
@@ -361,6 +379,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const status = $(this).data('status');
 
+        $('#vu_header_subtitle').text(
+            [$(this).data('abbreviation'), $(this).data('description')].filter(Boolean).join(' · ') || '—'
+        );
+
         $('#vu_id').text($(this).data('id'));
 
         $('#vu_abbreviation').text($(this).data('abbreviation'));
@@ -370,6 +392,8 @@ document.addEventListener("DOMContentLoaded", function () {
         $('#vu_description').text($(this).data('description'));
 
         $('#vu_description_detail').text($(this).data('description'));
+
+        $('#vu_sunat_unit').text($(this).data('sunat_unit') || 'PENDIENTE');
 
         $('#vu_observation').text(
             $(this).data('observation') || 'Sin observaciones'

@@ -21,11 +21,11 @@
             <h6 class="dropdown-header">Facturaci&oacute;n y cobros</h6>
             @can('admin.customer-purchase-orders.invoice')
                 @if ($canInvoiceOrder)
-                    <a href="{{ route('admin.electronic-invoices.index', ['customer_purchase_order_id' => $order->id]) }}"
-                        class="dropdown-item">
+                    <button type="button" class="dropdown-item invoiceCustomerPurchaseOrder"
+                        data-customer-purchase-order-id="{{ $order->id }}">
                         <i class="fas fa-file-invoice-dollar text-success" aria-hidden="true"></i>
                         {{ $billingStatus === 'partially_invoiced' ? 'Facturar saldo' : 'Facturar' }}
-                    </a>
+                    </button>
                 @endif
             @endcan
             @can('admin.customer-purchase-orders.invoices.index')
@@ -55,6 +55,15 @@
             </button>
         @endcan
 
+        @can('admin.customer-purchase-orders.dispatch')
+            @if (in_array($order->status, ['partial_entered', 'entered', 'partial_dispatched'], true))
+                <button type="button" class="dropdown-item registerWarehouseDispatch"
+                    data-id="{{ $order->id }}" data-code="{{ $order->code }}">
+                    <i class="fas fa-truck-loading text-success" aria-hidden="true"></i> Registrar salida
+                </button>
+            @endif
+        @endcan
+
         @can('admin.customer-purchase-orders.show')
             @can('admin.customer-purchase-orders.update')
                 <div class="dropdown-divider"></div>
@@ -69,14 +78,6 @@
         @canany(['admin.customer-purchase-orders.update', 'admin.customer-purchase-orders.destroy'])
             <div class="dropdown-divider"></div>
             <h6 class="dropdown-header">Cierre / anulación</h6>
-            @can('admin.customer-purchase-orders.update')
-                @if ($order->status === \App\Models\CustomerPurchaseOrder::STATUS_ENTERED && !$order->attention_closed_at)
-                    <button type="button" class="dropdown-item closeCustomerPurchaseOrderAttention"
-                        data-id="{{ $order->id }}" data-code="{{ $order->code }}">
-                        <i class="fas fa-clipboard-check text-success" aria-hidden="true"></i> Cerrar atención
-                    </button>
-                @endif
-            @endcan
             @can('admin.customer-purchase-orders.destroy')
                 <button type="button" class="dropdown-item text-danger deleteCustomerPurchaseOrder"
                     data-id="{{ $order->id }}">

@@ -1,5 +1,5 @@
 <!-- VIEW BRAND MODAL -->
-<div class="modal fade" id="viewBrandModal" tabindex="-1" role="dialog" aria-labelledby="viewBrandModalLabel"
+<div class="modal fade dp-detail-modal" id="viewBrandModal" tabindex="-1" role="dialog" aria-labelledby="viewBrandModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -7,33 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header border-0 py-2 px-3"
-                style="
-                    background:
-                    linear-gradient(
-                        135deg,
-                        #6c757d,
-                        #495057
-                    );
-                ">
+            <div class="modal-header dp-detail-modal-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-tags"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title" id="viewBrandModalLabel">
+                            Informaci&oacute;n de Marca
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vb_header_subtitle">C&oacute;digo y descripci&oacute;n</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title text-white mb-0" id="viewBrandModalLabel"
-                    style="
-                        font-size:15px;
-                        font-weight:600;
-                        letter-spacing:.3px;
-                    ">
-
-                    <i class="fas fa-tags mr-2"></i>
-                    Información de Marca
-
-                </h5>
-
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 

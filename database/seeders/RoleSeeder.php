@@ -189,6 +189,10 @@ class RoleSeeder extends Seeder
             'admin.customer-purchase-orders.load-items' => 'Cargar items de cotizacion',
             'admin.customer-purchase-orders.invoice' => 'Facturar ordenes de compra de clientes',
             'admin.customer-purchase-orders.invoices.index' => 'Ver facturas y cobros de ordenes de clientes',
+            'admin.customer-purchase-orders.dispatch' => 'Registrar salidas de almacén para órdenes de clientes',
+            'admin.customer-purchase-orders.dispatch.reverse' => 'Anular y reversar salidas de almacén para órdenes de clientes',
+            'admin.customer-purchase-orders.dispatch.documents.view' => 'Ver documentos de salidas de almacén para órdenes de clientes',
+            'admin.customer-purchase-orders.dispatch.documents.manage' => 'Gestionar documentos de salidas de almacén para órdenes de clientes',
 
             'admin.customer-order-profitability.index' => 'Ver rentabilidad de ordenes de clientes',
             'admin.customer-order-profitability.show' => 'Ver detalle de rentabilidad de ordenes de clientes',
@@ -230,6 +234,14 @@ class RoleSeeder extends Seeder
             'admin.warehouse-entries.expenses.approve' => 'Aprobar, observar o rechazar gastos vinculados de ingresos de almacén',
             'admin.warehouse-entries.expenses.documents.index' => 'Ver documentos de gastos vinculados de ingresos de almacén',
 
+            'devoluciones_clientes.ver' => 'Ver devoluciones de clientes',
+            'devoluciones_clientes.crear' => 'Crear devoluciones de clientes',
+            'devoluciones_clientes.editar' => 'Editar borradores de devoluciones de clientes',
+            'devoluciones_clientes.confirmar' => 'Confirmar devoluciones de clientes',
+            'devoluciones_clientes.cancelar' => 'Cancelar borradores de devoluciones de clientes',
+            'devoluciones_clientes.reversar' => 'Reversar devoluciones confirmadas de clientes',
+            'devoluciones_clientes.documentos' => 'Gestionar documentos de devoluciones de clientes',
+
             'admin.labelings.index' => 'Ver rotulaciones',
             'admin.labelings.list' => 'Listar rotulaciones',
             'admin.labelings.store' => 'Crear rotulaciones',
@@ -265,7 +277,12 @@ class RoleSeeder extends Seeder
             'admin.electronic-invoice-series.destroy' => 'Eliminar series de facturacion electronica',
             'admin.electronic-invoice-series.show' => 'Ver detalle de series de facturacion electronica',
 
-            'admin.sunat-catalogs.index' => 'Ver catalogos SUNAT',
+            // Permiso anterior conservado para no invalidar asignaciones históricas.
+            'admin.sunat-catalogs.index' => 'Ver catálogos SUNAT (compatibilidad)',
+            'catalogos_sunat.ver' => 'Ver catálogos SUNAT',
+            'catalogos_sunat.crear' => 'Crear catálogos y códigos SUNAT',
+            'catalogos_sunat.editar' => 'Editar catálogos y códigos SUNAT',
+            'catalogos_sunat.cambiar_estado' => 'Activar o inactivar catálogos y códigos SUNAT',
 
             'admin.kardex.index' => 'Ver Kardex',
             'admin.kardex.show' => 'Ver detalle de Kardex',
@@ -325,6 +342,24 @@ class RoleSeeder extends Seeder
             'admin.general-cash.close' => 'Registrar arqueos y cierres de Caja General',
             'admin.general-cash.documents' => 'Ver documentos de Caja General',
             'admin.general-cash.reports' => 'Exportar reportes de Caja General',
+
+            'agenda_trabajo.ver' => 'Ver Agenda de Trabajo',
+            'agenda_trabajo.crear' => 'Crear actividades en Agenda de Trabajo',
+            'agenda_trabajo.editar' => 'Editar actividades en Agenda de Trabajo',
+            'agenda_trabajo.eliminar' => 'Eliminar actividades en Agenda de Trabajo',
+            'agenda_trabajo.cambiar_estado' => 'Cambiar el estado de actividades en Agenda de Trabajo',
+            'agenda_trabajo.ver_todos' => 'Ver actividades de todos los usuarios de la misma empresa',
+            'agenda_trabajo.asignar' => 'Asignar actividades de Agenda de Trabajo',
+            'agenda_trabajo.derivar' => 'Derivar responsabilidades de Agenda de Trabajo',
+
+            'agenda_notas.ver' => 'Ver notas de asistencia',
+            'agenda_notas.crear' => 'Crear notas de asistencia',
+            'agenda_notas.editar' => 'Editar notas de asistencia',
+            'agenda_notas.eliminar' => 'Eliminar notas de asistencia',
+            'agenda_notas.compartir' => 'Compartir notas de asistencia',
+            'agenda_notas.derivar' => 'Derivar notas de asistencia',
+            'agenda_notas.concluir' => 'Concluir notas de asistencia',
+            'agenda_notas.ver_todos' => 'Ver notas de todos los usuarios de la misma empresa',
 
             'admin.profile.index' => 'Ver perfil',
             'admin.profile.update' => 'Actualizar perfil',

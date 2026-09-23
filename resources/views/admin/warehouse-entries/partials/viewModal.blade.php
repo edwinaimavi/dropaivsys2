@@ -1,9 +1,15 @@
-<div class="modal fade" id="warehouseEntryViewModal" tabindex="-1" role="dialog" aria-hidden="true">
+<div class="modal fade dp-detail-modal" id="warehouseEntryViewModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
         <div class="modal-content border-0 shadow-lg warehouse-entry-modal warehouse-entry-view-modal">
-            <div class="modal-header warehouse-entry-modal-header text-white">
-                <div><h5 class="modal-title">Informaci&oacute;n del Ingreso de Almac&eacute;n</h5><small>Detalle f&iacute;sico, documental y econ&oacute;mico del ingreso</small></div>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            <div class="modal-header dp-detail-modal-header warehouse-entry-modal-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-warehouse"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title">Informaci&oacute;n del Ingreso de Almac&eacute;n</h5>
+                        <small class="dp-detail-modal-subtitle">Detalle f&iacute;sico, documental y econ&oacute;mico del ingreso</small>
+                    </div>
+                </div>
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="modal-body warehouse-entry-modal-body">
                 <div class="warehouse-entry-view-heading">
@@ -34,7 +40,7 @@
                     <div class="tab-pane fade show active" id="vwe_summary_tab"><div class="card border-0 shadow-sm warehouse-entry-card"><div class="card-body"><div class="row warehouse-entry-detail-grid">
                         <div class="col-12"><div id="vwe_customer_orders" class="warehouse-entry-customer-orders"><div class="warehouse-entry-customer-order-card"><span>Orden de Compra del Cliente</span><strong>Sin OC cliente relacionada</strong></div></div></div>
                         @foreach ([['Orden proveedor','vwe_purchase_order'],['Empresa','vwe_detail_company'],['Proveedor','vwe_detail_supplier'],['Almacén','vwe_detail_warehouse'],['Moneda','vwe_currency'],['Tipo documento','vwe_document_type'],['Serie / N° comprobante','vwe_document_number'],['Fecha documento','vwe_document_date'],['Forma de pago','vwe_payment_method'],['Condición de pago','vwe_payment_condition'],['Cuenta por pagar','vwe_payable'],['Monto','vwe_payable_amount'],['Guía remisión','vwe_guide']] as [$label,$id])
-                            <div class="col-sm-6 col-lg-4"><div class="warehouse-entry-detail-field"><small>{{ $label }}</small><strong id="{{ $id }}">-</strong></div></div>
+                            <div class="col-sm-6 col-lg-4"><div class="warehouse-entry-detail-field"><small @if ($id === 'vwe_purchase_order') id="vwe_purchase_order_label" @endif>{{ $label }}</small><strong id="{{ $id }}">-</strong></div></div>
                         @endforeach
                         <div class="col-12"><div class="warehouse-entry-detail-field warehouse-entry-detail-field-wide"><small>Observaciones</small><strong id="vwe_observations">-</strong></div></div>
                         <div class="col-12"><div id="vwe_bank_payment_summary" class="warehouse-entry-bank-payment-summary"></div></div>
@@ -42,7 +48,7 @@
 
                     <div class="tab-pane fade" id="vwe_items_tab"><div class="card border-0 shadow-sm warehouse-entry-card">
                         <div class="card-header border-0 py-2 warehouse-entry-section-header"><h6 class="mb-0 font-weight-bold"><i class="fas fa-boxes text-info mr-1"></i>Detalle por art&iacute;culo y lote</h6><small class="text-muted">Cada lote se muestra en una fila independiente.</small></div>
-                        <div class="card-body p-0"><div class="table-responsive warehouse-entry-detail-table-wrap"><table class="table table-sm table-hover mb-0 warehouse-entry-detail-table"><thead><tr><th>#</th><th>Art&iacute;culo</th><th>U.M.</th><th>Present.</th><th>Marca</th><th>Procedencia</th><th>Lote</th><th class="text-right">Cantidad</th><th class="text-right">Costo compra</th><th class="text-right">Costo adicional</th><th class="text-right">Costo real unit.</th><th class="text-right">Costo real</th></tr></thead><tbody id="vwe_items"><tr><td colspan="12" class="text-center text-muted py-4">Sin art&iacute;culos ingresados.</td></tr></tbody></table></div></div>
+                        <div class="card-body p-0"><div class="table-responsive warehouse-entry-detail-table-wrap"><table class="table table-sm table-hover mb-0 warehouse-entry-detail-table"><thead><tr><th>#</th><th>Art&iacute;culo</th><th>U.M.</th><th>Present.</th><th>Marca</th><th>Procedencia</th><th>Lote</th><th>Destino / asignaci&oacute;n</th><th class="text-right">Cantidad</th><th class="text-right">Costo compra</th><th class="text-right">Costo adicional</th><th class="text-right">Costo real unit.</th><th class="text-right">Costo real</th></tr></thead><tbody id="vwe_items"><tr><td colspan="13" class="text-center text-muted py-4">Sin art&iacute;culos ingresados.</td></tr></tbody></table></div></div>
                         <div class="card-footer warehouse-entry-detail-footer"><div class="row justify-content-end"><div class="col-sm-7 col-md-5 col-lg-4"><div class="warehouse-entry-totals-card"><div class="warehouse-entry-total-row"><span>Subtotal</span><strong id="vwe_subtotal">0.00</strong></div><div class="warehouse-entry-total-row"><span>IGV</span><strong id="vwe_igv">0.00</strong></div><div class="warehouse-entry-total-row warehouse-entry-total-row-grand"><span>Total ingreso</span><strong id="vwe_total">0.00</strong></div></div></div></div></div>
                     </div></div>
 

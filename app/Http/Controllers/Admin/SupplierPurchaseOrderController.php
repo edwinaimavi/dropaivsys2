@@ -20,11 +20,13 @@ use App\Models\SupplierAccount;
 use App\Models\SupplierPurchaseOrder;
 use App\Models\SupplierPurchaseOrderAdvancePayment;
 use App\Models\SupplierPurchaseOrderItem;
+use App\Models\WarehouseEntryItem;
 use App\Models\Ubigeo;
 use App\Models\Unit;
 use App\Services\BankMovementService;
 use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\SupplierPurchaseOrderFinancialService;
+use App\Services\WarehouseEntryTransactionalTaxService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -647,7 +649,18 @@ class SupplierPurchaseOrderController extends Controller
             'advancePayments.creator:id,name',
             'warehouseEntries.warehouse',
             'warehouseEntries.currency',
+            'warehouseEntryAllocations.warehouseEntry.warehouse',
+            'warehouseEntryAllocations.warehouseEntry.currency',
+            'warehouseEntryAllocations.warehouseEntry.supplier',
         ]);
+        $supplierPurchaseOrder->setRelation(
+            'warehouseEntries',
+            $supplierPurchaseOrder->warehouseEntries
+                ->merge($supplierPurchaseOrder->warehouseEntryAllocations->pluck('warehouseEntry'))
+                ->filter()
+                ->unique('id')
+                ->values()
+        );
         $this->appendEntryProgress($supplierPurchaseOrder);
         $supplierPurchaseOrder->setAttribute(
             'supplier_documents',
@@ -681,6 +694,10 @@ class SupplierPurchaseOrderController extends Controller
                 $financialService->effectiveAppliedAmount($payment, $supplierPurchaseOrder)
             );
         });
+        $supplierPurchaseOrder->setAttribute(
+            'payment_summary',
+            $financialService->paymentSummary($supplierPurchaseOrder)
+        );
 
         return response()->json([
             'status' => 'success',
@@ -885,6 +902,11 @@ class SupplierPurchaseOrderController extends Controller
             'items.*.reference_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.tax_affectation_code' => ['nullable', Rule::in(WarehouseEntryItem::SUPPORTED_TAX_AFFECTATION_CODES)],
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.is_free' => ['nullable', 'boolean'],
+            'items.*.igv_recoverable' => ['nullable', 'boolean'],
             'items.*.status' => ['nullable', 'string', 'max:30'],
             'supplier_documents' => ['nullable', 'array'],
             'supplier_documents.*.type' => [
@@ -1022,6 +1044,13 @@ class SupplierPurchaseOrderController extends Controller
                     $order?->id
                 );
                 $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
+                if (collect($preparedItems)->contains(fn (array $item) => $item['tax_affectation_code'] !== null)) {
+                    $affectIgv = collect($preparedItems)->contains(
+                        fn (array $item) => $item['tax_affectation_code'] === '10'
+                            && ! $item['is_free']
+                            && (float) $item['line_total'] > 0
+                    );
+                }
                 $totals = $this->calculateTotals($preparedItems);
                 $purchaseCurrency = Currency::query()->findOrFail($validated['currency_id']);
                 $paymentCurrency = Currency::query()->findOrFail($validated['payment_currency_id']);
@@ -1326,15 +1355,37 @@ class SupplierPurchaseOrderController extends Controller
     {
         return collect($items)
             ->map(function (array $item) use ($affectIgv) {
+                $existing = ! empty($item['id'])
+                    ? SupplierPurchaseOrderItem::query()->find($item['id'])
+                    : null;
                 $quantity = round((float) $item['quantity'], 2);
                 $unitPrice = round((float) $item['unit_price'], 6);
-                $totalWithIgv = $quantity * $unitPrice;
-                $taxableBase = $affectIgv
-                    ? $totalWithIgv / 1.18
-                    : $totalWithIgv;
-                $taxAmount = $affectIgv
-                    ? $totalWithIgv - $taxableBase
-                    : 0;
+                $taxCode = $item['tax_affectation_code']
+                    ?? $existing?->tax_affectation_code
+                    ?? ($affectIgv ? '10' : '30');
+                $taxRate = $item['tax_rate']
+                    ?? $existing?->tax_rate
+                    ?? ($taxCode === '10' ? 18 : 0);
+                $igvRecoverable = array_key_exists('igv_recoverable', $item)
+                    ? $item['igv_recoverable']
+                    : $existing?->igv_recoverable;
+                if ($taxCode === '10' && $igvRecoverable === null && ! $existing) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Indique si el IGV de cada línea gravada es recuperable.',
+                    ]);
+                }
+                $legacy = $existing
+                    && $existing->tax_affectation_code === null
+                    && ! array_key_exists('tax_affectation_code', $item);
+                $calculated = app(WarehouseEntryTransactionalTaxService::class)->calculateLine([
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'discount_amount' => $item['discount_amount'] ?? $existing?->discount_amount ?? 0,
+                    'tax_affectation_code' => $legacy ? null : $taxCode,
+                    'tax_rate' => $legacy ? null : $taxRate,
+                    'is_free' => $item['is_free'] ?? $existing?->is_free ?? false,
+                    '_transactional_tax_legacy' => $legacy,
+                ], $affectIgv);
 
                 return [
                     '_item_id' => $item['id'] ?? null,
@@ -1360,13 +1411,20 @@ class SupplierPurchaseOrderController extends Controller
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     // Legacy fields remain synchronized for existing consumers.
-                    'subtotal' => $taxableBase,
-                    'tax_amount' => $taxAmount,
-                    'line_total' => $totalWithIgv,
-                    'total_with_igv' => $totalWithIgv,
-                    'taxable_base' => $taxableBase,
-                    'igv_percent' => $affectIgv ? 18.00 : 0.00,
-                    'igv_amount' => $taxAmount,
+                    'subtotal' => $calculated['subtotal'],
+                    'tax_amount' => $calculated['tax_amount'],
+                    'line_total' => $calculated['line_total'],
+                    'total_with_igv' => $calculated['line_total'],
+                    'taxable_base' => $calculated['taxable_base'],
+                    'igv_percent' => $calculated['tax_rate'],
+                    'igv_amount' => $calculated['tax_amount'],
+                    'tax_affectation_code' => $legacy ? null : $taxCode,
+                    'tax_rate' => $legacy ? null : $taxRate,
+                    'discount_amount' => $calculated['discount_amount'],
+                    'is_free' => $calculated['is_free'],
+                    'igv_recoverable' => $taxCode === '10' && ! $legacy
+                        ? filter_var($igvRecoverable, FILTER_VALIDATE_BOOLEAN)
+                        : false,
                     'status' => $item['status'] ?? 'active',
                 ];
             })
@@ -1423,14 +1481,12 @@ class SupplierPurchaseOrderController extends Controller
 
     private function calculateTotals(array $items): array
     {
-        $subtotal = round((float) collect($items)->sum('subtotal'), 2);
-        $igv = round((float) collect($items)->sum('tax_amount'), 2);
-        $grandTotal = round((float) collect($items)->sum('total_with_igv'), 2);
+        $totals = app(WarehouseEntryTransactionalTaxService::class)->consolidate($items);
 
         return [
-            'subtotal' => $subtotal,
-            'igv' => $igv,
-            'grand_total' => $grandTotal,
+            'subtotal' => $totals['subtotal'],
+            'igv' => $totals['tax_total'],
+            'grand_total' => $totals['grand_total'],
         ];
     }
 
@@ -2493,16 +2549,39 @@ class SupplierPurchaseOrderController extends Controller
             return;
         }
 
-        $receivedByItem = DB::table('warehouse_entry_items as items')
+        $receivedByItem = DB::table('warehouse_entry_item_allocations as allocations')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+            ->where('allocations.supplier_purchase_order_id', $order->id)
+            ->whereNull('allocations.deleted_at')
+            ->whereNull('entries.deleted_at')
+            ->where('allocations.status', 'active')
+            ->where('entries.status', 'registered')
+            ->whereIn('allocations.supplier_purchase_order_item_id', $itemIds)
+            ->groupBy('allocations.supplier_purchase_order_item_id')
+            ->selectRaw('allocations.supplier_purchase_order_item_id, SUM(allocations.quantity_allocated) as received_quantity')
+            ->pluck('received_quantity', 'supplier_purchase_order_item_id');
+
+        $legacyReceived = DB::table('warehouse_entry_items as items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
             ->where('entries.supplier_purchase_order_id', $order->id)
             ->whereNull('entries.deleted_at')
             ->where('entries.status', 'registered')
             ->whereIn('items.supplier_purchase_order_item_id', $itemIds)
             ->where('items.status', '!=', 'deleted')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('warehouse_entry_item_allocations as allocations')
+                    ->whereColumn('allocations.warehouse_entry_item_id', 'items.id')
+                    ->where('allocations.status', 'active')
+                    ->whereNull('allocations.deleted_at');
+            })
             ->groupBy('items.supplier_purchase_order_item_id')
             ->selectRaw('items.supplier_purchase_order_item_id, SUM(items.quantity) as received_quantity')
             ->pluck('received_quantity', 'supplier_purchase_order_item_id');
+
+        $legacyReceived->each(function ($quantity, $itemId) use ($receivedByItem) {
+            $receivedByItem->put($itemId, (float) $receivedByItem->get($itemId, 0) + (float) $quantity);
+        });
 
         $order->items->each(function (SupplierPurchaseOrderItem $item) use ($receivedByItem) {
             $ordered = round((float) $item->quantity, 2);

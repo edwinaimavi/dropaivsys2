@@ -211,9 +211,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on(
         'input change',
-        '#supplier_order_affect_igv, .item-quantity, .item-unit-price',
+        '#supplier_order_affect_igv, .item-quantity, .item-unit-price, .item-tax-affectation-code, .item-igv-percent, .item-discount-amount, .item-is-free',
         calculateSupplierOrderTotals
     );
+    $(document).on('change', '.item-tax-affectation-code', function () {
+        const row = $(this).closest('tr');
+        if ($(this).val() === '') {
+            row.find('.item-igv-percent').prop('readonly', true).val('');
+            row.find('.item-igv-recoverable').prop('disabled', true).val('');
+            return;
+        }
+        const taxed = $(this).val() === '10';
+        row.find('.item-igv-percent').prop('readonly', !taxed).val(taxed ? (row.find('.item-igv-percent').val() || '18.00') : '0.00');
+        row.find('.item-igv-recoverable').prop('disabled', !taxed).val(taxed ? row.find('.item-igv-recoverable').val() : '0');
+    });
 
     $(document).on('change', '.item-article-picker', function () {
         applySelectedSupplierOrderArticle($(this).closest('tr'));
@@ -1783,6 +1794,14 @@ function addSupplierOrderItemRow(data = {}) {
         .text(customerUnitPrice > 0
             ? `Precio venta OC Cliente: ${supplierOrderCurrencyLabel()} ${formatSupplierOrderMoney(customerUnitPrice)}`
             : '');
+    const legacyTaxSnapshot = Boolean(data.id) && (data.tax_affectation_code === null || data.tax_affectation_code === undefined);
+    const taxCode = legacyTaxSnapshot ? '' : String(data.tax_affectation_code || ($('#supplier_order_affect_igv').val() === '1' ? '10' : '30'));
+    row.find('.item-tax-affectation-code').val(taxCode);
+    row.find('.item-igv-percent').val(legacyTaxSnapshot ? '' : (data.tax_rate ?? data.igv_percent ?? (taxCode === '10' ? 18 : 0)));
+    row.find('.item-discount-amount').val(formatSupplierOrderMoney(data.discount_amount || 0));
+    row.find('.item-is-free').val(data.is_free ? '1' : '0');
+    row.find('.item-igv-recoverable').val(legacyTaxSnapshot || data.igv_recoverable === null ? '' : (data.igv_recoverable === false || data.igv_recoverable === 0 ? '0' : '1'));
+    row.find('.item-tax-affectation-code').trigger('change');
 
     initSupplierOrderSelect2(row);
 
@@ -1871,7 +1890,7 @@ function showEmptySupplierOrderItemsRow() {
     if ($('#supplierOrderItemsTbody tr.supplier-order-item-row').length === 0) {
         $('#supplierOrderItemsTbody').html(`
             <tr id="supplierOrderItemsEmptyRow">
-                <td colspan="17" class="text-center text-muted py-4">
+                <td colspan="21" class="text-center text-muted py-4">
                     <i class="fas fa-box-open d-block mb-2"></i>
                     No hay items registrados.
                 </td>
@@ -1883,7 +1902,7 @@ function showEmptySupplierOrderItemsRow() {
 function calculateSupplierOrderTotals() {
     let subtotal = 0;
     let igv = 0;
-    const affectIgv = $('#supplier_order_affect_igv').val() === '1';
+    let hasTaxedPayableLine = false;
 
     $('#supplierOrderItemsTbody tr.supplier-order-item-row').each(function () {
         const row = $(this);
@@ -1904,23 +1923,26 @@ function calculateSupplierOrderTotals() {
             quantityInput.val(formatSupplierOrderMoney(quantity));
         }
 
-        const lineTotal = quantity * unitPrice;
-        const lineSubtotal = affectIgv
-            ? lineTotal / 1.18
-            : lineTotal;
-        const taxAmount = affectIgv
-            ? lineTotal - lineSubtotal
-            : 0;
+        const taxCode = String(row.find('.item-tax-affectation-code').val() || '30');
+        const taxRate = taxCode === '10' ? (parseFloat(row.find('.item-igv-percent').val()) || 0) : 0;
+        const discount = parseFloat(row.find('.item-discount-amount').val()) || 0;
+        const isFree = row.find('.item-is-free').val() === '1';
+        const net = Math.max(quantity * unitPrice - discount, 0);
+        const lineTotal = isFree ? 0 : net;
+        const lineSubtotal = taxCode === '10' ? lineTotal / (1 + taxRate / 100) : lineTotal;
+        const taxAmount = taxCode === '10' ? lineTotal - lineSubtotal : 0;
 
         row.find('.item-line-total').val(formatSupplierOrderDecimal(lineTotal));
         row.find('.item-taxable-base').val(formatSupplierOrderDecimal(lineSubtotal));
-        row.find('.item-igv-percent').val(formatSupplierOrderMoney(affectIgv ? 18 : 0));
+        row.find('.item-igv-percent').val(formatSupplierOrderMoney(taxRate));
         row.find('.item-igv-amount').val(formatSupplierOrderDecimal(taxAmount));
         subtotal += lineSubtotal;
         igv += taxAmount;
+        hasTaxedPayableLine = hasTaxedPayableLine || (taxCode === '10' && lineTotal > 0);
     });
 
     const grandTotal = subtotal + igv;
+    $('#supplier_order_affect_igv').val(hasTaxedPayableLine ? '1' : '0').trigger('change.select2');
 
     setSupplierOrderValue('#supplier_order_subtotal', formatSupplierOrderMoney(subtotal));
     setSupplierOrderValue('#supplier_order_igv', formatSupplierOrderMoney(igv));
@@ -2111,9 +2133,15 @@ function fillSupplierPurchaseOrderDetail(order) {
     const supplierDocuments = order.supplier_documents || [];
     const warehouseEntries = order.warehouse_entries || [];
     const advancePayments = order.advance_payments || [];
-    const advanceRequired = Number(order.advance_amount || 0);
-    const advancePaid = Number(order.advance_paid_amount || 0);
-    const advanceBalance = Math.max(advanceRequired - advancePaid, 0);
+    const paymentSummary = order.payment_summary || {};
+    const purchaseTotal = Number(paymentSummary.order_total ?? order.total_purchase_currency ?? order.grand_total ?? 0);
+    const purchasePaid = paymentSummary.paid_total === null
+        ? null
+        : Number(paymentSummary.paid_total ?? order.advance_paid_amount ?? 0);
+    const purchaseBalance = paymentSummary.balance === null
+        ? null
+        : Math.max(Number(paymentSummary.balance ?? (purchaseTotal - (purchasePaid || 0))), 0);
+    const advanceRequired = Number(paymentSummary.advance_required ?? order.advance_amount ?? 0);
     const financialStatuses = {
         not_required: 'No requiere anticipo',
         pending: 'Anticipo pendiente',
@@ -2127,7 +2155,10 @@ function fillSupplierPurchaseOrderDetail(order) {
     const purchaseMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.grand_total)}`.trim();
     const subtotalMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.subtotal)}`.trim();
     const igvMoney = `${currencyCode || currencySymbol} ${formatSupplierOrderMoney(order.igv)}`.trim();
-    const paymentCurrencyCode = order.payment_currency?.code || currencyCode || currencySymbol;
+    const purchaseCurrencyCode = paymentSummary.currency || currencyCode || currencySymbol;
+    const purchaseFinancialMoney = value => value === null
+        ? 'No disponible'
+        : `${purchaseCurrencyCode} ${formatSupplierOrderMoney(value)}`.trim();
 
     $('#vspo_code').text(order.code || '-');
     $('#vspo_status').text(status[0]).attr('class', `badge ${status[1]} rounded-pill px-3 py-2 shadow-sm`);
@@ -2157,8 +2188,8 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_summary_total').text(purchaseMoney);
     $('#vspo_summary_subtotal').text(subtotalMoney);
     $('#vspo_summary_igv').text(igvMoney);
-    $('#vspo_summary_paid').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advancePaid)}`.trim());
-    $('#vspo_summary_balance').text(`Saldo: ${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceBalance)}`.trim());
+    $('#vspo_summary_paid').text(purchaseFinancialMoney(purchasePaid));
+    $('#vspo_summary_balance').text(`Saldo: ${purchaseFinancialMoney(purchaseBalance)}`);
     const customerOrders = order.customer_purchase_orders?.length
         ? order.customer_purchase_orders
         : (order.customer_purchase_order ? [order.customer_purchase_order] : []);
@@ -2175,7 +2206,7 @@ function fillSupplierPurchaseOrderDetail(order) {
             return `<div class="supplier-order-related-card">
                 <div class="d-flex justify-content-between align-items-start flex-wrap">
                     <strong><i class="fas fa-clipboard-check mr-1"></i>${escapeSupplierOrderHtml(customerOrder.purchase_order_number || customerOrder.code || '-')}</strong>
-                    <span class="badge ${customerOrderStatus.className}">${customerOrderStatus.label}</span>
+                    <span class="badge ${customerOrderStatus.className}" title="${escapeSupplierOrderHtml(customerOrderStatus.description)}">${customerOrderStatus.label}</span>
                 </div>
                 <small><i class="fas fa-user mr-1"></i>${escapeSupplierOrderHtml(customerName)}</small>
                 <small><i class="fas fa-building mr-1"></i>${escapeSupplierOrderHtml(companyName)}</small>
@@ -2234,9 +2265,9 @@ function fillSupplierPurchaseOrderDetail(order) {
     $('#vspo_fin_purchase_currency').text([currencyCode, order.currency?.description].filter(Boolean).join(' | ') || '-');
     $('#vspo_fin_payment_currency').text([order.payment_currency?.code, order.payment_currency?.description].filter(Boolean).join(' | ') || currencyCode || '-');
     $('#vspo_fin_total').text(purchaseMoney);
-    $('#vspo_fin_advance_required').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceRequired)}`.trim());
-    $('#vspo_fin_paid').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advancePaid)}`.trim());
-    $('#vspo_fin_balance').text(`${paymentCurrencyCode} ${formatSupplierOrderMoney(advanceBalance)}`.trim());
+    $('#vspo_fin_advance_required').text(purchaseFinancialMoney(advanceRequired));
+    $('#vspo_fin_paid').text(purchaseFinancialMoney(purchasePaid));
+    $('#vspo_fin_balance').text(purchaseFinancialMoney(purchaseBalance));
     $('#vspo_fin_status').text(financialStatus);
     $('#vspo_fin_exchange_rate').text(Number(order.exchange_rate || 0) > 0 ? formatSupplierOrderDecimal(order.exchange_rate, 6) : 'No aplica');
 
@@ -2352,7 +2383,7 @@ function fillSupplierPurchaseOrderDetail(order) {
         }).join('')
         : `<div class="supplier-order-view-empty"><i class="fas fa-warehouse"></i><strong>No hay ingresos de almac\u00e9n relacionados.</strong><span>La orden a\u00fan no tiene movimientos de ingreso asociados.</span></div>`);
 
-    const paymentRegistered = advancePaid > 0 || ['paid', 'completed'].includes(String(order.payment_status || '').toLowerCase());
+    const paymentRegistered = Number(purchasePaid || 0) > 0 || ['paid', 'completed'].includes(String(order.payment_status || '').toLowerCase());
     const finished = ['received', 'entered', 'invoiced'].includes(String(order.status || '').toLowerCase());
     const timelineSteps = [
         ['OC proveedor creada', Boolean(order.id)],
@@ -3148,26 +3179,26 @@ function supplierOrderEntryStatusPresentation(status, enteredQuantity, pendingQu
 
 function supplierCustomerOrderStatusPresentation(status) {
     const statuses = {
-        registered: ['Registrada', 'badge-secondary'],
-        draft: ['Registrada', 'badge-secondary'],
+        registered: ['Registrada', 'badge-secondary', 'Orden registrada, pendiente de compra al proveedor.'],
+        draft: ['Registrada', 'badge-secondary', 'Orden registrada, pendiente de compra al proveedor.'],
         sent: ['Enviada', 'badge-info'],
         approved: ['Aprobada', 'badge-success'],
         received: ['Recibida', 'badge-success'],
-        in_purchase: ['En compra', 'badge-primary'],
-        en_compra: ['En compra', 'badge-primary'],
+        in_purchase: ['Compra en proceso', 'badge-primary', 'Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.'],
+        en_compra: ['Compra en proceso', 'badge-primary', 'Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.'],
         partial_purchase: ['Compra parcial', 'badge-warning'],
-        entered: ['Ingresada', 'badge-success'],
-        partial_entered: ['Ingreso parcial', 'badge-warning'],
-        attended: ['Atendida', 'badge-success'],
+        entered: ['Abastecida en almacén', 'badge-success', 'Mercadería ingresada, falta atención o despacho.'],
+        partial_entered: ['Ingreso parcial', 'badge-warning', 'Llegó parte de la mercadería al almacén.'],
+        attended: ['Atendida / Despachada', 'badge-success', 'Mercadería despachada o atención cerrada.'],
         not_attended: ['No atendida', 'badge-danger'],
-        cancelled: ['Anulada', 'badge-danger'],
+        cancelled: ['Anulada', 'badge-danger', 'Orden anulada.'],
         completed: ['Completada', 'badge-success'],
-        delivered: ['Entregada', 'badge-success'],
-        invoiced: ['Facturada', 'badge-info']
+        delivered: ['Entregada', 'badge-success', 'Recepción confirmada por el cliente.'],
+        invoiced: ['Facturada', 'badge-info', 'Comprobante emitido.']
     };
     const presentation = statuses[String(status || '').toLowerCase()] || ['Sin estado', 'badge-light text-dark border'];
 
-    return { label: presentation[0], className: presentation[1] };
+    return { label: presentation[0], className: presentation[1], description: presentation[2] || '' };
 }
 
 function setSupplierOrderValue(selector, value) {

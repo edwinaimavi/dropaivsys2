@@ -20,19 +20,32 @@ use App\Models\Subcategory;
 use App\Models\Presentation;
 use App\Models\Unit;
 use App\Models\DocumentType;
+use App\Models\SunatCatalogItem;
 
 use App\Models\Document;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Image;
 use App\Services\ArticleCodeGenerator;
+use App\Services\ArticleInventoryPolicy;
+use App\Services\ArticleSunatInventoryCatalogPolicy;
 
 class ArticleController extends Controller
 {
     private readonly ArticleCodeGenerator $articleCodeGenerator;
 
-    public function __construct(?ArticleCodeGenerator $articleCodeGenerator = null)
+    private readonly ArticleInventoryPolicy $articleInventoryPolicy;
+
+    private readonly ArticleSunatInventoryCatalogPolicy $sunatInventoryCatalogPolicy;
+
+    public function __construct(
+        ?ArticleCodeGenerator $articleCodeGenerator = null,
+        ?ArticleInventoryPolicy $articleInventoryPolicy = null,
+        ?ArticleSunatInventoryCatalogPolicy $sunatInventoryCatalogPolicy = null
+    )
     {
         $this->articleCodeGenerator = $articleCodeGenerator ?? app(ArticleCodeGenerator::class);
+        $this->articleInventoryPolicy = $articleInventoryPolicy ?? app(ArticleInventoryPolicy::class);
+        $this->sunatInventoryCatalogPolicy = $sunatInventoryCatalogPolicy ?? app(ArticleSunatInventoryCatalogPolicy::class);
 
         $this->middleware('can:admin.articles.index')->only(['index', 'list', 'generateCode', 'getSubcategories', 'listPicker']);
         $this->middleware('can:admin.articles.store')->only(['store', 'quickStore']);
@@ -75,6 +88,10 @@ class ArticleController extends Controller
             ->orderBy('description')
             ->get();
 
+        $sunatExistenceTypes = $this->articleInventoryPolicy->activeSunatExistenceTypes();
+        $sunatInventoryCatalogItems = $this->sunatInventoryCatalogPolicy->activeInventoryCatalogItems();
+        $sunatStandardCatalogItems = $this->sunatInventoryCatalogPolicy->activeStandardCatalogItems();
+
         return view(
             'admin.articles.index',
             compact(
@@ -83,6 +100,9 @@ class ArticleController extends Controller
                 'presentations',
                 'units',
                 'documentTypes',
+                'sunatExistenceTypes',
+                'sunatInventoryCatalogItems',
+                'sunatStandardCatalogItems',
             )
         );
     }
@@ -99,7 +119,8 @@ class ArticleController extends Controller
             'subcategory',
             'brand',
             'creator',
-            'editor'
+            'editor',
+            'sunatExistenceType',
         ])
             ->orderBy('id', 'desc');
 
@@ -122,6 +143,7 @@ class ArticleController extends Controller
                         ->orWhere('legal_name', 'like', $like)
                         ->orWhere('commercial_name', 'like', $like)
                         ->orWhere('billing_name', 'like', $like)
+                        ->orWhere('item_kind', 'like', $like)
                         ->orWhereHas('brand', function ($brandQuery) use ($like) {
                             $brandQuery->where('description', 'like', $like);
                         });
@@ -145,11 +167,16 @@ class ArticleController extends Controller
                 return $article->commercial_name;
             })
 
-            ->addColumn('is_taxable', function ($article) {
+            ->addColumn('inventory_classification', function (Article $article) {
+                if ($article->hasPendingInventoryClassification()) {
+                    return '<span class="badge badge-warning">PENDIENTE (LEGACY)</span>';
+                }
 
-                return $article->is_taxable
-                    ? 'SI'
-                    : 'NO';
+                $kind = $article->item_kind === Article::KIND_SERVICE ? 'SERVICIO' : 'PRODUCTO';
+                $inventory = $article->is_inventory_item ? 'INVENTARIABLE' : 'NO INVENTARIABLE';
+
+                return '<span class="badge badge-primary mr-1">'.$kind.'</span>'
+                    .'<span class="badge badge-'.($article->is_inventory_item ? 'success' : 'secondary').'">'.$inventory.'</span>';
             })
 
             ->editColumn('status', function ($article) {
@@ -190,6 +217,7 @@ class ArticleController extends Controller
 
             ->rawColumns([
                 'status',
+                'inventory_classification',
                 'acciones'
             ])
 
@@ -251,15 +279,12 @@ class ArticleController extends Controller
                 Rule::unique('articles', 'institutional_code')
             ],
 
-            'minimum_stock' => [
-                'nullable',
-                'numeric',
-                'min:0'
-            ],
+            'item_kind' => ['required', Rule::in([Article::KIND_PRODUCT, Article::KIND_SERVICE])],
 
-            'is_taxable' => [
-                'required',
-                'boolean'
+            'is_inventory_item' => [
+                'required_if:item_kind,' . Article::KIND_PRODUCT,
+                'nullable',
+                'boolean',
             ],
 
             'has_batch' => [
@@ -329,6 +354,10 @@ class ArticleController extends Controller
 
         ], $this->articleValidationMessages());
 
+        $validated = array_merge($validated, $this->validatedInventoryClassification($request));
+        $validated['sunat_existence_type_item_id'] = $this->validatedSunatExistenceType($request, $validated);
+        $validated = array_merge($validated, $this->validatedSunatInventoryIdentification($request, $validated));
+        $refreshSunatOwnCode = $automaticCode && $this->shouldRefreshSunatOwnCode($request, $validated);
         $documentsData = $this->validatedDocumentData($request);
         unset($validated['code_mode']);
 
@@ -356,12 +385,6 @@ class ArticleController extends Controller
             $validated['updated_by'] = Auth::id();
             $validated['brand_id'] = null;
 
-            $validated['minimum_stock'] =
-                $validated['minimum_stock'] ?? 0;
-
-            $validated['is_taxable'] =
-                (int) $request->boolean('is_taxable');
-
             $validated['has_batch'] =
                 (int) $request->boolean('has_batch');
 
@@ -372,6 +395,10 @@ class ArticleController extends Controller
             $article = $automaticCode
                 ? $this->articleCodeGenerator->create($validated)
                 : Article::create($validated);
+
+            if ($refreshSunatOwnCode && $article->sunat_inventory_catalog_code !== $article->code) {
+                $article->update(['sunat_inventory_catalog_code' => $article->code]);
+            }
 
             if ($request->hasFile('images')) {
 
@@ -563,10 +590,8 @@ class ArticleController extends Controller
             'commercial_name' => $request->input('commercial_name') ?: $baseName,
             'billing_name' => $request->input('billing_name') ?: $request->input('commercial_name') ?: $baseName,
             'status' => $request->input('status') ?: 'ACTIVE',
-            'is_taxable' => $request->input('is_taxable', 1),
             'has_batch' => $request->input('has_batch', 0),
             'has_expiration' => $request->input('has_expiration', 0),
-            'minimum_stock' => $request->input('minimum_stock', 0),
         ]);
 
         if (! $automaticCode) {
@@ -596,6 +621,8 @@ class ArticleController extends Controller
             'legal_name' => ['required', 'string', 'max:255'],
             'commercial_name' => ['nullable', 'string', 'max:255'],
             'billing_name' => ['nullable', 'string', 'max:255'],
+            'item_kind' => ['required', Rule::in([Article::KIND_PRODUCT, Article::KIND_SERVICE])],
+            'is_inventory_item' => ['required_if:item_kind,' . Article::KIND_PRODUCT, 'nullable', 'boolean'],
             'presentation_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:presentations,id'],
             'unit_id' => [Rule::requiredIf($requiresClassification), 'nullable', 'exists:units,id'],
             'brand_id' => ['nullable', 'exists:brands,id'],
@@ -617,6 +644,10 @@ class ArticleController extends Controller
             'unit_id.exists' => 'La unidad seleccionada no es válida.',
         ]);
 
+        $validated = array_merge($validated, $this->validatedInventoryClassification($request));
+        $validated['sunat_existence_type_item_id'] = $this->validatedSunatExistenceType($request, $validated);
+        $validated = array_merge($validated, $this->validatedSunatInventoryIdentification($request, $validated));
+        $refreshSunatOwnCode = $automaticCode && $this->shouldRefreshSunatOwnCode($request, $validated);
         unset($validated['code_mode']);
 
         $defaultCategory = Category::where('status', 'ACTIVE')
@@ -644,7 +675,6 @@ class ArticleController extends Controller
             $validated['unit_id'] = $validated['unit_id'] ?? $defaultUnit->id;
             $validated['brand_id'] = $validated['brand_id'] ?? null;
             $validated['status'] = 'ACTIVE';
-            $validated['is_taxable'] = 1;
             $validated['has_batch'] = 0;
             $validated['has_expiration'] = 0;
             $validated['minimum_stock'] = 0;
@@ -652,9 +682,15 @@ class ArticleController extends Controller
             $validated['created_by'] = Auth::id();
             $validated['updated_by'] = Auth::id();
 
-            $article = ($automaticCode
+            $article = $automaticCode
                 ? $this->articleCodeGenerator->create($validated)
-                : Article::create($validated))->fresh([
+                : Article::create($validated);
+
+            if ($refreshSunatOwnCode && $article->sunat_inventory_catalog_code !== $article->code) {
+                $article->update(['sunat_inventory_catalog_code' => $article->code]);
+            }
+
+            $article = $article->fresh([
                 'category',
                 'subcategory',
                 'unit',
@@ -683,7 +719,9 @@ class ArticleController extends Controller
                 'unit_name' => $article->unit?->description,
                 'brand_id' => $article->brand_id,
                 'brand_name' => $article->brand?->description,
-                'is_taxable' => (bool) $article->is_taxable,
+                'item_kind' => $article->item_kind,
+                'is_inventory_item' => $article->is_inventory_item,
+                'sunat_existence_type_item_id' => $article->sunat_existence_type_item_id,
             ];
 
             return response()->json([
@@ -734,6 +772,8 @@ class ArticleController extends Controller
         $article = Article::with([
 
             'images',
+
+            'sunatExistenceType',
 
             'documents.documentType',
             'documents.brand'
@@ -800,15 +840,12 @@ class ArticleController extends Controller
                 Rule::unique('articles', 'institutional_code')->ignore($article->id)
             ],
 
-            'minimum_stock' => [
-                'nullable',
-                'numeric',
-                'min:0'
-            ],
+            'item_kind' => ['required', Rule::in([Article::KIND_PRODUCT, Article::KIND_SERVICE])],
 
-            'is_taxable' => [
-                'required',
-                'boolean'
+            'is_inventory_item' => [
+                'required_if:item_kind,' . Article::KIND_PRODUCT,
+                'nullable',
+                'boolean',
             ],
 
             'has_batch' => [
@@ -875,6 +912,23 @@ class ArticleController extends Controller
             'documents_files.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx', 'max:10240'],
         ], $this->articleValidationMessages());
 
+        $validated = array_merge($validated, $this->validatedInventoryClassification($request));
+        $validated['sunat_existence_type_item_id'] = $this->validatedSunatExistenceType($request, $validated);
+        $validated = array_merge($validated, $this->validatedSunatInventoryIdentification($request, $validated));
+        $this->articleInventoryPolicy->assertClassificationChangeAllowed(
+            $article,
+            $validated['item_kind'],
+            (bool) $validated['is_inventory_item']
+        );
+        $this->articleInventoryPolicy->assertSunatExistenceTypeChangeAllowed(
+            $article,
+            $validated['sunat_existence_type_item_id']
+        );
+        $this->sunatInventoryCatalogPolicy->assertPrimaryChangeAllowed(
+            $article,
+            $validated['sunat_inventory_catalog_item_id'],
+            $validated['sunat_inventory_catalog_code']
+        );
         $documentsData = $this->validatedDocumentData($request);
 
         $validated['brand_id'] = null;
@@ -896,12 +950,6 @@ class ArticleController extends Controller
 
             $validated['updated_by'] =
                 Auth::id();
-
-            $validated['minimum_stock'] =
-                $validated['minimum_stock'] ?? 0;
-
-            $validated['is_taxable'] =
-                (int) $request->boolean('is_taxable');
 
             $validated['has_batch'] =
                 (int) $request->boolean('has_batch');
@@ -1267,6 +1315,58 @@ class ArticleController extends Controller
         return mb_strtoupper(trim((string) $value), 'UTF-8');
     }
 
+    private function validatedInventoryClassification(Request $request): array
+    {
+        $kind = (string) $request->input('item_kind');
+
+        if ($kind === Article::KIND_SERVICE && $request->boolean('is_inventory_item')) {
+            throw ValidationException::withMessages([
+                'is_inventory_item' => 'Un servicio no puede participar en inventario.',
+            ]);
+        }
+
+        return $this->articleInventoryPolicy->normalize($kind, $request->input('is_inventory_item'));
+    }
+
+    private function validatedSunatExistenceType(Request $request, array $classification): ?int
+    {
+        return $this->articleInventoryPolicy->validateSunatExistenceType(
+            $classification['item_kind'],
+            (bool) $classification['is_inventory_item'],
+            $request->input('sunat_existence_type_item_id')
+        );
+    }
+
+    private function validatedSunatInventoryIdentification(Request $request, array $classification): array
+    {
+        return $this->sunatInventoryCatalogPolicy->validate(
+            $classification['item_kind'],
+            (bool) $classification['is_inventory_item'],
+            $request->input('sunat_inventory_catalog_item_id'),
+            $request->input('sunat_inventory_catalog_code'),
+            $request->input('sunat_standard_catalog_item_id'),
+            $request->input('sunat_standard_code')
+        );
+    }
+
+    private function shouldRefreshSunatOwnCode(Request $request, array $validated): bool
+    {
+        if (! $request->boolean('sunat_inventory_catalog_use_internal_code')) {
+            return false;
+        }
+
+        $itemId = $validated['sunat_inventory_catalog_item_id'] ?? null;
+        if (! $itemId) {
+            return false;
+        }
+
+        return SunatCatalogItem::query()
+            ->whereKey($itemId)
+            ->where('catalog_code', ArticleSunatInventoryCatalogPolicy::CATALOG_CODE)
+            ->where('item_code', '9')
+            ->exists();
+    }
+
     private function articleValidationMessages(): array
     {
         return [
@@ -1371,7 +1471,10 @@ class ArticleController extends Controller
             'documents.documentType',
             'documents.brand',
 
-            'images'
+            'images',
+            'sunatExistenceType',
+            'sunatInventoryCatalogItem',
+            'sunatStandardCatalogItem',
 
         ])->find($id);
 
@@ -1392,6 +1495,32 @@ class ArticleController extends Controller
 
             'data' => $article
 
+        ]);
+    }
+
+    public function sunatExistenceTypes()
+    {
+        return response()->json([
+            'data' => $this->articleInventoryPolicy->activeSunatExistenceTypes()
+                ->map(fn ($item) => [
+                    'id' => $item->id,
+                    'text' => $item->item_code.' — '.$item->description,
+                ])
+                ->values(),
+        ]);
+    }
+
+    public function sunatInventoryCatalogs()
+    {
+        $map = fn ($item) => [
+            'id' => $item->id,
+            'code' => $item->item_code,
+            'text' => $item->item_code.' — '.$item->description,
+        ];
+
+        return response()->json([
+            'data' => $this->sunatInventoryCatalogPolicy->activeInventoryCatalogItems()->map($map)->values(),
+            'standard' => $this->sunatInventoryCatalogPolicy->activeStandardCatalogItems()->map($map)->values(),
         ]);
     }
 

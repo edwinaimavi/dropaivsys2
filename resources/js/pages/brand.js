@@ -365,6 +365,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const status = $(this).data('status');
 
+        $('#vb_header_subtitle').text(
+            [$(this).data('code'), $(this).data('description')].filter(Boolean).join(' · ') || '—'
+        );
+
         $('#vb_id').text(
             $(this).data('id')
         );

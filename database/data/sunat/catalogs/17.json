@@ -1,0 +1,17 @@
+{
+  "catalog_code": "17",
+  "catalog_name": "PLAN DE CUENTAS",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "01", "description": "PLAN CONTABLE GENERAL EMPRESARIAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "02", "description": "PLAN CONTABLE GENERAL REVISADO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "03", "description": "PLAN DE CUENTAS PARA EMPRESAS DEL SISTEMA FINANCIERO, SUPERVISADAS POR SBS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "04", "description": "PLAN DE CUENTAS PARA ENTIDADES PRESTADORAS DE SALUD, SUPERVISADAS POR SBS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "05", "description": "PLAN DE CUENTAS PARA EMPRESAS DEL SISTEMA ASEGURADOR, SUPERVISADAS POR SBS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "06", "description": "PLAN DE CUENTAS DE LAS ADMINISTRADORAS PRIVADAS DE FONDOS DE PENSIONES, SUPERVISADAS POR SBS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "07", "description": "PLAN CONTABLE GUBERNAMENTAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "99", "description": "OTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

@@ -200,6 +200,41 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="card company-card border-0 shadow-sm mb-2">
+                                <div class="card-header company-section-header border-0">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-balance-scale text-info mr-1"></i>
+                                        Política de valorización de inventario
+                                    </h6>
+                                    <small class="text-muted">Método SUNAT Tabla 14 aplicado al inventario valorizado de la empresa.</small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-row align-items-end">
+                                        <div class="form-group col-md-7 mb-md-0">
+                                            <label>Método de valuación SUNAT</label>
+                                            <select id="company_inventory_valuation_method_item_id"
+                                                name="inventory_valuation_method_item_id"
+                                                class="form-control form-control-sm">
+                                                <option value="">Pendiente de configurar</option>
+                                                @foreach ($valuationMethods as $valuationMethod)
+                                                    <option value="{{ $valuationMethod->id }}">
+                                                        {{ $valuationMethod->item_code }} — {{ $valuationMethod->description }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            <span class="invalid-feedback" id="company_inventory_valuation_method_item_id-error"></span>
+                                        </div>
+                                        <div class="col-md-5">
+                                            <div class="alert alert-info py-2 px-3 mb-0 small">
+                                                <i class="fas fa-info-circle mr-1"></i>
+                                                El motor actual trabaja con <strong>promedio ponderado móvil</strong>.
+                                                Esta configuración no recalcula ni revaloriza el Kardex existente.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

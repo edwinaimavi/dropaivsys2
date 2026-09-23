@@ -26,6 +26,45 @@ class WarehouseEntryCreditPaymentService
     ) {
     }
 
+    public function validatePaymentItemsAgainstPendingAmount(
+        WarehouseEntry $warehouseEntry,
+        array $paymentItems
+    ): void {
+        $warehouseEntry->loadMissing([
+            'supplierPurchaseOrder.currency:id,code',
+            'supplierPurchaseOrder.paymentCurrency:id,code',
+            'supplierPurchaseOrder.advancePayments.currency:id,code',
+            'supplierPurchaseOrder.advancePayments.purchaseCurrency:id,code',
+        ]);
+        $totalAmount = max((float) ($warehouseEntry->payable_amount ?: $warehouseEntry->grand_total), 0);
+        $advancePaidAmount = round((float) ($warehouseEntry->supplierPurchaseOrder?->advancePayments ?? collect())
+            ->filter(fn ($payment) => strtoupper((string) $payment->status) === 'ACTIVE')
+            ->sum(fn ($payment) => (float) ($this->financialService->effectiveAppliedAmount(
+                $payment,
+                $warehouseEntry->supplierPurchaseOrder
+            ) ?? 0)), 4);
+        $registeredPaymentAmount = round((float) $warehouseEntry->creditPayments()->sum('applied_amount'), 4);
+        $remainingAmount = max(round($totalAmount - $advancePaidAmount - $registeredPaymentAmount, 4), 0);
+
+        foreach ($paymentItems as $index => $paymentItem) {
+            $appliedAmount = round((float) ($paymentItem['applied_amount'] ?? 0), 4);
+
+            if ($appliedAmount <= 0) {
+                throw ValidationException::withMessages([
+                    "payment_items.{$index}.applied_amount" => 'El monto aplicado debe ser mayor a cero.',
+                ]);
+            }
+
+            if ($appliedAmount > $remainingAmount + self::MONEY_EPSILON) {
+                throw ValidationException::withMessages([
+                    "payment_items.{$index}.applied_amount" => 'El monto aplicado no puede superar el saldo pendiente.',
+                ]);
+            }
+
+            $remainingAmount = max(round($remainingAmount - $appliedAmount, 4), 0);
+        }
+    }
+
     public function create(
         WarehouseEntry $warehouseEntry,
         array $data,
@@ -505,9 +544,9 @@ class WarehouseEntryCreditPaymentService
                 'warehouse_entry_id' => 'No se puede pagar un ingreso anulado.',
             ]);
         }
-        if (! $entry->supplier_purchase_order_id || ! $entry->supplierPurchaseOrder) {
+        if (! $entry->supplier_id) {
             throw ValidationException::withMessages([
-                'warehouse_entry_id' => 'El ingreso debe estar relacionado con una OC proveedor.',
+                'warehouse_entry_id' => 'El ingreso debe tener un proveedor relacionado.',
             ]);
         }
     }

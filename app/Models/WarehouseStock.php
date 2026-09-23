@@ -11,6 +11,7 @@ class WarehouseStock extends Model
 
     protected $fillable = [
         'stock_key',
+        'company_id',
         'warehouse_id',
         'article_id',
         'unit_id',
@@ -39,9 +40,19 @@ class WarehouseStock extends Model
         'min_stock' => 'decimal:4',
     ];
 
+    public static function currentInventoryValue(?int $companyId = null): float
+    {
+        return WarehouseValuationPool::currentInventoryValue($companyId);
+    }
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
     }
 
     public function article()

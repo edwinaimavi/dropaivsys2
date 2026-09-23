@@ -610,6 +610,10 @@
                 <td class="text-right">{{ $formatMoney($quote->subtotal_exonerated) }}</td>
             </tr>
             <tr>
+                <td>Venta inafecta</td>
+                <td class="text-right">{{ $formatMoney($quote->subtotal_unaffected ?? 0) }}</td>
+            </tr>
+            <tr>
                 <td>Venta gravada</td>
                 <td class="text-right">{{ $formatMoney($quote->subtotal_taxed) }}</td>
             </tr>

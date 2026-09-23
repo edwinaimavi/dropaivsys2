@@ -1,0 +1,15 @@
+{
+  "catalog_code": "02",
+  "catalog_name": "TIPO DE DOCUMENTO DE IDENTIDAD",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "0", "description": "OTROS TIPOS DE DOCUMENTOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "1", "description": "DOCUMENTO NACIONAL DE IDENTIDAD (DNI)", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "4", "description": "CARNET DE EXTRANJERIA", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "6", "description": "REGISTRO ÚNICO DE CONTRIBUYENTES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "7", "description": "PASAPORTE", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "A", "description": "CÉDULA DIPLOMATICA DE IDENTIDAD", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

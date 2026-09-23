@@ -5,6 +5,8 @@
                 data-id="{{ $unit->id }}" data-abbreviation="{{ $unit->abbreviation }}"
                 data-description="{{ $unit->description }}" data-decimal_quantity="{{ $unit->decimal_quantity }}"
                 data-observation="{{ $unit->observation }}" data-status="{{ $unit->status }}"
+                data-sunat_unit_item_id="{{ $unit->sunat_unit_item_id }}"
+                data-sunat_unit="{{ $unit->sunatUnit ? $unit->sunatUnit->item_code.' — '.$unit->sunatUnit->description : 'PENDIENTE' }}"
                 data-created_at="{{ $unit->created_at ? $unit->created_at->format('d/m/Y H:i') : '-' }}"
                 data-updated_at="{{ $unit->updated_at ? $unit->updated_at->format('d/m/Y H:i') : '-' }}"
                 data-created_by="{{ $unit->creator->name ?? 'No registrado' }}"
@@ -19,7 +21,7 @@
             <button type="button" class="dropdown-item editUnit" data-id="{{ $unit->id }}"
                 data-abbreviation="{{ $unit->abbreviation }}" data-description="{{ $unit->description }}"
                 data-decimal_quantity="{{ $unit->decimal_quantity }}" data-observation="{{ $unit->observation }}"
-                data-status="{{ $unit->status }}">
+                data-status="{{ $unit->status }}" data-sunat_unit_item_id="{{ $unit->sunat_unit_item_id }}">
                 <i class="fas fa-pen text-primary"></i> Editar unidad
             </button>
         @endcan

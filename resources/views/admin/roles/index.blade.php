@@ -456,6 +456,75 @@
             background: #0f9488;
         }
 
+        .roles-permission-module {
+            margin-bottom: 12px;
+            overflow: hidden;
+            border: 1px solid #dfe9e5;
+            border-radius: 14px;
+            background: #fff;
+            box-shadow: 0 5px 14px rgba(20, 54, 44, .045);
+        }
+
+        .roles-permission-module-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 13px;
+            border-bottom: 1px solid #e8efec;
+            background: linear-gradient(135deg, #f3f9f6, #f8fafc);
+        }
+
+        .roles-module-collapse {
+            display: grid;
+            min-width: 0;
+            grid-template-columns: 38px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 10px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #263e36;
+            text-align: left;
+        }
+
+        .roles-module-collapse > span:nth-child(2) { min-width: 0; }
+        .roles-module-collapse strong { display: block; overflow: hidden; font-size: 12px; font-weight: 900; letter-spacing: .045em; text-overflow: ellipsis; white-space: nowrap; }
+        .roles-module-collapse small { display: block; margin-top: 2px; color: #71817b; font-size: 9.5px; font-weight: 700; }
+        .roles-module-icon { display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center; border-radius: 11px; background: #dff1ea; color: #247a5b; }
+        .roles-collapse-chevron { color: #82918c; font-size: 10px; transition: transform .18s ease; }
+        .roles-permission-module.is-collapsed .roles-collapse-chevron { transform: rotate(-90deg); }
+        .roles-permission-module.is-collapsed .roles-module-body { display: none; }
+        .roles-module-body { padding: 11px; background: #fbfdfc; }
+
+        .roles-permission-subgroup {
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 1px solid #e5ece9;
+            border-radius: 11px;
+            background: #fff;
+        }
+
+        .roles-permission-subgroup:last-child { margin-bottom: 0; }
+        .roles-permission-subgroup-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-bottom: 1px solid #edf2f0; background: #f8faf9; }
+        .roles-permission-subgroup-header strong { display: block; color: #395148; font-size: 11px; font-weight: 850; }
+        .roles-permission-subgroup-header small { display: block; color: #84928d; font-size: 9px; font-weight: 700; }
+        .roles-scope-toggle { min-width: 125px; border-radius: 8px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+        .roles-permission-subgroup-header .roles-scope-toggle { color: #26785a; }
+        .roles-permission-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .roles-permission-module[data-module-key="other"] { border-color: #dfc993; }
+        .roles-permission-module[data-module-key="other"] .roles-module-icon { background: #fff4d8; color: #8b6718; }
+
+        .theme-dark .roles-permission-module,
+        .theme-dark .roles-permission-subgroup,
+        .theme-dark .roles-permission-item { border-color: #40504a; background: #26332f; }
+        .theme-dark .roles-permission-module-header,
+        .theme-dark .roles-permission-subgroup-header,
+        .theme-dark .roles-module-body { border-color: #40504a; background: #202c28; }
+        .theme-dark .roles-module-collapse,
+        .theme-dark .roles-permission-subgroup-header strong,
+        .theme-dark .roles-permission-item .custom-control-label { color: #e4eeea; }
+
         .roles-permission-empty {
             display: none;
             padding: 18px;
@@ -512,6 +581,16 @@
             .roles-modal .role-modal-footer {
                 padding: 10px;
             }
+
+            .roles-permission-grid { grid-template-columns: 1fr; }
+            .roles-permission-module-header { grid-template-columns: 1fr; }
+            .roles-permission-module-header > .roles-scope-toggle { width: 100%; }
+            .roles-permission-subgroup-header { align-items: flex-start; flex-direction: column; }
+            .roles-permission-subgroup-header .roles-scope-toggle { padding-left: 0; }
+        }
+
+        @media (min-width: 768px) and (max-width: 1199.98px) {
+            .roles-permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 @endpush

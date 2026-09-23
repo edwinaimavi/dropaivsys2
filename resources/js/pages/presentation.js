@@ -345,6 +345,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const status = $(this).data('status');
 
+        const presentationMeasure = [$(this).data('quantity'), $(this).data('unit')]
+            .filter(Boolean)
+            .join(' ');
+        $('#vp_header_subtitle').text(
+            [presentationMeasure, $(this).data('description')].filter(Boolean).join(' · ') || '—'
+        );
+
         $('#vp_id').text($(this).data('id'));
 
         $('#vp_description').text($(this).data('description'));

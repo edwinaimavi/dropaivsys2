@@ -244,6 +244,8 @@
 
             articlePickerList: "{{ route('admin.articles.listPicker') }}",
             quickStoreArticle: "{{ route('admin.articles.quick-store') }}",
+            sunatExistenceTypes: "{{ route('admin.articles.sunat-existence-types') }}",
+            sunatInventoryCatalogs: "{{ route('admin.articles.sunat-inventory-catalogs') }}",
             generateArticleCode: "{{ route('admin.articles.generateCode') }}",
 
             // ==========================================

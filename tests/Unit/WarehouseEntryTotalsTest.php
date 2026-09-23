@@ -7,14 +7,14 @@ function prepareWarehouseEntryItemsForTest(array $items, bool $affectIgv): array
 {
     $method = new ReflectionMethod(WarehouseEntryController::class, 'prepareItems');
 
-    return $method->invoke(new WarehouseEntryController(), $items, $affectIgv);
+    return $method->invoke(new WarehouseEntryController, $items, $affectIgv);
 }
 
 function calculateWarehouseEntryTotalsForTest(array $items): array
 {
     $method = new ReflectionMethod(WarehouseEntryController::class, 'calculateTotals');
 
-    return $method->invoke(new WarehouseEntryController(), $items);
+    return $method->invoke(new WarehouseEntryController, $items);
 }
 
 function warehouseEntryItemForTest(float $quantity, float $unitPrice): array
@@ -43,17 +43,17 @@ it('desglosa el IGV incluido sin incrementar el total del ingreso', function () 
     ]);
 });
 
-it('mantiene el total y no genera base ni IGV cuando no esta afecto', function () {
+it('mantiene base y total iguales y no genera IGV cuando no esta afecto', function () {
     $items = prepareWarehouseEntryItemsForTest([
         warehouseEntryItemForTest(1, 14372.40),
     ], false);
 
     expect($items[0])->toMatchArray([
-        'subtotal' => 0,
+        'subtotal' => 14372.40,
         'tax_amount' => 0,
         'line_total' => 14372.40,
     ])->and(calculateWarehouseEntryTotalsForTest($items))->toBe([
-        'subtotal' => 0.0,
+        'subtotal' => 14372.40,
         'igv' => 0.0,
         'grand_total' => 14372.40,
     ]);
@@ -79,7 +79,7 @@ it('conserva seis decimales del precio al cargar una orden de proveedor', functi
     ]);
     $item->setRelation('article', null);
     $method = new ReflectionMethod(WarehouseEntryController::class, 'sourceItemPayload');
-    $payload = $method->invoke(new WarehouseEntryController(), $item, 7000, 7000, false);
+    $payload = $method->invoke(new WarehouseEntryController, $item, 7000, 7000, false);
 
     expect($payload['unit_price'])->toBe(0.833551)
         ->and($payload['line_total'])->toBe(5834.86);
@@ -93,7 +93,7 @@ it('mantiene el precio exacto de la orden y cuadra el total del ingreso', functi
     $orderItem->setRelation('article', null);
 
     $method = new ReflectionMethod(WarehouseEntryController::class, 'sourceItemPayload');
-    $sourceItem = $method->invoke(new WarehouseEntryController(), $orderItem, 6, 6, false);
+    $sourceItem = $method->invoke(new WarehouseEntryController, $orderItem, 6, 6, false);
     $preparedItems = prepareWarehouseEntryItemsForTest([$sourceItem], false);
     $totals = calculateWarehouseEntryTotalsForTest($preparedItems);
 

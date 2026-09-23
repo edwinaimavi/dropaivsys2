@@ -29,7 +29,8 @@
                     <div class="attention-order-summary mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="font-weight-bold mb-0"><i class="fas fa-file-signature text-primary mr-1"></i> Resumen de la orden</h6>
-                            <span class="badge badge-success px-3 py-2">ABASTECIDA</span>
+                            <span class="badge badge-success px-3 py-2"
+                                title="Mercadería ingresada, falta atención o despacho.">ABASTECIDA EN ALMACÉN</span>
                         </div>
                         <div class="row">
                             <div class="col-md-3"><small>Código interno</small><strong id="closeAttentionOrderCode">—</strong></div>

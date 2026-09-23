@@ -4,6 +4,19 @@ let tableArticlePicker = null;
 let marketStudyArticles = [];
 let selectedArticlePickerItems = {};
 let deletedMarketStudyDocuments = [];
+import { initQuickSunatExistenceTypes } from '../utils/sunat-existence-types';
+
+$(document).on('change', '.quick-item-kind', function () {
+    const inventory = $(this).closest('form').find('.quick-is-inventory-item');
+    inventory.val($(this).val() === 'service' ? '0' : '').prop('disabled', $(this).val() === 'service');
+});
+
+$(document).on('reset', 'form:has(.quick-item-kind)', function () {
+    const form = $(this);
+    setTimeout(() => form.find('.quick-is-inventory-item').prop('disabled', false).val(''), 0);
+});
+
+initQuickSunatExistenceTypes();
 
 let quoteItems = [];
 

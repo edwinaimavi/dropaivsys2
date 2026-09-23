@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bank;
 use App\Models\Company;
 use App\Models\Currency;
+use App\Services\CompanyInventoryValuationPolicy;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,8 +30,9 @@ class CompanyController extends Controller
     {
         $banks = Bank::where('status', 'ACTIVE')->orderBy('description')->get();
         $currencies = Currency::where('status', 'ACTIVE')->orderBy('description')->get();
+        $valuationMethods = app(CompanyInventoryValuationPolicy::class)->availableMethods();
 
-        return view('admin.companies.index', compact('banks', 'currencies'));
+        return view('admin.companies.index', compact('banks', 'currencies', 'valuationMethods'));
     }
 
     public function list()
@@ -89,6 +91,7 @@ class CompanyController extends Controller
     public function show(Company $company)
     {
         $company->load([
+            'inventoryValuationMethod.catalog',
             'bankAccounts' => fn ($query) => $query
                 ->with(['bank', 'currency'])
                 ->latest('id'),
@@ -278,7 +281,7 @@ class CompanyController extends Controller
 
     private function validatedData(Request $request, ?Company $company = null): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'ruc' => [
                 'required',
                 'digits:11',
@@ -292,6 +295,7 @@ class CompanyController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:255'],
             'status' => ['required', 'boolean'],
+            'inventory_valuation_method_item_id' => ['nullable', 'integer'],
             'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ], [
             'ruc.required' => 'El RUC es obligatorio.',
@@ -301,10 +305,35 @@ class CompanyController extends Controller
             'email.email' => 'El correo electrónico no tiene un formato válido.',
             'status.required' => 'El estado es obligatorio.',
             'status.boolean' => 'El estado seleccionado no es válido.',
+            'inventory_valuation_method_item_id.integer' => 'El método de valuación seleccionado no es válido.',
             'logo.image' => 'El logo debe ser una imagen.',
             'logo.mimes' => 'El logo debe ser JPG, PNG o WEBP.',
             'logo.max' => 'El logo no debe superar 2 MB.',
         ]);
+
+        $methodWasProvided = $request->exists('inventory_valuation_method_item_id');
+        $methodId = isset($validated['inventory_valuation_method_item_id'])
+            && $validated['inventory_valuation_method_item_id'] !== ''
+            ? (int) $validated['inventory_valuation_method_item_id']
+            : null;
+
+        if (! $methodWasProvided && $company) {
+            $methodId = $company->inventory_valuation_method_item_id
+                ? (int) $company->inventory_valuation_method_item_id
+                : null;
+        }
+
+        $policy = app(CompanyInventoryValuationPolicy::class);
+        if ($methodId !== null) {
+            $policy->resolveSupportedMethod($methodId);
+        }
+        if ($company) {
+            $policy->assertCanAssign($company, $methodId);
+        }
+
+        $validated['inventory_valuation_method_item_id'] = $methodId;
+
+        return $validated;
     }
 
     private function prepareData(array $validated): array
@@ -317,11 +346,14 @@ class CompanyController extends Controller
             'phone' => $validated['phone'] ?? null,
             'email' => $validated['email'] ?? null,
             'status' => (bool) $validated['status'],
+            'inventory_valuation_method_item_id' => $validated['inventory_valuation_method_item_id'] ?? null,
         ];
     }
 
     private function payload(Company $company): array
     {
+        $company->loadMissing('inventoryValuationMethod.catalog');
+
         return [
             'id' => $company->id,
             'business_name' => $company->business_name,
@@ -334,6 +366,12 @@ class CompanyController extends Controller
             'logo_url' => $company->logo ? Storage::url($company->logo) : null,
             'status' => (bool) $company->status,
             'status_label' => $company->status ? 'ACTIVO' : 'INACTIVO',
+            'inventory_valuation_method_item_id' => $company->inventory_valuation_method_item_id,
+            'inventory_valuation_method' => $company->inventoryValuationMethod ? [
+                'id' => $company->inventoryValuationMethod->id,
+                'code' => $company->inventoryValuationMethod->item_code,
+                'description' => $company->inventoryValuationMethod->description,
+            ] : null,
             'created_at' => $company->created_at?->format('d/m/Y H:i'),
             'updated_at' => $company->updated_at?->format('d/m/Y H:i'),
             'usage' => $this->usageSummary($company),

@@ -1,3 +1,5 @@
+import { initQuickSunatExistenceTypes } from '../utils/sunat-existence-types';
+
 let tableQuote;
 let quoteItemIndex = 0;
 let quickQuoteArticleRow = null;
@@ -5,6 +7,18 @@ let quickQuoteBrandRow = null;
 let lastQuickCustomerDocument = '';
 let quickCustomerDocumentTimer = null;
 let quickCustomerConsulting = false;
+
+$(document).on('change', '.quick-item-kind', function () {
+    const inventory = $(this).closest('form').find('.quick-is-inventory-item');
+    inventory.val($(this).val() === 'service' ? '0' : '').prop('disabled', $(this).val() === 'service');
+});
+
+$(document).on('reset', 'form:has(.quick-item-kind)', function () {
+    const form = $(this);
+    setTimeout(() => form.find('.quick-is-inventory-item').prop('disabled', false).val(''), 0);
+});
+
+initQuickSunatExistenceTypes();
 
 $(function () {
     $('[data-toggle="tooltip"]').tooltip();
@@ -518,11 +532,10 @@ document.addEventListener('DOMContentLoaded', function () {
     */
     $(document).on(
         'input change',
-        '.item-quantity, .item-unit-price, .item-discount-percentage, #affect_igv',
+        '.item-quantity, .item-unit-price, .item-discount-percentage, .item-tax-affectation-code',
         function () {
-
+            updateQuoteTaxLabel($(this).closest('tr'));
             calculateQuoteTotals();
-
         }
     );
 
@@ -949,6 +962,7 @@ function resetQuoteForm() {
     quoteItemIndex = 0;
 
     $('#subtotal_exonerated').val('0.00');
+    $('#subtotal_unaffected').val('0.00');
     $('#subtotal_taxed').val('0.00');
     $('#igv').val('0.00');
     $('#grand_total').val('0.00');
@@ -1192,6 +1206,7 @@ function setQuoteArticle(row, article) {
     row.find('.item-article-code').val(article.code || '');
     row.find('.item-billing-name-value').val(article.billing_name || article.name || '');
     row.find('.item-billing-name').prop('disabled', true).val(article.billing_name || article.name || '');
+    updateQuoteTaxLabel(row);
 
     setRowSelectValue(row.find('.item-unit-id'), article.unit_id, article.unit_text);
     setRowSelectValue(row.find('.item-presentation-id'), article.presentation_id, article.presentation_text);
@@ -1206,6 +1221,16 @@ function setQuoteArticle(row, article) {
     }
 
     calculateQuoteTotals();
+}
+
+function updateQuoteTaxLabel(row) {
+    const code = row.find('.item-tax-affectation-code').val();
+    const labels = {
+        '10': 'GRAVADO CON IGV',
+        '20': 'EXONERADO',
+        '30': 'INAFECTO'
+    };
+    row.find('.item-tax-affectation-label').text(`Venta: ${labels[code] || 'PENDIENTE'}`);
 }
 
 function setRowSelectValue(select, value, text = '') {
@@ -1331,6 +1356,7 @@ function fillQuoteForm(quote) {
             article_id: item.article_id,
             article_code: item.article_code,
             billing_name_snapshot: item.billing_name_snapshot,
+            tax_affectation_code: item.tax_affectation_code,
             note: item.note,
             unit_id: item.unit_id,
             presentation_id: item.presentation_id,
@@ -1378,6 +1404,8 @@ function addQuoteItemRow(data = {}) {
     row.find('.item-article-code').val(data.article_code || '');
     row.find('.item-is-winner').val(data.is_winner || 0);
     row.find('.item-billing-name-value').val(data.billing_name_snapshot || '');
+    row.find('.item-tax-affectation-code').val(data.tax_affectation_code || '');
+    updateQuoteTaxLabel(row);
     row.find('.item-billing-name').prop('disabled', true).val(data.billing_name_snapshot || '');
     row.find('.item-note').val(data.note || '');
     row.find('.item-unit-id').val(data.unit_id || '');
@@ -1407,7 +1435,7 @@ function addQuoteItemRow(data = {}) {
             presentation_id: data.presentation_id,
             brand_id: data.brand_id,
             origin: data.origin,
-            cost_price: data.cost_price || 0
+            cost_price: data.cost_price || 0,
         });
     }
 
@@ -1469,68 +1497,50 @@ function showEmptyQuoteItemsRow() {
 */
 function calculateQuoteTotals() {
 
-    let subtotal = 0;
-
-    $('#quoteItemsTbody tr.quote-item-row').each(function () {
-
-        let row = $(this);
-
-        let quantity =
-            parseFloat(row.find('.item-quantity').val()) || 0;
-
-        let unitPrice =
-            parseFloat(row.find('.item-unit-price').val()) || 0;
-
-        let discountPercentage =
-            parseFloat(row.find('.item-discount-percentage').val()) || 0;
-
-        let gross =
-            quantity * unitPrice;
-
-        let discountAmount =
-            gross * (discountPercentage / 100);
-
-        let lineTotal =
-            gross - discountAmount;
-
-        row.find('.item-discount-amount').val(formatMoney(discountAmount));
-
-        row.find('.item-line-total').val(formatMoney(lineTotal));
-
-        subtotal += lineTotal;
-
-    });
-
-    let affectIgv =
-        $('#affect_igv').val() === '1';
-
     let subtotalExonerated = 0;
+    let subtotalUnaffected = 0;
     let subtotalTaxed = 0;
     let igv = 0;
     let grandTotal = 0;
+    let hasTaxable = false;
 
-    if (affectIgv) {
+    $('#quoteItemsTbody tr.quote-item-row').each(function () {
 
-        // El precio de venta ya incluye IGV: se desglosa sin sumarlo al total.
-        grandTotal = subtotal;
-        subtotalTaxed = grandTotal / 1.18;
-        igv = grandTotal - subtotalTaxed;
+        const row = $(this);
+        const quantity = parseFloat(row.find('.item-quantity').val()) || 0;
+        const unitPrice = parseFloat(row.find('.item-unit-price').val()) || 0;
+        const discountPercentage = parseFloat(row.find('.item-discount-percentage').val()) || 0;
+        const gross = quantity * unitPrice;
+        const discountAmount = gross * (discountPercentage / 100);
+        const lineTotal = Math.max(gross - discountAmount, 0);
+        const affectation = row.find('.item-tax-affectation-code').val();
 
-    } else {
+        row.find('.item-discount-amount').val(formatMoney(discountAmount));
+        row.find('.item-line-total').val(formatMoney(lineTotal));
 
-        subtotalExonerated = subtotal;
-        grandTotal = subtotal;
+        if (affectation === '10') {
+            const base = lineTotal / 1.18;
+            subtotalTaxed += base;
+            igv += lineTotal - base;
+            hasTaxable = true;
+        } else if (affectation === '20') {
+            subtotalExonerated += lineTotal;
+        } else if (affectation === '30') {
+            subtotalUnaffected += lineTotal;
+        }
 
-    }
+        grandTotal += lineTotal;
+    });
 
+    $('#affect_igv').val(hasTaxable ? '1' : '0');
     $('#subtotal_exonerated').val(formatMoney(subtotalExonerated));
+    $('#subtotal_unaffected').val(formatMoney(subtotalUnaffected));
     $('#subtotal_taxed').val(formatMoney(subtotalTaxed));
     $('#igv').val(formatMoney(igv));
     $('#grand_total').val(formatMoney(grandTotal));
-
     $('#quoteSideGrandTotal').text(formatMoney(grandTotal));
-
 }
+
 
 
 /*
@@ -1897,6 +1907,7 @@ function loadMarketStudyWinnerItems(marketStudyId) {
                     discount_percentage: item.discount_percentage || 0,
                     discount_amount: item.discount_amount || 0,
                     line_total: item.line_total || 0,
+                    tax_affectation_code: item.tax_affectation_code || '',
 
                     is_winner: 1,
                 });
@@ -2221,7 +2232,6 @@ function resetQuickQuoteArticleForm() {
     clearQuickQuoteFormErrors('#quickQuoteArticleForm');
     $('#quick_quote_article_code').val('Cargando...');
     $('#quick_quote_article_code_type').val('SIGA/SISMED');
-
     $.ajax({
         url: window.routes.quoteArticleGenerateCode,
         type: 'GET',

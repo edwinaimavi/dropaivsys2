@@ -1,0 +1,12 @@
+{
+  "catalog_code": "20",
+  "catalog_name": "METODO DE DEPRECIACION",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "LINEA RECTA", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "UNIDADES PRODUCIDAS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "9", "description": "OTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

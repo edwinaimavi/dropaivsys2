@@ -1,0 +1,112 @@
+<?php
+
+return [
+    'modules' => [
+        'commercial' => ['label' => 'Comercial', 'icon' => 'fas fa-handshake', 'order' => 20, 'subgroups' => [
+            'customers' => ['label' => 'Clientes', 'order' => 10, 'prefixes' => ['admin.customers.']],
+            'customer_branches' => ['label' => 'Sedes de clientes', 'order' => 20, 'prefixes' => ['admin.customer-branches.']],
+            'customer_contacts' => ['label' => 'Contactos de clientes', 'order' => 30, 'prefixes' => ['admin.customer-branch-contacts.']],
+        ]],
+        'quotes' => ['label' => 'Cotizaciones', 'icon' => 'fas fa-file-signature', 'order' => 30, 'subgroups' => [
+            'market_studies' => ['label' => 'Estudios de mercado', 'order' => 10, 'prefixes' => ['admin.market-studies.']],
+            'supplier_quotes' => ['label' => 'Cotizaciones de proveedores', 'order' => 20, 'prefixes' => ['admin.market-study-quotes.']],
+            'comparisons' => ['label' => 'Comparativos', 'order' => 30, 'prefixes' => ['admin.market-study-comparisons.']],
+            'final_quotes' => ['label' => 'Cotizaciones al cliente', 'order' => 40, 'prefixes' => ['admin.quotes.']],
+        ]],
+        'customer_orders' => ['label' => 'Órdenes de Compra Cliente', 'icon' => 'fas fa-clipboard-check', 'order' => 40, 'subgroups' => [
+            'orders' => ['label' => 'Gestión de órdenes', 'order' => 10, 'prefixes' => ['admin.customer-purchase-orders.index', 'admin.customer-purchase-orders.store', 'admin.customer-purchase-orders.update', 'admin.customer-purchase-orders.destroy', 'admin.customer-purchase-orders.show', 'admin.customer-purchase-orders.pdf', 'admin.customer-purchase-orders.load-items']],
+            'invoicing' => ['label' => 'Facturación de órdenes', 'order' => 20, 'prefixes' => ['admin.customer-purchase-orders.invoice']],
+            'dispatch' => ['label' => 'Atención y despacho', 'order' => 30, 'prefixes' => ['admin.customer-purchase-orders.dispatch']],
+        ]],
+        'purchases' => ['label' => 'Compras / OC Proveedor', 'icon' => 'fas fa-shopping-cart', 'order' => 50, 'subgroups' => [
+            'supplier_orders' => ['label' => 'Órdenes a proveedores', 'order' => 10, 'prefixes' => ['admin.supplier-purchase-orders.index', 'admin.supplier-purchase-orders.store', 'admin.supplier-purchase-orders.update', 'admin.supplier-purchase-orders.destroy', 'admin.supplier-purchase-orders.show', 'admin.supplier-purchase-orders.pdf', 'admin.supplier-purchase-orders.load-items']],
+            'logistics_tracking' => ['label' => 'Seguimiento logístico', 'order' => 20, 'prefixes' => ['admin.supplier-purchase-orders.trackings.']],
+        ]],
+        'suppliers' => ['label' => 'Proveedores y Logística', 'icon' => 'fas fa-truck', 'order' => 60, 'subgroups' => [
+            'suppliers' => ['label' => 'Proveedores', 'order' => 10, 'prefixes' => ['admin.suppliers.']],
+            'supplier_accounts' => ['label' => 'Cuentas de proveedores', 'order' => 20, 'prefixes' => ['admin.suppliers.accounts', 'admin.supplier-accounts.']],
+            'shipping_agencies' => ['label' => 'Agencias de envío', 'order' => 30, 'prefixes' => ['admin.shipping-agencies.']],
+            'shipping_branches' => ['label' => 'Sedes de agencias', 'order' => 40, 'prefixes' => ['admin.shipping-agency-branches.']],
+            'shipping_contacts' => ['label' => 'Contactos de agencias', 'order' => 50, 'prefixes' => ['admin.shipping-agency-contacts.']],
+        ]],
+        'warehouse' => ['label' => 'Almacén', 'icon' => 'fas fa-warehouse', 'order' => 70, 'subgroups' => [
+            'entries' => ['label' => 'Ingresos de almacén', 'order' => 10, 'prefixes' => ['admin.warehouse-entries.index', 'admin.warehouse-entries.store', 'admin.warehouse-entries.update', 'admin.warehouse-entries.destroy', 'admin.warehouse-entries.show', 'admin.warehouse-entries.load-order', 'admin.warehouse-entries.load-items', 'admin.warehouse-entries.pdf']],
+            'documents' => ['label' => 'Documentos de ingresos', 'order' => 20, 'prefixes' => ['admin.warehouse-entries.documents.']],
+            'lots' => ['label' => 'Documentos por lote', 'order' => 30, 'prefixes' => ['admin.warehouse-entries.lot-documents.']],
+            'linked_costs' => ['label' => 'Costos vinculados', 'order' => 40, 'prefixes' => ['admin.warehouse-entries.expenses.']],
+            'kardex' => ['label' => 'Kardex', 'order' => 50, 'prefixes' => ['admin.kardex.']],
+            'labeling' => ['label' => 'Rotulación', 'order' => 60, 'prefixes' => ['admin.labelings.']],
+            'customer_returns' => ['label' => 'Devoluciones de clientes', 'order' => 70, 'prefixes' => ['devoluciones_clientes.']],
+        ]],
+        'invoicing' => ['label' => 'Facturación', 'icon' => 'fas fa-file-invoice-dollar', 'order' => 80, 'subgroups' => [
+            'electronic_invoices' => ['label' => 'Comprobantes electrónicos', 'order' => 10, 'prefixes' => ['admin.electronic-invoices.']],
+            'collections' => ['label' => 'Cobranza', 'order' => 20, 'prefixes' => ['admin.electronic-invoices.collect', 'admin.invoice-collections.']],
+            'settings' => ['label' => 'Configuración electrónica', 'order' => 30, 'prefixes' => ['admin.electronic-invoice-settings.']],
+            'series' => ['label' => 'Series electrónicas', 'order' => 40, 'prefixes' => ['admin.electronic-invoice-series.']],
+            'sunat' => ['label' => 'Catálogos SUNAT', 'order' => 50, 'prefixes' => ['catalogos_sunat.', 'admin.sunat-catalogs.']],
+        ]],
+        'banks' => ['label' => 'Bancos / Tesorería', 'icon' => 'fas fa-university', 'order' => 90, 'subgroups' => [
+            'overview' => ['label' => 'Resumen y cuentas', 'order' => 10, 'prefixes' => ['admin.banks.view', 'admin.banks.create', 'admin.banks.edit']],
+            'movements' => ['label' => 'Movimientos', 'order' => 20, 'prefixes' => ['admin.banks.movements']],
+            'transfers' => ['label' => 'Transferencias', 'order' => 30, 'prefixes' => ['admin.banks.transfers']],
+            'reconciliations' => ['label' => 'Conciliación', 'order' => 40, 'prefixes' => ['admin.banks.reconciliations']],
+            'adjustments' => ['label' => 'Ajustes bancarios', 'order' => 50, 'prefixes' => ['admin.banks.adjustments']],
+            'reports' => ['label' => 'Reportes y exportación', 'order' => 60, 'prefixes' => ['admin.banks.export']],
+        ]],
+        'petty_cash' => ['label' => 'Caja Chica', 'icon' => 'fas fa-cash-register', 'order' => 100, 'subgroups' => [
+            'boxes' => ['label' => 'Cajas chicas', 'order' => 10, 'prefixes' => ['admin.petty-cash.index', 'admin.petty-cash.store', 'admin.petty-cash.show', 'admin.petty-cash.update', 'admin.petty-cash.destroy', 'admin.petty-cash.close']],
+            'expenses' => ['label' => 'Gastos', 'order' => 20, 'prefixes' => ['admin.petty-cash.expenses.', 'admin.petty-cash.expense-documents.']],
+            'replenishments' => ['label' => 'Reposiciones', 'order' => 30, 'prefixes' => ['admin.petty-cash.replenishments.']],
+            'approved_amount' => ['label' => 'Monto aprobado', 'order' => 40, 'prefixes' => ['admin.petty-cash.approved-amount.']],
+            'exchanges' => ['label' => 'Canjes y rendiciones', 'order' => 50, 'prefixes' => ['admin.petty-cash.receipt-exchanges.']],
+            'reports' => ['label' => 'Reportes', 'order' => 60, 'prefixes' => ['admin.petty-cash.pdf', 'admin.petty-cash.excel']],
+        ]],
+        'general_cash' => ['label' => 'Caja General', 'icon' => 'fas fa-wallet', 'order' => 105, 'subgroups' => [
+            'boxes' => ['label' => 'Cajas y movimientos', 'order' => 10, 'prefixes' => ['admin.general-cash.index', 'admin.general-cash.show', 'admin.general-cash.store', 'admin.general-cash.update', 'admin.general-cash.annul', 'admin.general-cash.movements']],
+            'expenses' => ['label' => 'Gastos', 'order' => 20, 'prefixes' => ['admin.general-cash.expenses']],
+            'replenishments' => ['label' => 'Fondos y reposiciones', 'order' => 30, 'prefixes' => ['admin.general-cash.replenishments']],
+            'closing' => ['label' => 'Arqueos y cierres', 'order' => 40, 'prefixes' => ['admin.general-cash.close']],
+            'documents' => ['label' => 'Documentos', 'order' => 50, 'prefixes' => ['admin.general-cash.documents']],
+            'reports' => ['label' => 'Reportes', 'order' => 60, 'prefixes' => ['admin.general-cash.reports']],
+        ]],
+        'agenda' => ['label' => 'Agenda', 'icon' => 'fas fa-calendar-check', 'order' => 110, 'subgroups' => [
+            'work_agenda' => ['label' => 'Agenda de Trabajo', 'order' => 10, 'prefixes' => ['agenda_trabajo.']],
+            'assistance_notes' => ['label' => 'Agenda de Asistencia / Notas', 'order' => 20, 'prefixes' => ['agenda_notas.']],
+        ]],
+        'reports' => ['label' => 'Reportes', 'icon' => 'fas fa-chart-line', 'order' => 120, 'subgroups' => [
+            'profitability' => ['label' => 'Rentabilidad de órdenes', 'order' => 10, 'prefixes' => ['admin.customer-order-profitability.']],
+        ]],
+        'masters' => ['label' => 'Maestros / Configuración', 'icon' => 'fas fa-cogs', 'order' => 130, 'subgroups' => [
+            'categories' => ['label' => 'Categorías', 'order' => 10, 'prefixes' => ['admin.categories.']],
+            'subcategories' => ['label' => 'Subcategorías', 'order' => 20, 'prefixes' => ['admin.subcategories.']],
+            'units' => ['label' => 'Unidades', 'order' => 30, 'prefixes' => ['admin.units.']],
+            'presentations' => ['label' => 'Presentaciones', 'order' => 40, 'prefixes' => ['admin.presentations.']],
+            'brands' => ['label' => 'Marcas', 'order' => 50, 'prefixes' => ['admin.brands.']],
+            'articles' => ['label' => 'Artículos', 'order' => 60, 'prefixes' => ['admin.articles.']],
+        ]],
+        'companies' => ['label' => 'Empresas', 'icon' => 'fas fa-building', 'order' => 140, 'subgroups' => [
+            'companies' => ['label' => 'Empresas', 'order' => 10, 'prefixes' => ['admin.companies.']],
+            'bank_accounts' => ['label' => 'Cuentas bancarias de empresas', 'order' => 20, 'prefixes' => ['admin.company-bank-accounts.']],
+        ]],
+        'security' => ['label' => 'Usuarios y Seguridad', 'icon' => 'fas fa-user-shield', 'order' => 150, 'subgroups' => [
+            'users' => ['label' => 'Usuarios', 'order' => 10, 'prefixes' => ['admin.users.']],
+            'roles' => ['label' => 'Roles', 'order' => 20, 'prefixes' => ['admin.roles.']],
+            'profile' => ['label' => 'Perfil de usuario', 'order' => 30, 'prefixes' => ['admin.profile.']],
+        ]],
+    ],
+    'labels' => [
+        'catalogos_sunat.ver' => 'Ver catálogos SUNAT',
+        'catalogos_sunat.crear' => 'Crear catálogos y códigos',
+        'catalogos_sunat.editar' => 'Editar catálogos y códigos',
+        'catalogos_sunat.cambiar_estado' => 'Activar o inactivar catálogos y códigos',
+        'admin.banks.adjustments' => 'Registrar ajustes bancarios',
+        'agenda_trabajo.ver' => 'Ver Agenda de Trabajo',
+        'agenda_trabajo.ver_todos' => 'Ver actividades de todos los responsables',
+        'agenda_trabajo.crear' => 'Crear actividades',
+        'agenda_trabajo.editar' => 'Editar actividades',
+        'agenda_trabajo.eliminar' => 'Eliminar actividades',
+        'agenda_trabajo.cambiar_estado' => 'Cambiar estado de actividades',
+        'agenda_trabajo.asignar' => 'Asignar responsables',
+        'agenda_trabajo.derivar' => 'Derivar actividades',
+    ],
+];

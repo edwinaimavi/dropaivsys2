@@ -13,12 +13,18 @@
                 <small class="text-muted">Registro f&iacute;sico y documental de mercader&iacute;a ingresada</small>
             </div>
 
-            @can('admin.warehouse-entries.store')
-            <button id="btnCreateWarehouseEntry" class="btn btn-info shadow-sm px-4" type="button">
-                <i class="fas fa-plus-circle mr-1"></i>
-                Nuevo Ingreso
-            </button>
-            @endcan
+            <div class="d-flex flex-wrap">
+                @can('admin.warehouse-entries.index')
+                <button id="btnCompanyWarehouses" class="btn btn-outline-info shadow-sm px-3 mr-2" type="button">
+                    <i class="fas fa-building mr-1"></i> Empresas y almacenes
+                </button>
+                @endcan
+                @can('admin.warehouse-entries.store')
+                <button id="btnCreateWarehouseEntry" class="btn btn-info shadow-sm px-4" type="button">
+                    <i class="fas fa-plus-circle mr-1"></i> Nuevo Ingreso
+                </button>
+                @endcan
+            </div>
         </div>
 
         <nav aria-label="breadcrumb">
@@ -86,6 +92,7 @@
     @include('admin.warehouse-entries.partials.creditPaymentModal')
     @include('admin.warehouse-entries.partials.viewModal')
     @include('admin.warehouse-entries.partials.pettyCashExpenseModal')
+    @include('admin.warehouse-entries.partials.companyWarehouseModal')
 @stop
 
 @push('css')
@@ -556,12 +563,14 @@
 
         #warehouseEntryLotsModal,
         .warehouse-entry-lots-modal,
+        #warehouseEntryAllocationsModal,
         #warehouseEntryPettyCashModal,
         #warehouseEntryCreditPaymentModal {
             z-index: 2080 !important;
         }
 
         .warehouse-entry-backdrop-lots,
+        .warehouse-entry-backdrop-allocations,
         .warehouse-entry-backdrop-petty-cash,
         .warehouse-entry-backdrop-credit-payment {
             z-index: 2070 !important;
@@ -573,6 +582,9 @@
         #warehouseEntryLotsModal.show,
         #warehouseEntryLotsModal .modal-dialog,
         #warehouseEntryLotsModal .modal-content,
+        #warehouseEntryAllocationsModal.show,
+        #warehouseEntryAllocationsModal .modal-dialog,
+        #warehouseEntryAllocationsModal .modal-content,
         #warehouseEntryPettyCashModal.show,
         #warehouseEntryPettyCashModal .modal-dialog,
         #warehouseEntryPettyCashModal .modal-content,
@@ -1371,6 +1383,34 @@
         .warehouse-entry-pending-payment-head small { display: block; color: #7a8782; font-size: 9.5px; }
         .warehouse-entry-pending-payment-card label { font-size: 9.5px; }
         .warehouse-entry-pending-payment-card .form-group { margin-bottom: 9px; }
+        .warehouse-entry-pending-payment-calculated {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 42px;
+            padding: 6px 9px;
+            border: 1px solid #d8e7e2;
+            border-radius: 6px;
+            background: #f1f7f5;
+            color: #31564a;
+            cursor: default;
+        }
+        .warehouse-entry-pending-payment-calculated-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 27px;
+            height: 27px;
+            border-radius: 50%;
+            background: #dceee8;
+            color: #287e5e;
+        }
+        .warehouse-entry-pending-payment-calculated strong,
+        .warehouse-entry-pending-payment-calculated small { display: block; }
+        .warehouse-entry-pending-payment-calculated strong { font-size: 12px; }
+        .warehouse-entry-pending-payment-calculated small { margin-top: 1px; color: #6f7f79; font-size: 9px; }
+        .warehouse-entry-pending-payment-available { color: #4d7165; font-size: 9px; }
+        .warehouse-entry-pending-payment-available strong { color: #285b4a; }
         .warehouse-entry-pending-payment-file {
             display: flex;
             align-items: center;
@@ -2263,6 +2303,19 @@
                 max-width: 1180px;
             }
         }
+        .warehouse-entry-allocations-cell { min-width: 205px; }
+        .warehouse-entry-allocation-metrics { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 10px; }
+        .warehouse-entry-allocation-metrics > div { padding: 10px 12px; border: 1px solid #dce8e6; border-radius: 10px; background: #f8fbfa; }
+        .warehouse-entry-allocation-metrics small, .warehouse-entry-allocation-metrics strong { display: block; }
+        .warehouse-entry-allocation-metrics small { color: #64748b; font-size: 9px; font-weight: 700; }
+        .warehouse-entry-allocation-metrics strong { margin-top: 3px; color: #0f172a; }
+        .warehouse-entry-allocation-result { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; padding: 9px 11px; align-items: center; border: 1px solid #dce8e6; border-radius: 9px; background: #fff; }
+        .warehouse-entry-allocation-result + .warehouse-entry-allocation-result { margin-top: 6px; }
+        .warehouse-entry-allocation-result small { display: block; color: #64748b; font-weight: 400; }
+        @media (max-width: 767.98px) {
+            .warehouse-entry-allocation-metrics { grid-template-columns: 1fr 1fr; }
+            .warehouse-entry-allocation-result { grid-template-columns: 1fr; }
+        }
     </style>
 @endpush
 
@@ -2278,12 +2331,17 @@
             warehouseEntryShow: "{{ url('admin/warehouse-entries') }}",
             warehouseEntryGenerateNumber: "{{ route('admin.warehouse-entries.generateNumber') }}",
             warehouseEntryLoadSupplierOrderItems: "{{ route('admin.warehouse-entries.loadSupplierOrderItems') }}",
+            warehouseEntryEligibleCustomerOrderItems: "{{ route('admin.warehouse-entries.eligibleCustomerOrderItems') }}",
+            warehouseEntryEligibleCustomerOrders: "{{ route('admin.warehouse-entries.eligibleCustomerOrders') }}",
             warehouseEntryCompanyBankAccounts: "{{ url('admin/warehouse-entries/company') }}",
+            warehouseEntryCompanyWarehouses: "{{ url('admin/warehouse-entries/company') }}",
+            companyWarehouses: "{{ url('admin/company-warehouses') }}",
             warehouseEntryAvailablePettyCashExpenses: "{{ route('admin.warehouse-entries.petty-cash-expenses.available') }}",
             warehouseEntryExpenseApproval: "{{ url('admin/warehouse-entries') }}",
             supplierPurchaseOrderLogisticsStatus: "{{ url('admin/supplier-purchase-orders') }}"
         });
+        window.companyWarehouseCanManage = @json(auth()->user()->can('admin.warehouse-entries.update'));
     </script>
 
-    @vite(['resources/js/pages/warehouse-entry.js'])
+    @vite(['resources/js/pages/warehouse-entry.js', 'resources/js/pages/company-warehouse.js'])
 @endpush

@@ -28,17 +28,26 @@ use App\Models\SupplierPurchaseOrderTracking;
 use App\Models\Unit;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
+use App\Models\WarehouseEntryItem;
 use App\Models\WarehouseEntryCreditPayment;
 use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
+use App\Models\WarehouseEntryItemAllocation;
 use App\Models\WarehouseEntryItemLotDocument;
 use App\Models\WarehouseEntryPaymentDocument;
 use App\Services\CustomerPurchaseOrderStatusService;
+use App\Services\CompanyWarehouseService;
 use App\Services\PettyCashWarehouseExpenseService;
 use App\Services\SupplierPurchaseOrderFinancialService;
+use App\Services\WarehouseEntryAllocationService;
+use App\Services\WarehouseEntryAcquisitionCostService;
 use App\Services\WarehouseEntryBankPaymentService;
 use App\Services\WarehouseEntryCreditPaymentService;
+use App\Services\WarehouseEntryExpenseBankService;
+use App\Services\WarehouseEntryTaxTotalsService;
+use App\Services\WarehouseEntryTransactionalTaxService;
 use App\Services\WarehouseKardexService;
+use App\Services\ArticleInventoryPolicy;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -46,6 +55,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -70,11 +80,26 @@ class WarehouseEntryController extends Controller
 
     private WarehouseEntryCreditPaymentService $warehouseEntryCreditPaymentService;
 
+    private WarehouseEntryExpenseBankService $warehouseEntryExpenseBankService;
+
+    private WarehouseEntryTaxTotalsService $warehouseEntryTaxTotalsService;
+
+    private WarehouseEntryTransactionalTaxService $warehouseEntryTransactionalTaxService;
+
+    private WarehouseEntryAcquisitionCostService $warehouseEntryAcquisitionCostService;
+
+    private ArticleInventoryPolicy $articleInventoryPolicy;
+
     public function __construct(
         ?PettyCashWarehouseExpenseService $pettyCashWarehouseExpenseService = null,
         ?WarehouseEntryBankPaymentService $warehouseEntryBankPaymentService = null,
         ?SupplierPurchaseOrderFinancialService $supplierPurchaseOrderFinancialService = null,
-        ?WarehouseEntryCreditPaymentService $warehouseEntryCreditPaymentService = null
+        ?WarehouseEntryCreditPaymentService $warehouseEntryCreditPaymentService = null,
+        ?WarehouseEntryExpenseBankService $warehouseEntryExpenseBankService = null,
+        ?WarehouseEntryTaxTotalsService $warehouseEntryTaxTotalsService = null,
+        ?ArticleInventoryPolicy $articleInventoryPolicy = null,
+        ?WarehouseEntryTransactionalTaxService $warehouseEntryTransactionalTaxService = null,
+        ?WarehouseEntryAcquisitionCostService $warehouseEntryAcquisitionCostService = null
     ) {
         $this->pettyCashWarehouseExpenseService = $pettyCashWarehouseExpenseService
             ?? app(PettyCashWarehouseExpenseService::class);
@@ -84,6 +109,16 @@ class WarehouseEntryController extends Controller
             ?? app(SupplierPurchaseOrderFinancialService::class);
         $this->warehouseEntryCreditPaymentService = $warehouseEntryCreditPaymentService
             ?? app(WarehouseEntryCreditPaymentService::class);
+        $this->warehouseEntryExpenseBankService = $warehouseEntryExpenseBankService
+            ?? app(WarehouseEntryExpenseBankService::class);
+        $this->warehouseEntryTaxTotalsService = $warehouseEntryTaxTotalsService
+            ?? app(WarehouseEntryTaxTotalsService::class);
+        $this->articleInventoryPolicy = $articleInventoryPolicy
+            ?? app(ArticleInventoryPolicy::class);
+        $this->warehouseEntryTransactionalTaxService = $warehouseEntryTransactionalTaxService
+            ?? app(WarehouseEntryTransactionalTaxService::class);
+        $this->warehouseEntryAcquisitionCostService = $warehouseEntryAcquisitionCostService
+            ?? app(WarehouseEntryAcquisitionCostService::class);
         $this->middleware('can:admin.warehouse-entries.expenses.documents.index')->only([
             'viewExpenseDocument',
             'viewPettyCashExpenseDocument',
@@ -98,6 +133,8 @@ class WarehouseEntryController extends Controller
         $this->middleware('can:admin.warehouse-entries.load-items')->only([
             'loadSupplierPurchaseOrderItems',
             'supplierPurchaseOrderLogisticsStatus',
+            'eligibleCustomerOrders',
+            'eligibleCustomerOrderItems',
         ]);
         $this->middleware('can:admin.warehouse-entries.store')->only(['store']);
         $this->middleware('can:admin.warehouse-entries.update')->only([
@@ -128,16 +165,24 @@ class WarehouseEntryController extends Controller
     public function index(Request $request)
     {
         $warehouseEntryDeepLink = $this->warehouseEntryDeepLink($request);
+        $authorizedCompanyIds = Auth::user()->companies()->pluck('companies.id');
         $supplierPurchaseOrders = SupplierPurchaseOrder::query()
             ->with('supplier:id,business_name,short_name,ruc', 'company:id,business_name,trade_name')
+            ->whereIn('company_id', $authorizedCompanyIds)
             ->orderByDesc('id')
             ->get();
 
-        $companies = Company::query()->where('status', true)->orderBy('business_name')->get();
+        $companies = Company::query()
+            ->whereIn('id', $authorizedCompanyIds)
+            ->where('status', true)
+            ->orderBy('business_name')
+            ->get();
         $suppliers = Supplier::query()->where('status', 'ACTIVE')->orderBy('business_name')->get();
         $customers = Customer::query()->orderBy('business_name')->orderBy('full_name')->get();
         $currencies = Currency::query()->where('status', 'ACTIVE')->orderBy('description')->get();
-        $articles = Article::query()
+        $articles = Article::query();
+        $this->articleInventoryPolicy->scopeEligible($articles);
+        $articles = $articles
             ->where('status', 'ACTIVE')
             ->orderBy('billing_name')
             ->get([
@@ -199,7 +244,11 @@ class WarehouseEntryController extends Controller
         abort_unless($company->status, 404);
 
         $accounts = CompanyBankAccount::query()
-            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->with([
+                'company:id,business_name,trade_name',
+                'bank:id,description,short_name',
+                'currency:id,code,symbol',
+            ])
             ->where('company_id', $company->id)
             ->where('status', 'ACTIVE')
             ->orderBy('id')
@@ -760,7 +809,12 @@ class WarehouseEntryController extends Controller
             throw ValidationException::withMessages(['company_bank_account_id' => 'El gasto no tiene una cuenta bancaria vinculada.']);
         }
 
-        DB::transaction(function () use ($expense, $validated) {
+        DB::transaction(function () use (&$expense, $validated) {
+            $expense = WarehouseEntryExpense::query()
+                ->where('warehouse_entry_id', $expense->warehouse_entry_id)
+                ->where('status', 'ACTIVE')
+                ->lockForUpdate()
+                ->findOrFail($expense->id);
             $approved = $validated['approval_status'] === WarehouseEntryExpense::APPROVAL_APPROVED;
             $expense->update([
                 'approval_status' => $validated['approval_status'],
@@ -769,6 +823,11 @@ class WarehouseEntryController extends Controller
                 'approved_at' => $approved ? now() : null,
                 'updated_by' => Auth::id(),
             ]);
+            $this->warehouseEntryExpenseBankService->sync(
+                $expense,
+                'CAMBIO DE APROBACIÓN DEL GASTO VINCULADO',
+                Auth::id()
+            );
             $this->recalculateEntryExpenseCosts($expense->warehouseEntry);
             app(WarehouseKardexService::class)->syncLinkedCosts($expense->warehouseEntry->fresh([
                 'currency',
@@ -837,6 +896,15 @@ class WarehouseEntryController extends Controller
             'items.presentation',
             'items.brand',
             'items.lots.documents',
+            'items.allocations.customerPurchaseOrder.customer',
+            'items.allocations.customerPurchaseOrder.company',
+            'items.allocations.customerPurchaseOrder.currency',
+            'items.allocations.customerPurchaseOrderItem',
+            'items.allocations.supplierPurchaseOrder.supplier',
+            'items.allocations.supplierPurchaseOrderItem',
+            'customerPurchaseOrders.customer',
+            'customerPurchaseOrders.company',
+            'customerPurchaseOrders.currency',
             'expenses.provider:id,business_name,short_name,ruc',
             'expenses.shippingAgency:id,business_name,trade_name,ruc',
             'expenses.currency:id,code,symbol',
@@ -869,7 +937,12 @@ class WarehouseEntryController extends Controller
             $warehouseEntry->setAttribute(
                 'expected_payment_date',
                 $isCredit
-                    ? $this->supplierPurchaseOrderDueDate($warehouseEntry->supplierPurchaseOrder)
+                    ? $this->calculateCreditDueDate(
+                        $warehouseEntry->document_date?->toDateString(),
+                        $warehouseEntry,
+                        $warehouseEntry->supplierPurchaseOrder,
+                        $this->creditDaysForSupplierOrder($warehouseEntry->supplierPurchaseOrder)
+                    )
                     : null
             );
         }
@@ -1481,7 +1554,7 @@ class WarehouseEntryController extends Controller
     {
         try {
             DB::transaction(function () use ($warehouseEntry, $kardexService) {
-                $supplierPurchaseOrderId = $warehouseEntry->supplier_purchase_order_id;
+                $supplierPurchaseOrderIds = $this->supplierPurchaseOrderIdsForWarehouseEntry($warehouseEntry);
                 $customerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($warehouseEntry);
 
                 $kardexService->reverseWarehouseEntry($warehouseEntry, 'Ingreso de almacen anulado');
@@ -1491,13 +1564,23 @@ class WarehouseEntryController extends Controller
                     Auth::id()
                 );
 
+                $warehouseEntry->expenses()->lockForUpdate()->get()->each(
+                    fn (WarehouseEntryExpense $expense) => $this->warehouseEntryExpenseBankService->cancel(
+                        $expense,
+                        'INGRESO DE ALMACÉN ANULADO '.$warehouseEntry->entry_number,
+                        Auth::id()
+                    )
+                );
+
                 $warehouseEntry->update([
                     'status' => self::STATUS_CANCELLED,
                     'updated_by' => Auth::id(),
                 ]);
                 $warehouseEntry->delete();
 
-                $this->refreshSupplierPurchaseOrderStatus($supplierPurchaseOrderId);
+                $supplierPurchaseOrderIds->each(
+                    fn ($supplierPurchaseOrderId) => $this->refreshSupplierPurchaseOrderStatus((int) $supplierPurchaseOrderId)
+                );
                 $this->refreshCustomerPurchaseOrderStatuses($customerPurchaseOrderIds);
             });
 
@@ -1539,6 +1622,7 @@ class WarehouseEntryController extends Controller
                 'items.unit',
                 'items.presentation',
                 'items.brand',
+                'items.customerPurchaseOrderItem.purchaseOrder',
             ])
             ->findOrFail($validated['supplier_purchase_order_id']);
 
@@ -1552,10 +1636,16 @@ class WarehouseEntryController extends Controller
 
         $entryId = $validated['warehouse_entry_id'] ?? null;
         $receivedByItem = $this->receivedQuantitiesForOrder($order, $entryId);
+        $customerPendingByItem = $this->customerPendingQuantitiesForSupplierItemIds(
+            $order->items->pluck('id')->all(),
+            $entryId
+        );
 
         $items = $order->items
             ->reject(fn (SupplierPurchaseOrderItem $item) => strtolower((string) $item->status) === 'deleted')
-            ->map(function (SupplierPurchaseOrderItem $item) use ($receivedByItem, $order) {
+            ->filter(fn (SupplierPurchaseOrderItem $item) => $item->article
+                && $this->articleInventoryPolicy->canParticipateInInventory($item->article))
+            ->map(function (SupplierPurchaseOrderItem $item) use ($receivedByItem, $customerPendingByItem, $order) {
                 $orderedQuantity = round((float) $item->quantity, 2);
                 $receivedQuantity = round((float) ($receivedByItem[$item->id] ?? 0), 2);
                 $pendingQuantity = max(round($orderedQuantity - $receivedQuantity, 2), 0);
@@ -1564,11 +1654,20 @@ class WarehouseEntryController extends Controller
                     $item,
                     $orderedQuantity,
                     $pendingQuantity,
-                    (bool) $order->affect_igv
+                    (bool) $order->affect_igv,
+                    $customerPendingByItem[$item->id] ?? null,
+                    $order
                 );
             })
             ->filter(fn (array $item) => (float) $item['quantity'] > 0)
             ->values();
+
+        $taxCalculation = $this->warehouseEntryTaxTotalsService->calculate(
+            $order,
+            $items->all(),
+            $receivedByItem,
+            $this->previousSupplierOrderEntryTaxTotals($order->id, $entryId)
+        );
 
         $customer = $order->customerPurchaseOrders
             ->pluck('customer')
@@ -1585,8 +1684,12 @@ class WarehouseEntryController extends Controller
             'customer_id' => $customer?->id,
             'currency_id' => $order->currency_id,
             'currency_name' => trim(($order->currency?->code ?? '').' - '.($order->currency?->description ?? '')),
+            'exchange_rate' => strtoupper((string) $order->currency?->code) === 'PEN'
+                ? 1
+                : $order->exchange_rate,
             'purchase_order_number' => $order->code,
             'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
+            'tax_totals' => $taxCalculation['totals'],
             'payment_method' => $order->payment_method,
             'payment_condition' => $order->payment_condition,
             'payment_condition_label' => $this->paymentConditionLabel(
@@ -1602,6 +1705,151 @@ class WarehouseEntryController extends Controller
         ]);
     }
 
+    public function eligibleCustomerOrderItems(Request $request)
+    {
+        $validated = $request->validate([
+            'article_id' => ['required', 'integer', 'exists:articles,id'],
+            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'customer_purchase_order_ids' => ['nullable', 'array'],
+            'customer_purchase_order_ids.*' => ['integer', 'distinct', 'exists:customer_purchase_orders,id'],
+            'search' => ['nullable', 'string', 'max:150'],
+            'except_allocation_id' => ['nullable', 'integer'],
+            'except_warehouse_entry_item_id' => ['nullable', 'integer', 'exists:warehouse_entry_items,id'],
+        ]);
+
+        $this->articleInventoryPolicy->assertCanParticipateInInventory(
+            Article::query()->findOrFail($validated['article_id'])
+        );
+
+        abort_unless(Schema::hasTable('warehouse_entry_item_allocations'), 503,
+            'Ejecute las migraciones pendientes para usar asignaciones por OC cliente.');
+
+        $allocated = DB::table('warehouse_entry_item_allocations as allocations')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+            ->where('allocations.status', 'active')
+            ->whereNull('allocations.deleted_at')
+            ->whereNull('entries.deleted_at')
+            ->where('entries.status', self::STATUS_REGISTERED)
+            ->when($validated['except_allocation_id'] ?? null,
+                fn ($query, $id) => $query->where('allocations.id', '!=', $id))
+            ->when($validated['except_warehouse_entry_item_id'] ?? null,
+                fn ($query, $id) => $query->where('allocations.warehouse_entry_item_id', '!=', $id))
+            ->groupBy('allocations.customer_purchase_order_item_id')
+            ->selectRaw('allocations.customer_purchase_order_item_id, SUM(allocations.quantity_allocated) as allocated_quantity');
+
+        $items = DB::table('customer_purchase_order_items as items')
+            ->join('customer_purchase_orders as orders', 'orders.id', '=', 'items.customer_purchase_order_id')
+            ->join('customers', 'customers.id', '=', 'orders.customer_id')
+            ->join('companies', 'companies.id', '=', 'orders.company_id')
+            ->join('currencies', 'currencies.id', '=', 'orders.currency_id')
+            ->join('articles', 'articles.id', '=', 'items.article_id')
+            ->leftJoinSub($allocated, 'allocated', fn ($join) => $join->on(
+                'allocated.customer_purchase_order_item_id', '=', 'items.id'
+            ))
+            ->where('items.article_id', $validated['article_id'])
+            ->where('orders.company_id', $validated['company_id'])
+            ->when($validated['customer_purchase_order_ids'] ?? [], fn ($query, $ids) => $query
+                ->whereIn('orders.id', $ids))
+            ->whereNull('orders.deleted_at')
+            ->where('items.status', '!=', 'deleted')
+            ->whereNotIn('orders.status', ['cancelled', 'completed', 'delivered', 'invoiced', 'attended', 'not_attended'])
+            ->whereRaw('items.quantity > COALESCE(allocated.allocated_quantity, 0)')
+            ->when($validated['search'] ?? null, function ($query, $search) {
+                $term = '%'.trim($search).'%';
+                $query->where(function ($inner) use ($term) {
+                    $inner->where('orders.purchase_order_number', 'like', $term)
+                        ->orWhere('orders.code', 'like', $term)
+                        ->orWhere('customers.business_name', 'like', $term)
+                        ->orWhere('customers.full_name', 'like', $term)
+                        ->orWhere('articles.code', 'like', $term)
+                        ->orWhere('articles.billing_name', 'like', $term)
+                        ->orWhere('companies.trade_name', 'like', $term)
+                        ->orWhere('companies.business_name', 'like', $term)
+                        ->orWhere('orders.status', 'like', $term)
+                        ->orWhere('currencies.code', 'like', $term);
+                });
+            })
+            ->orderByDesc('orders.id')
+            ->limit(50)
+            ->get([
+                'items.id as customer_purchase_order_item_id',
+                'orders.id as customer_purchase_order_id',
+                'orders.code', 'orders.purchase_order_number', 'orders.status',
+                'customers.business_name', 'customers.full_name',
+                'companies.trade_name as company_name', 'currencies.code as currency_code',
+                'articles.code as article_code', 'articles.billing_name as article_name',
+                'items.quantity as ordered_quantity',
+                DB::raw('COALESCE(allocated.allocated_quantity, 0) as allocated_quantity'),
+                DB::raw('(items.quantity - COALESCE(allocated.allocated_quantity, 0)) as pending_quantity'),
+            ]);
+
+        return response()->json(['data' => $items]);
+    }
+
+    public function eligibleCustomerOrders(Request $request)
+    {
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        $orders = CustomerPurchaseOrder::query()
+            ->with([
+                'customer:id,business_name,full_name',
+                'company:id,business_name,trade_name',
+                'currency:id,code,symbol',
+            ])
+            ->where('company_id', $validated['company_id'])
+            ->where('status', '!=', 'cancelled')
+            ->when($validated['search'] ?? null, function ($query, $search) {
+                $term = '%'.trim($search).'%';
+                $query->where(function ($inner) use ($term) {
+                    $inner->where('purchase_order_number', 'like', $term)
+                        ->orWhere('code', 'like', $term)
+                        ->orWhere('status', 'like', $term)
+                        ->orWhereHas('customer', fn ($customer) => $customer
+                            ->where('business_name', 'like', $term)
+                            ->orWhere('full_name', 'like', $term))
+                        ->orWhereHas('company', fn ($company) => $company
+                            ->where('business_name', 'like', $term)
+                            ->orWhere('trade_name', 'like', $term))
+                        ->orWhereHas('currency', fn ($currency) => $currency
+                            ->where('code', 'like', $term));
+                });
+            })
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get([
+                'id', 'company_id', 'customer_id', 'currency_id', 'code',
+                'purchase_order_number', 'grand_total', 'status',
+            ])
+            ->map(function (CustomerPurchaseOrder $order) {
+                $customerName = $order->customer?->business_name
+                    ?: $order->customer?->full_name
+                    ?: 'Cliente sin nombre';
+                $number = $order->purchase_order_number ?: $order->code;
+                $currency = $order->currency?->symbol ?: $order->currency?->code;
+
+                return [
+                    'id' => $order->id,
+                    'text' => trim("{$number} | {$customerName} | {$currency} ".number_format((float) $order->grand_total, 2, '.', '')),
+                    'purchase_order_number' => $number,
+                    'customer_name' => $customerName,
+                    'company_id' => $order->company_id,
+                    'company_name' => $order->company?->trade_name ?: $order->company?->business_name,
+                    'currency_id' => $order->currency_id,
+                    'currency_code' => $order->currency?->code,
+                    'currency_symbol' => $order->currency?->symbol,
+                    'status' => $order->status,
+                    'status_label' => CustomerPurchaseOrder::statusPresentation($order->status)['label'],
+                    'grand_total' => $order->grand_total,
+                ];
+            });
+
+        return response()->json(['data' => $orders]);
+    }
+
     private function saveEntry(Request $request, ?WarehouseEntry $entry = null)
     {
         $generatedPdfPath = null;
@@ -1612,28 +1860,53 @@ class WarehouseEntryController extends Controller
         $storedPaymentDocumentPaths = [];
 
         $request->merge([
+            'entry_mode' => $request->filled('entry_mode')
+                ? ($request->input('entry_mode') === 'supplier_invoice' ? 'supplier_invoice' : 'supplier_order')
+                : (($request->filled('supplier_purchase_order_id') || $entry?->supplier_purchase_order_id)
+                    ? 'supplier_order'
+                    : 'supplier_invoice'),
             'document_type' => $this->normalizeDocumentType($request->input('document_type')),
+            'document_series' => $this->upperOrNull($request->input('document_series')),
+            'document_number' => $this->upperOrNull($request->input('document_number')),
             'expenses' => collect($request->all('expenses')['expenses'] ?? [])
                 ->map(fn (array $expense) => $this->normalizeLinkedExpenseFields($expense))
                 ->all(),
         ]);
-        $sourceOrderId = $request->input('supplier_purchase_order_id') ?: $entry?->supplier_purchase_order_id;
+        $sourceOrderId = $request->input('entry_mode') === 'supplier_invoice'
+            ? null
+            : ($request->input('supplier_purchase_order_id') ?: $entry?->supplier_purchase_order_id);
         if ($sourceOrderId) {
             $request->merge(['supplier_purchase_order_id' => $sourceOrderId]);
         }
         $hasSupplierPurchaseOrder = filled($sourceOrderId);
         $sourceOrder = $hasSupplierPurchaseOrder
-            ? SupplierPurchaseOrder::query()->find($sourceOrderId)
+            ? SupplierPurchaseOrder::query()->with('currency:id,code')->find($sourceOrderId)
             : null;
 
+        $purchaseCurrency = $sourceOrder?->currency
+            ?? Currency::query()->find($request->input('currency_id') ?: $entry?->currency_id);
+        $isBaseCurrency = strtoupper((string) $purchaseCurrency?->code) === 'PEN';
+        if ($isBaseCurrency) {
+            $request->merge(['exchange_rate' => 1]);
+        } elseif ($sourceOrder && ! $request->filled('exchange_rate') && (float) $sourceOrder->exchange_rate > 0) {
+            $request->merge(['exchange_rate' => $sourceOrder->exchange_rate]);
+        }
+
         if ($sourceOrder) {
-            $officialCondition = $sourceOrder->payment_condition;
-            $isCredit = $this->isCreditPaymentCondition($officialCondition);
+            $officialCondition = $sourceOrder->payment_condition ?: $request->input('payment_condition');
+            $isCredit = filled($sourceOrder->payment_condition)
+                ? $this->isCreditPaymentCondition($sourceOrder->payment_condition)
+                : $request->boolean('generate_account_payable');
             $request->merge([
-                'payment_condition' => $officialCondition,
+                'payment_method' => $this->normalizeWarehouseEntryPaymentMethod(
+                    $sourceOrder->payment_method ?: $request->input('payment_method')
+                ),
+                'payment_condition' => $this->normalizeWarehouseEntryPaymentCondition($officialCondition),
+                'credit_days' => $isCredit ? $this->creditDaysForSupplierOrder($sourceOrder) : null,
                 'generate_account_payable' => $isCredit,
                 'expected_payment_date' => $isCredit
-                    ? $this->supplierPurchaseOrderDueDate($sourceOrder)
+                    ? ($this->supplierPurchaseOrderDueDate($sourceOrder)
+                        ?: $request->input('expected_payment_date'))
                     : null,
             ]);
 
@@ -1644,6 +1917,29 @@ class WarehouseEntryController extends Controller
                     'supplier_purchase_order_id' => 'Complete el anticipo pendiente antes de registrar el ingreso de almacén.',
                 ]);
             }
+        } else {
+            $paymentCondition = $this->normalizeWarehouseEntryPaymentCondition(
+                $request->input('payment_condition')
+            );
+            $isCredit = $paymentCondition === 'credito';
+            $creditDays = $isCredit ? (int) $request->input('credit_days') : null;
+            $documentDate = $request->input('document_date');
+            $expectedPaymentDate = $isCredit && $creditDays > 0
+                && (! filled($documentDate) || strtotime((string) $documentDate) !== false)
+                    ? Carbon::parse($documentDate ?: now())
+                        ->startOfDay()
+                        ->addDays($creditDays)
+                        ->toDateString()
+                    : null;
+            $request->merge([
+                'payment_method' => $this->normalizeWarehouseEntryPaymentMethod(
+                    $request->input('payment_method')
+                ),
+                'payment_condition' => $paymentCondition,
+                'credit_days' => $creditDays,
+                'generate_account_payable' => $isCredit,
+                'expected_payment_date' => $expectedPaymentDate,
+            ]);
         }
 
         if (! $entry && $hasSupplierPurchaseOrder) {
@@ -1661,9 +1957,18 @@ class WarehouseEntryController extends Controller
         $documentRules = $this->newDocumentUploadRules($request);
         $hasInitialPaymentItems = ! $entry
             && count((array) $request->input('payment_items', [])) > 0;
+        $hasActiveCreditPayments = (bool) $entry?->creditPayments()->exists();
+        $requiresLegacyBankPayment = ! $request->boolean('generate_account_payable')
+            && ! $hasInitialPaymentItems
+            && ! $hasActiveCreditPayments;
 
         $validated = $request->validate([
-            'supplier_purchase_order_id' => ['nullable', 'exists:supplier_purchase_orders,id'],
+            'entry_mode' => ['required', Rule::in(['supplier_order', 'supplier_invoice'])],
+            'supplier_purchase_order_id' => [
+                Rule::requiredIf($request->input('entry_mode') === 'supplier_order'),
+                'nullable',
+                'exists:supplier_purchase_orders,id',
+            ],
             'warehouse_id' => [
                 'required',
                 Rule::exists('warehouses', 'id')->where('status', 'ACTIVE'),
@@ -1672,28 +1977,48 @@ class WarehouseEntryController extends Controller
             'supplier_id' => [Rule::requiredIf(! $hasSupplierPurchaseOrder), 'nullable', 'exists:suppliers,id'],
             'customer_id' => ['nullable', 'exists:customers,id'],
             'currency_id' => [Rule::requiredIf(! $hasSupplierPurchaseOrder), 'nullable', 'exists:currencies,id'],
+            'exchange_rate' => [Rule::requiredIf(! $isBaseCurrency), 'nullable', 'numeric', 'gt:0'],
+            'customer_purchase_order_ids' => ['nullable', 'array'],
+            'customer_purchase_order_ids.*' => [
+                'integer',
+                'distinct',
+                'exists:customer_purchase_orders,id',
+            ],
             'purchase_order_number' => ['nullable', 'string', 'max:50'],
             'document_type' => ['required', 'string', Rule::in(['FACTURA', 'BOLETA'])],
-            'document_series' => ['nullable', 'string', 'max:20'],
-            'document_number' => ['nullable', 'string', 'max:50'],
-            'document_date' => ['nullable', 'date'],
-            'payment_method' => ['nullable', 'string', 'max:100'],
-            'payment_condition' => ['nullable', 'string', 'max:100'],
+            'document_series' => ['required_if:document_type,FACTURA,BOLETA', 'nullable', 'string', 'max:20'],
+            'document_number' => ['required_if:document_type,FACTURA,BOLETA', 'nullable', 'string', 'max:50'],
+            'document_date' => ['required_if:document_type,FACTURA,BOLETA', 'nullable', 'date'],
+            'movement_date' => [Rule::requiredIf(! $entry), 'nullable', 'date'],
+            'payment_method' => ['required', Rule::in(array_keys(WarehouseEntry::PAYMENT_METHODS))],
+            'payment_condition' => ['required', Rule::in(array_keys(WarehouseEntry::PAYMENT_CONDITIONS))],
+            'credit_days' => [
+                Rule::requiredIf(
+                    $request->input('entry_mode') === 'supplier_invoice'
+                    && $request->input('payment_condition') === 'credito'
+                ),
+                'nullable',
+                'integer',
+                'min:1',
+            ],
             'generate_account_payable' => ['nullable', 'boolean'],
             'payable_amount' => ['nullable', 'numeric', 'min:0'],
             'expected_payment_date' => [
-                Rule::requiredIf((bool) $request->boolean('generate_account_payable')),
+                Rule::requiredIf(
+                    $request->input('entry_mode') === 'supplier_invoice'
+                    && $request->input('payment_condition') === 'credito'
+                ),
                 'nullable',
                 'date',
             ],
             'payment_company_bank_account_id' => [
-                Rule::requiredIf(! $request->boolean('generate_account_payable') && ! $hasInitialPaymentItems),
+                Rule::requiredIf($requiresLegacyBankPayment),
                 'nullable',
                 'integer',
                 'exists:company_bank_accounts,id',
             ],
             'bank_payment_date' => [
-                Rule::requiredIf(! $request->boolean('generate_account_payable') && ! $hasInitialPaymentItems),
+                Rule::requiredIf($requiresLegacyBankPayment),
                 'nullable',
                 'date',
             ],
@@ -1747,6 +2072,22 @@ class WarehouseEntryController extends Controller
             'items.*.ordered_quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.tax_affectation_code' => ['nullable', 'string', Rule::in(WarehouseEntryItem::SUPPORTED_TAX_AFFECTATION_CODES)],
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items.*.discount_amount' => ['nullable', 'numeric'],
+            'items.*.taxable_base' => ['nullable', 'numeric'],
+            'items.*.is_free' => ['nullable', 'boolean'],
+            'items.*.igv_recoverable' => ['nullable', 'boolean'],
+            'items.*.allocations' => ['nullable', 'array'],
+            'items.*.allocations.*.id' => ['nullable', 'integer', 'exists:warehouse_entry_item_allocations,id'],
+            'items.*.allocations.*.allocation_type' => ['required', Rule::in([
+                WarehouseEntryItemAllocation::TYPE_CUSTOMER_ORDER,
+                WarehouseEntryItemAllocation::TYPE_SUPPLIER_ORDER,
+                WarehouseEntryItemAllocation::TYPE_FREE_STOCK,
+            ])],
+            'items.*.allocations.*.quantity_allocated' => ['required', 'numeric', 'gt:0'],
+            'items.*.allocations.*.customer_purchase_order_item_id' => ['nullable', 'integer', 'exists:customer_purchase_order_items,id'],
+            'items.*.allocations.*.supplier_purchase_order_item_id' => ['nullable', 'integer', 'exists:supplier_purchase_order_items,id'],
             'warehouse_entry_documents' => ['nullable', 'array'],
             'warehouse_entry_documents.*.type' => ['required_with:warehouse_entry_documents.*.file', 'string', Rule::in(array_keys($this->warehouseEntryDocumentTypes()))],
             'warehouse_entry_documents.*.description' => ['nullable', 'string', 'max:255'],
@@ -1790,9 +2131,11 @@ class WarehouseEntryController extends Controller
             'expenses.*.document_number' => ['nullable', 'string', 'max:50'],
             'expenses.*.document_date' => ['nullable', 'date'],
             'expenses.*.currency_id' => ['nullable', 'exists:currencies,id'],
+            'expenses.*.exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'expenses.*.amount' => ['required', 'numeric', 'gt:0'],
             'expenses.*.distributed_amount' => ['nullable', 'numeric', 'min:0'],
             'expenses.*.affects_igv' => ['required', 'boolean'],
+            'expenses.*.igv_recoverable' => ['nullable', 'boolean'],
             'expenses.*.igv_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'expenses.*.taxable_amount' => ['nullable', 'numeric', 'min:0'],
             'expenses.*.igv_amount' => ['nullable', 'numeric', 'min:0'],
@@ -1855,6 +2198,14 @@ class WarehouseEntryController extends Controller
             'payment_items.*.file.required' => 'Adjunte la constancia de cada pago.',
             'payment_items.*.file.mimes' => 'Las constancias deben ser PDF, JPG, JPEG, PNG o WEBP.',
             'payment_items.*.file.max' => 'Cada constancia no debe superar los 10 MB.',
+            'payment_method.required' => 'Seleccione la forma de pago.',
+            'payment_method.in' => 'Seleccione una forma de pago válida.',
+            'payment_condition.required' => 'Seleccione la condición de pago.',
+            'payment_condition.in' => 'Seleccione Contado o Crédito como condición de pago.',
+            'credit_days.required' => 'Ingrese los días de crédito.',
+            'credit_days.integer' => 'Los días de crédito deben ser un número entero.',
+            'credit_days.min' => 'Los días de crédito deben ser mayores a cero.',
+            'expected_payment_date.required' => 'La fecha de vencimiento es obligatoria para una compra a crédito.',
         ]);
 
         if ($request->boolean('expense_management')) {
@@ -1876,9 +2227,19 @@ class WarehouseEntryController extends Controller
                 &$pdfError,
                 &$storedBankPaymentPath,
                 &$storedPaymentDocumentPaths,
-                $hasInitialPaymentItems
+                $hasInitialPaymentItems,
+                $hasActiveCreditPayments
             ) {
+                if ($entry) {
+                    $entry = WarehouseEntry::query()
+                        ->whereKey($entry->id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                }
                 $previousSupplierPurchaseOrderId = $entry?->supplier_purchase_order_id;
+                $previousSupplierPurchaseOrderIds = $entry
+                    ? $this->supplierPurchaseOrderIdsForWarehouseEntry($entry)
+                    : collect();
                 $previousCustomerPurchaseOrderIds = $entry
                     ? $this->customerPurchaseOrderIdsForWarehouseEntry($entry)
                     : collect();
@@ -1889,10 +2250,71 @@ class WarehouseEntryController extends Controller
                             'currency:id,code',
                             'paymentCurrency:id,code',
                             'advancePayments.currency:id,code',
+                            'items',
                         ])
                         ->when(! $entry, fn ($query) => $query->lockForUpdate())
                         ->findOrFail($validated['supplier_purchase_order_id'])
                     : null;
+                $inventoryCompanyId = (int) ($supplierPurchaseOrder?->company_id ?? ($validated['company_id'] ?? 0));
+                abort_unless(Auth::user()?->belongsToCompany($inventoryCompanyId), 404);
+                app(CompanyWarehouseService::class)->assertEnabled(
+                    $inventoryCompanyId,
+                    (int) $validated['warehouse_id']
+                );
+                if ($entry && (int) $entry->company_id !== $inventoryCompanyId) {
+                    throw ValidationException::withMessages([
+                        'company_id' => 'No se puede cambiar la empresa propietaria de un ingreso que ya generó inventario.',
+                    ]);
+                }
+                $customerPurchaseOrderIds = collect($validated['customer_purchase_order_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
+                $customerPurchaseOrders = collect();
+                if ($validated['entry_mode'] === 'supplier_invoice' && $customerPurchaseOrderIds->isNotEmpty()) {
+                    $customerPurchaseOrders = CustomerPurchaseOrder::query()
+                        ->whereIn('id', $customerPurchaseOrderIds)
+                        ->whereNull('deleted_at')
+                        ->lockForUpdate()
+                        ->get();
+                    $entryCompanyId = (int) ($validated['company_id'] ?? 0);
+
+                    if ($customerPurchaseOrders->count() !== $customerPurchaseOrderIds->count()) {
+                        throw ValidationException::withMessages([
+                            'customer_purchase_order_ids' => 'Una de las OC Cliente seleccionadas ya no está disponible.',
+                        ]);
+                    }
+                    if ($customerPurchaseOrders->contains(fn ($order) => (int) $order->company_id !== $entryCompanyId)) {
+                        throw ValidationException::withMessages([
+                            'customer_purchase_order_ids' => 'Las OC Cliente relacionadas deben pertenecer a la empresa del ingreso.',
+                        ]);
+                    }
+                    if ($customerPurchaseOrders->contains(fn ($order) => strtolower((string) $order->status) === 'cancelled')) {
+                        throw ValidationException::withMessages([
+                            'customer_purchase_order_ids' => 'No se puede relacionar una OC Cliente anulada.',
+                        ]);
+                    }
+
+                }
+                if ($validated['entry_mode'] === 'supplier_invoice') {
+                    $allocatedCustomerItemIds = collect($validated['items'])
+                        ->flatMap(fn ($item) => $item['allocations'] ?? [])
+                        ->where('allocation_type', WarehouseEntryItemAllocation::TYPE_CUSTOMER_ORDER)
+                        ->pluck('customer_purchase_order_item_id')
+                        ->filter()
+                        ->map(fn ($id) => (int) $id)
+                        ->unique();
+                    $allocatedCustomerOrderIds = DB::table('customer_purchase_order_items')
+                        ->whereIn('id', $allocatedCustomerItemIds)
+                        ->pluck('customer_purchase_order_id')
+                        ->map(fn ($id) => (int) $id)
+                        ->unique();
+                    if ($allocatedCustomerOrderIds->diff($customerPurchaseOrderIds)->isNotEmpty()) {
+                        throw ValidationException::withMessages([
+                            'customer_purchase_order_ids' => 'Cada OC Cliente asignada por artículo debe estar seleccionada también en la cabecera.',
+                        ]);
+                    }
+                }
                 if (! $entry && $supplierPurchaseOrder) {
                     $existingEntry = $this->warehouseEntryForSupplierPurchaseOrder($supplierPurchaseOrder->id);
 
@@ -1916,20 +2338,92 @@ class WarehouseEntryController extends Controller
                 }
                 $supplier = $supplierPurchaseOrder?->supplier
                     ?? Supplier::query()->find($validated['supplier_id'] ?? null);
+                $sunatDocumentTypeCode = WarehouseEntry::sunatDocumentTypeCode(
+                    $validated['document_type'] ?? null
+                );
+                $this->assertUniqueSupplierDocument(
+                    (int) ($supplierPurchaseOrder?->company_id ?? $validated['company_id']),
+                    (int) ($supplierPurchaseOrder?->supplier_id ?? $validated['supplier_id']),
+                    $sunatDocumentTypeCode,
+                    $validated['document_series'] ?? null,
+                    $validated['document_number'] ?? null,
+                    $entry?->id
+                );
                 $affectIgv = $supplierPurchaseOrder
                     ? (bool) $supplierPurchaseOrder->affect_igv
                     : (bool) ($validated['affect_igv'] ?? false);
+                $validated['items'] = $this->warehouseEntryTransactionalTaxService->prepare(
+                    $validated['items'],
+                    $affectIgv,
+                    $entry,
+                    ! $supplierPurchaseOrder
+                );
+                $this->validateInventoryArticles($validated['items']);
                 $this->validatePendingQuantities($validated['items'], $entry?->id);
-                $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
-                $totals = $this->calculateTotals($preparedItems);
+                $preparedItems = $this->prepareItems(
+                    $validated['items'],
+                    $supplierPurchaseOrder ? false : $affectIgv
+                );
+                if ($supplierPurchaseOrder) {
+                    $taxCalculation = $this->warehouseEntryTaxTotalsService->calculate(
+                        $supplierPurchaseOrder,
+                        $validated['items'],
+                        $this->receivedQuantitiesForOrder($supplierPurchaseOrder, $entry?->id),
+                        $this->previousSupplierOrderEntryTaxTotals($supplierPurchaseOrder->id, $entry?->id)
+                    );
+                    $preparedItems = $this->applySupplierOrderTaxBreakdown(
+                        $preparedItems,
+                        $taxCalculation['items']
+                    );
+                    $totals = $taxCalculation['totals'];
+                } else {
+                    $taxCalculation = $this->warehouseEntryTransactionalTaxService->calculate(
+                        $preparedItems,
+                        $affectIgv
+                    );
+                    $preparedItems = $taxCalculation['items'];
+                    $totals = [
+                        'subtotal' => $taxCalculation['totals']['subtotal'],
+                        'igv' => $taxCalculation['totals']['tax_total'],
+                        'grand_total' => $taxCalculation['totals']['grand_total'],
+                    ];
+
+                    $hasLegacyTaxLines = collect($preparedItems)->contains(
+                        fn (array $item) => (bool) ($item['_transactional_tax_legacy'] ?? false)
+                    );
+                    if (! $hasLegacyTaxLines) {
+                        $affectIgv = collect($preparedItems)->contains(
+                            fn (array $item) => ($item['tax_affectation_code'] ?? null)
+                                === WarehouseEntryItem::TAX_AFFECTATION_TAXED
+                                && ! filter_var($item['is_free'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                                && (float) ($item['line_total'] ?? 0) > 0
+                        );
+                    }
+                }
+                $this->warehouseEntryTransactionalTaxService->validate($preparedItems);
+                $inventoryChanged = ! $entry || $this->warehouseEntryHasInventoryChanges(
+                    $entry,
+                    (int) $validated['warehouse_id'],
+                    (int) ($supplierPurchaseOrder?->currency_id ?? $validated['currency_id']),
+                    (float) $validated['exchange_rate'],
+                    $validated['movement_date'] ?? $entry?->movement_date,
+                    $preparedItems
+                );
                 $paymentCondition = $supplierPurchaseOrder?->payment_condition
                     ?? ($validated['payment_condition'] ?? null);
-                $generateAccountPayable = $supplierPurchaseOrder
+                $generateAccountPayable = $supplierPurchaseOrder && filled($supplierPurchaseOrder->payment_condition)
                     ? $this->isCreditPaymentCondition($paymentCondition)
                     : (bool) ($validated['generate_account_payable'] ?? false);
                 $expectedPaymentDate = $generateAccountPayable && $supplierPurchaseOrder
                     ? $this->supplierPurchaseOrderDueDate($supplierPurchaseOrder)
-                    : ($generateAccountPayable ? ($validated['expected_payment_date'] ?? null) : null);
+                    : ($generateAccountPayable
+                        ? $this->calculateCreditDueDate(
+                            $validated['document_date'] ?? null,
+                            $entry,
+                            null,
+                            (int) ($validated['credit_days'] ?? 0)
+                        )
+                        : null);
                 if ($generateAccountPayable && $this->isCashPaymentCondition($paymentCondition)) {
                     throw ValidationException::withMessages([
                         'generate_account_payable' => 'Una compra al contado o ya pagada debe registrar la cuenta bancaria de salida.',
@@ -1940,50 +2434,84 @@ class WarehouseEntryController extends Controller
 
                 $entryData = [
                     'supplier_purchase_order_id' => $supplierPurchaseOrder?->id,
+                    'entry_mode' => $validated['entry_mode'],
                     'warehouse_id' => $validated['warehouse_id'] ?? null,
                     'company_id' => $supplierPurchaseOrder?->company_id ?? $validated['company_id'],
                     'supplier_id' => $supplierPurchaseOrder?->supplier_id ?? $validated['supplier_id'],
                     'customer_id' => $validated['customer_id'] ?? null,
                     'currency_id' => $supplierPurchaseOrder?->currency_id ?? $validated['currency_id'],
-                    'purchase_order_number' => $this->upperOrNull($supplierPurchaseOrder?->code ?? ($validated['purchase_order_number'] ?? null)),
+                    'exchange_rate' => $validated['exchange_rate'],
+                    'purchase_order_number' => $this->upperOrNull(
+                        $supplierPurchaseOrder?->code
+                        ?? $customerPurchaseOrders->first()?->purchase_order_number
+                        ?? $customerPurchaseOrders->first()?->code
+                        ?? ($validated['purchase_order_number'] ?? null)
+                    ),
                     'document_type' => $validated['document_type'] ?? 'FACTURA',
+                    'sunat_document_type_code' => $sunatDocumentTypeCode,
                     'document_series' => $this->upperOrNull($validated['document_series'] ?? null),
                     'document_number' => $this->upperOrNull($validated['document_number'] ?? null),
                     'document_date' => $validated['document_date'] ?? null,
+                    'movement_date' => $validated['movement_date'] ?? $entry?->movement_date,
                     'payment_method' => $supplierPurchaseOrder?->payment_method ?? ($validated['payment_method'] ?? null),
                     'payment_condition' => $paymentCondition,
+                    'credit_days' => $generateAccountPayable
+                        ? ($supplierPurchaseOrder
+                            ? $this->creditDaysForSupplierOrder($supplierPurchaseOrder)
+                            : ($validated['credit_days'] ?? null))
+                        : null,
                     'generate_account_payable' => $generateAccountPayable,
                     'payable_amount' => $totals['grand_total'],
                     'expected_payment_date' => $expectedPaymentDate,
-                    'payment_company_bank_account_id' => $generateAccountPayable
-                        ? null
-                        : ($validated['payment_company_bank_account_id'] ?? null),
-                    'bank_payment_date' => $generateAccountPayable
-                        ? null
-                        : ($validated['bank_payment_date'] ?? null),
-                    'bank_payment_operation_number' => $generateAccountPayable
-                        ? null
-                        : $this->upperOrNull($validated['bank_payment_operation_number'] ?? null),
-                    'bank_payment_exchange_rate' => $generateAccountPayable
-                        ? null
-                        : ($validated['bank_payment_exchange_rate'] ?? null),
-                    'bank_payment_proof_path' => $generateAccountPayable
-                        ? null
-                        : $entry?->bank_payment_proof_path,
-                    'bank_payment_proof_original_name' => $generateAccountPayable
-                        ? null
-                        : $entry?->bank_payment_proof_original_name,
-                    'bank_payment_proof_mime_type' => $generateAccountPayable
-                        ? null
-                        : $entry?->bank_payment_proof_mime_type,
-                    'bank_payment_proof_size' => $generateAccountPayable
-                        ? null
-                        : $entry?->bank_payment_proof_size,
-                    'bank_payment_observation' => $generateAccountPayable
-                        ? null
-                        : $this->upperOrNull($validated['bank_payment_observation'] ?? null),
-                    'bank_payment_negative_balance_confirmed' => ! $generateAccountPayable
-                        && (bool) ($validated['bank_payment_negative_balance_confirmed'] ?? false),
+                    'payment_company_bank_account_id' => $hasActiveCreditPayments
+                        ? $entry->payment_company_bank_account_id
+                        : ($generateAccountPayable
+                            ? null
+                            : ($validated['payment_company_bank_account_id'] ?? null)),
+                    'bank_payment_date' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_date
+                        : ($generateAccountPayable
+                            ? null
+                            : ($validated['bank_payment_date'] ?? null)),
+                    'bank_payment_operation_number' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_operation_number
+                        : ($generateAccountPayable
+                            ? null
+                            : $this->upperOrNull($validated['bank_payment_operation_number'] ?? null)),
+                    'bank_payment_exchange_rate' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_exchange_rate
+                        : ($generateAccountPayable
+                            ? null
+                            : ($validated['bank_payment_exchange_rate'] ?? null)),
+                    'bank_payment_proof_path' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_proof_path
+                        : ($generateAccountPayable
+                            ? null
+                            : $entry?->bank_payment_proof_path),
+                    'bank_payment_proof_original_name' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_proof_original_name
+                        : ($generateAccountPayable
+                            ? null
+                            : $entry?->bank_payment_proof_original_name),
+                    'bank_payment_proof_mime_type' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_proof_mime_type
+                        : ($generateAccountPayable
+                            ? null
+                            : $entry?->bank_payment_proof_mime_type),
+                    'bank_payment_proof_size' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_proof_size
+                        : ($generateAccountPayable
+                            ? null
+                            : $entry?->bank_payment_proof_size),
+                    'bank_payment_observation' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_observation
+                        : ($generateAccountPayable
+                            ? null
+                            : $this->upperOrNull($validated['bank_payment_observation'] ?? null)),
+                    'bank_payment_negative_balance_confirmed' => $hasActiveCreditPayments
+                        ? $entry->bank_payment_negative_balance_confirmed
+                        : (! $generateAccountPayable
+                            && (bool) ($validated['bank_payment_negative_balance_confirmed'] ?? false)),
                     'seller_name' => $this->upperOrNull($validated['seller_name'] ?? null),
                     'affect_igv' => $affectIgv,
                     'guide_series' => $this->upperOrNull($validated['guide_series'] ?? null),
@@ -2009,8 +2537,24 @@ class WarehouseEntryController extends Controller
                     $entry = WarehouseEntry::create($entryData);
                 }
 
+                if (! $isUpdate && $hasInitialPaymentItems) {
+                    $this->warehouseEntryCreditPaymentService->validatePaymentItemsAgainstPendingAmount(
+                        $entry,
+                        $validated['payment_items'] ?? []
+                    );
+                }
+
+                $entry->customerPurchaseOrders()->sync(
+                    $validated['entry_mode'] === 'supplier_invoice'
+                        ? $customerPurchaseOrderIds->all()
+                        : []
+                );
+
                 $bankPaymentProof = $request->file('bank_payment_proof');
-                if (! $generateAccountPayable && $bankPaymentProof instanceof UploadedFile && $bankPaymentProof->isValid()) {
+                if (! $hasActiveCreditPayments
+                    && ! $generateAccountPayable
+                    && $bankPaymentProof instanceof UploadedFile
+                    && $bankPaymentProof->isValid()) {
                     $storedBankPaymentPath = $bankPaymentProof->store(
                         "warehouse_entries/{$entry->id}/bank-payment",
                         'public'
@@ -2025,6 +2569,7 @@ class WarehouseEntryController extends Controller
                 }
 
                 $retainedItemIds = [];
+                $allocationPayloads = [];
                 $lotMap = [];
                 foreach ($preparedItems as $itemIndex => $item) {
                     $lots = $item['lots'] ?? [];
@@ -2035,7 +2580,13 @@ class WarehouseEntryController extends Controller
                         ? $entry->items()->whereKey($itemId)->firstOrFail()
                         : $entry->items()->make();
                     $entryItem->fill($item)->save();
+                    $acquisitionCosts = $this->warehouseEntryAcquisitionCostService->itemCosts($entry, $entryItem);
+                    $entryItem->update([
+                        'acquisition_cost_base' => $acquisitionCosts['total'],
+                        'acquisition_unit_cost_base' => $acquisitionCosts['unit'],
+                    ]);
                     $retainedItemIds[] = $entryItem->id;
+                    $allocationPayloads[$entryItem->id] = $item['_allocations'] ?? [];
                     $retainedLotIds = [];
 
                     foreach ($lots as $lot) {
@@ -2065,6 +2616,11 @@ class WarehouseEntryController extends Controller
 
                 if ($request->boolean('expense_management')) {
                     $this->syncEntryExpenses($entry, $validated['expenses'] ?? [], $request->file('expenses', []), $retainedItemIds);
+                }
+
+                foreach ($allocationPayloads as $entryItemId => $allocations) {
+                    $entryItem = $entry->items()->whereKey($entryItemId)->firstOrFail();
+                    app(WarehouseEntryAllocationService::class)->sync($entryItem, $allocations, Auth::id());
                 }
 
                 $currentCustomerPurchaseOrderIds = $this->customerPurchaseOrderIdsForWarehouseEntry($entry);
@@ -2099,7 +2655,7 @@ class WarehouseEntryController extends Controller
                             $storedPaymentDocumentPaths[] = $payment->proof_path;
                         }
                     }
-                } else {
+                } elseif (! $hasActiveCreditPayments) {
                     $bankPaymentMovement = $this->warehouseEntryBankPaymentService->sync($entry, Auth::id());
                     if (! $generateAccountPayable && $bankPaymentMovement) {
                         $this->storeInitialPaymentDocuments(
@@ -2119,13 +2675,20 @@ class WarehouseEntryController extends Controller
                     'items.presentation',
                     'items.brand',
                     'items.lots',
+                    'items.allocations.customerPurchaseOrder.customer',
+                    'items.allocations.supplierPurchaseOrder.supplier',
+                    'customerPurchaseOrders.customer',
+                    'customerPurchaseOrders.company',
+                    'customerPurchaseOrders.currency',
                     'expenses.distributions',
                 ]);
 
-                if ($isUpdate) {
+                if ($isUpdate && $inventoryChanged) {
                     app(WarehouseKardexService::class)->rebuildEntryMovements($freshEntry);
-                } else {
+                } elseif (! $isUpdate) {
                     app(WarehouseKardexService::class)->registerEntryFromWarehouseEntry($freshEntry);
+                } elseif ($request->boolean('expense_management')) {
+                    app(WarehouseKardexService::class)->syncLinkedCosts($freshEntry);
                 }
 
                 if ($supplierPurchaseOrder && $entry->status === self::STATUS_REGISTERED) {
@@ -2139,6 +2702,8 @@ class WarehouseEntryController extends Controller
                     $previousSupplierPurchaseOrderId,
                     $entry->supplier_purchase_order_id,
                 ])
+                    ->merge($previousSupplierPurchaseOrderIds)
+                    ->merge($this->supplierPurchaseOrderIdsForWarehouseEntry($entry))
                     ->filter()
                     ->unique()
                     ->each(fn ($supplierPurchaseOrderId) => $this->refreshSupplierPurchaseOrderStatus((int) $supplierPurchaseOrderId));
@@ -2215,14 +2780,22 @@ class WarehouseEntryController extends Controller
     private function prepareItems(array $items, bool $affectIgv): array
     {
         return collect($items)->map(function (array $item) use ($affectIgv) {
+            if (! array_key_exists('_transactional_tax_legacy', $item)) {
+                $item = $this->warehouseEntryTransactionalTaxService->prepare(
+                    [$item],
+                    $affectIgv
+                )[0];
+            }
+
             $quantity = round((float) $item['quantity'], 2);
             $unitPrice = round((float) $item['unit_price'], 6);
-            $lineTotal = round($quantity * $unitPrice, 2);
-            $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
-            $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
+            $isLegacyTaxLine = (bool) ($item['_transactional_tax_legacy'] ?? false);
+            $hasExplicitTaxableBase = array_key_exists('taxable_base', $item)
+                && $item['taxable_base'] !== null;
 
-            return [
+            $prepared = [
                 '_item_id' => $item['id'] ?? null,
+                '_allocations' => $item['allocations'] ?? [],
                 'supplier_purchase_order_item_id' => $item['supplier_purchase_order_item_id'] ?? null,
                 'article_id' => $item['article_id'],
                 'article_code' => $this->upperOrNull($item['article_code'] ?? null),
@@ -2238,9 +2811,19 @@ class WarehouseEntryController extends Controller
                 'ordered_quantity' => round((float) ($item['ordered_quantity'] ?? 0), 2),
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
-                'subtotal' => $subtotal,
-                'tax_amount' => $taxAmount,
-                'line_total' => $lineTotal,
+                'tax_affectation_code' => $item['tax_affectation_code'] ?? null,
+                'tax_rate' => $item['tax_rate'] ?? null,
+                'discount_amount' => round((float) ($item['discount_amount'] ?? 0), 2),
+                'taxable_base' => $hasExplicitTaxableBase
+                    ? round((float) $item['taxable_base'], 2)
+                    : null,
+                'is_free' => filter_var($item['is_free'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'igv_recoverable' => array_key_exists('igv_recoverable', $item)
+                    && $item['igv_recoverable'] !== null
+                        ? filter_var($item['igv_recoverable'], FILTER_VALIDATE_BOOLEAN)
+                        : null,
+                '_transactional_tax_legacy' => $isLegacyTaxLine,
+                '_taxable_base_explicit' => $hasExplicitTaxableBase,
                 'status' => 'active',
                 'lots' => collect($item['lots'] ?? [])->map(fn (array $lot) => [
                     'id' => $lot['id'] ?? null,
@@ -2251,7 +2834,192 @@ class WarehouseEntryController extends Controller
                     'manufacturing_date' => $lot['manufacturing_date'] ?? null,
                 ])->all(),
             ];
+
+            return $this->warehouseEntryTransactionalTaxService->calculateLine(
+                $prepared,
+                $affectIgv
+            );
         })->all();
+    }
+
+    private function applySupplierOrderTaxBreakdown(array $items, array $taxBreakdown): array
+    {
+        foreach ($items as $index => &$item) {
+            if (! isset($taxBreakdown[$index])) {
+                continue;
+            }
+
+            $item['subtotal'] = $taxBreakdown[$index]['subtotal'];
+            $item['tax_amount'] = $taxBreakdown[$index]['tax_amount'];
+            $item['line_total'] = $taxBreakdown[$index]['line_total'] ?? $item['line_total'];
+            if (($taxBreakdown[$index]['tax_affectation_code'] ?? null) !== null) {
+                $item['tax_affectation_code'] = $taxBreakdown[$index]['tax_affectation_code'];
+                $item['tax_rate'] = $taxBreakdown[$index]['tax_rate'];
+                $item['discount_amount'] = $taxBreakdown[$index]['discount_amount'];
+                $item['taxable_base'] = $taxBreakdown[$index]['taxable_base'];
+                $item['is_free'] = $taxBreakdown[$index]['is_free'];
+                $item['igv_recoverable'] = $taxBreakdown[$index]['igv_recoverable'];
+                $item['_transactional_tax_legacy'] = false;
+            } elseif (! $item['_transactional_tax_legacy'] && ! $item['_taxable_base_explicit']) {
+                $item['taxable_base'] = $taxBreakdown[$index]['subtotal'];
+            }
+        }
+        unset($item);
+
+        return $items;
+    }
+
+    private function warehouseEntryHasInventoryChanges(
+        WarehouseEntry $entry,
+        int $warehouseId,
+        int $currencyId,
+        float $exchangeRate,
+        mixed $movementDate,
+        array $preparedItems
+    ): bool {
+        $entry->load(['items.lots']);
+
+        $original = [
+            'warehouse_id' => (int) $entry->warehouse_id,
+            'currency_id' => (int) $entry->currency_id,
+            'exchange_rate' => $this->normalizeWarehouseEntryInventoryNumber($entry->exchange_rate ?? 1, 6),
+            'movement_date' => $this->normalizeWarehouseEntryInventoryDateTime($entry->movement_date),
+            'items' => $entry->items
+                ->map(fn ($item) => $this->normalizeWarehouseEntryInventoryItem([
+                    'id' => $item->id,
+                    'article_id' => $item->article_id,
+                    'unit_id' => $item->unit_id,
+                    'presentation_id' => $item->presentation_id,
+                    'brand_id' => $item->brand_id,
+                    'origin' => $item->origin,
+                    'cost_type' => $item->cost_type,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'tax_affectation_code' => $item->tax_affectation_code,
+                    'taxable_base' => $item->taxable_base,
+                    'tax_amount' => $item->tax_amount,
+                    'line_total' => $item->line_total,
+                    'is_free' => $item->is_free,
+                    'igv_recoverable' => $item->igv_recoverable,
+                    'lot_number' => $item->lot_number,
+                    'expiration_date' => $item->expiration_date,
+                    'lots' => $item->lots->map(fn ($lot) => [
+                        'id' => $lot->id,
+                        'lot_code' => $lot->lot_code,
+                        'quantity' => $lot->quantity,
+                        'expiration_date' => $lot->expiration_date,
+                        'manufacturing_date' => $lot->manufacturing_date,
+                    ])->all(),
+                ]))
+                ->sortBy(fn (array $item) => $this->warehouseEntryInventorySortKey($item))
+                ->values()
+                ->all(),
+        ];
+        $submitted = [
+            'warehouse_id' => $warehouseId,
+            'currency_id' => $currencyId,
+            'exchange_rate' => $this->normalizeWarehouseEntryInventoryNumber($exchangeRate, 6),
+            'movement_date' => $this->normalizeWarehouseEntryInventoryDateTime($movementDate),
+            'items' => collect($preparedItems)
+                ->map(fn (array $item) => $this->normalizeWarehouseEntryInventoryItem([
+                    ...$item,
+                    'id' => $item['_item_id'] ?? null,
+                ]))
+                ->sortBy(fn (array $item) => $this->warehouseEntryInventorySortKey($item))
+                ->values()
+                ->all(),
+        ];
+
+        return $original !== $submitted;
+    }
+
+    private function normalizeWarehouseEntryInventoryItem(array $item): array
+    {
+        $lots = collect($item['lots'] ?? [])
+            ->map(fn (array $lot) => [
+                'id' => filled($lot['id'] ?? null) ? (int) $lot['id'] : null,
+                'lot_code' => $this->upperOrNull($lot['lot_code'] ?? null),
+                'quantity' => $this->normalizeWarehouseEntryInventoryNumber($lot['quantity'] ?? 0, 4),
+                'expiration_date' => $this->normalizeWarehouseEntryInventoryDate($lot['expiration_date'] ?? null),
+                'manufacturing_date' => $this->normalizeWarehouseEntryInventoryDate($lot['manufacturing_date'] ?? null),
+            ])
+            ->sortBy(fn (array $lot) => implode('|', [
+                $lot['id'] === null ? 'new' : 'id:'.$lot['id'],
+                $lot['lot_code'] ?? '',
+                $lot['expiration_date'] ?? '',
+                $lot['manufacturing_date'] ?? '',
+                $lot['quantity'],
+            ]))
+            ->values()
+            ->all();
+        $usesItemLot = $lots === [];
+
+        return [
+            'id' => filled($item['id'] ?? null) ? (int) $item['id'] : null,
+            'article_id' => (int) ($item['article_id'] ?? 0),
+            'unit_id' => filled($item['unit_id'] ?? null) ? (int) $item['unit_id'] : null,
+            'presentation_id' => filled($item['presentation_id'] ?? null) ? (int) $item['presentation_id'] : null,
+            'brand_id' => filled($item['brand_id'] ?? null) ? (int) $item['brand_id'] : null,
+            'origin' => $this->upperOrNull($item['origin'] ?? null),
+            'cost_type' => $this->upperOrNull($item['cost_type'] ?? null),
+            'quantity' => $this->normalizeWarehouseEntryInventoryNumber($item['quantity'] ?? 0, 4),
+            'unit_price' => $this->normalizeWarehouseEntryInventoryNumber($item['unit_price'] ?? 0, 6),
+            'tax_affectation_code' => $item['tax_affectation_code'] ?? null,
+            'taxable_base' => $this->normalizeWarehouseEntryInventoryNumber($item['taxable_base'] ?? 0, 2),
+            'tax_amount' => $this->normalizeWarehouseEntryInventoryNumber($item['tax_amount'] ?? 0, 2),
+            'line_total' => $this->normalizeWarehouseEntryInventoryNumber($item['line_total'] ?? 0, 2),
+            'is_free' => (bool) ($item['is_free'] ?? false),
+            'igv_recoverable' => array_key_exists('igv_recoverable', $item)
+                && $item['igv_recoverable'] !== null
+                    ? (bool) $item['igv_recoverable']
+                    : null,
+            'lot_number' => $usesItemLot ? $this->upperOrNull($item['lot_number'] ?? null) : null,
+            'expiration_date' => $usesItemLot
+                ? $this->normalizeWarehouseEntryInventoryDate($item['expiration_date'] ?? null)
+                : null,
+            'lots' => $lots,
+        ];
+    }
+
+    private function warehouseEntryInventorySortKey(array $item): string
+    {
+        return $item['id'] === null
+            ? 'new|'.implode('|', [
+                $item['article_id'],
+                $item['unit_id'] ?? '',
+                $item['presentation_id'] ?? '',
+                $item['brand_id'] ?? '',
+                $item['lot_number'] ?? '',
+                $item['expiration_date'] ?? '',
+                $item['quantity'],
+                $item['unit_price'],
+            ])
+            : 'id:'.str_pad((string) $item['id'], 20, '0', STR_PAD_LEFT);
+    }
+
+    private function normalizeWarehouseEntryInventoryNumber(mixed $value, int $precision): string
+    {
+        return number_format(round((float) $value, $precision), $precision, '.', '');
+    }
+
+    private function normalizeWarehouseEntryInventoryDate(mixed $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        return method_exists($value, 'format')
+            ? $value->format('Y-m-d')
+            : substr((string) $value, 0, 10);
+    }
+
+    private function normalizeWarehouseEntryInventoryDateTime(mixed $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        return Carbon::parse($value)->format('Y-m-d H:i:s');
     }
 
     private function syncEntryExpenses(WarehouseEntry $entry, array $expenses, array $expenseFiles, array $itemIds): void
@@ -2265,8 +3033,9 @@ class WarehouseEntryController extends Controller
 
         foreach ($expenses as $index => $data) {
             $existingExpense = ! empty($data['id'])
-                ? $entry->expenses()->with('documents')->whereKey($data['id'])->firstOrFail()
+                ? $entry->expenses()->with('documents')->whereKey($data['id'])->lockForUpdate()->firstOrFail()
                 : null;
+            $previousBankMovementId = $existingExpense?->bank_movement_id;
             $sourceType = in_array($data['source_type'] ?? null, [
                 WarehouseEntryExpense::SOURCE_PETTY_CASH,
                 WarehouseEntryExpense::SOURCE_GENERAL_CASH,
@@ -2358,6 +3127,11 @@ class WarehouseEntryController extends Controller
                     if ((int) $account->company_id !== (int) $entry->company_id) {
                         throw ValidationException::withMessages([
                             "expenses.$index.company_bank_account_id" => "La cuenta bancaria seleccionada no pertenece a la empresa {$companyName}.",
+                        ]);
+                    }
+                    if ((int) $account->currency_id !== (int) ($data['currency_id'] ?? $entry->currency_id)) {
+                        throw ValidationException::withMessages([
+                            "expenses.$index.company_bank_account_id" => 'La moneda de la cuenta bancaria debe coincidir con la moneda del gasto.',
                         ]);
                     }
                 }
@@ -2466,6 +3240,14 @@ class WarehouseEntryController extends Controller
                 (float) $data['amount'],
                 filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN)
             );
+            $igvRecoverable = $taxBreakdown['affects_igv']
+                ? ($data['igv_recoverable'] ?? null)
+                : false;
+            if ($taxBreakdown['affects_igv'] && $igvRecoverable === null) {
+                throw ValidationException::withMessages([
+                    "expenses.$index.igv_recoverable" => 'Indique si el IGV del gasto es recuperable.',
+                ]);
+            }
             $detraction = $this->warehouseEntryExpenseDetraction(
                 $data,
                 $index,
@@ -2480,7 +3262,7 @@ class WarehouseEntryController extends Controller
                 'cost_origin' => $data['cost_origin'],
                 'expense_type' => $data['expense_type'],
                 'shipping_agency_id' => $data['expense_type'] === 'agency_freight'
-                    && $sourceType === WarehouseEntryExpense::SOURCE_MANUAL
+                    && $sourceType !== WarehouseEntryExpense::SOURCE_PETTY_CASH
                         ? ($data['shipping_agency_id'] ?? null)
                         : null,
                 'provider_id' => $data['provider_id'] ?? null,
@@ -2491,8 +3273,14 @@ class WarehouseEntryController extends Controller
                 'document_number' => $data['document_number'],
                 'document_date' => $data['document_date'] ?? null,
                 'currency_id' => $data['currency_id'] ?? $entry->currency_id,
+                'exchange_rate' => $data['exchange_rate'] ?? (
+                    (int) ($data['currency_id'] ?? $entry->currency_id) === (int) $entry->currency_id
+                        ? $entry->exchange_rate
+                        : null
+                ),
                 'amount' => $taxBreakdown['total_amount'],
                 ...$taxBreakdown,
+                'igv_recoverable' => filter_var($igvRecoverable, FILTER_VALIDATE_BOOLEAN),
                 ...$detraction,
                 'affects_inventory_cost' => $affectsCost,
                 'distribution_method' => $method,
@@ -2532,7 +3320,8 @@ class WarehouseEntryController extends Controller
             $requiresNewApproval = ! $expense->exists || $expense->isDirty([
                 'source_type', 'general_cash_box_id', 'company_bank_account_id', 'expense_type',
                 'provider_id', 'provider_ruc', 'provider_name', 'document_type', 'document_series',
-                'document_number', 'document_date', 'currency_id', 'amount', 'affects_igv',
+                'document_number', 'document_date', 'currency_id', 'exchange_rate', 'amount', 'affects_igv',
+                'igv_recoverable',
                 'applies_detraction', 'detraction_type_id', 'detraction_percentage',
                 'detraction_amount', 'supplier_net_amount', 'affects_inventory_cost',
                 'distribution_method', 'description',
@@ -2542,6 +3331,16 @@ class WarehouseEntryController extends Controller
                 $expense->approved_by = $pettyCashExpense?->approved_by_user_id;
                 $expense->approved_at = $pettyCashExpense?->approved_at;
                 $expense->approval_observation = $pettyCashExpense?->approval_observation;
+            } elseif ($sourceType === WarehouseEntryExpense::SOURCE_BANK) {
+                $keepsApprovalAudit = $existingExpense?->source_type === WarehouseEntryExpense::SOURCE_BANK
+                    && $existingExpense->approval_status === WarehouseEntryExpense::APPROVAL_APPROVED
+                    && $existingExpense->approved_at !== null
+                    && ! $requiresNewApproval;
+                $this->warehouseEntryExpenseBankService->markAutomaticallyApproved(
+                    $expense,
+                    Auth::id(),
+                    $keepsApprovalAudit
+                );
             } elseif ($requiresNewApproval || blank($expense->approval_status)) {
                 $expense->approval_status = WarehouseEntryExpense::APPROVAL_PENDING;
                 $expense->approved_by = null;
@@ -2549,10 +3348,19 @@ class WarehouseEntryController extends Controller
                 $expense->approval_observation = null;
             }
             $expense->save();
+            $this->warehouseEntryExpenseBankService->sync(
+                $expense,
+                'CORRECCIÓN DEL GASTO VINCULADO '.$entry->entry_number,
+                Auth::id(),
+                $previousBankMovementId
+            );
             $retainedExpenseIds[] = $expense->id;
 
+            $capitalizableAmount = $this->warehouseEntryAcquisitionCostService
+                ->capitalizableExpenseAmount($entry, $expense);
+
             $allocations = $affectsCost
-                ? $this->expenseAllocations($data, $items, $method, (float) $expense->amount, $index)
+                ? $this->expenseAllocations($data, $items, $method, $capitalizableAmount, $index)
                 : [];
             $expense->distributions()->delete();
             foreach ($allocations as $itemIndex => $amount) {
@@ -2606,6 +3414,15 @@ class WarehouseEntryController extends Controller
 
         $removedExpenseIds = $entry->expenses()->whereNotIn('id', $retainedExpenseIds)->pluck('id');
         if ($removedExpenseIds->isNotEmpty()) {
+            WarehouseEntryExpense::query()
+                ->whereIn('id', $removedExpenseIds)
+                ->lockForUpdate()
+                ->get()
+                ->each(fn (WarehouseEntryExpense $expense) => $this->warehouseEntryExpenseBankService->cancel(
+                    $expense,
+                    'GASTO VINCULADO RETIRADO DEL INGRESO '.$entry->entry_number,
+                    Auth::id()
+                ));
             WarehouseEntryExpenseDocument::query()
                 ->whereIn('warehouse_entry_expense_id', $removedExpenseIds)
                 ->where('status', 'ACTIVE')
@@ -2629,9 +3446,12 @@ class WarehouseEntryController extends Controller
 
         $entry->items()->get()->each(function ($item) use ($costs) {
             $additional = round((float) ($costs[$item->id] ?? 0), 2);
+            $baseUnitCost = $item->acquisition_unit_cost_base !== null
+                ? (float) $item->acquisition_unit_cost_base
+                : (float) $item->unit_price;
             $item->update([
                 'additional_cost' => $additional,
-                'real_unit_cost' => round((float) $item->unit_price + ($additional / (float) $item->quantity), 6),
+                'real_unit_cost' => round($baseUnitCost + ($additional / (float) $item->quantity), 6),
             ]);
         });
     }
@@ -2786,9 +3606,9 @@ class WarehouseEntryController extends Controller
         };
 
         $mapping = match ($simpleType) {
-            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
-            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
-            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true, 'distribution_method' => 'amount'],
+            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
+            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
+            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
             default => [],
         };
 
@@ -2801,6 +3621,9 @@ class WarehouseEntryController extends Controller
             FILTER_VALIDATE_BOOLEAN
         );
         $data['affects_inventory_cost'] = $affectsInventoryCost;
+        if ($affectsInventoryCost && blank($data['distribution_method'] ?? null)) {
+            $data['distribution_method'] = 'quantity';
+        }
         if (array_key_exists('affects_igv', $data)) {
             $data['affects_igv'] = filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN);
         }
@@ -2821,7 +3644,21 @@ class WarehouseEntryController extends Controller
                 }
                 $allocations[(int) $distribution['item_index']] = round((float) $distribution['distributed_amount'], 2);
             }
-            if (abs(array_sum($allocations) - $amount) > 0.009) {
+            $submittedTotal = array_sum($allocations);
+            $documentTotal = (float) ($data['amount'] ?? 0);
+            if (abs($submittedTotal - $documentTotal) <= 0.009 && $documentTotal > 0) {
+                $factor = $amount / $documentTotal;
+                $remaining = (int) round($amount * 100);
+                foreach ($allocations as $position => $allocation) {
+                    $cents = $position === array_key_last($allocations)
+                        ? $remaining
+                        : (int) round($allocation * $factor * 100);
+                    $allocations[$position] = $cents / 100;
+                    $remaining -= $cents;
+                }
+                $submittedTotal = array_sum($allocations);
+            }
+            if (abs($submittedTotal - $amount) > 0.009) {
                 throw ValidationException::withMessages(["expenses.$expenseIndex.distributions" => 'La distribución del gasto debe coincidir con el importe total.']);
             }
 
@@ -2883,6 +3720,21 @@ class WarehouseEntryController extends Controller
         }
     }
 
+    private function validateInventoryArticles(array $items): void
+    {
+        $articles = Article::query()
+            ->whereIn('id', collect($items)->pluck('article_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $index => $item) {
+            $article = $articles->get((int) ($item['article_id'] ?? 0));
+            if ($article) {
+                $this->articleInventoryPolicy->assertCanParticipateInInventory($article, "items.$index.article_id");
+            }
+        }
+    }
+
     private function validatePendingQuantities(array $items, ?int $entryId = null): void
     {
         $orderItemIds = collect($items)
@@ -2901,10 +3753,6 @@ class WarehouseEntryController extends Controller
             ->get()
             ->keyBy('id');
         $received = $this->receivedQuantitiesForItemIds($orderItemIds->all(), $entryId);
-        $customerPendingByItem = $this->customerPendingQuantitiesForSupplierItemIds(
-            $orderItemIds->all(),
-            $entryId
-        );
 
         foreach ($items as $index => $item) {
             $orderItemId = $item['supplier_purchase_order_item_id'] ?? null;
@@ -2923,26 +3771,17 @@ class WarehouseEntryController extends Controller
                 ]);
             }
 
-            $customerPending = $customerPendingByItem[(int) $orderItemId] ?? null;
-
-            if ($customerPending !== null && $quantity > $customerPending) {
-                throw ValidationException::withMessages([
-                    "items.$index.quantity" => 'La cantidad ingresada supera la cantidad pendiente de la orden del cliente.',
-                ]);
-            }
         }
     }
 
     private function calculateTotals(array $items): array
     {
-        $subtotal = round((float) collect($items)->sum('subtotal'), 2);
-        $igv = round((float) collect($items)->sum('tax_amount'), 2);
-        $grandTotal = round((float) collect($items)->sum('line_total'), 2);
+        $totals = $this->warehouseEntryTransactionalTaxService->consolidate($items);
 
         return [
-            'subtotal' => $subtotal,
-            'igv' => $igv,
-            'grand_total' => $grandTotal,
+            'subtotal' => $totals['subtotal'],
+            'igv' => $totals['tax_total'],
+            'grand_total' => $totals['grand_total'],
         ];
     }
 
@@ -2950,13 +3789,29 @@ class WarehouseEntryController extends Controller
         SupplierPurchaseOrderItem $item,
         float $orderedQuantity,
         float $pendingQuantity,
-        bool $affectIgv
+        bool $affectIgv,
+        ?float $customerPendingQuantity = null,
+        ?SupplierPurchaseOrder $order = null
     ): array {
         $article = $item->article;
         $unitPrice = round((float) $item->unit_price, 6);
         $lineTotal = round($pendingQuantity * $unitPrice, 2);
-        $subtotal = $affectIgv ? round($lineTotal / 1.18, 2) : 0;
-        $taxAmount = $affectIgv ? round($lineTotal - $subtotal, 2) : 0;
+        $canonical = $order
+            ? $this->warehouseEntryTaxTotalsService->canonicalItemAmounts($order, $item)
+            : [
+                'subtotal' => (string) ($item->taxable_base ?? $item->subtotal ?? $lineTotal),
+                'igv' => (string) ($item->igv_amount ?? $item->tax_amount ?? 0),
+                'grand_total' => (string) ($item->total_with_igv ?? $item->line_total ?? $lineTotal),
+            ];
+        $prorated = $order
+            ? $this->warehouseEntryTaxTotalsService->proratedItemAmounts($order, $item, (string) $pendingQuantity)
+            : null;
+        $subtotal = $affectIgv
+            ? round((float) ($prorated['subtotal'] ?? $canonical['subtotal']), 2)
+            : $lineTotal;
+        $taxAmount = $affectIgv
+            ? round((float) ($prorated['igv'] ?? $canonical['igv']), 2)
+            : 0;
 
         return [
             'supplier_purchase_order_item_id' => $item->id,
@@ -2977,9 +3832,61 @@ class WarehouseEntryController extends Controller
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
             'line_total' => $lineTotal,
+            'source_ordered_quantity' => (string) $item->quantity,
+            'source_pending_quantity' => number_format($pendingQuantity, 2, '.', ''),
+            'source_taxable_base' => $canonical['subtotal'],
+            'source_igv' => $canonical['igv'],
+            'source_line_total' => $canonical['grand_total'],
+            'source_igv_percent' => (string) ($item->igv_percent ?? 0),
+            'tax_affectation_code' => $item->tax_affectation_code,
+            'tax_rate' => $item->tax_rate,
+            'discount_amount' => (float) $item->quantity > 0
+                ? round((float) ($item->discount_amount ?? 0) * ($pendingQuantity / (float) $item->quantity), 2)
+                : 0,
+            'taxable_base' => $item->taxable_base,
+            'is_free' => (bool) ($item->is_free ?? false),
+            'igv_recoverable' => $item->igv_recoverable,
             'has_batch' => (bool) $article?->has_batch,
             'has_expiration' => (bool) $article?->has_expiration,
+            'allocations' => $this->defaultSourceAllocations($item, $pendingQuantity, $customerPendingQuantity),
         ];
+    }
+
+    private function defaultSourceAllocations(
+        SupplierPurchaseOrderItem $item,
+        float $quantity,
+        ?float $customerPendingQuantity = null
+    ): array {
+        $customerItem = $item->relationLoaded('customerPurchaseOrderItem')
+            ? $item->getRelation('customerPurchaseOrderItem')
+            : ($item->exists ? $item->customerPurchaseOrderItem : null);
+        $customerQuantity = $customerItem
+            ? min($quantity, max((float) ($customerPendingQuantity ?? $quantity), 0))
+            : 0;
+        $rows = [];
+        if ($customerQuantity > 0) {
+            $rows[] = [
+                'allocation_type' => WarehouseEntryItemAllocation::TYPE_CUSTOMER_ORDER,
+                'quantity_allocated' => $customerQuantity,
+                'customer_purchase_order_id' => $customerItem->customer_purchase_order_id,
+                'customer_purchase_order_item_id' => $customerItem->id,
+                'supplier_purchase_order_id' => $item->supplier_purchase_order_id,
+                'supplier_purchase_order_item_id' => $item->id,
+                'customer_order_number' => $customerItem->purchaseOrder?->purchase_order_number
+                    ?: $customerItem->purchaseOrder?->code,
+            ];
+        }
+        $supplierQuantity = round($quantity - $customerQuantity, 4);
+        if ($supplierQuantity > 0) {
+            $rows[] = [
+                'allocation_type' => WarehouseEntryItemAllocation::TYPE_SUPPLIER_ORDER,
+                'quantity_allocated' => $supplierQuantity,
+                'supplier_purchase_order_id' => $item->supplier_purchase_order_id,
+                'supplier_purchase_order_item_id' => $item->id,
+            ];
+        }
+
+        return $rows;
     }
 
     private function receivedQuantitiesForOrder(SupplierPurchaseOrder $order, ?int $exceptEntryId = null): array
@@ -2988,6 +3895,26 @@ class WarehouseEntryController extends Controller
             $order->items->pluck('id')->all(),
             $exceptEntryId
         );
+    }
+
+    private function previousSupplierOrderEntryTaxTotals(
+        int $supplierPurchaseOrderId,
+        ?int $exceptEntryId = null
+    ): array {
+        $totals = WarehouseEntry::query()
+            ->where('supplier_purchase_order_id', $supplierPurchaseOrderId)
+            ->where('status', self::STATUS_REGISTERED)
+            ->when($exceptEntryId, fn ($query) => $query->where('id', '!=', $exceptEntryId))
+            ->selectRaw('COALESCE(SUM(subtotal), 0) as subtotal')
+            ->selectRaw('COALESCE(SUM(igv), 0) as igv')
+            ->selectRaw('COALESCE(SUM(grand_total), 0) as grand_total')
+            ->first();
+
+        return [
+            'subtotal' => (string) ($totals?->subtotal ?? 0),
+            'igv' => (string) ($totals?->igv ?? 0),
+            'grand_total' => (string) ($totals?->grand_total ?? 0),
+        ];
     }
 
     private function receivedQuantitiesForItemIds(array $orderItemIds, ?int $exceptEntryId = null): array
@@ -3069,6 +3996,65 @@ class WarehouseEntryController extends Controller
         return $value === '' ? 'FACTURA' : $value;
     }
 
+    private function assertUniqueSupplierDocument(
+        int $companyId,
+        int $supplierId,
+        ?string $sunatDocumentTypeCode,
+        ?string $series,
+        ?string $number,
+        ?int $exceptEntryId = null
+    ): void {
+        if (! $sunatDocumentTypeCode || blank($series) || blank($number)) {
+            return;
+        }
+
+        $duplicate = WarehouseEntry::query()
+            ->where('company_id', $companyId)
+            ->where('supplier_id', $supplierId)
+            ->where('sunat_document_type_code', $sunatDocumentTypeCode)
+            ->where('document_series', $this->upperOrNull($series))
+            ->where('document_number', $this->upperOrNull($number))
+            ->where('status', '!=', self::STATUS_CANCELLED)
+            ->when($exceptEntryId, fn ($query) => $query->whereKeyNot($exceptEntryId))
+            ->lockForUpdate()
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'document_number' => 'El comprobante ya está registrado para este proveedor y empresa.',
+            ]);
+        }
+    }
+
+    private function normalizeWarehouseEntryPaymentMethod(?string $value): string
+    {
+        $normalized = mb_strtolower(Str::ascii(trim((string) $value)), 'UTF-8');
+        $normalized = str_replace(['-', '_'], ' ', $normalized);
+
+        return match (true) {
+            $normalized === '' => '',
+            str_contains($normalized, 'transfer') => 'transferencia',
+            str_contains($normalized, 'deposit') => 'deposito_cuenta',
+            str_contains($normalized, 'efectivo') => 'efectivo',
+            str_contains($normalized, 'tarjeta') => 'tarjeta',
+            str_contains($normalized, 'yape'), str_contains($normalized, 'plin') => 'yape_plin',
+            default => 'otro',
+        };
+    }
+
+    private function normalizeWarehouseEntryPaymentCondition(?string $value): string
+    {
+        if ($this->isCreditPaymentCondition($value)) {
+            return 'credito';
+        }
+
+        if ($this->isCashPaymentCondition($value)) {
+            return 'contado';
+        }
+
+        return '';
+    }
+
     private function isCashPaymentCondition(?string $value): bool
     {
         $value = mb_strtolower(trim((string) $value), 'UTF-8');
@@ -3146,7 +4132,12 @@ class WarehouseEntryController extends Controller
     private function warehouseEntryCreditDueDate(WarehouseEntry $entry): ?string
     {
         if ($entry->supplierPurchaseOrder) {
-            return $this->supplierPurchaseOrderDueDate($entry->supplierPurchaseOrder);
+            return $this->calculateCreditDueDate(
+                $entry->document_date?->toDateString(),
+                $entry,
+                $entry->supplierPurchaseOrder,
+                $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
+            );
         }
 
         if ($entry->expected_payment_date) {
@@ -3159,7 +4150,9 @@ class WarehouseEntryController extends Controller
             $entry->document_date?->toDateString(),
             $entry,
             $entry->supplierPurchaseOrder,
-            $this->creditDaysFromCondition($condition)
+            (int) $entry->credit_days > 0
+                ? (int) $entry->credit_days
+                : $this->creditDaysFromCondition($condition)
         );
     }
 
@@ -3182,12 +4175,15 @@ class WarehouseEntryController extends Controller
         $condition = $entry->supplierPurchaseOrder?->payment_condition ?: $entry->payment_condition;
         $creditDays = $entry->supplierPurchaseOrder
             ? $this->creditDaysForSupplierOrder($entry->supplierPurchaseOrder)
-            : $this->creditDaysFromCondition($condition);
+            : ((int) $entry->credit_days > 0
+                ? (int) $entry->credit_days
+                : $this->creditDaysFromCondition($condition));
         $conditionLabel = $this->paymentConditionLabel($condition, $creditDays);
         $paymentSummary = $this->warehouseEntryCreditPaymentService->summary($entry);
 
         if (! $this->isCreditPaymentCondition($condition)) {
             $cashStatus = $paymentSummary['pending_amount'] <= 0.0001 ? 'paid' : 'pending';
+
             return [
                 'credit_days' => 0,
                 'due_date' => null,
@@ -3368,7 +4364,20 @@ class WarehouseEntryController extends Controller
             ->pluck('quantity', 'id')
             ->map(fn ($quantity) => round((float) $quantity, 2));
 
-        $enteredByCustomerItem = DB::table('warehouse_entry_items as entry_items')
+        $enteredByCustomerItem = DB::table('warehouse_entry_item_allocations as allocations')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+            ->whereIn('allocations.customer_purchase_order_item_id', $customerItemIds)
+            ->whereNull('allocations.deleted_at')
+            ->whereNull('entries.deleted_at')
+            ->where('allocations.status', 'active')
+            ->where('entries.status', self::STATUS_REGISTERED)
+            ->when($exceptEntryId, fn ($query) => $query->where('entries.id', '!=', $exceptEntryId))
+            ->groupBy('allocations.customer_purchase_order_item_id')
+            ->selectRaw('allocations.customer_purchase_order_item_id, SUM(allocations.quantity_allocated) as entered_quantity')
+            ->pluck('entered_quantity', 'customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $legacyEnteredByCustomerItem = DB::table('warehouse_entry_items as entry_items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
             ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
             ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
@@ -3379,11 +4388,25 @@ class WarehouseEntryController extends Controller
             ->where('supplier_orders.status', '!=', 'cancelled')
             ->where('entry_items.status', '!=', 'deleted')
             ->where('supplier_items.status', '!=', 'deleted')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('warehouse_entry_item_allocations as allocations')
+                    ->whereColumn('allocations.warehouse_entry_item_id', 'entry_items.id')
+                    ->where('allocations.status', 'active')
+                    ->whereNull('allocations.deleted_at');
+            })
             ->when($exceptEntryId, fn ($query) => $query->where('entries.id', '!=', $exceptEntryId))
             ->groupBy('supplier_items.customer_purchase_order_item_id')
             ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(entry_items.quantity) as entered_quantity')
             ->pluck('entered_quantity', 'customer_purchase_order_item_id')
             ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $legacyEnteredByCustomerItem->each(function ($quantity, $itemId) use ($enteredByCustomerItem) {
+            $enteredByCustomerItem->put(
+                $itemId,
+                round((float) $enteredByCustomerItem->get($itemId, 0) + (float) $quantity, 2)
+            );
+        });
 
         return $supplierItems
             ->mapWithKeys(function (SupplierPurchaseOrderItem $supplierItem) use (
@@ -3405,6 +4428,20 @@ class WarehouseEntryController extends Controller
     {
         return app(CustomerPurchaseOrderStatusService::class)
             ->customerOrderIdsForWarehouseEntry($entry);
+    }
+
+    private function supplierPurchaseOrderIdsForWarehouseEntry(WarehouseEntry $entry)
+    {
+        $allocationIds = Schema::hasTable('warehouse_entry_item_allocations')
+            ? $entry->allocations()->pluck('supplier_purchase_order_id')
+            : collect();
+
+        return $allocationIds
+            ->push($entry->supplier_purchase_order_id)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
     }
 
     private function customerPurchaseOrderIdsForSupplierItemIds(array $supplierItemIds)

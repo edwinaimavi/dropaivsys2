@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class SupplierPurchaseOrder extends Model
@@ -282,6 +283,12 @@ class SupplierPurchaseOrder extends Model
         return $this->hasMany(WarehouseEntry::class);
     }
 
+    public function warehouseEntryAllocations()
+    {
+        return $this->hasMany(WarehouseEntryItemAllocation::class)
+            ->where('status', 'active');
+    }
+
     public function refreshEntryStatus(): void
     {
         if (in_array($this->status, ['cancelled', 'invoiced'], true)) {
@@ -301,17 +308,46 @@ class SupplierPurchaseOrder extends Model
             return;
         }
 
-        $receivedByItem = DB::table('warehouse_entry_items as items')
+        $hasAllocations = Schema::hasTable('warehouse_entry_item_allocations');
+        $receivedByItem = $hasAllocations
+            ? DB::table('warehouse_entry_item_allocations as allocations')
+                ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+                ->where('allocations.supplier_purchase_order_id', $this->id)
+                ->whereNull('allocations.deleted_at')
+                ->whereNull('entries.deleted_at')
+                ->where('allocations.status', 'active')
+                ->where('entries.status', 'registered')
+                ->whereIn('allocations.supplier_purchase_order_item_id', $orderedByItem->keys()->all())
+                ->groupBy('allocations.supplier_purchase_order_item_id')
+                ->selectRaw('allocations.supplier_purchase_order_item_id, SUM(allocations.quantity_allocated) as received_quantity')
+                ->pluck('received_quantity', 'supplier_purchase_order_item_id')
+                ->map(fn ($quantity) => round((float) $quantity, 2))
+            : collect();
+
+        $legacyReceived = DB::table('warehouse_entry_items as items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'items.warehouse_entry_id')
             ->where('entries.supplier_purchase_order_id', $this->id)
             ->whereNull('entries.deleted_at')
             ->where('entries.status', 'registered')
             ->whereIn('items.supplier_purchase_order_item_id', $orderedByItem->keys()->all())
             ->where('items.status', '!=', 'deleted')
+            ->when($hasAllocations, function ($query) {
+                $query->whereNotExists(function ($subquery) {
+                    $subquery->selectRaw('1')
+                        ->from('warehouse_entry_item_allocations as allocations')
+                        ->whereColumn('allocations.warehouse_entry_item_id', 'items.id')
+                        ->where('allocations.status', 'active')
+                        ->whereNull('allocations.deleted_at');
+                });
+            })
             ->groupBy('items.supplier_purchase_order_item_id')
             ->selectRaw('items.supplier_purchase_order_item_id, SUM(items.quantity) as received_quantity')
             ->pluck('received_quantity', 'supplier_purchase_order_item_id')
             ->map(fn ($quantity) => round((float) $quantity, 2));
+
+        $legacyReceived->each(function ($quantity, $itemId) use ($receivedByItem) {
+            $receivedByItem->put($itemId, round((float) $receivedByItem->get($itemId, 0) + (float) $quantity, 2));
+        });
 
         $totalReceived = round((float) $receivedByItem->sum(), 2);
         $isComplete = $orderedByItem->every(function (float $ordered, $itemId) use ($receivedByItem) {

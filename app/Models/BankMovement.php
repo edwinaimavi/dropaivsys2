@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class BankMovement extends Model
@@ -97,6 +98,19 @@ class BankMovement extends Model
     public function warehouseEntryPaymentDocuments()
     {
         return $this->hasMany(WarehouseEntryPaymentDocument::class);
+    }
+
+    public function scopeOperationalFlow(Builder $query): Builder
+    {
+        return $query
+            ->whereIn('status', [self::STATUS_REGISTERED, self::STATUS_RECONCILED])
+            ->where(fn (Builder $query) => $query
+                ->whereNull('source_type')
+                ->orWhere('source_type', '!=', 'BANK_OPENING_BALANCE'))
+            ->where(fn (Builder $query) => $query
+                ->whereNull('movement_type')
+                ->orWhere('movement_type', '!=', 'REVERSA'))
+            ->whereNull('reversal_of_id');
     }
 
     public static function typeLabel(?string $type): string

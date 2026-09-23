@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Catálogo SUNAT para DropaivSys2",
+  "type": "object",
+  "required": ["catalog_code", "catalog_name", "source", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "catalog_code": { "type": "string", "minLength": 1, "maxLength": 50 },
+    "catalog_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "description": { "type": ["string", "null"] },
+    "source": { "type": "string", "enum": ["sunat_pdf"] },
+    "is_active": { "type": "boolean", "default": true },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string", "minLength": 1, "maxLength": 20 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 5000 },
+          "short_name": { "type": ["string", "null"], "maxLength": 255 },
+          "extra_data": { "type": ["object", "null"] },
+          "source": { "type": "string", "enum": ["sunat_pdf"] },
+          "is_official": { "type": "boolean", "default": true },
+          "is_active": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,12 @@ class ElectronicInvoice extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_DRAFT = 'draft';
+
+    public const STATUS_GENERATED = 'generated';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'company_id',
         'customer_id',
@@ -146,6 +152,15 @@ class ElectronicInvoice extends Model
     public function serie() { return $this->belongsTo(ElectronicInvoiceSeries::class, 'serie_id'); }
     public function electronicSeries() { return $this->belongsTo(ElectronicInvoiceSeries::class, 'serie_id'); }
     public function items() { return $this->hasMany(ElectronicInvoiceItem::class); }
+    public function dispatchAllocations()
+    {
+        return $this->hasManyThrough(
+            ElectronicInvoiceItemDispatchAllocation::class,
+            ElectronicInvoiceItem::class,
+            'electronic_invoice_id',
+            'electronic_invoice_item_id'
+        );
+    }
     public function payments() { return $this->hasMany(ElectronicInvoicePayment::class); }
     public function collections() { return $this->hasMany(InvoiceCollection::class); }
     public function legends() { return $this->hasMany(ElectronicInvoiceLegend::class); }
@@ -159,6 +174,13 @@ class ElectronicInvoice extends Model
     }
     public function creator() { return $this->belongsTo(User::class, 'created_by'); }
     public function updater() { return $this->belongsTo(User::class, 'updated_by'); }
+
+    public function isEditable(): bool
+    {
+        return $this->status === self::STATUS_DRAFT
+            && ! $this->is_voided
+            && ! $this->trashed();
+    }
 
     public function effectivePaymentStatus(): string
     {

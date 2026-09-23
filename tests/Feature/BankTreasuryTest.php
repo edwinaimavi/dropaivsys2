@@ -70,6 +70,54 @@ it('configura el saldo inicial y conserva el asiento de apertura', function () {
         ->and((float) BankMovement::firstOrFail()->balance_after)->toBe(1000.25);
 });
 
+it('separa el saldo inicial de los ingresos operativos en la cuenta y el periodo', function () {
+    Permission::findOrCreate('admin.banks.view', 'web');
+    $this->user->givePermissionTo('admin.banks.view');
+    $this->service->configureOpeningBalance(
+        $this->origin,
+        '50000.0000',
+        '2026-08-01',
+        'SALDO INICIAL DE PRUEBA',
+        null,
+        $this->user->id
+    );
+
+    $response = $this->actingAs($this->user)->getJson(route('admin.banks.list', [
+        'draw' => 1, 'start' => 0, 'length' => 10,
+        'date_from' => '2026-08-01', 'date_to' => '2026-08-31',
+    ]))->assertOk();
+    $originRow = collect($response->json('data'))->firstWhere('account_number', $this->origin->account_number);
+
+    expect($originRow['income'])->toBe('S/ 0.00')
+        ->and((float) $response->json('summary.period_income_pen'))->toBe(0.0)
+        ->and((float) $response->json('summary.total_banks_pen'))->toBe(50000.0)
+        ->and((float) $this->origin->fresh()->current_balance)->toBe(50000.0);
+
+    $this->service->createMovement([
+        'company_bank_account_id' => $this->origin->id,
+        'currency_id' => $this->currency->id,
+        'movement_date' => '2026-08-10',
+        'movement_type' => 'INGRESO',
+        'amount' => '1000.0000',
+        'direction' => BankMovement::DIRECTION_IN,
+        'concept' => 'Ingreso operativo posterior',
+        'source_type' => 'CUSTOMER_PAYMENT',
+        'source_id' => 1000,
+        'source_code' => 'COBRO-1000',
+    ], $this->user->id);
+
+    $response = $this->getJson(route('admin.banks.list', [
+        'draw' => 2, 'start' => 0, 'length' => 10,
+        'date_from' => '2026-08-01', 'date_to' => '2026-08-31',
+    ]))->assertOk();
+    $originRow = collect($response->json('data'))->firstWhere('account_number', $this->origin->account_number);
+
+    expect($originRow['income'])->toBe('S/ 1,000.00')
+        ->and((float) $response->json('summary.period_income_pen'))->toBe(1000.0)
+        ->and((float) $response->json('summary.total_banks_pen'))->toBe(51000.0)
+        ->and((float) $this->origin->fresh()->current_balance)->toBe(51000.0);
+});
+
 it('registra ingresos y egresos actualizando el saldo de forma transaccional', function () {
     $income = $this->service->createMovement([
         'company_bank_account_id' => $this->origin->id,
@@ -329,10 +377,23 @@ it('anula mediante reversa y reconstruye correctamente el saldo del libro', func
     ], $this->user->id);
     $this->service->cancelMovement($movement, 'OPERACION REGISTRADA POR ERROR', $this->user->id);
 
+    Permission::findOrCreate('admin.banks.view', 'web');
+    $this->user->givePermissionTo('admin.banks.view');
+    $response = $this->actingAs($this->user)->getJson(route('admin.banks.list', [
+        'draw' => 1, 'start' => 0, 'length' => 10,
+        'date_from' => '2026-08-01', 'date_to' => '2026-08-31',
+    ]))->assertOk();
+    $originRow = collect($response->json('data'))->firstWhere('account_number', $this->origin->account_number);
+
     expect($movement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
         ->and($movement->fresh()->reversal)->not->toBeNull()
         ->and((float) $this->origin->fresh()->current_balance)->toBe(0.0)
-        ->and($this->service->systemBalanceAt($this->origin->id, '2026-08-31'))->toBe(0.0);
+        ->and($this->service->systemBalanceAt($this->origin->id, '2026-08-31'))->toBe(0.0)
+        ->and($originRow['income'])->toBe('S/ 0.00')
+        ->and($originRow['expense'])->toBe('S/ 0.00')
+        ->and((float) $response->json('summary.period_income_pen'))->toBe(0.0)
+        ->and((float) $response->json('summary.period_expense_pen'))->toBe(0.0)
+        ->and((float) $response->json('summary.total_banks_pen'))->toBe(0.0);
 });
 
 it('concilia movimientos y calcula la diferencia contra el estado bancario', function () {
@@ -397,14 +458,17 @@ it('genera un egreso bancario al registrar un anticipo real a proveedor', functi
         $order,
         collect([[
             'company_bank_account_id' => $this->origin->id,
+            'purchase_currency_id' => $this->currency->id,
+            'payment_currency_id' => $this->currency->id,
             'payment_date' => '2026-08-07',
+            'applied_amount' => '225.0000',
             'amount' => '225.0000',
+            'amount_pen' => '225.0000',
+            'exchange_rate' => '1.000000',
             'payment_method' => 'deposito_cuenta',
             'operation_number' => 'ANT-0001',
             'observation' => 'ANTICIPO CONFIRMADO',
-        ]]),
-        $this->currency,
-        null
+        ]])
     );
 
     $payment = $order->advancePayments()->firstOrFail();

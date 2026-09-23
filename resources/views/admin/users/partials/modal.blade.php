@@ -159,6 +159,36 @@
                                         </div>
                                     </div>
 
+                                    <div class="border rounded bg-light p-3 mb-3">
+                                        <div class="d-flex align-items-start justify-content-between flex-wrap mb-2">
+                                            <div>
+                                                <label class="mb-0">Empresas autorizadas <span class="text-danger">*</span></label>
+                                                <small class="d-block text-muted">Selecciona las empresas cuyos datos podr&aacute; gestionar este usuario.</small>
+                                            </div>
+                                            <span class="badge badge-success mt-1"><i class="fas fa-building mr-1"></i>Acceso multiempresa</span>
+                                        </div>
+                                        <div class="row">
+                                            @forelse ($companies as $company)
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="d-flex align-items-start border rounded bg-white px-3 py-2 mb-0" style="cursor:pointer; min-height:58px;">
+                                                        <input type="checkbox" class="mt-1 mr-2 user-company-checkbox"
+                                                            name="company_ids[]" value="{{ $company->id }}">
+                                                        <span>
+                                                            <strong class="d-block text-dark">{{ $company->trade_name ?: $company->business_name }}</strong>
+                                                            @if ($company->trade_name && $company->trade_name !== $company->business_name)
+                                                                <small class="text-muted">{{ $company->business_name }}</small>
+                                                            @endif
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                            @empty
+                                                <div class="col-12">
+                                                    <div class="alert alert-warning mb-0 py-2">No hay empresas activas disponibles para asignar.</div>
+                                                </div>
+                                            @endforelse
+                                        </div>
+                                    </div>
+
                                     <span class="users-password-help">
                                         <i class="fas fa-info-circle"></i>
                                         En edici&oacute;n, deja la contrase&ntilde;a vac&iacute;a si no deseas cambiarla.

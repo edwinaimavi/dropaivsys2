@@ -10,6 +10,7 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerBranch;
 use App\Models\CustomerPurchaseOrder;
+use App\Models\CustomerPurchaseOrderItem;
 use App\Models\ElectronicInvoice;
 use App\Models\ElectronicInvoiceApiLog;
 use App\Models\ElectronicInvoiceSeries;
@@ -21,6 +22,9 @@ use App\Models\Warehouse;
 use App\Services\WarehouseKardexService;
 use App\Services\InvoiceCollectionService;
 use App\Services\InvoiceFromCustomerOrderService;
+use App\Services\ElectronicInvoiceFormDataService;
+use App\Services\SunatUnitPolicy;
+use App\Services\ArticleSalesTaxPolicy;
 use App\Services\ElectronicBilling\ApiPeruBillingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -38,12 +42,14 @@ class ElectronicInvoiceController extends Controller
     private const STATUS_DRAFT = 'draft';
     private const STATUS_GENERATED = 'generated';
 
+    private const IMMUTABLE_MESSAGE = 'El comprobante generado ya no puede editarse. Si necesita corregirlo, debe cancelarlo y emitir un nuevo comprobante.';
+
     public function __construct()
     {
-        $this->middleware('can:admin.electronic-invoices.index')->only(['index', 'list', 'customerPurchaseOrderData']);
+        $this->middleware('can:admin.electronic-invoices.index')->only(['index', 'list']);
         $this->middleware('can:admin.electronic-invoices.create')->only(['store']);
         $this->middleware('can:admin.electronic-invoices.show')->only(['show']);
-        $this->middleware('can:admin.electronic-invoices.update')->only(['update']);
+        $this->middleware('can:admin.electronic-invoices.update')->only(['edit', 'update']);
         $this->middleware('can:admin.electronic-invoices.destroy')->only(['destroy']);
         $this->middleware('can:admin.electronic-invoices.pdf')->only(['pdf']);
         $this->middleware('can:admin.electronic-invoices.payload')->only(['previewPayload']);
@@ -52,49 +58,15 @@ class ElectronicInvoiceController extends Controller
         $this->middleware('can:admin.invoice-collections.store')->only(['collect']);
     }
 
-    public function index(Request $request)
+    public function index(Request $request, ElectronicInvoiceFormDataService $formDataService)
     {
-        $companies = Company::query()->where('status', true)->orderBy('business_name')->get();
-        $customers = Customer::query()->where('status', true)->orderBy('business_name')->orderBy('full_name')->get();
-        $customerBranches = CustomerBranch::query()
-            ->where('status', true)
-            ->orderByDesc('is_main')
-            ->orderBy('branch_name')
-            ->get(['id', 'customer_id', 'branch_name', 'address']);
-        $currencies = Currency::query()->where('status', 'ACTIVE')->orderBy('description')->get();
-        $series = ElectronicInvoiceSeries::query()
-            ->with('company:id,business_name,trade_name')
-            ->where('status', 'ACTIVE')
-            ->orderBy('document_type')
-            ->orderBy('serie')
-            ->get();
-        $companyEnvironments = ElectronicInvoiceSetting::query()
-            ->where('is_active', true)->whereNotNull('company_id')
-            ->orderByRaw("CASE WHEN environment = 'internal' THEN 0 WHEN environment = 'beta' THEN 1 ELSE 2 END")
-            ->get(['company_id', 'environment'])->groupBy('company_id')
-            ->map(fn ($settings) => $settings->first()->environment);
-        $articles = Article::query()
-            ->where('status', 'ACTIVE')
-            ->orderBy('billing_name')
-            ->get(['id', 'code', 'billing_name', 'commercial_name', 'unit_id', 'presentation_id', 'brand_id']);
-        $quotes = Quote::query()->orderByDesc('id')->limit(300)->get(['id', 'quote_number', 'customer_id']);
-        $customerPurchaseOrders = CustomerPurchaseOrder::query()
-            ->whereIn('status', ['partial_entered', 'entered', 'attended', 'delivered'])
-            ->orderByDesc('id')
-            ->limit(300)
-            ->get(['id', 'code', 'purchase_order_number', 'quote_id', 'customer_id', 'customer_branch_id', 'siaf_file_number', 'process_type']);
-        $warehouses = Warehouse::query()->where('status', 'ACTIVE')->orderBy('name')->get(['id', 'code', 'name']);
+        $formData = $formDataService->get();
         $warehouseEntries = WarehouseEntry::query()
             ->orderByDesc('id')
             ->limit(300)
             ->get(['id', 'entry_number', 'supplier_id', 'grand_total']);
-        $taxAffectations = SunatCatalogItem::query()
-            ->where('catalog_code', 'tax_affectation')
-            ->where('status', 'ACTIVE')
-            ->orderBy('item_code')
-            ->get();
         $bankAccounts = CompanyBankAccount::query()
-            ->with(['bank:id,description,short_name', 'currency:id,code,symbol'])
+            ->with(['company:id,business_name', 'bank:id,description,short_name', 'currency:id,code,symbol'])
             ->where('status', 'ACTIVE')
             ->orderBy('company_id')->orderBy('id')->get();
         $collectionAlerts = [
@@ -107,25 +79,14 @@ class ElectronicInvoiceController extends Controller
         $initialCollectionInvoiceId = $request->integer('collect_invoice_id') ?: null;
         $invoiceOrderFilterId = $request->integer('invoice_order_id') ?: null;
 
-        return view('admin.electronic-invoices.index', compact(
-            'companies',
-            'customers',
-            'customerBranches',
-            'currencies',
-            'series',
-            'companyEnvironments',
-            'articles',
-            'quotes',
-            'customerPurchaseOrders',
+        return view('admin.electronic-invoices.index', array_merge($formData, compact(
             'warehouseEntries',
-            'warehouses',
-            'taxAffectations',
             'bankAccounts',
             'collectionAlerts',
             'initialCustomerPurchaseOrderId',
             'initialCollectionInvoiceId',
             'invoiceOrderFilterId'
-        ));
+        )));
     }
 
     public function customerPurchaseOrderData(
@@ -133,6 +94,12 @@ class ElectronicInvoiceController extends Controller
         InvoiceFromCustomerOrderService $invoiceService
     )
     {
+        abort_unless(
+            request()->user()?->can('admin.electronic-invoices.index')
+                || request()->user()?->can('admin.customer-purchase-orders.invoice'),
+            403
+        );
+
         if (! in_array($customerPurchaseOrder->status, ['partial_entered', 'entered', 'attended', 'delivered'], true)) {
             return response()->json(['message' => 'La orden seleccionada todavía no está disponible para facturación.'], 422);
         }
@@ -174,7 +141,10 @@ class ElectronicInvoiceController extends Controller
         return $this->saveInvoice($request);
     }
 
-    public function show(ElectronicInvoice $electronicInvoice)
+    public function show(
+        ElectronicInvoice $electronicInvoice,
+        InvoiceFromCustomerOrderService $invoiceService
+    )
     {
         $electronicInvoice->load([
             'company',
@@ -182,9 +152,11 @@ class ElectronicInvoiceController extends Controller
             'quote',
             'customerPurchaseOrder',
             'warehouseEntry',
+            'warehouse',
             'currency',
             'serie',
             'items.article',
+            'items.dispatchAllocations.dispatchItem.dispatch',
             'payments',
             'collections.account.bank',
             'collections.currency',
@@ -202,6 +174,10 @@ class ElectronicInvoiceController extends Controller
                 $collection->proof_file_path ? Storage::disk('public')->url($collection->proof_file_path) : null
             );
         });
+        $electronicInvoice->setAttribute(
+            'dispatch_context',
+            $invoiceService->dispatchTraceability($electronicInvoice)
+        );
 
         return response()->json([
             'status' => 'success',
@@ -249,16 +225,42 @@ class ElectronicInvoiceController extends Controller
 
     public function edit(ElectronicInvoice $electronicInvoice)
     {
-        return $this->show($electronicInvoice);
+        $this->ensureInvoiceEditable($electronicInvoice);
+
+        return $this->show($electronicInvoice, app(InvoiceFromCustomerOrderService::class));
     }
 
     public function update(Request $request, ElectronicInvoice $electronicInvoice)
     {
+        $this->ensureInvoiceEditable($electronicInvoice);
+
         return $this->saveInvoice($request, $electronicInvoice);
     }
 
-    public function destroy(ElectronicInvoice $electronicInvoice, WarehouseKardexService $kardexService)
+    public function destroy(
+        Request $request,
+        ElectronicInvoice $electronicInvoice,
+        WarehouseKardexService $kardexService,
+        InvoiceFromCustomerOrderService $invoiceService
+    )
     {
+        if (in_array($electronicInvoice->status, ['cancelled', 'voided'], true) || $electronicInvoice->is_voided) {
+            return response()->json([
+                'message' => 'El comprobante ya se encuentra cancelado o anulado y no puede modificarse.',
+            ], 422);
+        }
+        if ($electronicInvoice->is_sent_to_sunat || in_array($electronicInvoice->status, ['sent', 'accepted'], true)) {
+            return response()->json([
+                'message' => 'El comprobante enviado a SUNAT requiere el procedimiento fiscal de anulación correspondiente.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ], [
+            'reason.required' => 'Debe ingresar el motivo de cancelación del comprobante.',
+        ]);
+
         if ($electronicInvoice->collections()->exists()) {
             return response()->json([
                 'message' => 'No se puede anular una factura con cobros registrados. El historial bancario debe conservarse.',
@@ -266,25 +268,33 @@ class ElectronicInvoiceController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($electronicInvoice, $kardexService) {
+            DB::transaction(function () use ($electronicInvoice, $kardexService, $invoiceService, $validated) {
                 $previousStatus = $electronicInvoice->status;
-                $kardexService->reverseElectronicInvoiceExit(
-                    $electronicInvoice,
-                    'Anulación de salida por comprobante ' . $electronicInvoice->full_number
-                );
+                $dispatchBacked = $invoiceService->isDispatchBackedInvoice($electronicInvoice);
+                if ($dispatchBacked) {
+                    $invoiceService->releaseDispatchAllocations($electronicInvoice);
+                } elseif ($electronicInvoice->stock_moved_at) {
+                    $kardexService->reverseElectronicInvoiceExit(
+                        $electronicInvoice,
+                        'Anulación de salida por comprobante ' . $electronicInvoice->full_number
+                    );
+                }
                 $electronicInvoice->update([
                     'status' => 'cancelled',
+                    'voided_at' => now(),
+                    'voided_reason' => $validated['reason'],
                     'updated_by' => Auth::id(),
                 ]);
 
                 $electronicInvoice->statusHistories()->create([
                     'previous_status' => $previousStatus,
                     'new_status' => 'cancelled',
-                    'description' => 'Comprobante cancelado internamente y salida de almacén revertida. No representa baja SUNAT.',
+                    'description' => $dispatchBacked
+                        ? 'Comprobante cancelado internamente. Se liberó su asignación comercial sin revertir el despacho físico. Motivo: '.$validated['reason']
+                        : 'Comprobante cancelado internamente. Motivo: '.$validated['reason'],
                     'changed_by' => Auth::id(),
                     'changed_at' => now(),
                 ]);
-                $electronicInvoice->delete();
             });
 
             return response()->json([
@@ -393,9 +403,10 @@ class ElectronicInvoiceController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.article_id' => ['nullable', 'exists:articles,id'],
             'items.*.customer_purchase_order_item_id' => ['nullable', 'exists:customer_purchase_order_items,id'],
+            'items.*.warehouse_dispatch_item_id' => ['nullable', 'integer', 'exists:warehouse_dispatch_items,id'],
             'items.*.product_code' => ['nullable', 'string', 'max:255'],
             'items.*.description' => ['required', 'string'],
-            'items.*.unit_code' => ['required', 'string', 'max:10'],
+            'items.*.unit_code' => ['nullable', 'string', 'max:10'],
             'items.*.unit_name' => ['nullable', 'string', 'max:255'],
             'items.*.brand_name' => ['nullable', 'string', 'max:255'],
             'items.*.presentation_name' => ['nullable', 'string', 'max:255'],
@@ -433,16 +444,7 @@ class ElectronicInvoiceController extends Controller
             return DB::transaction(function () use ($validated, $invoice) {
                 $isCreating = $invoice === null;
                 $targetStatus = $validated['requested_status'];
-                if ($invoice?->status === 'cancelled') {
-                    throw ValidationException::withMessages([
-                        'status' => 'No se puede modificar un comprobante anulado.',
-                    ]);
-                }
-                if ($invoice?->status === self::STATUS_GENERATED && $targetStatus === self::STATUS_DRAFT) {
-                    throw ValidationException::withMessages([
-                        'status' => 'Un comprobante generado no puede volver al estado borrador.',
-                    ]);
-                }
+                $invoiceService = app(InvoiceFromCustomerOrderService::class);
                 if ($invoice && (float) $invoice->paid_amount > 0) {
                     throw ValidationException::withMessages([
                         'invoice' => 'No se puede modificar una factura que ya tiene cobros registrados.',
@@ -451,16 +453,11 @@ class ElectronicInvoiceController extends Controller
                 $configuration = ElectronicInvoiceSetting::query()
                     ->where('company_id', $validated['company_id'])
                     ->where('is_active', true)
-                    ->orderByRaw("CASE WHEN environment = 'internal' THEN 0 WHEN environment = 'beta' THEN 1 ELSE 2 END")
+                    ->where('environment', 'internal')
                     ->first();
                 if (! $configuration) {
                     throw ValidationException::withMessages([
-                        'company_id' => 'La empresa seleccionada no tiene configuración electrónica activa.',
-                    ]);
-                }
-                if ($targetStatus === self::STATUS_GENERATED && empty($validated['warehouse_id'])) {
-                    throw ValidationException::withMessages([
-                        'warehouse_id' => 'El almacén de salida es obligatorio para generar el comprobante interno.',
+                        'company_id' => 'Configuración local requerida. La empresa seleccionada no tiene una configuración de facturación local activa.',
                     ]);
                 }
                 $serieQuery = ElectronicInvoiceSeries::query()->lockForUpdate();
@@ -477,7 +474,7 @@ class ElectronicInvoiceController extends Controller
                 $serie = $serieQuery->first();
                 if (! $serie) {
                     throw ValidationException::withMessages([
-                        'serie_id' => 'No existe una serie activa para esta empresa, tipo de documento y ambiente.',
+                        'serie_id' => 'Serie local requerida. Configure una serie interna activa para emitir este comprobante.',
                     ]);
                 }
 
@@ -486,7 +483,7 @@ class ElectronicInvoiceController extends Controller
                     || $serie->environment !== $configuration->environment
                     || $serie->status !== 'ACTIVE') {
                     throw ValidationException::withMessages([
-                        'serie_id' => 'La serie seleccionada no corresponde a la empresa, tipo de documento o no está activa.',
+                        'serie_id' => 'La serie local seleccionada no corresponde a la empresa, tipo de documento o no está activa.',
                     ]);
                 }
 
@@ -498,11 +495,23 @@ class ElectronicInvoiceController extends Controller
                         ->findOrFail($validated['customer_branch_id'])
                     : null;
                 $currency = Currency::query()->findOrFail($validated['currency_id']);
+                $validated['items'] = $this->applySunatUnitCodes($validated['items']);
                 $preparedItems = $this->prepareItems($validated['items']);
                 $totals = $this->calculateTotals($preparedItems);
                 $customerOrder = ! empty($validated['customer_purchase_order_id'])
                     ? CustomerPurchaseOrder::query()->findOrFail($validated['customer_purchase_order_id'])
                     : null;
+                $useDispatchBacking = $targetStatus === self::STATUS_GENERATED
+                    && $customerOrder
+                    && $invoiceService->shouldUseDispatchBacking($customerOrder, $invoice);
+
+                if ($targetStatus === self::STATUS_GENERATED
+                    && ! $useDispatchBacking
+                    && empty($validated['warehouse_id'])) {
+                    throw ValidationException::withMessages([
+                        'warehouse_id' => 'El almacén de salida es obligatorio para generar el comprobante interno.',
+                    ]);
+                }
 
                 if ($customerOrder) {
                     if ((int) $customerOrder->company_id !== (int) $company->id
@@ -513,8 +522,13 @@ class ElectronicInvoiceController extends Controller
                         ]);
                     }
                     if ($targetStatus === self::STATUS_GENERATED) {
-                        app(InvoiceFromCustomerOrderService::class)
-                            ->validateGeneratedInvoice($customerOrder, $validated['items'], $invoice, (float) $totals['total_amount']);
+                        $invoiceService->validateGeneratedInvoice(
+                            $customerOrder,
+                            $validated['items'],
+                            $invoice,
+                            (float) $totals['total_amount'],
+                            $useDispatchBacking
+                        );
                     }
                 }
 
@@ -546,7 +560,7 @@ class ElectronicInvoiceController extends Controller
                     'quote_id' => $validated['quote_id'] ?? null,
                     'customer_purchase_order_id' => $validated['customer_purchase_order_id'] ?? null,
                     'warehouse_entry_id' => $validated['warehouse_entry_id'] ?? null,
-                    'warehouse_id' => $validated['warehouse_id'] ?? null,
+                    'warehouse_id' => $useDispatchBacking ? null : ($validated['warehouse_id'] ?? null),
                     'currency_id' => $currency->id,
                     'serie_id' => $serie->id,
                     'document_type' => $validated['document_type'],
@@ -586,13 +600,6 @@ class ElectronicInvoiceController extends Controller
                 ]);
 
                 if ($invoice) {
-                    $wasGenerated = $invoice->status === self::STATUS_GENERATED;
-                    if ($wasGenerated) {
-                        app(WarehouseKardexService::class)->reverseElectronicInvoiceExit(
-                            $invoice,
-                            'Reversa temporal por actualización del comprobante ' . $invoice->full_number
-                        );
-                    }
                     $invoice->update($invoiceData);
                     $invoice->items()->delete();
                     $invoice->payments()->delete();
@@ -601,19 +608,27 @@ class ElectronicInvoiceController extends Controller
                 } else {
                     $invoiceData['created_by'] = Auth::id();
                     $invoice = ElectronicInvoice::create($invoiceData);
-                    if ($needsFinalNumber) {
-                        $serie->update([
+                }
+                if ($needsFinalNumber) {
+                    $serie->update([
                         'current_number' => $serie->next_number,
                         'next_number' => $serie->next_number + 1,
                         'updated_by' => Auth::id(),
-                        ]);
-                    }
+                    ]);
                 }
 
-                foreach ($preparedItems as $index => $item) {
+                foreach (array_values($preparedItems) as $index => $item) {
                     $invoice->items()->create(array_merge($item, [
                         'item_number' => $index + 1,
                     ]));
+                }
+
+                if ($targetStatus === self::STATUS_GENERATED && $useDispatchBacking) {
+                    $invoiceService->allocateDispatchesForGeneratedInvoice(
+                        $customerOrder,
+                        $invoice,
+                        $validated['items']
+                    );
                 }
 
                 foreach ($payments as $payment) {
@@ -651,7 +666,7 @@ class ElectronicInvoiceController extends Controller
                 ]);
 
                 $pdfData = null;
-                if ($targetStatus === self::STATUS_GENERATED) {
+                if ($targetStatus === self::STATUS_GENERATED && ! $useDispatchBacking) {
                     app(WarehouseKardexService::class)->registerExitFromElectronicInvoice(
                         $invoice->fresh(['customer', 'warehouseEntry', 'items.article.category'])
                     );
@@ -668,10 +683,14 @@ class ElectronicInvoiceController extends Controller
                     'description' => $isCreating
                         ? ($targetStatus === self::STATUS_DRAFT
                             ? 'Comprobante guardado como borrador. No mueve stock.'
-                            : 'Comprobante generado internamente. Pendiente de envío SUNAT.')
+                            : ($useDispatchBacking
+                                ? 'Comprobante generado con respaldo de despacho confirmado. No genera una salida física adicional.'
+                                : 'Comprobante generado internamente. Pendiente de envío SUNAT.'))
                         : ($targetStatus === self::STATUS_DRAFT
                             ? 'Borrador actualizado. No mueve stock.'
-                            : 'Comprobante generado internamente y stock actualizado.'),
+                            : ($useDispatchBacking
+                                ? 'Comprobante actualizado con respaldo de despacho confirmado. No modifica stock.'
+                                : 'Comprobante generado internamente y stock actualizado.')),
                     'changed_by' => Auth::id(),
                     'changed_at' => now(),
                 ]);
@@ -704,13 +723,36 @@ class ElectronicInvoiceController extends Controller
 
     private function prepareItems(array $items): array
     {
-        return collect($items)->map(function (array $item) {
+        $orderItemIds = collect($items)->pluck('customer_purchase_order_item_id')->filter()->map(fn ($id) => (int) $id)->unique();
+        $orderItems = CustomerPurchaseOrderItem::query()
+            ->with('purchaseOrder:id,affect_igv')
+            ->whereKey($orderItemIds)
+            ->get()
+            ->keyBy('id');
+        $salesTaxPolicy = app(ArticleSalesTaxPolicy::class);
+
+        return collect($items)->map(function (array $item) use ($orderItems, $salesTaxPolicy) {
+            $affectation = trim((string) ($item['tax_affectation_code'] ?? ''));
+            $orderItem = $orderItems->get((int) ($item['customer_purchase_order_item_id'] ?? 0));
+
+            if ($orderItem) {
+                $snapshot = trim((string) $orderItem->tax_affectation_code);
+                $affectation = in_array($snapshot, ArticleSalesTaxPolicy::ALLOWED, true)
+                    ? $snapshot
+                    : ($orderItem->purchaseOrder?->affect_igv
+                        ? ArticleSalesTaxPolicy::TAXABLE
+                        : ArticleSalesTaxPolicy::EXONERATED);
+            } else {
+                // En una factura directa la afectación se define en ESTA línea
+                // del comprobante. Nunca se vuelve a leer del maestro Article.
+                $affectation = $salesTaxPolicy->validate($affectation, 'items');
+            }
+
             $quantity = (string) $item['quantity'];
             $unitPrice = (string) $item['unit_price'];
             $discount = (string) ($item['discount_amount'] ?? 0);
             $lineTotal = bcsub(bcmul($quantity, $unitPrice, 10), $discount, 10);
             $lineTotal = bccomp($lineTotal, '0', 10) < 0 ? '0' : $lineTotal;
-            $affectation = $item['tax_affectation_code'];
             $subtotal = $affectation === '10' ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
             $igv = $affectation === '10' ? bcsub($lineTotal, $subtotal, 10) : '0';
             $unitValue = $affectation === '10' ? bcdiv($unitPrice, '1.18', 10) : $unitPrice;
@@ -727,7 +769,7 @@ class ElectronicInvoiceController extends Controller
                 'description' => $this->upperOrNull($item['description'] ?? ''),
                 'commercial_name' => $this->upperOrNull($item['commercial_name'] ?? null),
                 'billing_name' => $this->upperOrNull($item['billing_name'] ?? ($item['description'] ?? '')),
-                'unit_code' => $this->upperOrNull($item['unit_code'] ?? 'NIU'),
+                'unit_code' => $this->upperOrNull($item['unit_code']),
                 'unit_name' => $this->upperOrNull($item['unit_name'] ?? null),
                 'brand_name' => $this->upperOrNull($item['brand_name'] ?? null),
                 'presentation_name' => $this->upperOrNull($item['presentation_name'] ?? null),
@@ -751,6 +793,34 @@ class ElectronicInvoiceController extends Controller
                 'line_total' => $lineTotal,
                 'status' => 'ACTIVE',
             ];
+        })->all();
+    }
+
+    private function applySunatUnitCodes(array $items): array
+    {
+        $articleIds = collect($items)
+            ->pluck('article_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique();
+        $articles = Article::query()
+            ->with('unit.sunatUnit.catalog')
+            ->whereKey($articleIds)
+            ->get()
+            ->keyBy('id');
+        $policy = app(SunatUnitPolicy::class);
+
+        return collect($items)->map(function (array $item) use ($articles, $policy) {
+            $article = $articles->get((int) ($item['article_id'] ?? 0));
+            if (! $article) {
+                throw ValidationException::withMessages([
+                    'items' => SunatUnitPolicy::BILLING_MESSAGE,
+                ]);
+            }
+
+            $item['unit_code'] = $policy->codeForArticle($article, 'items');
+
+            return $item;
         })->all();
     }
 
@@ -941,6 +1011,15 @@ class ElectronicInvoiceController extends Controller
             ?? $customer->full_name
             ?? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''))
             ?: '-';
+    }
+
+    private function ensureInvoiceEditable(ElectronicInvoice $invoice): void
+    {
+        if (! $invoice->isEditable()) {
+            throw ValidationException::withMessages([
+                'status' => self::IMMUTABLE_MESSAGE,
+            ]);
+        }
     }
 
     private function upperOrNull(?string $value): ?string

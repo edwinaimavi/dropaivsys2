@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 
 use App\Models\Unit;
+use App\Services\SunatUnitPolicy;
 
 use Illuminate\Http\Request;
 
@@ -29,9 +30,11 @@ class UnitController extends Controller
      * INDEX
      * =========================================================
      */
-    public function index()
+    public function index(SunatUnitPolicy $sunatUnitPolicy)
     {
-        return view('admin.units.index');
+        return view('admin.units.index', [
+            'sunatUnits' => $sunatUnitPolicy->activeSunatUnits(),
+        ]);
     }
 
     /**
@@ -43,7 +46,8 @@ class UnitController extends Controller
     {
         $units = Unit::with([
             'creator',
-            'editor'
+            'editor',
+            'sunatUnit'
         ])
             ->orderBy('id', 'desc')
             ->get();
@@ -51,6 +55,14 @@ class UnitController extends Controller
         return DataTables::of($units)
 
             ->addIndexColumn()
+
+            ->addColumn('sunat_unit', function ($unit) {
+                if (! $unit->sunatUnit) {
+                    return '<span class="badge badge-warning px-2 py-1">PENDIENTE</span>';
+                }
+
+                return e($unit->sunatUnit->item_code.' — '.$unit->sunatUnit->description);
+            })
 
             ->editColumn('decimal_quantity', function ($unit) {
 
@@ -108,6 +120,7 @@ class UnitController extends Controller
 
             ->rawColumns([
                 'decimal_quantity',
+                'sunat_unit',
                 'status',
                 'acciones'
             ])
@@ -120,7 +133,7 @@ class UnitController extends Controller
      * STORE
      * =========================================================
      */
-    public function store(Request $request)
+    public function store(Request $request, SunatUnitPolicy $sunatUnitPolicy)
     {
         $validated = $request->validate([
 
@@ -150,7 +163,9 @@ class UnitController extends Controller
             'observation' => [
                 'nullable',
                 'string'
-            ]
+            ],
+
+            'sunat_unit_item_id' => ['nullable'],
 
         ], [
 
@@ -170,6 +185,10 @@ class UnitController extends Controller
             'Debe seleccionar un estado.',
 
         ]);
+
+        $validated['sunat_unit_item_id'] = $sunatUnitPolicy->validateSunatUnit(
+            $validated['sunat_unit_item_id'] ?? null
+        );
 
         $validated['abbreviation'] = mb_strtoupper($validated['abbreviation']);
         $validated['description'] = mb_strtoupper($validated['description']);
@@ -223,12 +242,13 @@ class UnitController extends Controller
         }
     }
 
-    public function quickStore(Request $request)
+    public function quickStore(Request $request, SunatUnitPolicy $sunatUnitPolicy)
     {
         $validated = $request->validate([
             'abbreviation' => ['required', 'string', 'max:20'],
             'description' => ['required', 'string', 'max:255'],
             'decimal_quantity' => ['required', 'boolean'],
+            'sunat_unit_item_id' => ['nullable'],
         ], [
             'abbreviation.required' => 'La abreviatura es obligatoria.',
             'abbreviation.max' => 'La abreviatura no debe superar los 20 caracteres.',
@@ -237,6 +257,10 @@ class UnitController extends Controller
             'decimal_quantity.required' => 'Debe indicar si la unidad permite decimales.',
             'decimal_quantity.boolean' => 'La opción de decimales no es válida.',
         ]);
+
+        $validated['sunat_unit_item_id'] = $sunatUnitPolicy->validateSunatUnit(
+            $validated['sunat_unit_item_id'] ?? null
+        );
 
         $validated['abbreviation'] = mb_strtoupper(trim($validated['abbreviation']));
         $validated['description'] = mb_strtoupper(trim($validated['description']));
@@ -265,6 +289,7 @@ class UnitController extends Controller
                     'text' => $unit->description,
                     'description' => $unit->description,
                     'abbreviation' => $unit->abbreviation,
+                    'sunat_configured' => $unit->sunat_unit_item_id !== null,
                 ],
             ], 201);
         } catch (\Throwable $e) {
@@ -311,7 +336,7 @@ class UnitController extends Controller
      * UPDATE
      * =========================================================
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, SunatUnitPolicy $sunatUnitPolicy)
     {
         $unit = Unit::find($id);
 
@@ -354,7 +379,9 @@ class UnitController extends Controller
             'observation' => [
                 'nullable',
                 'string'
-            ]
+            ],
+
+            'sunat_unit_item_id' => ['nullable'],
 
         ], [
 
@@ -374,6 +401,12 @@ class UnitController extends Controller
             'Debe seleccionar un estado.',
 
         ]);
+
+        $validated['sunat_unit_item_id'] = $sunatUnitPolicy->validateSunatUnit(
+            $validated['sunat_unit_item_id'] ?? null
+        );
+
+        $sunatUnitPolicy->assertChangeAllowed($unit, $validated['sunat_unit_item_id']);
 
         $validated['abbreviation'] = mb_strtoupper($validated['abbreviation']);
         $validated['description'] = mb_strtoupper($validated['description']);

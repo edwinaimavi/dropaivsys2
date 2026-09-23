@@ -1,0 +1,13 @@
+{
+  "catalog_code": "16",
+  "catalog_name": "TIPO DE ACCIONES O PARTICIPACIONES",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "01", "description": "ACCIONES CON DERECHO A VOTO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "02", "description": "ACCIONES SIN DERECHO A VOTO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "03", "description": "PARTICIPACIONES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "04", "description": "OTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

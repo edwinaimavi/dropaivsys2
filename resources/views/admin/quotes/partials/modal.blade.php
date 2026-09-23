@@ -446,18 +446,14 @@
                                     <div class="form-group col-md-4">
 
                                         <label class="small font-weight-bold text-secondary">
-                                            AFECTO IGV
+                                            TRIBUTACIÓN DE VENTA
                                         </label>
 
-                                        <select id="affect_igv" name="affect_igv"
-                                            class="form-control form-control-sm">
-
-                                            <option value="0" selected>NO</option>
-                                            <option value="1">SI</option>
-
-                                        </select>
-
-                                        <span class="invalid-feedback" id="affect_igv-error"></span>
+                                        <input type="hidden" id="affect_igv" name="affect_igv" value="0">
+                                        <input type="text" id="quote_tax_mode"
+                                            class="form-control form-control-sm"
+                                            value="AUTOMÁTICA SEGÚN ARTÍCULOS" readonly>
+                                        <small class="form-text text-muted">Cada ítem conserva 10 Gravado, 20 Exonerado o 30 Inafecto.</small>
 
                                     </div>
 
@@ -726,6 +722,24 @@ GARANTÍA : 12 MESES</textarea>
 
                                         <div class="quote-total-line">
 
+                                            <span>Venta Inafecta</span>
+
+                                            <div class="input-group input-group-sm">
+
+                                                <div class="input-group-prepend">
+                                                    <span class="input-group-text quote-currency-code">PEN</span>
+                                                </div>
+
+                                                <input type="text" id="subtotal_unaffected"
+                                                    name="subtotal_unaffected" class="form-control text-right"
+                                                    value="0.00" readonly>
+
+                                            </div>
+
+                                        </div>
+
+                                        <div class="quote-total-line">
+
                                             <span>Venta Gravada</span>
 
                                             <div class="input-group input-group-sm">
@@ -808,6 +822,16 @@ GARANTÍA : 12 MESES</textarea>
 
                                 <input type="hidden" class="item-billing-name-value"
                                     name="items[__INDEX__][billing_name_snapshot]">
+                                <div class="mt-1">
+                                    <label class="mb-1 small font-weight-bold">Afectación de esta venta</label>
+                                    <select class="form-control form-control-sm item-tax-affectation-code"
+                                        name="items[__INDEX__][tax_affectation_code]" required>
+                                        <option value="" selected>Seleccione...</option>
+                                        <option value="10">GRAVADO CON IGV</option>
+                                        <option value="20">EXONERADO</option>
+                                        <option value="30">INAFECTO</option>
+                                    </select>
+                                </div>
 
                                 <div class="input-group input-group-sm quote-inline-select">
 
@@ -828,6 +852,7 @@ GARANTÍA : 12 MESES</textarea>
                                     </div>
 
                                 </div>
+                                <small class="item-tax-affectation-label form-text text-muted">Afectación: pendiente</small>
 
                                 <div class="input-group input-group-sm quote-legacy-article-input d-none">
 
@@ -1207,6 +1232,37 @@ GARANTÍA : 12 MESES</textarea>
                                 name="institutional_code" class="form-control form-control-sm text-uppercase">
                             <span class="invalid-feedback"></span>
                         </div>
+                    </div>
+
+                    <div class="form-row quick-inventory-classification">
+                        <div class="form-group col-md-6">
+                            <label>TIPO DE ÍTEM <span class="text-danger">*</span></label>
+                            <select name="item_kind" class="form-control form-control-sm quick-item-kind" required>
+                                <option value="">Seleccione</option>
+                                <option value="product">PRODUCTO</option>
+                                <option value="service">SERVICIO</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>PARTICIPA EN INVENTARIO <span class="text-danger">*</span></label>
+                            <select name="is_inventory_item" class="form-control form-control-sm quick-is-inventory-item" required>
+                                <option value="">Seleccione</option>
+                                <option value="1">SÍ, INVENTARIABLE</option>
+                                <option value="0">NO INVENTARIABLE</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                        <div class="form-group col-12 d-none quick-sunat-existence-type-group">
+                            <label>TIPO DE EXISTENCIA SUNAT <span class="text-danger">*</span></label>
+                            <select name="sunat_existence_type_item_id"
+                                class="form-control form-control-sm quick-sunat-existence-type"
+                                disabled>
+                                <option value="">Seleccione</option>
+                            </select>
+                            <span class="invalid-feedback"></span>
+                        </div>
+                        @include('admin.articles.partials.quickSunatInventoryIdentification')
                     </div>
 
                     <div class="form-row">

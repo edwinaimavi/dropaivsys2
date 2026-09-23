@@ -1,3 +1,5 @@
+import './customer-return';
+
 const viewportPadding = 12;
 const menuGap = 6;
 

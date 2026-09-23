@@ -27,10 +27,15 @@ class SupplierPurchaseOrderItem extends Model
         'subtotal',
         'tax_amount',
         'line_total',
+        'tax_affectation_code',
+        'tax_rate',
+        'discount_amount',
         'total_with_igv',
         'taxable_base',
         'igv_percent',
         'igv_amount',
+        'is_free',
+        'igv_recoverable',
         'status',
     ];
 
@@ -42,10 +47,14 @@ class SupplierPurchaseOrderItem extends Model
         'subtotal' => 'decimal:6',
         'tax_amount' => 'decimal:6',
         'line_total' => 'decimal:6',
+        'tax_rate' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'total_with_igv' => 'decimal:6',
         'taxable_base' => 'decimal:6',
         'igv_percent' => 'decimal:2',
         'igv_amount' => 'decimal:6',
+        'is_free' => 'boolean',
+        'igv_recoverable' => 'boolean',
     ];
 
     public function purchaseOrder()
@@ -89,5 +98,11 @@ class SupplierPurchaseOrderItem extends Model
     public function brand()
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function warehouseEntryAllocations()
+    {
+        return $this->hasMany(WarehouseEntryItemAllocation::class)
+            ->where('status', 'active');
     }
 }

@@ -9,12 +9,14 @@ use App\Models\CompanyBankAccount;
 use App\Models\Currency;
 use App\Models\Supplier;
 use App\Models\SupplierPurchaseOrder;
+use App\Models\SupplierPurchaseOrderItem;
 use App\Models\SupplierPurchaseOrderAdvancePayment;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryCreditPayment;
+use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryPaymentDocument;
 use App\Services\WarehouseEntryBankPaymentService;
 use App\Services\WarehouseEntryCreditPaymentService;
@@ -32,6 +34,7 @@ beforeEach(function () {
         'ruc' => '20555555551',
         'status' => true,
     ]);
+    $this->user->companies()->attach($this->company->id);
     $this->bank = Bank::create([
         'description' => 'BANCO DE PRUEBA',
         'short_name' => 'BPR',
@@ -433,7 +436,7 @@ it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario'
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.store', 'web');
     $this->user->givePermissionTo('admin.warehouse-entries.store');
-    [$warehouse, $article] = warehousePaymentInventoryData();
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
 
     $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
         'warehouse_id' => $warehouse->id,
@@ -444,6 +447,8 @@ it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario'
         'document_series' => 'F001',
         'document_number' => '999',
         'document_date' => '2026-08-14',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => 'contado',
         'affect_igv' => 1,
         'generate_account_payable' => 0,
         'payment_company_bank_account_id' => $this->account->id,
@@ -475,6 +480,39 @@ it('integra el guardado HTTP del ingreso con la constancia y el egreso bancario'
         ->and((float) $this->account->fresh()->current_balance)->toBe(882.0);
 });
 
+it('mantiene obligatorios los datos bancarios legacy al crear un ingreso contado sin pagos independientes', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.store', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.store');
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
+
+    $response = $this->actingAs($this->user)->postJson(route('admin.warehouse-entries.store'), [
+        'entry_mode' => 'supplier_invoice',
+        'warehouse_id' => $warehouse->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->pen->id,
+        'document_type' => 'FACTURA',
+        'document_number' => 'LEGACY-REQUIRED-001',
+        'document_date' => '2026-08-14',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => 'contado',
+        'generate_account_payable' => 0,
+        'affect_igv' => 1,
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 118,
+        ]],
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'payment_company_bank_account_id',
+            'bank_payment_date',
+        ]);
+});
+
 it('guarda tres payment items completos desde un ingreso nuevo y crea tres egresos', function () {
     Storage::fake('public');
     app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -482,7 +520,7 @@ it('guarda tres payment items completos desde un ingreso nuevo y crea tres egres
         Permission::findOrCreate($permission, 'web');
     }
     $this->user->givePermissionTo(['admin.warehouse-entries.store', 'admin.warehouse-entries.show']);
-    [$warehouse, $article] = warehousePaymentInventoryData();
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
     $order = warehousePaymentSupplierOrder(
         $this->company,
         $this->supplier,
@@ -490,6 +528,7 @@ it('guarda tres payment items completos desde un ingreso nuevo y crea tres egres
         'contado',
         'OCP-PAYMENT-ITEMS'
     );
+    $orderItem = warehousePaymentSupplierOrderItem($order, $article, 118);
     $paymentItems = [];
     foreach ([18, 40, 60] as $index => $amount) {
         $paymentItems[] = [
@@ -517,6 +556,7 @@ it('guarda tres payment items completos desde un ingreso nuevo y crea tres egres
         'affect_igv' => 1,
         'payment_items' => $paymentItems,
         'items' => [[
+            'supplier_purchase_order_item_id' => $orderItem->id,
             'article_id' => $article->id,
             'billing_name_snapshot' => $article->billing_name,
             'unit_id' => $article->unit_id,
@@ -544,6 +584,267 @@ it('guarda tres payment items completos desde un ingreso nuevo y crea tres egres
         ->assertJsonCount(1, 'data.payments_and_documents.2.documents');
 });
 
+it('rechaza el sobrepago agregado antes de crear el ingreso o algún egreso bancario', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.store', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.store');
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
+    $entryCount = WarehouseEntry::count();
+    $movementCount = BankMovement::count();
+    $accountBalance = $this->account->fresh()->current_balance;
+    $paymentItems = [];
+
+    foreach ([40, 61] as $index => $amount) {
+        $paymentItems[] = [
+            'bank_account_id' => $this->account->id,
+            'payment_date' => '2026-08-20',
+            'operation_number' => 'OP-OVERFLOW-'.($index + 1),
+            'currency_id' => $this->pen->id,
+            'paid_amount' => $amount,
+            'exchange_rate' => 1,
+            'applied_amount' => $amount,
+            'payment_method' => 'transferencia',
+            'idempotency_key' => 'warehouse-overflow-item-'.($index + 1),
+            'file' => UploadedFile::fake()->create('overflow-'.($index + 1).'.pdf', 50, 'application/pdf'),
+        ];
+    }
+
+    $response = $this->actingAs($this->user)->postJson(route('admin.warehouse-entries.store'), [
+        'entry_mode' => 'supplier_invoice',
+        'warehouse_id' => $warehouse->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->pen->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'PAYMENT-OVERFLOW-001',
+        'document_date' => '2026-08-20',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => 'contado',
+        'generate_account_payable' => 0,
+        'affect_igv' => 0,
+        'payment_items' => $paymentItems,
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 100,
+        ]],
+    ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors('payment_items.1.applied_amount');
+
+    expect($response->json('errors')['payment_items.1.applied_amount'][0] ?? null)
+        ->toBe('El monto aplicado no puede superar el saldo pendiente.')
+        ->and(WarehouseEntry::count())->toBe($entryCount)
+        ->and(WarehouseEntryCreditPayment::count())->toBe(0)
+        ->and(BankMovement::count())->toBe($movementCount)
+        ->and((float) $this->account->fresh()->current_balance)->toBe((float) $accountBalance);
+});
+
+it('acepta dos pagos cuya suma aplicada coincide exactamente con el total del ingreso', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.store', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.store');
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
+    $paymentItems = [];
+
+    foreach ([40, 60] as $index => $amount) {
+        $paymentItems[] = [
+            'bank_account_id' => $this->account->id,
+            'payment_date' => '2026-08-20',
+            'operation_number' => 'OP-EXACT-'.($index + 1),
+            'currency_id' => $this->pen->id,
+            'paid_amount' => $amount,
+            'exchange_rate' => 1,
+            'applied_amount' => $amount,
+            'payment_method' => 'transferencia',
+            'idempotency_key' => 'warehouse-exact-item-'.($index + 1),
+            'file' => UploadedFile::fake()->create('exact-'.($index + 1).'.pdf', 50, 'application/pdf'),
+        ];
+    }
+
+    $this->actingAs($this->user)->postJson(route('admin.warehouse-entries.store'), [
+        'entry_mode' => 'supplier_invoice',
+        'warehouse_id' => $warehouse->id,
+        'company_id' => $this->company->id,
+        'supplier_id' => $this->supplier->id,
+        'currency_id' => $this->pen->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'PAYMENT-EXACT-001',
+        'document_date' => '2026-08-20',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => 'contado',
+        'generate_account_payable' => 0,
+        'affect_igv' => 0,
+        'payment_items' => $paymentItems,
+        'items' => [[
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 100,
+        ]],
+    ])->assertCreated()->assertJsonPath('status', 'success');
+
+    $entry = WarehouseEntry::query()->where('document_number', 'PAYMENT-EXACT-001')->firstOrFail();
+    expect(WarehouseEntryCreditPayment::where('warehouse_entry_id', $entry->id)->count())->toBe(2)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe(2)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(900.0);
+});
+
+it('actualiza datos generales de un ingreso pagado sin tocar su pago bancario independiente', function () {
+    Storage::fake('public');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    foreach ([
+        'admin.warehouse-entries.store',
+        'admin.warehouse-entries.update',
+        'admin.warehouse-entries.show',
+    ] as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo(Permission::all());
+    $this->account->update(['current_balance' => 2000]);
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
+    $order = warehousePaymentSupplierOrder(
+        $this->company,
+        $this->supplier,
+        $this->pen,
+        'contado',
+        'OCP-UPDATE-PAID'
+    );
+    $orderItem = warehousePaymentSupplierOrderItem($order, $article, 1104);
+
+    $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
+        'supplier_purchase_order_id' => $order->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => 'UPDATE-PAID-001',
+        'document_date' => '2026-08-14',
+        'affect_igv' => 1,
+        'payment_items' => [[
+            'bank_account_id' => $this->account->id,
+            'payment_date' => '2026-08-14',
+            'operation_number' => '000814001',
+            'currency_id' => $this->pen->id,
+            'paid_amount' => 1104,
+            'exchange_rate' => 1,
+            'applied_amount' => 1104,
+            'payment_method' => 'transferencia',
+            'observation' => 'PAGO COMPLETO',
+            'idempotency_key' => 'warehouse-update-paid-001',
+            'file' => UploadedFile::fake()->create('constancia-1104.pdf', 50, 'application/pdf'),
+        ]],
+        'items' => [[
+            'supplier_purchase_order_item_id' => $orderItem->id,
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 1104,
+        ]],
+    ])->assertCreated();
+
+    $entry = WarehouseEntry::query()->where('document_number', 'UPDATE-PAID-001')->firstOrFail();
+    $item = $entry->items()->firstOrFail();
+    $expense = $entry->expenses()->create([
+        'supplier_purchase_order_id' => $order->id,
+        'source_type' => WarehouseEntryExpense::SOURCE_BANK,
+        'company_bank_account_id' => $this->account->id,
+        'expense_category' => 'freight_transport',
+        'cost_origin' => 'third_party',
+        'expense_type' => 'agency_freight',
+        'shipping_agency_id' => null,
+        'provider_name' => 'GRUPO GREEN LOGISTIC S.A.C.',
+        'document_type' => 'SIN_COMPROBANTE',
+        'currency_id' => $this->pen->id,
+        'amount' => 20,
+        'affects_igv' => false,
+        'igv_rate' => 0,
+        'taxable_amount' => 20,
+        'igv_amount' => 0,
+        'total_amount' => 20,
+        'affects_inventory_cost' => false,
+        'description' => 'COSTO EXISTENTE SIN EDICIÓN',
+        'status' => 'ACTIVE',
+        'approval_status' => WarehouseEntryExpense::APPROVAL_PENDING,
+        'created_by' => $this->user->id,
+    ]);
+    $expense->refresh();
+    $payment = $entry->creditPayments()->sole();
+    $movement = $payment->bankMovement()->firstOrFail();
+    $expenseSnapshot = $expense->getAttributes();
+    $paymentSnapshot = collect($payment->getAttributes())->only([
+        'id', 'bank_movement_id', 'company_bank_account_id', 'payment_date',
+        'applied_amount', 'amount', 'operation_number', 'proof_path', 'status',
+    ])->all();
+    $movementSnapshot = collect($movement->getAttributes())->only([
+        'id', 'company_bank_account_id', 'amount', 'direction', 'status', 'source_type', 'source_id',
+    ])->all();
+    $bankBalance = $this->account->fresh()->current_balance;
+    $movementCount = BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count();
+
+    $updatePayload = fn (string $observations, string $documentNumber) => [
+        'entry_mode' => 'supplier_order',
+        'supplier_purchase_order_id' => $order->id,
+        'warehouse_id' => $warehouse->id,
+        'document_type' => 'FACTURA',
+        'document_series' => 'F001',
+        'document_number' => $documentNumber,
+        'document_date' => '2026-08-14',
+        'observations' => $observations,
+        'items' => [[
+            'id' => $item->id,
+            'supplier_purchase_order_item_id' => $orderItem->id,
+            'article_id' => $article->id,
+            'billing_name_snapshot' => $article->billing_name,
+            'unit_id' => $article->unit_id,
+            'quantity' => 1,
+            'unit_price' => 1104,
+        ]],
+    ];
+
+    $this->actingAs($this->user)
+        ->putJson(route('admin.warehouse-entries.update', $entry), $updatePayload(
+            'OBSERVACIÓN GENERAL ACTUALIZADA',
+            'UPDATE-PAID-001'
+        ))
+        ->assertOk()
+        ->assertJsonPath('status', 'success');
+
+    $this->putJson(route('admin.warehouse-entries.update', $entry), $updatePayload(
+        'OBSERVACIÓN GENERAL ACTUALIZADA',
+        'UPDATE-PAID-002'
+    ))
+        ->assertOk()
+        ->assertJsonPath('status', 'success');
+
+    expect(collect($payment->fresh()->getAttributes())->only(array_keys($paymentSnapshot))->all())->toBe($paymentSnapshot)
+        ->and(collect($movement->fresh()->getAttributes())->only(array_keys($movementSnapshot))->all())->toBe($movementSnapshot)
+        ->and(BankMovement::where('source_type', WarehouseEntryCreditPaymentService::SOURCE_TYPE)->count())->toBe($movementCount)
+        ->and(BankMovement::where('source_type', WarehouseEntryBankPaymentService::SOURCE_TYPE)
+            ->where('source_id', $entry->id)->count())->toBe(0)
+        ->and((float) $this->account->fresh()->current_balance)->toBe((float) $bankBalance)
+        ->and($entry->fresh()->observations)->toBe('OBSERVACIÓN GENERAL ACTUALIZADA')
+        ->and($entry->fresh()->document_number)->toBe('UPDATE-PAID-002')
+        ->and($entry->expenses()->count())->toBe(1)
+        ->and($expense->fresh()->getAttributes())->toBe($expenseSnapshot)
+        ->and($entry->items()->firstOrFail()->lots()->count())->toBe(0);
+
+    $this->getJson(route('admin.warehouse-entries.show', $entry))
+        ->assertOk()
+        ->assertJsonPath('data.credit_payment_summary.paid_amount', 1104)
+        ->assertJsonPath('data.credit_payment_summary.pending_amount', 0)
+        ->assertJsonPath('data.credit_payments.0.id', $payment->id)
+        ->assertJsonPath('data.credit_payments.0.bank_movement_id', $movement->id);
+});
+
 it('muestra en nuevo ingreso el botón de pago real y oculta el bloque antiguo de constancias iniciales', function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.index', 'web');
@@ -558,12 +859,25 @@ it('muestra en nuevo ingreso el botón de pago real y oculta el bloque antiguo d
         ->assertDontSee('Constancias iniciales del pago');
 });
 
+it('devuelve la empresa real de la cuenta sin alterar su identificador', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.warehouse-entries.index', 'web');
+    $this->user->givePermissionTo('admin.warehouse-entries.index');
+
+    $this->actingAs($this->user)
+        ->getJson(route('admin.warehouse-entries.company-bank-accounts', $this->company))
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $this->account->id)
+        ->assertJsonPath('data.0.company.id', $this->company->id)
+        ->assertJsonPath('data.0.company.business_name', 'EMPRESA ALMACÉN S.A.C.');
+});
+
 it('hereda crédito de la OC, calcula vencimiento y no genera egreso aunque manipulen el request', function () {
     $this->travelTo(Carbon::parse('2026-07-21'));
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.store', 'web');
     $this->user->givePermissionTo('admin.warehouse-entries.store');
-    [$warehouse, $article] = warehousePaymentInventoryData();
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
     $order = warehousePaymentSupplierOrder(
         $this->company,
         $this->supplier,
@@ -571,6 +885,7 @@ it('hereda crédito de la OC, calcula vencimiento y no genera egreso aunque mani
         'credito_30_dias',
         'OCP-CREDITO-001'
     );
+    $orderItem = warehousePaymentSupplierOrderItem($order, $article, 118);
 
     $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
         'supplier_purchase_order_id' => $order->id,
@@ -582,6 +897,7 @@ it('hereda crédito de la OC, calcula vencimiento y no genera egreso aunque mani
         'payment_condition' => 'contado',
         'generate_account_payable' => 0,
         'items' => [[
+            'supplier_purchase_order_item_id' => $orderItem->id,
             'article_id' => $article->id,
             'billing_name_snapshot' => $article->billing_name,
             'unit_id' => $article->unit_id,
@@ -606,7 +922,7 @@ it('hereda contado de la OC y genera el egreso bancario', function () {
     app(PermissionRegistrar::class)->forgetCachedPermissions();
     Permission::findOrCreate('admin.warehouse-entries.store', 'web');
     $this->user->givePermissionTo('admin.warehouse-entries.store');
-    [$warehouse, $article] = warehousePaymentInventoryData();
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
     $order = warehousePaymentSupplierOrder(
         $this->company,
         $this->supplier,
@@ -614,6 +930,7 @@ it('hereda contado de la OC y genera el egreso bancario', function () {
         'contado',
         'OCP-CONTADO-001'
     );
+    $orderItem = warehousePaymentSupplierOrderItem($order, $article, 118);
 
     $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
         'supplier_purchase_order_id' => $order->id,
@@ -626,6 +943,7 @@ it('hereda contado de la OC y genera el egreso bancario', function () {
         'payment_company_bank_account_id' => $this->account->id,
         'bank_payment_date' => '2026-07-21',
         'items' => [[
+            'supplier_purchase_order_item_id' => $orderItem->id,
             'article_id' => $article->id,
             'billing_name_snapshot' => $article->billing_name,
             'unit_id' => $article->unit_id,
@@ -1234,7 +1552,7 @@ it('guarda varias constancias iniciales sobre un único movimiento bancario y la
         Permission::findOrCreate($permission, 'web');
     }
     $this->user->givePermissionTo(['admin.warehouse-entries.store', 'admin.warehouse-entries.show']);
-    [$warehouse, $article] = warehousePaymentInventoryData();
+    [$warehouse, $article] = warehousePaymentInventoryData($this->company);
 
     $response = $this->actingAs($this->user)->post(route('admin.warehouse-entries.store'), [
         'warehouse_id' => $warehouse->id,
@@ -1245,6 +1563,8 @@ it('guarda varias constancias iniciales sobre un único movimiento bancario y la
         'document_series' => 'F001',
         'document_number' => 'MULTI-001',
         'document_date' => '2026-08-14',
+        'payment_method' => 'deposito_cuenta',
+        'payment_condition' => 'contado',
         'affect_igv' => 1,
         'generate_account_payable' => 0,
         'payment_company_bank_account_id' => $this->account->id,
@@ -1331,7 +1651,7 @@ function warehousePaymentEntry(
     ]);
 }
 
-function warehousePaymentInventoryData(): array
+function warehousePaymentInventoryData(Company $company): array
 {
     $category = Category::create([
         'code' => 'CAT-PAGO',
@@ -1343,6 +1663,7 @@ function warehousePaymentInventoryData(): array
         'abbreviation' => 'UND',
         'description' => 'UNIDAD',
         'decimal_quantity' => false,
+        'sunat_unit_item_id' => testSunatUnitItemId(),
         'status' => 'ACTIVE',
     ]);
     $warehouse = Warehouse::create([
@@ -1350,12 +1671,16 @@ function warehousePaymentInventoryData(): array
         'name' => 'ALMACÉN PAGO',
         'status' => 'ACTIVE',
     ]);
+    $company->warehouses()->attach($warehouse->id, ['is_active' => true]);
     $article = Article::create([
         'code' => 'ART-PAGO',
         'category_id' => $category->id,
         'unit_id' => $unit->id,
         'legal_name' => 'ARTÍCULO PAGO',
         'billing_name' => 'ARTÍCULO PAGO',
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('ART-PAGO'),
         'status' => 'ACTIVE',
     ]);
 
@@ -1384,6 +1709,42 @@ function warehousePaymentSupplierOrder(
         'total_purchase_currency' => 118,
         'total_payment_currency' => 118,
         'status' => 'registered',
+    ]);
+}
+
+function warehousePaymentSupplierOrderItem(
+    SupplierPurchaseOrder $order,
+    Article $article,
+    float $lineTotal
+): SupplierPurchaseOrderItem {
+    $lineTotal = round($lineTotal, 2);
+    $subtotal = $order->affect_igv ? round($lineTotal / 1.18, 2) : $lineTotal;
+    $igv = round($lineTotal - $subtotal, 2);
+
+    $order->update([
+        'subtotal' => $subtotal,
+        'igv' => $igv,
+        'grand_total' => $lineTotal,
+        'total_purchase_currency' => $lineTotal,
+        'total_payment_currency' => $lineTotal,
+    ]);
+
+    return SupplierPurchaseOrderItem::create([
+        'supplier_purchase_order_id' => $order->id,
+        'article_id' => $article->id,
+        'article_code' => $article->code,
+        'billing_name_snapshot' => $article->billing_name,
+        'unit_id' => $article->unit_id,
+        'quantity' => 1,
+        'unit_price' => $lineTotal,
+        'subtotal' => $subtotal,
+        'tax_amount' => $igv,
+        'line_total' => $lineTotal,
+        'total_with_igv' => $lineTotal,
+        'taxable_base' => $subtotal,
+        'igv_percent' => $order->affect_igv ? 18 : 0,
+        'igv_amount' => $igv,
+        'status' => 'active',
     ]);
 }
 

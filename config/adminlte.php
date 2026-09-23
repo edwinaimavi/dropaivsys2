@@ -413,6 +413,20 @@ return [
         ],
 
         [
+            'text' => 'Agenda',
+            'icon' => 'fas fa-calendar-check',
+            'submenu' => [
+                [
+                    'text' => 'Agenda de Trabajo',
+                    'icon' => 'fas fa-tasks',
+                    'icon_color' => 'info',
+                    'url' => 'admin/work-agenda',
+                    'can' => 'agenda_trabajo.ver',
+                ],
+            ],
+        ],
+
+        [
             'text' => 'Comercial',
             'icon' => 'fas fa-handshake',
 
@@ -515,6 +529,13 @@ return [
                     "can" => 'admin.kardex.index'
 
                 ],
+                [
+                    'text' => 'Devoluciones de clientes',
+                    'icon' => 'fas fa-undo-alt',
+                    'icon_color' => 'primary',
+                    'url' => 'admin/customer-returns',
+                    'can' => 'devoluciones_clientes.ver',
+                ],
 
 
 
@@ -551,7 +572,7 @@ return [
                     'icon' => 'fas fa-book',
                     'icon_color' => 'primary',
                     'url' => 'admin/sunat-catalogs',
-                    'can' => 'admin.sunat-catalogs.index',
+                    'can' => 'catalogos_sunat.ver',
                 ],
             ],
         ],

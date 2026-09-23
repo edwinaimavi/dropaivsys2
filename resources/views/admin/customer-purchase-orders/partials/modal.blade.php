@@ -63,7 +63,8 @@
                                     <div class="font-weight-600 mb-2">{{ now()->format('d/m/Y') }}</div>
 
                                     <small class="text-muted d-block">Estado inicial</small>
-                                    <span class="badge badge-secondary px-2 py-1 mb-2">Registrada</span>
+                                    <span class="badge badge-secondary px-2 py-1 mb-1" title="Orden registrada, pendiente de compra al proveedor.">Registrada</span>
+                                    <small class="text-muted d-block mb-2">Orden registrada, pendiente de compra al proveedor.</small>
 
                                     <small class="text-muted d-block">Cliente</small>
                                     <div class="font-weight-600 mb-2 text-break" id="purchaseOrderSideCustomer">
@@ -314,12 +315,11 @@
                                         </select>
                                     </div>
                                     <div class="form-group col-md-3">
-                                        <label>AFECTO IGV</label>
-                                        <select id="purchase_order_affect_igv" name="affect_igv"
-                                            class="form-control form-control-sm js-purchase-order-select">
-                                            <option value="1">SI</option>
-                                            <option value="0" selected>NO</option>
-                                        </select>
+                                        <label>TRIBUTACIÓN DE VENTA</label>
+                                        <input type="hidden" id="purchase_order_affect_igv" name="affect_igv" value="0">
+                                        <input type="text" class="form-control form-control-sm"
+                                            value="AUTOMÁTICA POR ÍTEM" readonly>
+                                        <small class="form-text text-muted">10 Gravado / 20 Exonerado / 30 Inafecto.</small>
                                     </div>
                                     <div class="form-group col-md-6">
                                         <label>OBSERVACIÓN</label>
@@ -343,51 +343,87 @@
                                 <small class="text-muted">Persona que gestionó la orden, independiente del usuario que la registra.</small>
                             </div>
                             <div class="card-body pt-1 pb-2">
+                                <input type="hidden" id="purchase_order_seller_type" name="seller_type">
                                 <input type="hidden" id="purchase_order_seller_user_id" name="seller_user_id">
                                 <div class="form-row">
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-4">
                                         <label>TIPO DE GESTOR</label>
-                                        <select id="purchase_order_seller_type" name="seller_type" class="form-control form-control-sm">
+                                        <select id="purchase_order_seller_mode" class="form-control form-control-sm">
                                             <option value="">Sin especificar</option>
                                             <option value="USER">Usuario del sistema</option>
                                             <option value="EXTERNAL">Externo</option>
                                         </select>
+                                        <small class="form-text text-muted">Seleccione el origen de los datos del gestor.</small>
                                     </div>
-                                    <div class="form-group col-md-4">
-                                        <label>DNI DEL GESTOR</label>
-                                        <div class="input-group input-group-sm">
-                                            <input id="purchase_order_seller_dni" name="seller_dni" class="form-control" maxlength="8" inputmode="numeric" placeholder="8 dígitos">
-                                            <div class="input-group-append">
-                                                <button type="button" id="btnSearchPurchaseOrderSellerDni" class="btn btn-outline-primary">
-                                                    <i class="fas fa-search mr-1"></i> Buscar DNI
-                                                </button>
+
+                                    <div class="form-group col-md-8 d-none" id="purchaseOrderSellerInternalGroup">
+                                        <label>USUARIO INTERNO</label>
+                                        <select id="purchase_order_seller_user_picker" class="form-control form-control-sm">
+                                            <option value="">Seleccione usuario interno...</option>
+                                            @foreach ($sellerUsers as $sellerUser)
+                                                @php
+                                                    $sellerFullName = trim($sellerUser->name.' '.$sellerUser->lastname);
+                                                    $sellerOption = collect([
+                                                        $sellerFullName,
+                                                        $sellerUser->dni ? 'DNI '.$sellerUser->dni : null,
+                                                        $sellerUser->email,
+                                                    ])->filter()->implode(' · ');
+                                                @endphp
+                                                <option value="{{ $sellerUser->id }}"
+                                                    data-dni="{{ $sellerUser->dni }}"
+                                                    data-names="{{ $sellerUser->name }}"
+                                                    data-lastnames="{{ $sellerUser->lastname }}"
+                                                    data-full-name="{{ $sellerFullName }}"
+                                                    data-phone="{{ $sellerUser->phone }}"
+                                                    data-email="{{ $sellerUser->email }}">
+                                                    {{ $sellerOption }}
+                                                </option>
+                                            @endforeach
+                                            <option value="__manual__">No está registrado / buscar por DNI</option>
+                                        </select>
+                                        <div class="invalid-feedback">Seleccione un usuario interno o use la búsqueda por DNI.</div>
+                                        <small class="form-text text-muted">La lista muestra únicamente usuarios activos.</small>
+                                    </div>
+
+                                    <div class="col-12 px-0 d-none" id="purchaseOrderSellerDetails">
+                                        <div class="form-row mx-0">
+                                            <div class="form-group col-md-4">
+                                                <label>DNI DEL GESTOR</label>
+                                                <div class="input-group input-group-sm">
+                                                    <input id="purchase_order_seller_dni" name="seller_dni" class="form-control" maxlength="8" inputmode="numeric" placeholder="8 dígitos">
+                                                    <div class="input-group-append" id="purchaseOrderSellerDniSearch">
+                                                        <button type="button" id="btnSearchPurchaseOrderSellerDni" class="btn btn-outline-primary">
+                                                            <i class="fas fa-search mr-1"></i> Buscar DNI
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <small id="purchaseOrderSellerLookupStatus" class="form-text text-muted"></small>
+                                            </div>
+                                            <div class="form-group col-md-8">
+                                                <label>NOMBRE COMPLETO</label>
+                                                <input id="purchase_order_seller_full_name" name="seller_full_name" class="form-control form-control-sm text-uppercase" maxlength="255">
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>NOMBRES</label>
+                                                <input id="purchase_order_seller_names" name="seller_names" class="form-control form-control-sm text-uppercase" maxlength="150">
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>APELLIDOS</label>
+                                                <input id="purchase_order_seller_lastnames" name="seller_lastnames" class="form-control form-control-sm text-uppercase" maxlength="150">
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>TELÉFONO</label>
+                                                <input id="purchase_order_seller_phone" name="seller_phone" class="form-control form-control-sm" maxlength="30">
+                                            </div>
+                                            <div class="form-group col-md-3">
+                                                <label>CORREO</label>
+                                                <input type="email" id="purchase_order_seller_email" name="seller_email" class="form-control form-control-sm" maxlength="150">
+                                            </div>
+                                            <div class="form-group col-12 mb-0">
+                                                <label>OBSERVACIÓN</label>
+                                                <textarea id="purchase_order_seller_observation" name="seller_observation" class="form-control form-control-sm" rows="2"></textarea>
                                             </div>
                                         </div>
-                                        <small id="purchaseOrderSellerLookupStatus" class="form-text text-muted"></small>
-                                    </div>
-                                    <div class="form-group col-md-5">
-                                        <label>NOMBRE COMPLETO</label>
-                                        <input id="purchase_order_seller_full_name" name="seller_full_name" class="form-control form-control-sm text-uppercase" maxlength="255">
-                                    </div>
-                                    <div class="form-group col-md-3">
-                                        <label>NOMBRES</label>
-                                        <input id="purchase_order_seller_names" name="seller_names" class="form-control form-control-sm text-uppercase" maxlength="150">
-                                    </div>
-                                    <div class="form-group col-md-3">
-                                        <label>APELLIDOS</label>
-                                        <input id="purchase_order_seller_lastnames" name="seller_lastnames" class="form-control form-control-sm text-uppercase" maxlength="150">
-                                    </div>
-                                    <div class="form-group col-md-3">
-                                        <label>TELÉFONO</label>
-                                        <input id="purchase_order_seller_phone" name="seller_phone" class="form-control form-control-sm" maxlength="30">
-                                    </div>
-                                    <div class="form-group col-md-3">
-                                        <label>CORREO</label>
-                                        <input type="email" id="purchase_order_seller_email" name="seller_email" class="form-control form-control-sm" maxlength="150">
-                                    </div>
-                                    <div class="form-group col-12 mb-0">
-                                        <label>OBSERVACIÓN</label>
-                                        <textarea id="purchase_order_seller_observation" name="seller_observation" class="form-control form-control-sm" rows="2"></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -502,6 +538,19 @@
                                         </div>
 
                                         <div class="purchase-order-total-line">
+                                            <span>Venta Inafecta</span>
+                                            <div class="input-group input-group-sm">
+                                                <div class="input-group-prepend">
+                                                    <span class="input-group-text purchase-order-currency-code">PEN</span>
+                                                </div>
+                                                <input type="text" id="purchase_order_subtotal_unaffected"
+                                                    class="form-control text-right" value="0.000" readonly>
+                                                <input type="hidden" id="purchase_order_subtotal_unaffected_raw"
+                                                    name="subtotal_unaffected" value="0">
+                                            </div>
+                                        </div>
+
+                                        <div class="purchase-order-total-line">
                                             <span>Venta Gravada</span>
                                             <div class="input-group input-group-sm">
                                                 <div class="input-group-prepend">
@@ -565,6 +614,16 @@
                                     name="items[__INDEX__][article_code]">
                                 <input type="hidden" class="item-billing-name"
                                     name="items[__INDEX__][billing_name_snapshot]">
+                                <div class="mt-1">
+                                    <label class="mb-1 small font-weight-bold">Afectación de esta venta</label>
+                                    <select class="form-control form-control-sm item-tax-affectation-code"
+                                        name="items[__INDEX__][tax_affectation_code]" required>
+                                        <option value="" selected>Seleccione...</option>
+                                        <option value="10">GRAVADO CON IGV</option>
+                                        <option value="20">EXONERADO</option>
+                                        <option value="30">INAFECTO</option>
+                                    </select>
+                                </div>
                                 <div class="input-group input-group-sm purchase-order-row-picker">
                                     <select class="form-control form-control-sm item-article-picker js-purchase-order-row-select">
                                         <option value="">Seleccione artículo</option>
@@ -596,6 +655,7 @@
                                         </button>
                                     </div>
                                 </div>
+                                <small class="item-tax-affectation-label form-text text-muted">Afectación: pendiente</small>
                             </td>
                             <td>
                                 <input type="text" class="form-control form-control-sm item-note"
@@ -994,7 +1054,11 @@
                                             class="form-control form-control-sm" required>
                                             <option value="">Seleccione unidad</option>
                                             @foreach ($units as $unit)
-                                                <option value="{{ $unit->id }}">{{ $unit->description }}</option>
+                                                <option value="{{ $unit->id }}"
+                                                    data-sunat-configured="{{ $unit->sunatUnit ? 1 : 0 }}"
+                                                    data-sunat-code="{{ $unit->sunatUnit?->item_code }}">
+                                                    {{ $unit->description }}
+                                                </option>
                                             @endforeach
                                         </select>
                                         @can('admin.units.store')
@@ -1007,7 +1071,50 @@
                                         @endcan
                                     </div>
                                     <span class="invalid-feedback"></span>
+                                    <small id="quickArticleSunatUnitWarning" class="form-text text-warning d-none">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                                        La unidad seleccionada no tiene homologación SUNAT Tabla 06; el artículo no podrá facturarse ni ingresar a Kardex.
+                                    </small>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="card border-0 shadow-sm mb-2 quick-inventory-classification">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-tags mr-1 text-warning"></i>Producto / servicio e inventario
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>TIPO DE ÍTEM <span class="text-danger">*</span></label>
+                                    <select name="item_kind" class="form-control form-control-sm quick-item-kind" required>
+                                        <option value="">Seleccione</option>
+                                        <option value="product">PRODUCTO</option>
+                                        <option value="service">SERVICIO</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>PARTICIPA EN INVENTARIO <span class="text-danger">*</span></label>
+                                    <select name="is_inventory_item" class="form-control form-control-sm quick-is-inventory-item" required>
+                                        <option value="">Seleccione</option>
+                                        <option value="1">SÍ, INVENTARIABLE</option>
+                                        <option value="0">NO INVENTARIABLE</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-12 mb-0 mt-2 d-none quick-sunat-existence-type-group">
+                                    <label>TIPO DE EXISTENCIA SUNAT <span class="text-danger">*</span></label>
+                                    <select name="sunat_existence_type_item_id"
+                                        class="form-control form-control-sm quick-sunat-existence-type"
+                                        disabled>
+                                        <option value="">Seleccione</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                @include('admin.articles.partials.quickSunatInventoryIdentification')
                             </div>
                         </div>
                     </div>
@@ -1221,6 +1328,11 @@
     #customerPurchaseOrderModal .purchase-order-tab-content{min-height:390px;padding-top:8px}
     #customerPurchaseOrderModal .purchase-order-tab-content>.tab-pane>.card{margin-bottom:0}
     #customerPurchaseOrderModal .purchase-order-seller-card{border-top:3px solid #4a89dc!important;background:linear-gradient(145deg,#fff,#f8fbff)}
+    #customerPurchaseOrderModal #purchaseOrderSellerInternalGroup{padding:10px 12px;border:1px solid #dbe8f4;border-radius:11px;background:#f7fbff}
+    #customerPurchaseOrderModal #purchaseOrderSellerDetails{margin-top:3px;padding-top:11px;border-top:1px solid #e4ebf2}
+    #customerPurchaseOrderModal .purchase-order-seller-readonly{border-color:#d9e5e1;background:#f3f7f6!important;color:#334155;cursor:default}
+    #customerPurchaseOrderModal #purchaseOrderSellerDniSearch.d-none{display:none!important}
+    #customerPurchaseOrderModal #purchase_order_seller_user_picker + .select2-container .select2-selection{min-height:34px}
     #customerPurchaseOrderModal .purchase-order-sticky-footer{position:sticky;z-index:15;bottom:-8px;display:flex;margin:2px 0 -8px;padding:11px 14px;align-items:center;justify-content:space-between;border-top:1px solid #dce6f0;background:rgba(255,255,255,.97);box-shadow:0 -7px 18px rgba(32,56,85,.08);backdrop-filter:blur(8px)}
     #customerPurchaseOrderModal .purchase-order-sticky-footer .btn{min-width:105px;padding:7px 14px;border-radius:9px;font-weight:700}
 

@@ -1,37 +1,25 @@
 <!-- VIEW ARTICLE MODAL -->
 
-<div class="modal fade" id="viewArticleModal" tabindex="-1" role="dialog" aria-labelledby="viewArticleModalLabel"
+<div class="modal fade dp-detail-modal" id="viewArticleModal" tabindex="-1" role="dialog" aria-labelledby="viewArticleModalLabel"
     aria-hidden="true">
 
-    ```
     <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
 
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header border-0 py-2 px-3"
-                style="
-                background:
-                linear-gradient(
-                    135deg,
-                    #0d6efd,
-                    #1e88e5
-                );
-            ">
+            <div class="modal-header dp-detail-modal-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-box-open"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title" id="viewArticleModalLabel">
+                            Informaci&oacute;n del Art&iacute;culo
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="va_header_subtitle">C&oacute;digo y nombre legal</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title text-white mb-0" id="viewArticleModalLabel"
-                    style="
-                    font-size:15px;
-                    font-weight:600;
-                    letter-spacing:.3px;
-                ">
-
-                    <i class="fas fa-box-open mr-2"></i>
-                    Información del Artículo
-
-                </h5>
-
-                <button type="button" class="close text-white" data-dismiss="modal">
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span>&times;</span>
 
@@ -316,15 +304,18 @@
                                     </div>
 
                                     <div class="col-md-6 mb-2">
+                                        <label class="detail-label">Tipo de ítem</label>
+                                        <div class="detail-badge" id="va_item_kind">—</div>
+                                    </div>
 
-                                        <label class="detail-label">
-                                            Stock Mínimo
-                                        </label>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="detail-label">Participación en inventario</label>
+                                        <div class="detail-badge" id="va_is_inventory_item">—</div>
+                                    </div>
 
-                                        <div class="detail-value" id="va_minimum_stock">
-                                            —
-                                        </div>
-
+                                    <div class="col-md-6 mb-2">
+                                        <label class="detail-label">Tipo de existencia SUNAT</label>
+                                        <div class="detail-badge" id="va_sunat_existence_type">—</div>
                                     </div>
 
                                 </div>
@@ -332,44 +323,38 @@
                                 <hr>
 
                                 <div class="row">
-
-                                    <div class="col-md-4 mb-2">
-
-                                        <label class="detail-label">
-                                            Afecto IGV
-                                        </label>
-
-                                        <div class="detail-badge" id="va_is_taxable">
-                                            —
-                                        </div>
-
+                                    <div class="col-md-6 mb-2">
+                                        <label class="detail-label">Requiere control por lote</label>
+                                        <div class="detail-badge" id="va_has_batch">—</div>
                                     </div>
 
-                                    <div class="col-md-4 mb-2">
-
-                                        <label class="detail-label">
-                                            Maneja Lote
-                                        </label>
-
-                                        <div class="detail-badge" id="va_has_batch">
-                                            —
-                                        </div>
-
+                                    <div class="col-md-6 mb-2">
+                                        <label class="detail-label">Requiere fecha de vencimiento</label>
+                                        <div class="detail-badge" id="va_has_expiration">—</div>
                                     </div>
-
-                                    <div class="col-md-4 mb-2">
-
-                                        <label class="detail-label">
-                                            Maneja Vencimiento
-                                        </label>
-
-                                        <div class="detail-badge" id="va_has_expiration">
-                                            —
-                                        </div>
-
-                                    </div>
-
                                 </div>
+
+                                <details class="mt-2 border rounded p-2">
+                                    <summary class="font-weight-bold text-muted" style="cursor:pointer;">
+                                        Configuración SUNAT avanzada
+                                    </summary>
+                                    <div class="row mt-3">
+                                        <div class="col-md-6 mb-2">
+                                            <label class="detail-label">Catálogo de existencia</label>
+                                            <div class="detail-badge" id="va_sunat_inventory_catalog">—</div>
+                                        </div>
+
+                                        <div class="col-md-6 mb-2">
+                                            <label class="detail-label">Código de existencia</label>
+                                            <div class="detail-value" id="va_sunat_inventory_code">—</div>
+                                        </div>
+
+                                        <div class="col-md-12 mb-2">
+                                            <label class="detail-label">Código internacional</label>
+                                            <div class="detail-value" id="va_sunat_standard_code">—</div>
+                                        </div>
+                                    </div>
+                                </details>
 
                                 <div class="mt-2">
 
@@ -576,11 +561,9 @@
         </div>
 
     </div>
-    ```
-
 </div>
 
-//MODAL PARA VER LA IMAGEN EN GRANDE
+{{-- Modal para ampliar la imagen --}}
 <div class="modal fade" id="imagePreviewModal" tabindex="-1">
 
     <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -589,7 +572,7 @@
 
             <div class="modal-header border-0">
 
-                <button type="button" class="close text-white" data-dismiss="modal">
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span>&times;</span>
 

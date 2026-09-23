@@ -521,6 +521,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const status = $(this).data('status');
 
+        $('#vs_header_subtitle').text(
+            [$(this).data('ruc'), $(this).data('business_name')].filter(Boolean).join(' · ') || '—'
+        );
+
         $('#vs_id').text($(this).data('id'));
 
         $('#vs_ruc').text($(this).data('ruc'));

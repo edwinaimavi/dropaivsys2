@@ -2,8 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Article;
+use App\Models\Company;
+use App\Models\CompanyWarehouse;
 use App\Models\ElectronicInvoice;
 use App\Models\ElectronicInvoiceItem;
+use App\Models\SunatCatalogItem;
+use App\Models\Unit;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryExpenseDistribution;
 use App\Models\WarehouseEntryItem;
@@ -13,13 +18,62 @@ use App\Models\WarehouseStock;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class WarehouseKardexService
 {
+    private const ACCOUNTING_SNAPSHOT_COLUMNS = [
+        'sunat_establishment_code_snapshot',
+        'article_code_snapshot',
+        'article_description_snapshot',
+        'sunat_existence_type_code_snapshot',
+        'existence_catalog_code_snapshot',
+        'existence_code_snapshot',
+        'sunat_unit_code_snapshot',
+        'unit_description_snapshot',
+        'valuation_method_code_snapshot',
+        'valuation_method_description_snapshot',
+    ];
+
     private const STATUS_REGISTERED = 'registered';
 
     private const STATUS_REVERSED = 'reversed';
+
+    /**
+     * Matriz transaccional oficial usada para congelar la Tabla 12 SUNAT en Kardex.
+     *
+     * Los códigos 11, 16, 21 y 25 quedan reservados desde esta fase para los flujos
+     * de transferencia, saldo inicial y devolución a proveedor cuando dichos módulos
+     * generen movimientos. Las reversas y movimientos técnicos existentes conservan
+     * 99 para no reinterpretar historia ni romper los Formatos 12.1/13.1 aprobados.
+     */
+    private const SUNAT_OPERATION_TYPE_CODES = [
+        'customer_order_dispatch' => '01',
+        'electronic_invoice' => '01',
+        'warehouse_entry' => '02',
+        'warehouse_transfer_out' => '11',
+        'initial_balance' => '16',
+        'warehouse_transfer_in' => '21',
+        'customer_return' => '24',
+        'supplier_return' => '25',
+        'manual_adjustment' => '28',
+        'warehouse_entry_linked_cost' => '99',
+        'warehouse_entry_cancel' => '99',
+        'warehouse_entry_linked_cost_cancel' => '99',
+        'electronic_invoice_cancel' => '99',
+        'customer_order_dispatch_cancel' => '99',
+        'customer_return_reversal' => '99',
+    ];
+
+    public function __construct(
+        private readonly CompanyWarehouseService $companyWarehouseService,
+        private readonly ArticleInventoryPolicy $articleInventoryPolicy,
+        private readonly SunatUnitPolicy $sunatUnitPolicy,
+        private readonly ArticleSunatInventoryCatalogPolicy $sunatInventoryCatalogPolicy,
+        private readonly WarehouseValuationPoolService $warehouseValuationPoolService,
+        private readonly WarehouseEntryAcquisitionCostService $warehouseEntryAcquisitionCostService
+    ) {}
 
     public function generateMovementNumber(): string
     {
@@ -39,12 +93,19 @@ class WarehouseKardexService
         return $movementNumber;
     }
 
-    public function buildStockKey(int $warehouseId, int $articleId, ?string $lotNumber, mixed $expirationDate): string
+    public function buildStockKey(
+        int $companyId,
+        int $warehouseId,
+        int $articleId,
+        ?string $lotNumber,
+        mixed $expirationDate
+    ): string
     {
         $lot = trim((string) $lotNumber);
         $date = $this->formatDate($expirationDate);
 
         return implode('|', [
+            $companyId,
             $warehouseId,
             $articleId,
             $lot === '' ? 'SIN_LOTE' : mb_strtoupper($lot, 'UTF-8'),
@@ -58,7 +119,9 @@ class WarehouseKardexService
             $entry->loadMissing([
                 'supplier',
                 'currency',
-                'items.article',
+                'items.article.sunatExistenceType.catalog',
+                'items.article.unit.sunatUnit.catalog',
+                'items.article.sunatInventoryCatalogItem.catalog',
                 'items.unit',
                 'items.presentation',
                 'items.brand',
@@ -72,7 +135,16 @@ class WarehouseKardexService
                 ]);
             }
 
+            $this->companyWarehouseService->assertEnabled(
+                (int) $entry->company_id,
+                (int) $entry->warehouse_id
+            );
+
             foreach ($entry->items as $item) {
+                $this->articleInventoryPolicy->assertCanParticipateInInventory($item->article, 'items');
+                $this->articleInventoryPolicy->assertHasSunatExistenceType($item->article, 'items');
+                $this->sunatUnitPolicy->codeForArticle($item->article, 'items', true);
+                $this->sunatInventoryCatalogPolicy->assertHasInventoryIdentification($item->article, 'items');
                 $this->registerEntryItem($entry, $item);
             }
 
@@ -104,9 +176,15 @@ class WarehouseKardexService
                 ->where('source_id', $entry->id)
                 ->whereIn('operation_type', ['warehouse_entry', 'warehouse_entry_linked_cost'])
                 ->where('status', self::STATUS_REGISTERED)
+                ->orderByRaw("CASE WHEN operation_type = 'warehouse_entry_linked_cost' THEN 0 ELSE 1 END")
+                ->orderBy('movement_date')
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
+
+            foreach ($movements as $movement) {
+                $this->assertNoLaterPoolMovements($movement, $entry);
+            }
 
             foreach ($movements as $movement) {
                 $this->reverseEntryMovement($movement, $entry, $reason);
@@ -126,11 +204,11 @@ class WarehouseKardexService
                 return;
             }
 
-            $invoice->loadMissing(['customer', 'warehouseEntry', 'items.article.category']);
+            $invoice->loadMissing(['customer', 'warehouseEntry', 'items.article.category', 'items.article.unit.sunatUnit.catalog']);
             $stockItems = $invoice->items->filter(function (ElectronicInvoiceItem $item) {
-                $categoryType = mb_strtoupper((string) $item->article?->category?->type, 'UTF-8');
-
-                return $item->article_id && $categoryType !== 'SERVICIO';
+                return $item->article_id
+                    && $item->article
+                    && $this->articleInventoryPolicy->canParticipateInInventory($item->article);
             });
 
             if ($stockItems->isEmpty()) {
@@ -143,7 +221,14 @@ class WarehouseKardexService
                 ]);
             }
 
+            $companyId = $this->electronicInvoiceCompanyId($invoice);
+            $warehouseId = (int) ($invoice->warehouse_id ?: $invoice->warehouseEntry?->warehouse_id);
+            $this->companyWarehouseService->assertEnabled($companyId, $warehouseId);
+
             foreach ($stockItems as $item) {
+                $this->articleInventoryPolicy->assertHasSunatExistenceType($item->article, 'items');
+                $this->sunatUnitPolicy->codeForArticle($item->article, 'items', true);
+                $this->sunatInventoryCatalogPolicy->assertHasInventoryIdentification($item->article, 'items');
                 $this->registerElectronicInvoiceItemExit($invoice, $item);
             }
 
@@ -174,14 +259,33 @@ class WarehouseKardexService
                 ->get();
 
             foreach ($movements as $movement) {
+                $companyId = $this->electronicInvoiceCompanyId($invoice);
                 $stock = WarehouseStock::query()
                     ->whereKey($movement->warehouse_stock_id)
+                    ->where('company_id', $companyId)
                     ->lockForUpdate()
                     ->firstOrFail();
+                $this->assertMovementCompany($movement, $companyId);
+                $this->companyWarehouseService->assertStockOwner($stock, $companyId);
                 $quantity = round((float) $movement->quantity_out, 4);
                 $costIn = round((float) $movement->total_cost_out, 2);
+                $valuationPool = $this->warehouseValuationPoolService->lockPool(
+                    $companyId,
+                    (int) $movement->warehouse_id,
+                    (int) $movement->article_id,
+                    Auth::id()
+                );
+                $this->warehouseValuationPoolService->addQuantityAtCost(
+                    $valuationPool,
+                    $quantity,
+                    $costIn,
+                    Auth::id()
+                );
                 $newQuantity = round((float) $stock->current_quantity + $quantity, 4);
-                $newTotalCost = round((float) $stock->total_cost + $costIn, 2);
+                $currentTotalCost = (float) $stock->current_quantity > 0
+                    ? round((float) $stock->total_cost, 2)
+                    : 0;
+                $newTotalCost = round($currentTotalCost + $costIn, 2);
                 $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
 
                 $stock->update([
@@ -193,10 +297,18 @@ class WarehouseKardexService
 
                 WarehouseKardexMovement::create([
                     'movement_number' => $this->generateMovementNumber(),
+                    'company_id' => $companyId,
                     'warehouse_stock_id' => $stock->id,
                     'warehouse_id' => $movement->warehouse_id,
                     'article_id' => $movement->article_id,
                     'unit_id' => $movement->unit_id,
+                    ...$this->accountingSnapshots(
+                        $companyId,
+                        (int) $movement->warehouse_id,
+                        (int) $movement->article_id,
+                        $movement->unit_id ? (int) $movement->unit_id : null,
+                        $movement
+                    ),
                     'presentation_id' => $movement->presentation_id,
                     'brand_id' => $movement->brand_id,
                     'lot_number' => $movement->lot_number,
@@ -206,6 +318,11 @@ class WarehouseKardexService
                     'movement_date' => now(),
                     'movement_type' => 'exit_reversal',
                     'operation_type' => 'electronic_invoice_cancel',
+                    ...$this->sunatDocumentOperationSnapshots(
+                        'exit_reversal',
+                        'electronic_invoice_cancel',
+                        originalMovement: $movement
+                    ),
                     'source_type' => ElectronicInvoice::class,
                     'source_id' => $invoice->id,
                     'source_item_type' => $movement->source_item_type,
@@ -258,7 +375,9 @@ class WarehouseKardexService
     ): void {
         $required = round((float) $item->quantity, 4);
         $warehouseId = (int) ($invoice->warehouse_id ?: $invoice->warehouseEntry?->warehouse_id);
+        $companyId = $this->electronicInvoiceCompanyId($invoice);
         $stocksQuery = WarehouseStock::query()
+            ->where('company_id', $companyId)
             ->where('warehouse_id', $warehouseId)
             ->where('article_id', $item->article_id)
             ->where('status', 'ACTIVE')
@@ -293,16 +412,35 @@ class WarehouseKardexService
 
         $pending = $required;
         $firstMovementId = null;
+        $valuationPool = $this->warehouseValuationPoolService->lockPool(
+            $companyId,
+            $warehouseId,
+            (int) $item->article_id,
+            Auth::id()
+        );
         foreach ($stocks as $stock) {
             if ($pending <= 0) {
                 break;
             }
+            $this->companyWarehouseService->assertStockOwner($stock, $companyId);
             $stockQuantity = round((float) $stock->current_quantity, 4);
             $quantityOut = min($pending, $stockQuantity);
-            $unitCost = round((float) $stock->average_unit_cost, 6);
-            $costOut = round($quantityOut * $unitCost, 2);
+            $legacyUnitCost = round((float) $stock->average_unit_cost, 6);
+            $legacyCostOut = round($quantityOut * $legacyUnitCost, 2);
+            $valuation = $this->warehouseValuationPoolService->removeQuantityAtAverage(
+                $valuationPool,
+                $quantityOut,
+                Auth::id()
+            );
+            $valuationPool = $valuation['pool'];
+            $unitCost = $valuation['unit_cost'];
+            $costOut = $valuation['total_cost'];
             $newQuantity = round($stockQuantity - $quantityOut, 4);
-            $newTotalCost = max(round((float) $stock->total_cost - $costOut, 2), 0);
+            $newTotalCost = max(round((float) $stock->total_cost - $legacyCostOut, 2), 0);
+            if ($newQuantity <= 0) {
+                $newQuantity = 0;
+                $newTotalCost = 0;
+            }
             $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
 
             $stock->update([
@@ -314,10 +452,17 @@ class WarehouseKardexService
 
             $movement = WarehouseKardexMovement::create([
                 'movement_number' => $this->generateMovementNumber(),
+                'company_id' => $companyId,
                 'warehouse_stock_id' => $stock->id,
                 'warehouse_id' => $warehouseId,
                 'article_id' => $item->article_id,
                 'unit_id' => $stock->unit_id,
+                ...$this->buildAccountingSnapshots(
+                    $companyId,
+                    $warehouseId,
+                    (int) $item->article_id,
+                    $stock->unit_id ? (int) $stock->unit_id : null
+                ),
                 'presentation_id' => $stock->presentation_id,
                 'brand_id' => $stock->brand_id,
                 'lot_number' => $stock->lot_number,
@@ -327,6 +472,12 @@ class WarehouseKardexService
                 'movement_date' => now(),
                 'movement_type' => 'exit',
                 'operation_type' => 'electronic_invoice',
+                ...$this->sunatDocumentOperationSnapshots(
+                    'exit',
+                    'electronic_invoice',
+                    $invoice->issue_date,
+                    $invoice->document_type
+                ),
                 'source_type' => ElectronicInvoice::class,
                 'source_id' => $invoice->id,
                 'source_item_type' => ElectronicInvoiceItem::class,
@@ -373,6 +524,7 @@ class WarehouseKardexService
             ->where('source_id', $entry->id)
             ->where('source_item_type', WarehouseEntryItem::class)
             ->where('source_item_id', $item->id)
+            ->where('operation_type', 'warehouse_entry')
             ->where('status', self::STATUS_REGISTERED)
             ->exists();
 
@@ -380,9 +532,15 @@ class WarehouseKardexService
             return;
         }
 
-        // El ingreso conserva el costo de compra. Los costos vinculados se registran
-        // como movimientos separados sin cantidad para mantener trazabilidad.
-        $unitCost = round((float) $item->unit_price, 6);
+        // El servicio de adquisiciÃ³n entrega el costo en moneda base; Kardex y PPM
+        // permanecen ajenos a las reglas tributarias y cambiarias del documento.
+        $acquisitionCosts = $item->acquisition_unit_cost_base !== null
+            ? [
+                'unit' => (float) $item->acquisition_unit_cost_base,
+                'total' => (float) $item->acquisition_cost_base,
+            ]
+            : $this->warehouseEntryAcquisitionCostService->itemCosts($entry, $item);
+        $unitCost = round((float) $acquisitionCosts['unit'], 6);
 
         $allocations = $item->lots->isNotEmpty()
             ? $item->lots->map(fn ($lot) => [
@@ -408,6 +566,13 @@ class WarehouseKardexService
             ]);
         }
 
+        $valuationPool = $this->warehouseValuationPoolService->lockPool(
+            (int) $entry->company_id,
+            (int) $entry->warehouse_id,
+            (int) $item->article_id,
+            Auth::id()
+        );
+
         foreach ($allocations as $allocation) {
             $quantity = round((float) $allocation['quantity'], 4);
             if ($quantity <= 0) {
@@ -418,12 +583,22 @@ class WarehouseKardexService
             $stockItem->lot_number = $allocation['lot_number'];
             $stockItem->expiration_date = $allocation['expiration_date'];
             $stock = $this->findOrCreateStock($entry, $stockItem);
+            $this->companyWarehouseService->assertStockOwner($stock, (int) $entry->company_id);
             $previousQuantity = round((float) $stock->current_quantity, 4);
-            $previousTotalCost = round((float) $stock->total_cost, 2);
+            $previousTotalCost = $previousQuantity > 0
+                ? round((float) $stock->total_cost, 2)
+                : 0;
             $entryTotalCost = round($quantity * $unitCost, 2);
             $newQuantity = round($previousQuantity + $quantity, 4);
             $newTotalCost = round($previousTotalCost + $entryTotalCost, 2);
             $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
+
+            $valuationPool = $this->warehouseValuationPoolService->addQuantityAtCost(
+                $valuationPool,
+                $quantity,
+                $entryTotalCost,
+                Auth::id()
+            );
 
             $stock->update([
                 'unit_id' => $item->unit_id,
@@ -440,19 +615,32 @@ class WarehouseKardexService
 
             WarehouseKardexMovement::create([
                 'movement_number' => $this->generateMovementNumber(),
+                'company_id' => $entry->company_id,
                 'warehouse_stock_id' => $stock->id,
                 'warehouse_id' => $entry->warehouse_id,
                 'article_id' => $item->article_id,
                 'unit_id' => $item->unit_id,
+                ...$this->buildAccountingSnapshots(
+                    (int) $entry->company_id,
+                    (int) $entry->warehouse_id,
+                    (int) $item->article_id,
+                    $item->unit_id ? (int) $item->unit_id : null
+                ),
                 'presentation_id' => $item->presentation_id,
                 'brand_id' => $item->brand_id,
                 'lot_number' => $this->upperOrNull($allocation['lot_number']),
                 'expiration_date' => $allocation['expiration_date'],
                 'origin' => $this->upperOrNull($item->origin),
                 'cost_type' => $this->upperOrNull($item->cost_type),
-                'movement_date' => now(),
+                'movement_date' => $entry->movement_date ?? now(),
                 'movement_type' => 'entry',
                 'operation_type' => 'warehouse_entry',
+                ...$this->sunatDocumentOperationSnapshots(
+                    'entry',
+                    'warehouse_entry',
+                    $entry->document_date,
+                    $entry->document_type
+                ),
                 'source_type' => WarehouseEntry::class,
                 'source_id' => $entry->id,
                 'source_item_type' => WarehouseEntryItem::class,
@@ -473,7 +661,7 @@ class WarehouseKardexService
                 'average_unit_cost' => $averageCost,
                 'balance_total_cost' => $newTotalCost,
                 'currency_id' => $entry->currency_id,
-                'exchange_rate' => 1,
+                'exchange_rate' => $entry->exchange_rate ?? 1,
                 'observations' => $entry->observations,
                 'status' => self::STATUS_REGISTERED,
                 'created_by' => Auth::id(),
@@ -484,8 +672,11 @@ class WarehouseKardexService
 
     private function reverseEntryMovement(WarehouseKardexMovement $movement, WarehouseEntry $entry, ?string $reason): void
     {
+        $this->assertMovementCompany($movement, (int) $entry->company_id);
+        $this->assertNoLaterPoolMovements($movement, $entry);
         $stock = WarehouseStock::query()
             ->whereKey($movement->warehouse_stock_id)
+            ->where('company_id', $entry->company_id)
             ->lockForUpdate()
             ->first();
 
@@ -494,6 +685,8 @@ class WarehouseKardexService
                 'kardex' => 'No se encontro el stock relacionado al movimiento Kardex.',
             ]);
         }
+
+        $this->companyWarehouseService->assertStockOwner($stock, (int) $entry->company_id);
 
         $quantity = round((float) $movement->quantity_in, 4);
         $currentQuantity = round((float) $stock->current_quantity, 4);
@@ -505,8 +698,35 @@ class WarehouseKardexService
         }
 
         $costOut = round((float) $movement->total_cost_in, 2);
+        $valuationPool = $this->warehouseValuationPoolService->lockPool(
+            (int) $entry->company_id,
+            (int) $movement->warehouse_id,
+            (int) $movement->article_id,
+            Auth::id()
+        );
+        if ($quantity > 0) {
+            $this->warehouseValuationPoolService->removeQuantityAtHistoricalCost(
+                $valuationPool,
+                $quantity,
+                $costOut,
+                Auth::id()
+            );
+        } else {
+            $this->warehouseValuationPoolService->removeCostOnly(
+                $valuationPool,
+                $costOut,
+                Auth::id()
+            );
+        }
         $newQuantity = round($currentQuantity - $quantity, 4);
-        $newTotalCost = max(round((float) $stock->total_cost - $costOut, 2), 0);
+        $currentTotalCost = $currentQuantity > 0
+            ? round((float) $stock->total_cost, 2)
+            : 0;
+        $newTotalCost = max(round($currentTotalCost - $costOut, 2), 0);
+        if ($newQuantity <= 0) {
+            $newQuantity = 0;
+            $newTotalCost = 0;
+        }
         $averageCost = $this->calculateAverageCost($newTotalCost, $newQuantity);
 
         $stock->update([
@@ -518,10 +738,18 @@ class WarehouseKardexService
 
         WarehouseKardexMovement::create([
             'movement_number' => $this->generateMovementNumber(),
+            'company_id' => $movement->company_id,
             'warehouse_stock_id' => $stock->id,
             'warehouse_id' => $movement->warehouse_id,
             'article_id' => $movement->article_id,
             'unit_id' => $movement->unit_id,
+            ...$this->accountingSnapshots(
+                (int) $movement->company_id,
+                (int) $movement->warehouse_id,
+                (int) $movement->article_id,
+                $movement->unit_id ? (int) $movement->unit_id : null,
+                $movement
+            ),
             'presentation_id' => $movement->presentation_id,
             'brand_id' => $movement->brand_id,
             'lot_number' => $movement->lot_number,
@@ -531,6 +759,11 @@ class WarehouseKardexService
             'movement_date' => now(),
             'movement_type' => $quantity > 0 ? 'reversal' : 'cost_reversal',
             'operation_type' => $quantity > 0 ? 'warehouse_entry_cancel' : 'warehouse_entry_linked_cost_cancel',
+            ...$this->sunatDocumentOperationSnapshots(
+                $quantity > 0 ? 'reversal' : 'cost_reversal',
+                $quantity > 0 ? 'warehouse_entry_cancel' : 'warehouse_entry_linked_cost_cancel',
+                originalMovement: $movement
+            ),
             'source_type' => WarehouseEntry::class,
             'source_id' => $entry->id,
             'source_item_type' => $movement->source_item_type,
@@ -567,9 +800,47 @@ class WarehouseKardexService
         ]);
     }
 
+    private function assertNoLaterPoolMovements(
+        WarehouseKardexMovement $movement,
+        WarehouseEntry $entry
+    ): void {
+        $hasLaterMovement = WarehouseKardexMovement::query()
+            ->where('company_id', $movement->company_id)
+            ->where('warehouse_id', $movement->warehouse_id)
+            ->where('article_id', $movement->article_id)
+            ->where('status', self::STATUS_REGISTERED)
+            ->where(function ($query) {
+                $query->where('quantity_in', '!=', 0)
+                    ->orWhere('quantity_out', '!=', 0)
+                    ->orWhere('total_cost_in', '!=', 0)
+                    ->orWhere('total_cost_out', '!=', 0);
+            })
+            ->where(function ($query) use ($movement) {
+                $query->where('movement_date', '>', $movement->movement_date)
+                    ->orWhere(function ($query) use ($movement) {
+                        $query->where('movement_date', $movement->movement_date)
+                            ->where('id', '>', $movement->id);
+                    });
+            })
+            ->where(function ($query) use ($entry) {
+                $query->whereNull('source_type')
+                    ->orWhere('source_type', '!=', WarehouseEntry::class)
+                    ->orWhereNull('source_id')
+                    ->orWhere('source_id', '!=', $entry->id);
+            })
+            ->exists();
+
+        if ($hasLaterMovement) {
+            throw ValidationException::withMessages([
+                'kardex' => 'No se puede revertir esta entrada porque existen movimientos posteriores que afectan la valorización del mismo artículo y almacén. La operación requiere revisión/reconstrucción controlada del Kardex.',
+            ]);
+        }
+    }
+
     private function findOrCreateStock(WarehouseEntry $entry, WarehouseEntryItem $item): WarehouseStock
     {
         $stockKey = $this->buildStockKey(
+            (int) $entry->company_id,
             (int) $entry->warehouse_id,
             (int) $item->article_id,
             $item->lot_number,
@@ -577,7 +848,10 @@ class WarehouseKardexService
         );
 
         return WarehouseStock::query()->firstOrCreate(
-            ['stock_key' => $stockKey],
+            [
+                'stock_key' => $stockKey,
+                'company_id' => $entry->company_id,
+            ],
             [
                 'warehouse_id' => $entry->warehouse_id,
                 'article_id' => $item->article_id,
@@ -592,7 +866,9 @@ class WarehouseKardexService
                 'reserved_quantity' => 0,
                 'average_unit_cost' => 0,
                 'total_cost' => 0,
-                'min_stock' => $item->article?->minimum_stock,
+                // El mínimo ya no se hereda del maestro global Article.
+                // Si se implementa alerta de mínimo, deberá configurarse por almacén.
+                'min_stock' => 0,
                 'status' => 'ACTIVE',
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
@@ -609,6 +885,7 @@ class WarehouseKardexService
 
     public function registerAdjustment(
         WarehouseStock $stock,
+        int $companyId,
         string $type,
         float $quantity,
         ?float $unitCost,
@@ -620,10 +897,33 @@ class WarehouseKardexService
                 'adjustment' => 'El tipo y la cantidad del ajuste de inventario no son válidos.',
             ]);
         }
+        if (! Auth::user()?->belongsToCompany($companyId)) {
+            throw ValidationException::withMessages([
+                'company_id' => 'No está autorizado para realizar ajustes de inventario en la empresa seleccionada.',
+            ]);
+        }
 
-        return DB::transaction(function () use ($stock, $type, $quantity, $unitCost, $observations, $sourceKey) {
-            $stock = WarehouseStock::query()->whereKey($stock->id)->lockForUpdate()->firstOrFail();
+        return DB::transaction(function () use ($stock, $companyId, $type, $quantity, $unitCost, $observations, $sourceKey) {
+            $this->companyWarehouseService->assertEnabled($companyId, (int) $stock->warehouse_id);
+            $stock = WarehouseStock::query()
+                ->whereKey($stock->id)
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->first();
+            if (! $stock) {
+                throw ValidationException::withMessages([
+                    'stock' => 'El stock seleccionado pertenece a una empresa distinta de la operación.',
+                ]);
+            }
+            $stock->loadMissing('article');
+            $this->articleInventoryPolicy->assertCanParticipateInInventory($stock->article, 'stock');
+            $this->articleInventoryPolicy->assertHasSunatExistenceType($stock->article, 'stock');
+            $this->sunatUnitPolicy->codeForArticle($stock->article, 'stock', true);
+            $this->sunatInventoryCatalogPolicy->assertHasInventoryIdentification($stock->article, 'stock');
+            $this->companyWarehouseService->assertStockOwner($stock, $companyId);
             if ($sourceKey && ($existing = WarehouseKardexMovement::query()->where('source_key', $sourceKey)->first())) {
+                $this->assertMovementCompany($existing, $companyId);
+
                 return $existing;
             }
 
@@ -633,12 +933,44 @@ class WarehouseKardexService
                 throw ValidationException::withMessages(['quantity' => 'El ajuste supera el stock disponible.']);
             }
 
-            $appliedUnitCost = $isEntry
+            $legacyUnitCost = round((float) $stock->average_unit_cost, 6);
+            $entryUnitCost = $isEntry
                 ? round(max((float) $unitCost, 0), 6)
-                : round((float) $stock->average_unit_cost, 6);
-            $movementCost = round($quantity * $appliedUnitCost, 2);
-            $newQuantity = round((float) $stock->current_quantity + ($isEntry ? $quantity : -$quantity), 4);
-            $newTotalCost = round((float) $stock->total_cost + ($isEntry ? $movementCost : -$movementCost), 2);
+                : 0;
+            $entryCost = round($quantity * $entryUnitCost, 2);
+            $legacyOutputCost = round($quantity * $legacyUnitCost, 2);
+            $valuationPool = $this->warehouseValuationPoolService->lockPool(
+                $companyId,
+                (int) $stock->warehouse_id,
+                (int) $stock->article_id,
+                Auth::id()
+            );
+
+            if ($isEntry) {
+                $this->warehouseValuationPoolService->addQuantityAtCost(
+                    $valuationPool,
+                    $quantity,
+                    $entryCost,
+                    Auth::id()
+                );
+                $appliedUnitCost = $entryUnitCost;
+                $movementCost = $entryCost;
+            } else {
+                $valuation = $this->warehouseValuationPoolService->removeQuantityAtAverage(
+                    $valuationPool,
+                    $quantity,
+                    Auth::id()
+                );
+                $appliedUnitCost = $valuation['unit_cost'];
+                $movementCost = $valuation['total_cost'];
+            }
+
+            $currentQuantity = round((float) $stock->current_quantity, 4);
+            $currentTotalCost = $currentQuantity > 0
+                ? round((float) $stock->total_cost, 2)
+                : 0;
+            $newQuantity = round($currentQuantity + ($isEntry ? $quantity : -$quantity), 4);
+            $newTotalCost = round($currentTotalCost + ($isEntry ? $entryCost : -$legacyOutputCost), 2);
             if ($newQuantity <= 0) {
                 $newQuantity = 0;
                 $newTotalCost = 0;
@@ -654,10 +986,17 @@ class WarehouseKardexService
 
             return WarehouseKardexMovement::create([
                 'movement_number' => $this->generateMovementNumber(),
+                'company_id' => $companyId,
                 'warehouse_stock_id' => $stock->id,
                 'warehouse_id' => $stock->warehouse_id,
                 'article_id' => $stock->article_id,
                 'unit_id' => $stock->unit_id,
+                ...$this->buildAccountingSnapshots(
+                    $companyId,
+                    (int) $stock->warehouse_id,
+                    (int) $stock->article_id,
+                    $stock->unit_id ? (int) $stock->unit_id : null
+                ),
                 'presentation_id' => $stock->presentation_id,
                 'brand_id' => $stock->brand_id,
                 'lot_number' => $stock->lot_number,
@@ -667,6 +1006,7 @@ class WarehouseKardexService
                 'movement_date' => now(),
                 'movement_type' => $type,
                 'operation_type' => 'manual_adjustment',
+                ...$this->sunatDocumentOperationSnapshots($type, 'manual_adjustment'),
                 'source_key' => $sourceKey,
                 'quantity_in' => $isEntry ? $quantity : 0,
                 'quantity_out' => $isEntry ? 0 : $quantity,
@@ -697,14 +1037,32 @@ class WarehouseKardexService
             ]);
 
             $validKeys = [];
+            $valuationPools = [];
             $expenses = $entry->expenses
                 ->where('status', 'ACTIVE')
                 ->where('approval_status', 'approved')
                 ->where('affects_inventory_cost', true);
+            $hasLinkedCostMovements = WarehouseKardexMovement::query()
+                ->where('company_id', $entry->company_id)
+                ->where('source_type', WarehouseEntry::class)
+                ->where('source_id', $entry->id)
+                ->where('operation_type', 'warehouse_entry_linked_cost')
+                ->where('status', self::STATUS_REGISTERED)
+                ->exists();
+
+            if ($expenses->isEmpty() && ! $hasLinkedCostMovements) {
+                return;
+            }
+
+            $this->companyWarehouseService->assertEnabled(
+                (int) $entry->company_id,
+                (int) $entry->warehouse_id
+            );
 
             foreach ($expenses as $expense) {
                 foreach ($expense->distributions as $distribution) {
                     $entryMovements = WarehouseKardexMovement::query()
+                        ->where('company_id', $entry->company_id)
                         ->where('source_type', WarehouseEntry::class)
                         ->where('source_id', $entry->id)
                         ->where('source_item_type', WarehouseEntryItem::class)
@@ -742,10 +1100,28 @@ class WarehouseKardexService
 
                         $stock = WarehouseStock::query()
                             ->whereKey($entryMovement->warehouse_stock_id)
+                            ->where('company_id', $entry->company_id)
                             ->lockForUpdate()
                             ->firstOrFail();
-                        $newTotalCost = round((float) $stock->total_cost + $amount, 2);
-                        $averageCost = $this->calculateAverageCost($newTotalCost, (float) $stock->current_quantity);
+                        $this->assertMovementCompany($entryMovement, (int) $entry->company_id);
+                        $this->companyWarehouseService->assertStockOwner($stock, (int) $entry->company_id);
+                        $articleId = (int) $stock->article_id;
+                        $valuationPools[$articleId] ??= $this->warehouseValuationPoolService->lockPool(
+                            (int) $entry->company_id,
+                            (int) $stock->warehouse_id,
+                            $articleId,
+                            Auth::id()
+                        );
+                        $valuationPools[$articleId] = $this->warehouseValuationPoolService->addCostOnly(
+                            $valuationPools[$articleId],
+                            $amount,
+                            Auth::id()
+                        );
+                        $currentQuantity = round((float) $stock->current_quantity, 4);
+                        $newTotalCost = $currentQuantity > 0
+                            ? round((float) $stock->total_cost + $amount, 2)
+                            : 0;
+                        $averageCost = $this->calculateAverageCost($newTotalCost, $currentQuantity);
 
                         $stock->update([
                             'total_cost' => $newTotalCost,
@@ -755,19 +1131,32 @@ class WarehouseKardexService
 
                         WarehouseKardexMovement::create([
                             'movement_number' => $this->generateMovementNumber(),
+                            'company_id' => $entry->company_id,
                             'warehouse_stock_id' => $stock->id,
                             'warehouse_id' => $stock->warehouse_id,
                             'article_id' => $stock->article_id,
                             'unit_id' => $stock->unit_id,
+                            ...$this->buildAccountingSnapshots(
+                                (int) $entry->company_id,
+                                (int) $stock->warehouse_id,
+                                (int) $stock->article_id,
+                                $stock->unit_id ? (int) $stock->unit_id : null
+                            ),
                             'presentation_id' => $stock->presentation_id,
                             'brand_id' => $stock->brand_id,
                             'lot_number' => $stock->lot_number,
                             'expiration_date' => $stock->expiration_date,
                             'origin' => $stock->origin,
                             'cost_type' => $stock->cost_type,
-                            'movement_date' => now(),
+                            'movement_date' => $entry->movement_date ?? now(),
                             'movement_type' => 'linked_cost',
                             'operation_type' => 'warehouse_entry_linked_cost',
+                            ...$this->sunatDocumentOperationSnapshots(
+                                'linked_cost',
+                                'warehouse_entry_linked_cost',
+                                $expense->document_date,
+                                $expense->document_type
+                            ),
                             'source_type' => WarehouseEntry::class,
                             'source_id' => $entry->id,
                             'source_item_type' => WarehouseEntryExpenseDistribution::class,
@@ -788,7 +1177,7 @@ class WarehouseKardexService
                             'average_unit_cost' => $averageCost,
                             'balance_total_cost' => $newTotalCost,
                             'currency_id' => $expense->currency_id ?: $entry->currency_id,
-                            'exchange_rate' => 1,
+                            'exchange_rate' => $expense->exchange_rate ?? $entry->exchange_rate ?? 1,
                             'observations' => trim('Costo vinculado: '.($expense->description ?: $expense->expense_type)),
                             'status' => self::STATUS_REGISTERED,
                             'created_by' => Auth::id(),
@@ -799,6 +1188,7 @@ class WarehouseKardexService
             }
 
             $staleMovements = WarehouseKardexMovement::query()
+                ->where('company_id', $entry->company_id)
                 ->where('source_type', WarehouseEntry::class)
                 ->where('source_id', $entry->id)
                 ->where('operation_type', 'warehouse_entry_linked_cost')
@@ -841,6 +1231,10 @@ class WarehouseKardexService
 
     public function recalculate(array $filters = []): WarehouseKardexRecalculation
     {
+        throw new \RuntimeException(
+            'El recálculo legacy de Kardex está deshabilitado porque el inventario utiliza el pool global de valorización PPM. Utilice el proceso de reconstrucción controlada compatible con warehouse_valuation_pools.'
+        );
+
         return DB::transaction(function () use ($filters) {
             $log = WarehouseKardexRecalculation::create([
                 'warehouse_id' => $filters['warehouse_id'] ?? null,
@@ -950,6 +1344,233 @@ class WarehouseKardexService
     private function sourceKey(string $prefix, int|string ...$parts): string
     {
         return implode(':', [$prefix, ...$parts]);
+    }
+
+    private function buildAccountingSnapshots(
+        int $companyId,
+        int $warehouseId,
+        int $articleId,
+        ?int $unitId
+    ): array {
+        $companyWarehouse = CompanyWarehouse::query()
+            ->where('company_id', $companyId)
+            ->where('warehouse_id', $warehouseId)
+            ->first();
+        $article = Article::withTrashed()
+            ->with(['sunatExistenceType', 'sunatInventoryCatalogItem'])
+            ->find($articleId);
+        $unit = $unitId
+            ? Unit::withTrashed()->with('sunatUnit')->find($unitId)
+            : null;
+        $company = Company::withTrashed()
+            ->with('inventoryValuationMethod')
+            ->find($companyId);
+
+        return [
+            'sunat_establishment_code_snapshot' => $this->snapshotValue($companyWarehouse?->sunat_establishment_code),
+            'article_code_snapshot' => $this->snapshotValue($article?->code),
+            'article_description_snapshot' => $this->snapshotValue(
+                $article?->billing_name ?: $article?->legal_name ?: $article?->commercial_name
+            ),
+            'sunat_existence_type_code_snapshot' => $this->snapshotValue($article?->sunatExistenceType?->item_code),
+            'existence_catalog_code_snapshot' => $this->snapshotValue($article?->sunatInventoryCatalogItem?->item_code),
+            'existence_code_snapshot' => $this->snapshotValue($article?->sunat_inventory_catalog_code),
+            'sunat_unit_code_snapshot' => $this->snapshotValue($unit?->sunatUnit?->item_code),
+            'unit_description_snapshot' => $this->snapshotValue($unit?->description),
+            'valuation_method_code_snapshot' => $this->snapshotValue($company?->inventoryValuationMethod?->item_code),
+            'valuation_method_description_snapshot' => $this->snapshotValue($company?->inventoryValuationMethod?->description),
+        ];
+    }
+
+    public function accountingSnapshots(
+        int $companyId,
+        int $warehouseId,
+        int $articleId,
+        ?int $unitId,
+        ?WarehouseKardexMovement $originalMovement = null
+    ): array {
+        if ($originalMovement) {
+            $snapshots = $this->accountingSnapshotsFromMovement($originalMovement);
+            $isComplete = collect($snapshots)->every(
+                fn ($value) => $value !== null && trim((string) $value) !== ''
+            );
+
+            if ($isComplete) {
+                return $snapshots;
+            }
+        }
+
+        return $this->buildAccountingSnapshots($companyId, $warehouseId, $articleId, $unitId);
+    }
+
+    public function sunatDocumentOperationSnapshots(
+        string $movementType,
+        string $operationType,
+        mixed $documentDate = null,
+        ?string $documentType = null,
+        ?WarehouseKardexMovement $originalMovement = null
+    ): array {
+        $documentDateSnapshot = $originalMovement
+            ? $originalMovement->getAttribute('document_date_snapshot')
+            : $this->formatDate($documentDate);
+        $documentTypeCode = $originalMovement
+            ? $originalMovement->getAttribute('sunat_document_type_code_snapshot')
+            : $this->resolveSunatDocumentTypeCode($documentType);
+        $operationTypeCode = $this->resolveSunatOperationTypeCode($movementType, $operationType);
+
+        $this->assertSunatCatalogCode('10', $documentTypeCode, 'tipo de documento');
+        $this->assertSunatCatalogCode('12', $operationTypeCode, 'tipo de operación');
+
+        return [
+            'document_date_snapshot' => $documentDateSnapshot,
+            'sunat_document_type_code_snapshot' => $documentTypeCode,
+            'sunat_operation_type_code_snapshot' => $operationTypeCode,
+        ];
+    }
+
+    public function resolveSunatDocumentTypeCode(?string $documentType): ?string
+    {
+        $documentType = trim((string) $documentType);
+
+        if ($documentType === '') {
+            return null;
+        }
+
+        if ($this->sunatCatalogCodeExists('10', $documentType)) {
+            return $documentType;
+        }
+
+        $normalized = mb_strtoupper(Str::ascii($documentType), 'UTF-8');
+        $normalized = str_replace([' ', '-'], '_', $normalized);
+        $code = match ($normalized) {
+            'FACTURA' => '01',
+            'BOLETA', 'BOLETA_DE_VENTA' => '03',
+            'RECIBO_POR_HONORARIOS', 'RECIBO_HONORARIO', 'RECIBO_HONORARIOS' => '02',
+            'GUIA', 'GUIA_DE_REMISION', 'GUIA_DE_REMISION_REMITENTE' => '09',
+            'OTRO', 'OTROS' => '00',
+            'SIN_COMPROBANTE', 'RECIBO_INTERNO' => null,
+            default => throw ValidationException::withMessages([
+                'document_type' => "El tipo de documento [{$documentType}] no tiene un código válido en la Tabla 10 SUNAT.",
+            ]),
+        };
+
+        $this->assertSunatCatalogCode('10', $code, 'tipo de documento');
+
+        return $code;
+    }
+
+    public function resolveSunatOperationTypeCode(string $movementType, string $operationType): string
+    {
+        $code = self::SUNAT_OPERATION_TYPE_CODES[$operationType] ?? null;
+
+        // Compatibilidad con llamados legacy que identifican el ajuste por movement_type.
+        if ($code === null && in_array($movementType, ['adjustment_in', 'adjustment_out'], true)) {
+            $code = '28';
+        }
+
+        if ($code === null) {
+            throw ValidationException::withMessages([
+                'operation_type' => "La operación [{$operationType}] no tiene un código definido en la Tabla 12 SUNAT.",
+            ]);
+        }
+
+        $this->assertSunatCatalogCode('12', $code, 'tipo de operación');
+
+        return $code;
+    }
+
+    private function assertSunatCatalogCode(string $catalogCode, ?string $itemCode, string $label): void
+    {
+        if ($itemCode === null) {
+            return;
+        }
+
+        if (! $this->sunatCatalogCodeExists($catalogCode, $itemCode)) {
+            throw ValidationException::withMessages([
+                'sunat' => "El código [{$itemCode}] no existe en la Tabla {$catalogCode} SUNAT para {$label}.",
+            ]);
+        }
+    }
+
+    private function sunatCatalogCodeExists(string $catalogCode, string $itemCode): bool
+    {
+        $query = SunatCatalogItem::query()
+            ->where('catalog_code', $catalogCode)
+            ->where('item_code', $itemCode)
+            ->where('status', 'ACTIVE');
+
+        if ($query->exists()) {
+            return true;
+        }
+
+        if (SunatCatalogItem::query()->where('catalog_code', $catalogCode)->exists()) {
+            return false;
+        }
+
+        $path = database_path("data/sunat/catalogs/{$catalogCode}.json");
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $payload = json_decode((string) file_get_contents($path), true);
+
+        return collect($payload['items'] ?? [])->contains(
+            fn (array $item) => (string) ($item['code'] ?? '') === $itemCode
+                && ($item['is_active'] ?? true)
+        );
+    }
+
+    private function accountingSnapshotsFromMovement(WarehouseKardexMovement $movement): array
+    {
+        $snapshots = [];
+
+        foreach (self::ACCOUNTING_SNAPSHOT_COLUMNS as $column) {
+            $snapshots[$column] = $movement->getAttribute($column);
+        }
+
+        return $snapshots;
+    }
+
+    private function snapshotValue(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    private function electronicInvoiceCompanyId(ElectronicInvoice $invoice): int
+    {
+        $invoiceCompanyId = (int) $invoice->company_id;
+        $entryCompanyId = (int) ($invoice->warehouseEntry?->company_id ?? 0);
+
+        if ($invoiceCompanyId <= 0) {
+            throw ValidationException::withMessages([
+                'company_id' => 'El comprobante no tiene una empresa propietaria de inventario.',
+            ]);
+        }
+
+        if ($entryCompanyId > 0 && $entryCompanyId !== $invoiceCompanyId) {
+            throw ValidationException::withMessages([
+                'company_id' => 'La empresa del comprobante no coincide con la empresa del ingreso relacionado.',
+            ]);
+        }
+
+        return $invoiceCompanyId;
+    }
+
+    private function assertMovementCompany(WarehouseKardexMovement $movement, int $companyId): void
+    {
+        if ($movement->company_id === null) {
+            throw ValidationException::withMessages([
+                'kardex' => 'El movimiento histórico no tiene una empresa propietaria resuelta. Requiere revisión antes de continuar.',
+            ]);
+        }
+
+        if ((int) $movement->company_id !== $companyId) {
+            throw ValidationException::withMessages([
+                'kardex' => 'El movimiento Kardex pertenece a una empresa distinta de la operación.',
+            ]);
+        }
     }
 
     private function formatDate(mixed $value): ?string

@@ -45,6 +45,7 @@
 
 {{-- 🔽 AGREGA ESTO --}}
 @section('content_top_nav_right')
+    @include('admin.work-agenda.partials.global-alerts')
     <li class="nav-item dropdown dp-theme-selector">
         <a class="nav-link dp-theme-toggle" data-toggle="dropdown" href="#" role="button" aria-label="Cambiar tema" title="Tema visual">
             <i class="fas fa-adjust" id="dpThemeNavbarIcon"></i>
@@ -96,6 +97,13 @@
         </div>
     </div>
 
+    <div id="dpAgendaUrgentBanner" class="dp-agenda-urgent-banner" role="status">
+        <span class="dp-agenda-urgent-icon"><i class="fas fa-exclamation-triangle"></i></span>
+        <span class="dp-agenda-urgent-copy"><b>TAREA URGENTE</b><strong data-alert-title></strong><small data-alert-when></small></span>
+        <a href="#" class="btn btn-sm btn-outline-danger" data-alert-link>Ver actividad</a>
+        <button type="button" class="dp-agenda-banner-close" data-alert-close aria-label="Cerrar aviso"><i class="fas fa-times"></i></button>
+    </div>
+
     @yield('content_body')
 
     @include('admin.profile.modal')
@@ -132,10 +140,12 @@
             updateUrl: @json(route('admin.profile.update')),
             csrf: @json(csrf_token())
         };
+        window.workAgendaAlertsConfig = { endpoint: @json(route('admin.work-agenda.my-alerts')) };
     </script>
     @vite('resources/js/pages/theme-preferences.js')
     @vite('resources/js/pages/table-actions.js')
     @vite('resources/js/pages/user-profile.js')
+    @vite('resources/js/pages/work-agenda-alerts.js')
     {{--     <script src="{{ asset('vendor/datatables/js/popper.min.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.js') }}"></script>
     <script src="{{ asset('vendor/datatables/js/dataTables.bootstrap4.js') }}"></script>    
@@ -812,5 +822,5 @@
             }
         }
     </style>
-    @vite(['resources/css/admin-modern.css', 'resources/css/theme-preferences.css', 'resources/css/user-profile.css'])
+    @vite(['resources/css/admin-modern.css', 'resources/css/theme-preferences.css', 'resources/css/user-profile.css', 'resources/css/work-agenda-alerts.css'])
 @endpush

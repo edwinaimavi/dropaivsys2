@@ -10,12 +10,19 @@ let warehouseEntryExistingDocuments = [];
 let warehouseEntryPendingLotDocuments = [];
 let warehouseEntryExistingLotDocuments = [];
 let warehouseEntryExpenses = [];
+let warehouseEntryExpensesDirty = false;
 let warehouseEntryAvailablePettyCashExpenses = [];
 let warehouseEntryExpenseEditorRemovedDocuments = { invoice: false, payment_proof: false, detraction_proof: false };
 let warehouseEntryActiveLotsRow = null;
+let warehouseEntryActiveAllocationRow = null;
+let warehouseEntryWorkingAllocations = [];
+let warehouseEntryAllocationSearchResults = [];
 let warehouseEntryDeliveryType = '';
 let warehouseEntrySourceOrderTotal = null;
+let warehouseEntrySourceTaxContext = null;
+let warehouseEntryAdvancePaidAmount = 0;
 let warehouseEntryBankAccountsRequest = null;
+let warehouseEntryWarehousesRequest = null;
 let warehouseEntryCompanyBankAccounts = [];
 let warehouseEntryBankAccountsCompanyId = '';
 let warehouseEntryExpenseBankAccountPendingId = '';
@@ -32,6 +39,8 @@ let warehouseEntryCreditPaymentEditingPayment = null;
 let warehouseEntryPaymentDocumentTarget = null;
 let warehouseEntryInitialPaymentDocuments = [];
 let warehouseEntryPendingPaymentItems = [];
+let warehouseEntryPendingPaymentsHaveLimitError = false;
+let warehouseEntrySaving = false;
 const warehouseEntryExpandedGroups = new Set();
 const CREDIT_DUE_WARNING_DAYS = 15;
 
@@ -132,27 +141,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $('#warehouseEntryModal')
-        .on('shown.bs.modal', function () {
+        .off('.warehouseEntryMain')
+        .on('shown.bs.modal.warehouseEntryMain', function (event) {
+            if (event.target !== this) return;
             tagWarehouseEntryBackdrop('warehouse-entry-backdrop-main');
             document.body.classList.add('warehouse-entry-active');
         })
-        .on('hidden.bs.modal', function () {
+        .on('hidden.bs.modal.warehouseEntryMain', function (event) {
+            if (event.target !== this) return;
             resetWarehouseEntryForm();
             cleanupWarehouseEntryModalBackdrops();
         });
 
     $('#warehouseEntryLotsModal')
-        .on('shown.bs.modal', function () {
+        .off('.warehouseEntryChild')
+        .on('shown.bs.modal.warehouseEntryChild', function (event) {
+            event.stopPropagation();
             tagWarehouseEntryBackdrop('warehouse-entry-backdrop-lots');
         })
-        .on('hidden.bs.modal', function () {
+        .on('hidden.bs.modal.warehouseEntryChild', function (event) {
+            event.stopPropagation();
             warehouseEntryActiveLotsRow = null;
-            if ($('#warehouseEntryModal').hasClass('show')) {
-                document.body.classList.add('modal-open', 'warehouse-entry-active');
-                $('#warehouseEntryModal').trigger('focus');
-            } else {
-                cleanupWarehouseEntryModalBackdrops();
-            }
+            restoreWarehouseEntryMainModalAfterChild();
+        });
+
+    $('#warehouseEntryAllocationsModal')
+        .off('.warehouseEntryChild')
+        .on('shown.bs.modal.warehouseEntryChild', function (event) {
+            event.stopPropagation();
+            tagWarehouseEntryBackdrop('warehouse-entry-backdrop-allocations');
+        })
+        .on('hidden.bs.modal.warehouseEntryChild', function (event) {
+            event.stopPropagation();
+            warehouseEntryActiveAllocationRow = null;
+            warehouseEntryWorkingAllocations = [];
+            warehouseEntryAllocationSearchResults = [];
+            restoreWarehouseEntryMainModalAfterChild();
         });
 
     $('#warehouseEntryPettyCashModal')
@@ -207,6 +231,13 @@ document.addEventListener('DOMContentLoaded', function () {
         handleWarehouseEntrySupplierOrderSelection();
     });
 
+    $(document).on('change', '#warehouse_entry_mode', toggleWarehouseEntryMode);
+    $(document).on('change', '#warehouse_entry_customer_purchase_order_ids', function () {
+        const firstText = $(this).find('option:selected').first().text().trim();
+        $('#warehouse_entry_purchase_order_number').val(firstText.split('|')[0]?.trim() || '');
+        updateWarehouseEntryReview();
+    });
+
     $(document).on('change', '#warehouse_entry_supplier_id', function () {
         syncWarehouseEntrySupplierFields();
     });
@@ -219,7 +250,11 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_company_id', function () {
         const text = $(this).find('option:selected').text().trim();
         $('#warehouseEntrySideCompany').text($(this).val() ? text : 'Seleccione empresa');
+        clearWarehouseEntryCustomerOrders();
+        $('#warehouse_entry_customer_purchase_order_ids')
+            .prop('disabled', !$(this).val() || $('#warehouse_entry_mode').val() !== 'supplier_invoice');
         warehouseEntryExpenseBankAccountPendingId = '';
+        refreshWarehouseEntryWarehouses();
         refreshWarehouseEntryBankAccounts();
         filterWarehouseEntryGeneralCashBoxes();
         updateWarehouseEntryReview();
@@ -234,6 +269,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('change', '#warehouse_entry_currency_id', function () {
         updateWarehouseEntryCurrency();
+        const currencyCode = String($(this).find('option:selected').data('code') || '').toUpperCase();
+        $('#warehouse_entry_exchange_rate')
+            .prop('readonly', currencyCode === 'PEN')
+            .val(currencyCode === 'PEN' ? '1.000000' : $('#warehouse_entry_exchange_rate').val());
         updateWarehouseEntryBankPaymentExchangeRate();
         warehouseEntryPendingPaymentItems.forEach(item => {
             if (!item.currency_id) item.currency_id = String($('#warehouse_entry_currency_id').val() || '');
@@ -392,9 +431,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on(
         'input change',
-        '#warehouse_entry_affect_igv, .item-quantity, .item-unit-price',
+        '#warehouse_entry_affect_igv, .item-quantity, .item-unit-price, .item-tax-affectation-code, .item-tax-rate, .item-discount-amount, .item-is-free',
         calculateWarehouseEntryTotals
     );
+    $(document).on('change', '.item-tax-affectation-code', function () {
+        const row = $(this).closest('tr');
+        if ($(this).val() === '') {
+            row.find('.item-tax-rate').prop('readonly', true).val('');
+            row.find('.item-igv-recoverable').prop('disabled', true).val('');
+            return;
+        }
+        const taxed = $(this).val() === '10';
+        row.find('.item-tax-rate').prop('readonly', !taxed).val(taxed ? (row.find('.item-tax-rate').val() || '18.00') : '0.00');
+        row.find('.item-igv-recoverable').prop('disabled', !taxed).val(taxed ? row.find('.item-igv-recoverable').val() : '0');
+    });
 
     $(document).on('change', '#warehouse_entry_generate_account_payable', function () {
         syncWarehouseEntryPayableAmount();
@@ -404,7 +454,14 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_document_date', function () {
         updateWarehouseEntryCreditSummary(true);
     });
-    $(document).on('input change', '#warehouse_entry_payment_condition', function () {
+    $(document).on('change', '#warehouse_entry_payment_condition', function () {
+        updateWarehouseEntryCreditSummary(true);
+    });
+    $(document).on('input change', '#warehouse_entry_credit_days', function () {
+        const value = String($(this).val() || '');
+        if (value && (!/^\d+$/.test(value) || Number(value) <= 0)) {
+            $(this).val(value.replace(/\D/g, ''));
+        }
         updateWarehouseEntryCreditSummary(true);
     });
 
@@ -413,12 +470,26 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $(document).on('input change', '.item-quantity', function () {
-        renderWarehouseEntryLotsSummary($(this).closest('tr'));
+        const row = $(this).closest('tr');
+        renderWarehouseEntryLotsSummary(row);
+        renderWarehouseEntryAllocationSummary(row);
     });
 
-    $(document).on('click', '.btnManageWarehouseEntryLots', function () {
-        openWarehouseEntryLotsModal($(this).closest('tr'));
-    });
+    $(document)
+        .off('click.warehouseEntryLotsAction', '.warehouse-entry-item-row .btnManageWarehouseEntryLots')
+        .on('click.warehouseEntryLotsAction', '.warehouse-entry-item-row .btnManageWarehouseEntryLots', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            openWarehouseEntryLotsModal($(event.currentTarget).closest('tr.warehouse-entry-item-row'));
+        });
+
+    $(document)
+        .off('click.warehouseEntryLotsClose', '#warehouseEntryLotsModal .btnCloseWarehouseEntryLotsModal')
+        .on('click.warehouseEntryLotsClose', '#warehouseEntryLotsModal .btnCloseWarehouseEntryLotsModal', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            $('#warehouseEntryLotsModal').modal('hide');
+        });
 
     $(document).on('click', '#btnAddWarehouseEntryLot', function () {
         addWarehouseEntryLotEditorRow();
@@ -431,6 +502,36 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $(document).on('input change', '#warehouseEntryLotsTbody input', refreshWarehouseEntryLotEditor);
     $(document).on('click', '#btnApplyWarehouseEntryLots', applyWarehouseEntryLots);
+
+    $(document)
+        .off('click.warehouseEntryAllocationsAction', '.warehouse-entry-item-row .btnManageWarehouseEntryAllocations')
+        .on('click.warehouseEntryAllocationsAction', '.warehouse-entry-item-row .btnManageWarehouseEntryAllocations', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            openWarehouseEntryAllocationsModal($(event.currentTarget).closest('tr.warehouse-entry-item-row'));
+        });
+
+    $(document)
+        .off('click.warehouseEntryAllocationsClose', '#warehouseEntryAllocationsModal .btnCloseWarehouseEntryAllocationsModal')
+        .on('click.warehouseEntryAllocationsClose', '#warehouseEntryAllocationsModal .btnCloseWarehouseEntryAllocationsModal', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            $('#warehouseEntryAllocationsModal').modal('hide');
+        });
+    $(document).on('click', '#btnSearchWarehouseEntryCustomerOrders', searchWarehouseEntryCustomerOrders);
+    $(document).on('keydown', '#warehouseEntryAllocationSearch', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); searchWarehouseEntryCustomerOrders(); }
+    });
+    $(document).on('click', '.btnSelectWarehouseEntryCustomerOrder', function () {
+        addWarehouseEntryCustomerAllocation(Number($(this).data('index')));
+    });
+    $(document).on('click', '#btnAddWarehouseEntryFreeStock', addWarehouseEntryFreeStockAllocation);
+    $(document).on('click', '#btnAddWarehouseEntrySupplierAllocation', addWarehouseEntrySupplierAllocation);
+    $(document).on('click', '.btnRemoveWarehouseEntryAllocation', function () {
+        warehouseEntryWorkingAllocations.splice(Number($(this).data('index')), 1);
+        renderWarehouseEntryAllocationEditor();
+    });
+    $(document).on('click', '#btnApplyWarehouseEntryAllocations', applyWarehouseEntryAllocations);
 
     $(document).on('click', '#btnLoadWarehouseEntrySource', loadWarehouseEntrySourceItems);
 
@@ -549,6 +650,7 @@ document.addEventListener('DOMContentLoaded', function () {
 function prepareWarehouseEntryModalLayers() {
     const mainModal = document.getElementById('warehouseEntryModal');
     const lotsModal = document.getElementById('warehouseEntryLotsModal');
+    const allocationsModal = document.getElementById('warehouseEntryAllocationsModal');
     const pettyCashModal = document.getElementById('warehouseEntryPettyCashModal');
     const creditAlertsModal = document.getElementById('warehouseEntryCreditAlertsModal');
     const creditPaymentModal = document.getElementById('warehouseEntryCreditPaymentModal');
@@ -558,6 +660,9 @@ function prepareWarehouseEntryModalLayers() {
     }
     if (lotsModal && lotsModal.parentElement !== document.body) {
         document.body.appendChild(lotsModal);
+    }
+    if (allocationsModal && allocationsModal.parentElement !== document.body) {
+        document.body.appendChild(allocationsModal);
     }
     if (pettyCashModal && pettyCashModal.parentElement !== document.body) {
         document.body.appendChild(pettyCashModal);
@@ -592,12 +697,24 @@ function tagWarehouseEntryBackdrop(className) {
         .reverse()
         .find(element => !element.classList.contains('warehouse-entry-backdrop-main')
             && !element.classList.contains('warehouse-entry-backdrop-lots')
+            && !element.classList.contains('warehouse-entry-backdrop-allocations')
             && !element.classList.contains('warehouse-entry-backdrop-petty-cash')
             && !element.classList.contains('warehouse-entry-backdrop-credit-payment'));
 
     if (backdrop) {
         backdrop.classList.add(className);
     }
+}
+
+function restoreWarehouseEntryMainModalAfterChild() {
+    const mainModal = $('#warehouseEntryModal');
+    if (mainModal.hasClass('show')) {
+        document.body.classList.add('modal-open', 'warehouse-entry-active');
+        mainModal.trigger('focus');
+        return;
+    }
+
+    cleanupWarehouseEntryModalBackdrops();
 }
 
 function cleanupWarehouseEntryModalBackdrops() {
@@ -1142,6 +1259,10 @@ function validateWarehouseEntryCreditPayment() {
     clearWarehouseEntryCreditPaymentValidation();
     const summary = warehouseEntryCreditPaymentEntry?.credit_payment_summary || {};
     const pending = parseWarehouseEntryNumber(summary.pending_amount);
+    const currentApplied = warehouseEntryCreditPaymentEditingPayment
+        ? parseWarehouseEntryNumber(warehouseEntryCreditPaymentEditingPayment.applied_amount)
+        : 0;
+    const availableAmount = pending + currentApplied;
     const applied = parseWarehouseEntryNumber($('#warehouse_credit_payment_applied_amount').val());
     const purchaseCode = String(warehouseEntryCreditPaymentEntry?.currency?.code || '').toUpperCase();
     const paymentCode = String($('#warehouse_credit_payment_currency_id option:selected').data('code') || '').toUpperCase();
@@ -1150,7 +1271,7 @@ function validateWarehouseEntryCreditPayment() {
         ['#warehouse_credit_payment_currency_id', Boolean(paymentCode), 'Seleccione la moneda del pago.'],
         ['#warehouse_credit_payment_bank_account_id', Boolean($('#warehouse_credit_payment_bank_account_id').val()), 'Seleccione la cuenta bancaria de salida.'],
         ['#warehouse_credit_payment_applied_amount', applied > 0, 'El monto aplicado debe ser mayor a cero.'],
-        ['#warehouse_credit_payment_applied_amount', applied <= pending, 'El monto del pago no puede superar el saldo pendiente.'],
+        ['#warehouse_credit_payment_applied_amount', applied <= availableAmount + 0.0001, 'El monto del pago no puede superar el saldo pendiente.'],
         ['#warehouse_credit_payment_exchange_rate', purchaseCode === paymentCode || rate > 0, 'Ingrese el tipo de cambio del pago, mayor a cero.'],
         ['#warehouse_credit_payment_date', Boolean($('#warehouse_credit_payment_date').val()), 'Ingrese la fecha del pago.'],
         ['#warehouse_credit_payment_method', Boolean($('#warehouse_credit_payment_method').val()), 'Seleccione el medio de pago.'],
@@ -1314,6 +1435,29 @@ function initWarehouseEntrySelect2(context) {
             };
         }
 
+        if (select.is('#warehouse_entry_customer_purchase_order_ids')) {
+            config.placeholder = select.data('placeholder');
+            config.allowClear = true;
+            config.minimumInputLength = 0;
+            config.ajax = {
+                url: window.routes.warehouseEntryEligibleCustomerOrders,
+                dataType: 'json',
+                delay: 250,
+                data: params => ({
+                    company_id: $('#warehouse_entry_company_id').val(),
+                    search: params.term || ''
+                }),
+                processResults: response => ({ results: response.data || [] })
+            };
+            config.language = {
+                inputTooShort: () => 'Escriba para buscar una OC Cliente',
+                noResults: () => $('#warehouse_entry_company_id').val()
+                    ? 'No se encontraron órdenes activas para esta empresa'
+                    : 'Seleccione primero una empresa',
+                searching: () => 'Buscando órdenes...'
+            };
+        }
+
         select.select2(config);
     });
 }
@@ -1462,11 +1606,12 @@ function warehouseEntryPendingPaymentAccountOptions(currencyId, selectedId) {
         && String(account.status || '').toUpperCase() === 'ACTIVE'
     );
     return '<option value="">Seleccione cuenta bancaria</option>' + accounts.map(account => {
+        const company = account.company?.business_name || account.company?.trade_name || 'Empresa';
         const bank = account.bank?.short_name || account.bank?.description || 'Banco';
         const currency = account.currency?.code || '';
         const symbol = account.currency?.symbol || currency;
         const selected = String(account.id) === String(selectedId || '') ? ' selected' : '';
-        return `<option value="${escapeWarehouseEntryHtml(account.id)}" data-currency-id="${escapeWarehouseEntryHtml(account.currency_id)}" data-currency-code="${escapeWarehouseEntryHtml(currency)}" data-balance="${escapeWarehouseEntryHtml(account.current_balance)}"${selected}>${escapeWarehouseEntryHtml(`${bank} | ${account.account_number} | ${currency} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`)}</option>`;
+        return `<option value="${escapeWarehouseEntryHtml(account.id)}" data-currency-id="${escapeWarehouseEntryHtml(account.currency_id)}" data-currency-code="${escapeWarehouseEntryHtml(currency)}" data-balance="${escapeWarehouseEntryHtml(account.current_balance)}"${selected}>${escapeWarehouseEntryHtml(`${company} — ${bank} | ${account.account_number} | ${currency} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`)}</option>`;
     }).join('');
 }
 
@@ -1512,8 +1657,9 @@ function renderWarehouseEntryPendingPaymentItems() {
                     <select name="payment_items[${index}][currency_id]" data-field="currency_id" class="form-control form-control-sm warehouse-entry-pending-payment-field">${warehouseEntryPendingPaymentCurrencyOptions(item.currency_id)}</select><span class="invalid-feedback"></span>
                 </div>
                 <div class="form-group col-sm-6 col-lg-3">
-                    <label>MONTO PAGADO *</label>
-                    <div class="input-group input-group-sm"><div class="input-group-prepend"><span class="input-group-text warehouse-entry-pending-payment-symbol">${escapeWarehouseEntryHtml(outputSymbol)}</span></div><input type="number" name="payment_items[${index}][paid_amount]" data-field="paid_amount" value="${escapeWarehouseEntryHtml(item.paid_amount)}" class="form-control text-right warehouse-entry-pending-payment-paid" readonly></div><span class="invalid-feedback"></span>
+                    <label>MONTO PAGADO</label>
+                    <input type="hidden" name="payment_items[${index}][paid_amount]" data-field="paid_amount" value="${escapeWarehouseEntryHtml(item.paid_amount)}">
+                    <div class="warehouse-entry-pending-payment-calculated" aria-live="polite"><span class="warehouse-entry-pending-payment-calculated-icon"><i class="fas fa-calculator"></i></span><span><strong><span class="warehouse-entry-pending-payment-symbol">${escapeWarehouseEntryHtml(outputSymbol)}</span> <span class="warehouse-entry-pending-payment-paid">${escapeWarehouseEntryHtml(formatWarehouseEntryMoney(item.paid_amount))}</span></strong><small><i class="fas fa-lock mr-1"></i>Calculado autom&aacute;ticamente</small></span></div><span class="invalid-feedback"></span>
                 </div>
                 <div class="form-group col-sm-6 col-lg-3">
                     <label>TIPO DE CAMBIO *</label>
@@ -1521,7 +1667,7 @@ function renderWarehouseEntryPendingPaymentItems() {
                 </div>
                 <div class="form-group col-sm-6 col-lg-3">
                     <label>MONTO APLICADO *</label>
-                    <input type="number" name="payment_items[${index}][applied_amount]" data-field="applied_amount" value="${escapeWarehouseEntryHtml(item.applied_amount)}" min="0.0001" step="0.0001" class="form-control form-control-sm text-right warehouse-entry-pending-payment-field"><small class="form-text text-muted">En moneda de la compra (${escapeWarehouseEntryHtml(purchaseCode || '-')}).</small><span class="invalid-feedback"></span>
+                    <input type="number" name="payment_items[${index}][applied_amount]" data-field="applied_amount" value="${escapeWarehouseEntryHtml(item.applied_amount)}" min="0.0001" step="0.0001" class="form-control form-control-sm text-right warehouse-entry-pending-payment-field"><small class="form-text text-muted">En moneda de la compra (${escapeWarehouseEntryHtml(purchaseCode || '-')}).</small><small class="form-text warehouse-entry-pending-payment-available"></small><span class="invalid-feedback"></span>
                 </div>
                 <div class="form-group col-sm-6 col-lg-3">
                     <label>MEDIO DE PAGO *</label>
@@ -1541,6 +1687,8 @@ function renderWarehouseEntryPendingPaymentItems() {
             </div>
         </div>`;
     }).join(''));
+
+    updateWarehouseEntryPendingPaymentBalances();
 }
 
 function syncWarehouseEntryPendingPaymentItem(card) {
@@ -1574,7 +1722,63 @@ function syncWarehouseEntryPendingPaymentItem(card) {
     item.paid_amount = paid.toFixed(4);
     card.find('[data-field="exchange_rate"]').val(item.exchange_rate).prop('readonly', sameCurrency);
     card.find('[data-field="paid_amount"]').val(item.paid_amount);
+    card.find('.warehouse-entry-pending-payment-paid').text(formatWarehouseEntryMoney(item.paid_amount));
     card.find('.warehouse-entry-pending-payment-symbol').text(paymentOption.data('symbol') || paymentCode || '-');
+    updateWarehouseEntryPendingPaymentBalances();
+}
+
+function updateWarehouseEntryPendingPaymentBalances() {
+    const roundAmount = value => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
+    const purchaseTotal = Math.max(
+        roundAmount(parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val()) - warehouseEntryAdvancePaidAmount),
+        0
+    );
+    const purchaseOption = $('#warehouse_entry_currency_id option:selected');
+    const purchaseCode = warehouseEntrySelectedCurrencyCode() || '-';
+    const purchaseSymbol = String(purchaseOption.data('symbol') || purchaseCode).trim();
+    let appliedBefore = 0;
+    let hasLimitError = false;
+
+    $('#warehouseEntryPendingPaymentsList .warehouse-entry-pending-payment-card').each(function () {
+        const card = $(this);
+        const index = Number(card.data('index'));
+        const item = warehouseEntryPendingPaymentItems[index];
+        if (!item) return;
+
+        const field = card.find('[data-field="applied_amount"]');
+        const feedback = field.closest('.form-group').find('.invalid-feedback').first();
+        const availableAmount = Math.max(roundAmount(purchaseTotal - appliedBefore), 0);
+        const rawAppliedAmount = String(item.applied_amount ?? '').trim();
+        const appliedAmount = parseWarehouseEntryNumber(rawAppliedAmount);
+        let errorMessage = '';
+
+        field.attr('max', availableAmount.toFixed(4));
+        card.find('.warehouse-entry-pending-payment-available').html(
+            `<i class="fas fa-wallet mr-1"></i>Saldo disponible para aplicar: <strong>${escapeWarehouseEntryHtml(purchaseCode)} ${escapeWarehouseEntryHtml(formatWarehouseEntryMoney(availableAmount))}</strong>`
+        );
+
+        if (rawAppliedAmount && appliedAmount <= 0) {
+            errorMessage = 'El monto aplicado debe ser mayor a cero.';
+        } else if (appliedAmount > availableAmount + 0.0001) {
+            errorMessage = `El monto aplicado no puede superar el saldo pendiente de ${purchaseSymbol} ${formatWarehouseEntryMoney(availableAmount)}.`;
+        }
+
+        if (errorMessage) {
+            hasLimitError = true;
+            field.addClass('is-invalid');
+            feedback.attr('data-warehouse-entry-limit-error', '1').text(errorMessage);
+        } else if (feedback.attr('data-warehouse-entry-limit-error') === '1') {
+            field.removeClass('is-invalid');
+            feedback.removeAttr('data-warehouse-entry-limit-error').text('');
+        }
+
+        appliedBefore = roundAmount(appliedBefore + Math.max(appliedAmount, 0));
+    });
+
+    warehouseEntryPendingPaymentsHaveLimitError = hasLimitError;
+    $('#btnSaveWarehouseEntry').prop('disabled', warehouseEntrySaving || hasLimitError);
+
+    return !hasLimitError;
 }
 
 function renderWarehouseEntryBankPaymentProof(entry = null) {
@@ -1631,6 +1835,8 @@ function resetWarehouseEntryForm() {
 
     form[0]?.reset();
     $('#warehouse_entry_payment_condition').removeData('credit-days');
+    $('#warehouse_entry_credit_days, #warehouse_entry_expected_payment_date').val('');
+    clearWarehouseEntryCustomerOrders();
     $('#warehouse_entry_id').val('');
     setWarehouseEntrySaving(false);
     $('#warehouse_entry_number').val('');
@@ -1639,17 +1845,19 @@ function resetWarehouseEntryForm() {
     showEmptyWarehouseEntryItemsRow();
     warehouseEntryItemIndex = 0;
     warehouseEntryExpenses = [];
+    warehouseEntryExpensesDirty = false;
     warehouseEntryAvailablePettyCashExpenses = [];
     warehouseEntryAcknowledgedLogisticsOrders = new Set();
     warehouseEntryLogisticsSelectionSequence += 1;
     warehouseEntryLogisticsStatusRequest?.abort();
     warehouseEntryLogisticsStatusRequest = null;
     warehouseEntrySourceOrderTotal = null;
+    warehouseEntrySourceTaxContext = null;
+    warehouseEntryAdvancePaidAmount = 0;
     warehouseEntryEditingPaymentMovement = null;
     warehouseEntryOpenedFromCreditAlert = false;
     $('#btnBackToWarehouseCreditAlerts').addClass('d-none');
     $('#warehouseEntryOrderAmountWarning').addClass('d-none').empty();
-    resetWarehouseEntryExpenseEditor();
     renderWarehouseEntryExpenses();
     $('#warehouseEntrySideSupplier').text('Seleccione proveedor');
     $('#warehouseEntrySideCompany').text('Seleccione empresa');
@@ -1659,7 +1867,10 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_subtotal, #warehouse_entry_igv, #warehouse_entry_grand_total').val('0.00');
 
     form.find('select').val('').trigger('change.select2');
+    $('#warehouse_entry_mode').val('supplier_order').trigger('change.select2');
     $('#warehouse_entry_document_type').val('FACTURA');
+    $('#warehouse_entry_movement_date').val(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    $('#warehouse_entry_exchange_rate').val('1.000000');
     $('#warehouse_entry_affect_igv').val('1');
     $('#warehouse_entry_generate_account_payable').val('0');
     $('#warehouse_entry_bank_payment_operation_number, #warehouse_entry_bank_payment_exchange_rate, #warehouse_entry_bank_payment_observation').val('');
@@ -1688,6 +1899,8 @@ function resetWarehouseEntryForm() {
     syncWarehouseEntryPayableAmount();
     refreshWarehouseEntryBankAccounts();
     toggleWarehouseEntryBankPayment();
+    toggleWarehouseEntryMode();
+    resetWarehouseEntryExpenseEditor();
     $('#warehouseEntryModal .warehouse-entry-form-tabs .nav-link').first().tab('show');
     updateWarehouseEntryReview();
 }
@@ -1728,7 +1941,13 @@ function validateWarehouseEntryRequiredData() {
         ['#warehouse_entry_company_id', 'Debe seleccionar una empresa.'],
         ['#warehouse_entry_supplier_id', 'Debe seleccionar un proveedor.'],
         ['#warehouse_entry_currency_id', 'Debe seleccionar una moneda.'],
-        ['#warehouse_entry_document_type', 'Debe seleccionar el tipo de documento.']
+        ['#warehouse_entry_document_type', 'Debe seleccionar el tipo de documento.'],
+        ['#warehouse_entry_document_series', 'Ingrese la serie del comprobante.'],
+        ['#warehouse_entry_document_number', 'Ingrese el número del comprobante.'],
+        ['#warehouse_entry_document_date', 'Ingrese la fecha del comprobante.'],
+        ['#warehouse_entry_movement_date', 'Ingrese la fecha y hora del movimiento físico.'],
+        ['#warehouse_entry_payment_method', 'Debe seleccionar la forma de pago.'],
+        ['#warehouse_entry_payment_condition', 'Debe seleccionar la condición de pago.']
     ];
 
     for (const [selector, message] of requiredFields) {
@@ -1738,14 +1957,39 @@ function validateWarehouseEntryRequiredData() {
         }
     }
 
-    if ($('#warehouse_entry_generate_account_payable').val() === '1'
-        && !$('#warehouse_entry_expected_payment_date').val()) {
+    const currencyCode = String($('#warehouse_entry_currency_id option:selected').data('code') || '').toUpperCase();
+    if (currencyCode !== 'PEN' && parseWarehouseEntryNumber($('#warehouse_entry_exchange_rate').val()) <= 0) {
+        return showWarehouseEntryClientValidation('#warehouse_entry_tab_data', 'Ingrese un tipo de cambio mayor a cero.', $('#warehouse_entry_exchange_rate'));
+    }
+
+    if ($('#warehouse_entry_mode').val() === 'supplier_invoice'
+        && warehouseEntryIsCredit() && warehouseEntryCreditDays() <= 0) {
         return showWarehouseEntryClientValidation(
             '#warehouse_entry_tab_data',
-            'Debe indicar la fecha de pago esperada para generar la cuenta por pagar.',
+            'Ingrese una cantidad entera de días de crédito mayor a cero.',
+            $('#warehouse_entry_credit_days')
+        );
+    }
+
+    if ($('#warehouse_entry_mode').val() === 'supplier_invoice'
+        && warehouseEntryIsCredit() && !$('#warehouse_entry_expected_payment_date').val()) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_data',
+            'No se pudo calcular la fecha de vencimiento. Revise la fecha del documento y los días de crédito.',
             $('#warehouse_entry_expected_payment_date')
         );
     }
+
+    if ($('#warehouse_entry_mode').val() === 'supplier_order'
+        && !$('#warehouse_entry_supplier_purchase_order_id').val()) {
+        return showWarehouseEntryClientValidation(
+            '#warehouse_entry_tab_data',
+            'Seleccione una OC proveedor o cambie el tipo de ingreso a factura de proveedor.',
+            $('#warehouse_entry_supplier_purchase_order_id')
+        );
+    }
+
+    if (!validateWarehouseEntryAllocations()) return false;
 
     return validateWarehouseEntryPendingPaymentItems();
 
@@ -1827,7 +2071,10 @@ function validateWarehouseEntryPendingPaymentItems() {
         totalApplied += applied;
     }
 
-    const purchaseTotal = parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val());
+    const purchaseTotal = Math.max(
+        parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val()) - warehouseEntryAdvancePaidAmount,
+        0
+    );
     if (totalApplied > purchaseTotal + 0.0001) {
         return showWarehouseEntryClientValidation(
             '#warehouse_entry_tab_data',
@@ -1859,6 +2106,10 @@ function validateWarehouseEntryItems() {
         const quantityValue = parseWarehouseEntryNumber(quantity.val());
         const unitPriceRaw = String(unitPrice.val() ?? '').trim();
         const unitPriceValue = Number.parseFloat(unitPriceRaw);
+        const gross = quantityValue * (Number.isFinite(unitPriceValue) ? unitPriceValue : 0);
+        const discount = parseWarehouseEntryNumber(row.find('.item-discount-amount').val());
+        const taxCode = row.find('.item-tax-affectation-code').val();
+        const taxRate = parseWarehouseEntryNumber(row.find('.item-tax-rate').val());
 
         if (!row.find('.item-article-id').val()) {
             invalid = [article, `Seleccione el artículo de la fila ${index + 1}.`];
@@ -1866,6 +2117,10 @@ function validateWarehouseEntryItems() {
             invalid = [quantity, `Ingrese una cantidad válida en la fila ${index + 1}.`];
         } else if (unitPriceRaw === '' || !Number.isFinite(unitPriceValue) || unitPriceValue < 0) {
             invalid = [unitPrice, `Ingrese un precio unitario válido en la fila ${index + 1}.`];
+        } else if (discount < 0 || discount > gross) {
+            invalid = [row.find('.item-discount-amount'), `El descuento de la fila ${index + 1} no puede superar el importe bruto.`];
+        } else if (taxCode === '10' && taxRate <= 0) {
+            invalid = [row.find('.item-tax-rate'), `Ingrese una tasa de IGV válida en la fila ${index + 1}.`];
         }
 
         return !invalid;
@@ -1884,25 +2139,11 @@ function validateWarehouseEntryItems() {
 }
 
 function hasWarehouseEntryPendingExpense() {
-    if (!$('#warehouse_entry_expense_amount').length) return false;
+    return $('#warehouse_entry_expense_edit_index').val() !== '';
+}
 
-    const valueSelectors = [
-        '#warehouse_entry_expense_shipping_agency_id',
-        '#warehouse_entry_expense_provider_name',
-        '#warehouse_entry_expense_amount',
-        '#warehouse_entry_expense_affects_igv',
-        '#warehouse_entry_expense_document_series',
-        '#warehouse_entry_expense_document_number',
-        '#warehouse_entry_expense_document_date',
-        '#warehouse_entry_expense_description'
-    ];
-    const hasValue = valueSelectors.some(selector => String($(selector).val() || '').trim() !== '');
-    const hasFile = Boolean(
-        $('#warehouse_entry_expense_invoice_file')[0]?.files?.length
-        || $('#warehouse_entry_expense_payment_proof_file')[0]?.files?.length
-    );
-
-    return $('#warehouse_entry_expense_edit_index').val() !== '' || hasValue || hasFile;
+function shouldSyncWarehouseEntryExpenses(entryId) {
+    return !entryId || warehouseEntryExpensesDirty;
 }
 
 function validateWarehouseEntryPendingExpense() {
@@ -1917,10 +2158,11 @@ function validateWarehouseEntryPendingExpense() {
 }
 
 function setWarehouseEntrySaving(isSaving) {
+    warehouseEntrySaving = isSaving;
     const button = $('#btnSaveWarehouseEntry');
     const editing = Boolean($('#warehouse_entry_id').val());
 
-    button.prop('disabled', isSaving).html(isSaving
+    button.prop('disabled', isSaving || warehouseEntryPendingPaymentsHaveLimitError).html(isSaving
         ? '<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span> Guardando...'
         : `<i class="fas fa-save mr-1"></i> ${editing ? 'Actualizar' : 'Guardar'}`);
 }
@@ -1943,6 +2185,13 @@ async function saveWarehouseEntry(form) {
         ? `${window.routes.warehouseEntryUpdate}/${id}`
         : window.routes.warehouseEntryStore;
     const formData = new FormData(form);
+    const syncExpenses = shouldSyncWarehouseEntryExpenses(id);
+    if (!syncExpenses) {
+        formData.delete('expense_management');
+        Array.from(formData.keys())
+            .filter(key => key.startsWith('expenses['))
+            .forEach(key => formData.delete(key));
+    }
     formData.delete('payment_documents[]');
     Array.from(formData.keys())
         .filter(key => key.startsWith('payment_items['))
@@ -1982,19 +2231,21 @@ async function saveWarehouseEntry(form) {
         formData.append(`warehouse_entry_lot_documents[${index}][description]`, document.description || '');
         formData.append(`warehouse_entry_lot_documents[${index}][file]`, document.file);
     });
-    warehouseEntryExpenses.forEach(function (expense, index) {
-        Object.entries(expense).forEach(function ([field, value]) {
-            if (['file', 'invoice_file', 'payment_proof_file', 'detraction_proof_file', 'documents', 'distributions', 'petty_cash_expense', 'general_cash_box', 'general_cash_movement', 'company_bank_account', 'bank_movement', 'detraction_type', 'creator', 'approver', 'source_reference', 'petty_cash_documents_count', 'approval_status', 'approval_observation', 'approved_by', 'approved_at'].includes(field) || value === null || value === undefined) return;
-            formData.append(`expenses[${index}][${field}]`, typeof value === 'boolean' ? (value ? '1' : '0') : value);
+    if (syncExpenses) {
+        warehouseEntryExpenses.forEach(function (expense, index) {
+            Object.entries(expense).forEach(function ([field, value]) {
+                if (['file', 'invoice_file', 'payment_proof_file', 'detraction_proof_file', 'documents', 'distributions', 'petty_cash_expense', 'general_cash_box', 'general_cash_movement', 'company_bank_account', 'bank_movement', 'detraction_type', 'creator', 'approver', 'source_reference', 'petty_cash_documents_count', 'approval_status', 'approval_observation', 'approved_by', 'approved_at'].includes(field) || value === null || value === undefined) return;
+                formData.append(`expenses[${index}][${field}]`, typeof value === 'boolean' ? (value ? '1' : '0') : value);
+            });
+            (expense.distributions || []).forEach(function (distribution, distributionIndex) {
+                formData.append(`expenses[${index}][distributions][${distributionIndex}][item_index]`, distribution.item_index);
+                formData.append(`expenses[${index}][distributions][${distributionIndex}][distributed_amount]`, distribution.distributed_amount);
+            });
+            if (expense.invoice_file) formData.append(`expenses[${index}][invoice_file]`, expense.invoice_file);
+            if (expense.payment_proof_file) formData.append(`expenses[${index}][payment_proof_file]`, expense.payment_proof_file);
+            if (expense.applies_detraction && expense.detraction_proof_file) formData.append(`expenses[${index}][detraction_proof_file]`, expense.detraction_proof_file);
         });
-        (expense.distributions || []).forEach(function (distribution, distributionIndex) {
-            formData.append(`expenses[${index}][distributions][${distributionIndex}][item_index]`, distribution.item_index);
-            formData.append(`expenses[${index}][distributions][${distributionIndex}][distributed_amount]`, distribution.distributed_amount);
-        });
-        if (expense.invoice_file) formData.append(`expenses[${index}][invoice_file]`, expense.invoice_file);
-        if (expense.payment_proof_file) formData.append(`expenses[${index}][payment_proof_file]`, expense.payment_proof_file);
-        if (expense.applies_detraction && expense.detraction_proof_file) formData.append(`expenses[${index}][detraction_proof_file]`, expense.detraction_proof_file);
-    });
+    }
 
     setWarehouseEntrySaving(true);
 
@@ -2012,6 +2263,7 @@ async function saveWarehouseEntry(form) {
             warehouseEntryPendingDocuments = [];
             warehouseEntryInitialPaymentDocuments = [];
             warehouseEntryPendingPaymentItems = [];
+            warehouseEntryExpensesDirty = false;
 
             if (!id && response.pdf_url) {
                 window.open(response.pdf_url, '_blank');
@@ -2096,9 +2348,11 @@ function showWarehouseEntryValidationErrors(errors) {
 function applySelectedSupplierOrderHeader() {
     const option = $('#warehouse_entry_supplier_purchase_order_id option:selected');
     const orderId = option.val();
+    warehouseEntryAdvancePaidAmount = 0;
 
     if (!orderId) {
         warehouseEntrySourceOrderTotal = null;
+        warehouseEntrySourceTaxContext = null;
         renderWarehouseEntryOrderAmountDifference(parseWarehouseEntryNumber($('#warehouse_entry_grand_total').val()));
         updateWarehouseEntryDeliveryCostContext('');
         setWarehouseEntrySupplierLocked(false);
@@ -2106,6 +2360,7 @@ function applySelectedSupplierOrderHeader() {
         $('#warehouse_entry_payment_condition').removeData('credit-days');
         $('#warehouse_entry_supplier_ruc').val('');
         $('#warehouse_entry_guide_ruc').val('');
+        toggleWarehouseEntryMode();
         return;
     }
 
@@ -2116,6 +2371,50 @@ function applySelectedSupplierOrderHeader() {
     setWarehouseEntrySupplier(option.data('supplier-id') || '');
     $('#warehouse_entry_currency_id').val(option.data('currency-id') || '').trigger('change.select2').trigger('change');
     updateWarehouseEntryDeliveryCostContext(option.data('delivery-type') || '');
+    toggleWarehouseEntryMode();
+}
+
+function toggleWarehouseEntryMode() {
+    const invoiceMode = $('#warehouse_entry_mode').val() === 'supplier_invoice';
+    $('#warehouseEntrySupplierOrderGroup').toggleClass('d-none', invoiceMode);
+    $('#warehouseEntryCustomerOrdersGroup').toggleClass('d-none', !invoiceMode);
+    $('#warehouse_entry_customer_purchase_order_ids')
+        .prop('disabled', !invoiceMode || !$('#warehouse_entry_company_id').val());
+    $('#btnLoadWarehouseEntrySource').prop('disabled', invoiceMode || !$('#warehouse_entry_supplier_purchase_order_id').val());
+
+    if (invoiceMode && $('#warehouse_entry_supplier_purchase_order_id').val()) {
+        $('#warehouse_entry_supplier_purchase_order_id').val('').trigger('change.select2').trigger('change');
+    }
+
+    if (!invoiceMode) {
+        clearWarehouseEntryCustomerOrders();
+    }
+
+    updateWarehouseEntryCreditSummary(false);
+}
+
+function clearWarehouseEntryCustomerOrders() {
+    const select = $('#warehouse_entry_customer_purchase_order_ids');
+    if (!select.length) return;
+    select.empty().val(null).trigger('change.select2');
+    $('#warehouse_entry_purchase_order_number').val('');
+}
+
+function setWarehouseEntryCustomerOrders(orders = []) {
+    const select = $('#warehouse_entry_customer_purchase_order_ids');
+    select.prop('disabled', false);
+    select.empty();
+    (orders || []).forEach(function (order) {
+        const number = order.purchase_order_number || order.code || `OC #${order.id}`;
+        const customer = order.customer?.business_name || order.customer?.full_name || 'Cliente';
+        const currency = order.currency?.symbol || order.currency?.code || '';
+        const text = `${number} | ${customer} | ${currency} ${formatWarehouseEntryMoney(order.grand_total)}`;
+        select.append(new Option(text, order.id, true, true));
+    });
+    select.trigger('change.select2');
+    $('#warehouse_entry_purchase_order_number').val(
+        orders[0]?.purchase_order_number || orders[0]?.code || ''
+    );
 }
 
 function handleWarehouseEntrySupplierOrderSelection() {
@@ -2317,6 +2616,8 @@ function cancelWarehouseEntrySupplierOrderSelection() {
     setWarehouseEntrySupplierLocked(false);
     setWarehouseEntryPaymentConditionLocked(false);
     warehouseEntrySourceOrderTotal = null;
+    warehouseEntrySourceTaxContext = null;
+    warehouseEntryAdvancePaidAmount = 0;
     updateWarehouseEntryDeliveryCostContext('');
     clearWarehouseEntryItemRows();
     showEmptyWarehouseEntryItemsRow();
@@ -2361,15 +2662,29 @@ function loadWarehouseEntrySourceItems(options = {}) {
     })
         .done(function (response) {
             $('#warehouse_entry_company_id').val(response.company_id || '').trigger('change.select2');
+            refreshWarehouseEntryWarehouses();
             refreshWarehouseEntryBankAccounts();
             setWarehouseEntrySupplier(response.supplier_id || '', response.supplier_ruc || '');
             setWarehouseEntrySupplierLocked(true);
             $('#warehouse_entry_currency_id').val(response.currency_id || '').trigger('change.select2').trigger('change');
+            $('#warehouse_entry_exchange_rate').val(response.exchange_rate || '1.000000');
             $('#warehouse_entry_purchase_order_number').val(response.purchase_order_number || '');
             warehouseEntrySourceOrderTotal = parseWarehouseEntryNumber(response.order_total);
-            $('#warehouse_entry_payment_method').val(response.payment_method || '');
-            $('#warehouse_entry_payment_condition').val(response.payment_condition_label || response.payment_condition || '');
+            warehouseEntryAdvancePaidAmount = parseWarehouseEntryNumber(response.payment_summary?.paid_total);
+            warehouseEntrySourceTaxContext = response.tax_totals
+                ? {
+                    affectIgv: Boolean(response.affect_igv),
+                    totals: response.tax_totals
+                }
+                : null;
+            $('#warehouse_entry_payment_method')
+                .val(normalizeWarehouseEntryPaymentMethod(response.payment_method))
+                .trigger('change.select2');
+            $('#warehouse_entry_payment_condition')
+                .val(normalizeWarehouseEntryPaymentCondition(response.payment_condition))
+                .trigger('change.select2');
             $('#warehouse_entry_payment_condition').data('credit-days', Number(response.credit_days) || 0);
+            $('#warehouse_entry_credit_days').val(Number(response.credit_days) > 0 ? Number(response.credit_days) : '');
             const paymentCondition = String(response.payment_condition || '').toLocaleLowerCase();
             if (paymentCondition.startsWith('credito') || paymentCondition.startsWith('crédito')) {
                 $('#warehouse_entry_generate_account_payable').val('1').trigger('change');
@@ -2450,9 +2765,31 @@ function addWarehouseEntryItemRow(data = {}) {
         }];
     }
     row.data('lots', lots);
+    row.data('allocations', Array.isArray(data.allocations)
+        ? data.allocations.map(normalizeWarehouseEntryAllocation)
+        : []);
+    const sourceItem = data.supplier_purchase_order_item || {};
+    const sourceOrderedQuantity = data.source_ordered_quantity ?? sourceItem.quantity;
+    if (data.supplier_purchase_order_item_id && sourceOrderedQuantity !== undefined) {
+        row.data('source-tax', {
+            orderedQuantity: String(sourceOrderedQuantity || 0),
+            pendingQuantity: String(data.source_pending_quantity ?? sourceOrderedQuantity ?? 0),
+            subtotal: String(data.source_taxable_base ?? sourceItem.taxable_base ?? sourceItem.subtotal ?? 0),
+            igv: String(data.source_igv ?? sourceItem.igv_amount ?? sourceItem.tax_amount ?? 0),
+            total: String(data.source_line_total ?? sourceItem.total_with_igv ?? sourceItem.line_total ?? 0)
+        });
+    }
     row.find('.item-ordered-quantity').val(formatWarehouseEntryMoney(data.ordered_quantity || 0));
     row.find('.item-quantity').val(formatWarehouseEntryMoney(data.quantity || 1));
     row.find('.item-unit-price').val(formatWarehouseEntryUnitPrice(data.unit_price || 0));
+    const legacyTaxSnapshot = Boolean(data.id) && (data.tax_affectation_code === null || data.tax_affectation_code === undefined);
+    const taxCode = legacyTaxSnapshot ? '' : String(data.tax_affectation_code || ($('#warehouse_entry_affect_igv').val() === '1' ? '10' : '30'));
+    row.find('.item-tax-affectation-code').val(taxCode);
+    row.find('.item-tax-rate').val(legacyTaxSnapshot ? '' : (data.tax_rate ?? (taxCode === '10' ? 18 : 0)));
+    row.find('.item-discount-amount').val(formatWarehouseEntryMoney(data.discount_amount || 0));
+    row.find('.item-is-free').val(data.is_free ? '1' : '0');
+    row.find('.item-igv-recoverable').val(legacyTaxSnapshot || data.igv_recoverable === null ? '' : (data.igv_recoverable === false || data.igv_recoverable === 0 ? '0' : '1'));
+    row.find('.item-tax-affectation-code').trigger('change');
 
     initWarehouseEntrySelect2(row);
 
@@ -2460,6 +2797,7 @@ function addWarehouseEntryItemRow(data = {}) {
     refreshWarehouseEntryItemIndexes();
     renderWarehouseEntryLotsSummary(row);
     renderWarehouseEntryLotRows(row);
+    renderWarehouseEntryAllocationSummary(row);
     calculateWarehouseEntryTotals();
 }
 
@@ -2494,7 +2832,7 @@ function showEmptyWarehouseEntryItemsRow() {
 
     $('#warehouseEntryItemsTbody').html(`
         <tr id="warehouseEntryItemsEmptyRow">
-            <td colspan="14" class="text-center text-muted py-4">
+            <td colspan="15" class="text-center text-muted py-4">
                 <i class="fas fa-box-open d-block mb-2"></i>
                 Carga una orden o inserta articulos para registrar el ingreso.
             </td>
@@ -2513,9 +2851,262 @@ function refreshWarehouseEntryItemIndexes() {
             }
         });
         syncWarehouseEntryLotInputs($(this), index);
+        syncWarehouseEntryAllocationInputs($(this), index);
     });
     $('#warehouseEntrySideItemCount').text($('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').length);
     updateWarehouseEntryReview();
+}
+
+function normalizeWarehouseEntryAllocation(allocation) {
+    const customerOrder = allocation.customer_purchase_order || {};
+    const supplierOrder = allocation.supplier_purchase_order || {};
+    const customer = customerOrder.customer || {};
+
+    return {
+        id: allocation.id || null,
+        allocation_type: allocation.allocation_type || 'free_stock',
+        quantity_allocated: parseWarehouseEntryNumber(allocation.quantity_allocated),
+        customer_purchase_order_id: allocation.customer_purchase_order_id || customerOrder.id || '',
+        customer_purchase_order_item_id: allocation.customer_purchase_order_item_id || '',
+        supplier_purchase_order_id: allocation.supplier_purchase_order_id || supplierOrder.id || '',
+        supplier_purchase_order_item_id: allocation.supplier_purchase_order_item_id || '',
+        customer_order_number: allocation.customer_order_number
+            || customerOrder.purchase_order_number || customerOrder.code || '',
+        customer_name: allocation.customer_name
+            || customer.business_name || customer.full_name || '',
+        supplier_order_code: allocation.supplier_order_code || supplierOrder.code || ''
+    };
+}
+
+function warehouseEntryAllocationTypeLabel(type) {
+    if (type === 'customer_order') return 'OC Cliente';
+    if (type === 'supplier_order') return 'OC Proveedor';
+    return 'Stock libre';
+}
+
+function warehouseEntryAllocationDescription(allocation) {
+    if (allocation.allocation_type === 'customer_order') {
+        return [allocation.customer_order_number || `OC #${allocation.customer_purchase_order_id}`, allocation.customer_name]
+            .filter(Boolean).join(' · ');
+    }
+    if (allocation.allocation_type === 'supplier_order') {
+        return allocation.supplier_order_code || `OC Proveedor #${allocation.supplier_purchase_order_id}`;
+    }
+    return 'Disponible sin reserva para una orden específica';
+}
+
+function renderWarehouseEntryAllocationSummary(row) {
+    const entered = parseWarehouseEntryNumber(row.find('.item-quantity').val());
+    const allocations = row.data('allocations') || [];
+    const assigned = allocations.reduce((sum, allocation) => sum + parseWarehouseEntryNumber(allocation.quantity_allocated), 0);
+    const pending = Math.max(entered - assigned, 0);
+    const summary = row.find('.warehouse-entry-allocation-summary');
+    const state = assigned > entered + 0.0001 ? 'text-danger' : (pending <= 0.0001 ? 'text-success' : 'text-warning');
+    summary.attr('class', `warehouse-entry-allocation-summary mt-1 small ${state}`)
+        .text(`Asignada: ${formatWarehouseEntryMoney(assigned)} · Pendiente: ${formatWarehouseEntryMoney(pending)}`);
+}
+
+function syncWarehouseEntryAllocationInputs(row, itemIndex) {
+    const container = row.find('.warehouse-entry-allocation-inputs').empty();
+    (row.data('allocations') || []).forEach(function (allocation, allocationIndex) {
+        ['id', 'allocation_type', 'quantity_allocated', 'customer_purchase_order_id',
+            'customer_purchase_order_item_id', 'supplier_purchase_order_id',
+            'supplier_purchase_order_item_id'].forEach(function (field) {
+            $('<input>', {
+                type: 'hidden',
+                name: `items[${itemIndex}][allocations][${allocationIndex}][${field}]`,
+                value: allocation[field] || ''
+            }).appendTo(container);
+        });
+    });
+}
+
+function openWarehouseEntryAllocationsModal(row) {
+    if ($('#warehouseEntryLotsModal').hasClass('show')) {
+        $('#warehouseEntryLotsModal').modal('hide');
+    }
+    warehouseEntryActiveAllocationRow = row;
+    warehouseEntryWorkingAllocations = (row.data('allocations') || []).map(allocation => ({ ...allocation }));
+    warehouseEntryAllocationSearchResults = [];
+    $('#warehouseEntryAllocationArticle').text(row.find('.item-billing-name').val() || 'Artículo');
+    $('#warehouseEntryAllocationSearch').val('');
+    $('#warehouseEntryAllocationSearchResults').empty();
+    $('#warehouseEntryAllocationsError').empty();
+    $('#btnAddWarehouseEntrySupplierAllocation').toggleClass(
+        'd-none',
+        !row.find('.item-supplier-purchase-order-item-id').val()
+    );
+    renderWarehouseEntryAllocationEditor();
+    $('#warehouseEntryAllocationsModal').modal({ backdrop: 'static', keyboard: false, show: true });
+}
+
+function warehouseEntryAllocationPending() {
+    const entered = parseWarehouseEntryNumber(warehouseEntryActiveAllocationRow?.find('.item-quantity').val());
+    const assigned = warehouseEntryWorkingAllocations.reduce(
+        (sum, allocation) => sum + parseWarehouseEntryNumber(allocation.quantity_allocated), 0
+    );
+    return Math.max(entered - assigned, 0);
+}
+
+function renderWarehouseEntryAllocationEditor() {
+    const entered = parseWarehouseEntryNumber(warehouseEntryActiveAllocationRow?.find('.item-quantity').val());
+    const assigned = warehouseEntryWorkingAllocations.reduce(
+        (sum, allocation) => sum + parseWarehouseEntryNumber(allocation.quantity_allocated), 0
+    );
+    const pending = Math.max(entered - assigned, 0);
+    $('#warehouseEntryAllocationEntered').text(formatWarehouseEntryMoney(entered));
+    $('#warehouseEntryAllocationAssigned').text(formatWarehouseEntryMoney(assigned));
+    $('#warehouseEntryAllocationPending').text(formatWarehouseEntryMoney(pending));
+    $('#warehouseEntryAllocationQuantity').val(pending > 0 ? formatWarehouseEntryMoney(pending) : '');
+    $('#warehouseEntryAllocationsTbody').html(warehouseEntryWorkingAllocations.length
+        ? warehouseEntryWorkingAllocations.map((allocation, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td><span class="badge badge-light border">${escapeWarehouseEntryHtml(warehouseEntryAllocationTypeLabel(allocation.allocation_type))}</span></td>
+                <td>${escapeWarehouseEntryHtml(warehouseEntryAllocationDescription(allocation))}</td>
+                <td class="text-right font-weight-bold">${formatWarehouseEntryMoney(allocation.quantity_allocated)}</td>
+                <td class="text-center"><button type="button" class="btn btn-outline-danger btn-xs btnRemoveWarehouseEntryAllocation" data-index="${index}"><i class="fas fa-times"></i></button></td>
+            </tr>`).join('')
+        : '<tr><td colspan="5" class="text-center text-muted py-3">Aún no hay destinos asignados. El saldo puede quedar pendiente.</td></tr>');
+}
+
+function warehouseEntryRequestedAllocationQuantity() {
+    const quantity = parseWarehouseEntryNumber($('#warehouseEntryAllocationQuantity').val());
+    const pending = warehouseEntryAllocationPending();
+    if (quantity <= 0 || quantity > pending + 0.0001) {
+        $('#warehouseEntryAllocationsError').text(`Ingrese una cantidad mayor a cero y no superior al saldo pendiente (${formatWarehouseEntryMoney(pending)}).`);
+        return null;
+    }
+    $('#warehouseEntryAllocationsError').empty();
+    return quantity;
+}
+
+function searchWarehouseEntryCustomerOrders() {
+    if (!warehouseEntryActiveAllocationRow) return;
+    const articleId = warehouseEntryActiveAllocationRow.find('.item-article-id').val();
+    if (!articleId) {
+        $('#warehouseEntryAllocationsError').text('Seleccione primero el artículo de la línea.');
+        return;
+    }
+    const selectedCustomerOrders = $('#warehouse_entry_customer_purchase_order_ids').val() || [];
+    if ($('#warehouse_entry_mode').val() === 'supplier_invoice' && !selectedCustomerOrders.length) {
+        $('#warehouseEntryAllocationsError').text('Seleccione primero una OC Cliente relacionada en la cabecera.');
+        return;
+    }
+
+    $('#warehouseEntryAllocationSearchResults').html('<div class="text-muted small py-2"><i class="fas fa-spinner fa-spin mr-1"></i>Buscando órdenes con saldo...</div>');
+    $.get(window.routes.warehouseEntryEligibleCustomerOrderItems, {
+        article_id: articleId,
+        company_id: $('#warehouse_entry_company_id').val(),
+        currency_id: $('#warehouse_entry_currency_id').val(),
+        customer_purchase_order_ids: selectedCustomerOrders,
+        except_warehouse_entry_item_id: warehouseEntryActiveAllocationRow.find('.item-entry-id').val() || '',
+        search: $('#warehouseEntryAllocationSearch').val()
+    }).done(function (response) {
+        warehouseEntryAllocationSearchResults = response.data || [];
+        $('#warehouseEntryAllocationSearchResults').html(warehouseEntryAllocationSearchResults.length
+            ? warehouseEntryAllocationSearchResults.map((item, index) => `
+                <div class="warehouse-entry-allocation-result">
+                    <div><strong>${escapeWarehouseEntryHtml(item.purchase_order_number || item.code || '-')}</strong><small>${escapeWarehouseEntryHtml(item.business_name || item.full_name || 'Cliente')} · ${escapeWarehouseEntryHtml(item.company_name || '-')} · ${escapeWarehouseEntryHtml(item.currency_code || '-')}</small></div>
+                    <span>Saldo: <strong>${formatWarehouseEntryMoney(item.pending_quantity)}</strong></span>
+                    <button type="button" class="btn btn-info btn-xs btnSelectWarehouseEntryCustomerOrder" data-index="${index}">Asignar</button>
+                </div>`).join('')
+            : '<div class="text-muted small py-2">No se encontraron OC cliente compatibles con saldo para este artículo.</div>');
+    }).fail(function (xhr) {
+        $('#warehouseEntryAllocationSearchResults').html(`<div class="text-danger small py-2">${escapeWarehouseEntryHtml(xhr.responseJSON?.message || 'No se pudo consultar las OC cliente.')}</div>`);
+    });
+}
+
+function addWarehouseEntryCustomerAllocation(index) {
+    const target = warehouseEntryAllocationSearchResults[index];
+    const quantity = warehouseEntryRequestedAllocationQuantity();
+    if (!target || quantity === null) return;
+    if (quantity > parseWarehouseEntryNumber(target.pending_quantity) + 0.0001) {
+        $('#warehouseEntryAllocationsError').text(`La cantidad supera el saldo de la OC cliente (${formatWarehouseEntryMoney(target.pending_quantity)}).`);
+        return;
+    }
+    warehouseEntryWorkingAllocations.push(normalizeWarehouseEntryAllocation({
+        allocation_type: 'customer_order',
+        quantity_allocated: quantity,
+        customer_purchase_order_id: target.customer_purchase_order_id,
+        customer_purchase_order_item_id: target.customer_purchase_order_item_id,
+        supplier_purchase_order_id: warehouseEntryActiveAllocationRow.find('.item-supplier-purchase-order-item-id').val()
+            ? $('#warehouse_entry_supplier_purchase_order_id').val() : '',
+        supplier_purchase_order_item_id: warehouseEntryActiveAllocationRow.find('.item-supplier-purchase-order-item-id').val(),
+        customer_order_number: target.purchase_order_number || target.code,
+        customer_name: target.business_name || target.full_name
+    }));
+    renderWarehouseEntryAllocationEditor();
+}
+
+function addWarehouseEntryFreeStockAllocation() {
+    const quantity = warehouseEntryRequestedAllocationQuantity();
+    if (quantity === null) return;
+    warehouseEntryWorkingAllocations.push(normalizeWarehouseEntryAllocation({
+        allocation_type: 'free_stock', quantity_allocated: quantity
+    }));
+    renderWarehouseEntryAllocationEditor();
+}
+
+function addWarehouseEntrySupplierAllocation() {
+    const quantity = warehouseEntryRequestedAllocationQuantity();
+    if (quantity === null) return;
+    const supplierItemId = warehouseEntryActiveAllocationRow.find('.item-supplier-purchase-order-item-id').val();
+    if (!supplierItemId) return;
+    warehouseEntryWorkingAllocations.push(normalizeWarehouseEntryAllocation({
+        allocation_type: 'supplier_order',
+        quantity_allocated: quantity,
+        supplier_purchase_order_id: $('#warehouse_entry_supplier_purchase_order_id').val(),
+        supplier_purchase_order_item_id: supplierItemId,
+        supplier_order_code: $('#warehouse_entry_supplier_purchase_order_id option:selected').data('code') || ''
+    }));
+    renderWarehouseEntryAllocationEditor();
+}
+
+function applyWarehouseEntryAllocations() {
+    if (!warehouseEntryActiveAllocationRow) return;
+    const entered = parseWarehouseEntryNumber(warehouseEntryActiveAllocationRow.find('.item-quantity').val());
+    const assigned = warehouseEntryWorkingAllocations.reduce(
+        (sum, allocation) => sum + parseWarehouseEntryNumber(allocation.quantity_allocated), 0
+    );
+    if (assigned > entered + 0.0001) {
+        $('#warehouseEntryAllocationsError').text('La suma asignada no puede superar la cantidad ingresada.');
+        return;
+    }
+    warehouseEntryActiveAllocationRow.data('allocations', warehouseEntryWorkingAllocations.map(allocation => ({ ...allocation })));
+    refreshWarehouseEntryItemIndexes();
+    renderWarehouseEntryAllocationSummary(warehouseEntryActiveAllocationRow);
+    $('#warehouseEntryAllocationsModal').modal('hide');
+}
+
+function validateWarehouseEntryAllocations() {
+    let valid = true;
+    let message = '';
+    const selectedCustomerOrders = new Set(
+        ($('#warehouse_entry_customer_purchase_order_ids').val() || []).map(String)
+    );
+    $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function () {
+        const row = $(this);
+        const entered = parseWarehouseEntryNumber(row.find('.item-quantity').val());
+        const allocations = row.data('allocations') || [];
+        const assigned = allocations.reduce(
+            (sum, allocation) => sum + parseWarehouseEntryNumber(allocation.quantity_allocated), 0
+        );
+        if (assigned > entered + 0.0001) {
+            valid = false;
+            message = `${row.find('.item-billing-name').val() || 'Artículo'}: la cantidad asignada supera la cantidad ingresada.`;
+            return false;
+        }
+        if ($('#warehouse_entry_mode').val() === 'supplier_invoice'
+            && allocations.some(allocation => allocation.allocation_type === 'customer_order'
+                && !selectedCustomerOrders.has(String(allocation.customer_purchase_order_id)))) {
+            valid = false;
+            message = `${row.find('.item-billing-name').val() || 'Artículo'}: una OC Cliente asignada ya no está seleccionada en la cabecera.`;
+            return false;
+        }
+    });
+    if (!valid) showWarehouseEntryClientValidation('#warehouse_entry_tab_items', message);
+    return valid;
 }
 
 function normalizeWarehouseEntryLot(lot) {
@@ -2531,6 +3122,9 @@ function normalizeWarehouseEntryLot(lot) {
 }
 
 function openWarehouseEntryLotsModal(row) {
+    if ($('#warehouseEntryAllocationsModal').hasClass('show')) {
+        $('#warehouseEntryAllocationsModal').modal('hide');
+    }
     warehouseEntryActiveLotsRow = row;
     const lots = row.data('lots') || [];
     $('#warehouseEntryLotsArticle').text(row.find('.item-billing-name').val() || 'Articulo');
@@ -2726,30 +3320,136 @@ function validateWarehouseEntryLots() {
     return true;
 }
 
+function warehouseEntryDecimalUnits(value, scale = 6) {
+    let normalized = String(value ?? 0).trim().replace(/\s+/g, '');
+    if (normalized.includes(',') && normalized.includes('.')) {
+        normalized = normalized.replaceAll(',', '');
+    } else {
+        normalized = normalized.replace(',', '.');
+    }
+
+    const negative = normalized.startsWith('-');
+    normalized = normalized.replace(/^[-+]/, '');
+    const [integerPart = '0', decimalPart = ''] = normalized.split('.');
+    const digits = `${integerPart.replace(/\D/g, '') || '0'}${decimalPart.replace(/\D/g, '').padEnd(scale, '0').slice(0, scale)}`;
+    const units = BigInt(digits || '0');
+
+    return negative ? -units : units;
+}
+
+function warehouseEntryRoundUnitsToCents(units, scale = 6) {
+    const divisor = 10n ** BigInt(scale - 2);
+    const increment = divisor / 2n;
+
+    return units < 0n
+        ? (units - increment) / divisor
+        : (units + increment) / divisor;
+}
+
+function warehouseEntryCanonicalSourceTotals() {
+    if (!warehouseEntrySourceTaxContext?.totals) return null;
+
+    const rows = $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').toArray();
+    if (!rows.length) return null;
+
+    let completesPending = true;
+    let subtotalUnits = 0n;
+    let igvUnits = 0n;
+    let totalUnits = 0n;
+
+    for (const element of rows) {
+        const row = $(element);
+        const sourceTax = row.data('source-tax');
+        if (!sourceTax) return null;
+
+        const quantityUnits = warehouseEntryDecimalUnits(row.find('.item-quantity').val());
+        const orderedUnits = warehouseEntryDecimalUnits(sourceTax.orderedQuantity);
+        const pendingUnits = warehouseEntryDecimalUnits(sourceTax.pendingQuantity);
+        if (quantityUnits !== pendingUnits) completesPending = false;
+        if (orderedUnits <= 0n) continue;
+
+        subtotalUnits += warehouseEntryDecimalUnits(sourceTax.subtotal) * quantityUnits / orderedUnits;
+        igvUnits += warehouseEntryDecimalUnits(sourceTax.igv) * quantityUnits / orderedUnits;
+        totalUnits += warehouseEntryDecimalUnits(sourceTax.total) * quantityUnits / orderedUnits;
+    }
+
+    const remainingSubtotal = warehouseEntryDecimalUnits(warehouseEntrySourceTaxContext.totals.subtotal, 2);
+    const remainingIgv = warehouseEntryDecimalUnits(warehouseEntrySourceTaxContext.totals.igv, 2);
+    const remainingTotal = warehouseEntryDecimalUnits(warehouseEntrySourceTaxContext.totals.grand_total, 2);
+
+    if (completesPending) {
+        return {
+            subtotal: Number(remainingSubtotal) / 100,
+            igv: Number(remainingIgv) / 100,
+            total: Number(remainingTotal) / 100
+        };
+    }
+
+    let total = warehouseEntryRoundUnitsToCents(totalUnits);
+    total = total > remainingTotal ? remainingTotal : total;
+
+    if (!warehouseEntrySourceTaxContext.affectIgv) {
+        return { subtotal: Number(total) / 100, igv: 0, total: Number(total) / 100 };
+    }
+
+    let subtotal = warehouseEntryRoundUnitsToCents(subtotalUnits);
+    subtotal = subtotal > remainingSubtotal ? remainingSubtotal : subtotal;
+    let igv = warehouseEntryRoundUnitsToCents(igvUnits);
+    igv = igv > remainingIgv ? remainingIgv : igv;
+    if (subtotal + igv !== total) igv = total - subtotal;
+    if (igv < 0n) {
+        subtotal = total;
+        igv = 0n;
+    }
+    if (igv > remainingIgv) {
+        igv = remainingIgv;
+        subtotal = total - igv;
+    }
+
+    return {
+        subtotal: Number(subtotal) / 100,
+        igv: Number(igv) / 100,
+        total: Number(total) / 100
+    };
+}
+
 function calculateWarehouseEntryTotals() {
-    const affectIgv = $('#warehouse_entry_affect_igv').val() === '1';
     let subtotal = 0;
     let igv = 0;
     let total = 0;
+    let hasTaxedPayableLine = false;
 
     $('#warehouseEntryItemsTbody tr.warehouse-entry-item-row').each(function () {
         const row = $(this);
         const quantity = parseWarehouseEntryNumber(row.find('.item-quantity').val());
         const unitPrice = parseWarehouseEntryNumber(row.find('.item-unit-price').val());
-        const lineTotal = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
-        const lineSubtotal = affectIgv
-            ? Math.round((lineTotal / 1.18 + Number.EPSILON) * 100) / 100
-            : 0;
-        const lineIgv = affectIgv
-            ? Math.round((lineTotal - lineSubtotal + Number.EPSILON) * 100) / 100
-            : 0;
+        const discount = parseWarehouseEntryNumber(row.find('.item-discount-amount').val());
+        const taxCode = String(row.find('.item-tax-affectation-code').val() || '30');
+        const taxRate = taxCode === '10' ? parseWarehouseEntryNumber(row.find('.item-tax-rate').val()) : 0;
+        const isFree = row.find('.item-is-free').val() === '1';
+        const net = Math.max(quantity * unitPrice - discount, 0);
+        const payableTotal = isFree ? 0 : Math.round((net + Number.EPSILON) * 100) / 100;
+        const lineSubtotal = taxCode === '10'
+            ? Math.round((payableTotal / (1 + taxRate / 100) + Number.EPSILON) * 100) / 100
+            : payableTotal;
+        const lineIgv = taxCode === '10' ? payableTotal - lineSubtotal : 0;
 
         subtotal += lineSubtotal;
         igv += lineIgv;
-        total += lineTotal;
-        row.find('.item-line-total').text(formatWarehouseEntryMoney(lineTotal));
+        total += payableTotal;
+        hasTaxedPayableLine = hasTaxedPayableLine || (taxCode === '10' && payableTotal > 0);
+        row.find('.item-line-total').text(formatWarehouseEntryMoney(payableTotal));
         renderWarehouseEntryLotRows(row);
     });
+
+    const canonicalSourceTotals = warehouseEntryCanonicalSourceTotals();
+    if (canonicalSourceTotals) {
+        subtotal = canonicalSourceTotals.subtotal;
+        igv = canonicalSourceTotals.igv;
+        total = canonicalSourceTotals.total;
+    }
+
+    if (!canonicalSourceTotals) $('#warehouse_entry_affect_igv').val(hasTaxedPayableLine ? '1' : '0');
 
     $('#warehouse_entry_subtotal').val(formatWarehouseEntryMoney(subtotal));
     $('#warehouse_entry_igv').val(formatWarehouseEntryMoney(igv));
@@ -2757,6 +3457,7 @@ function calculateWarehouseEntryTotals() {
     $('#warehouseEntrySideGrandTotal').text(formatWarehouseEntryMoney(total));
     resetWarehouseEntryNegativeBalanceConfirmation();
     syncWarehouseEntryPayableAmount(total);
+    updateWarehouseEntryPendingPaymentBalances();
     renderWarehouseEntryOrderAmountDifference(total);
     updateWarehouseEntryReview();
 }
@@ -2809,6 +3510,9 @@ function updateWarehouseEntryReview() {
         : ($('#warehouse_entry_generate_account_payable').val() === '1'
             ? 'Cuenta por pagar / sin debito bancario'
             : selectedText('#warehouse_entry_payment_company_bank_account_id'));
+    const relatedCustomerOrders = $('#warehouse_entry_customer_purchase_order_ids option:selected')
+        .map(function () { return $(this).text().split('|')[0].trim(); })
+        .get().join(', ') || '-';
     const alertHtml = alerts.length
         ? `<div class="warehouse-entry-review-alert"><i class="fas fa-exclamation-triangle"></i><div><strong>Revisión pendiente</strong><ul>${alerts.map(alert => `<li>${escapeWarehouseEntryHtml(alert)}</li>`).join('')}</ul></div></div>`
         : '<div class="warehouse-entry-review-ok"><i class="fas fa-check-circle"></i><div><strong>Ingreso listo para guardar</strong><small>No se detectaron inconsistencias en artículos o lotes.</small></div></div>';
@@ -2827,6 +3531,7 @@ function updateWarehouseEntryReview() {
                 <div><small>Almacén</small><strong>${escapeWarehouseEntryHtml(selectedText('#warehouse_entry_warehouse_id'))}</strong></div>
                 <div><small>Documento</small><strong>${escapeWarehouseEntryHtml([$('#warehouse_entry_document_series').val(), $('#warehouse_entry_document_number').val()].filter(Boolean).join('-') || '-')}</strong></div>
                 <div><small>Fecha</small><strong>${escapeWarehouseEntryHtml(formatWarehouseEntryDisplayDate($('#warehouse_entry_document_date').val()))}</strong></div>
+                <div><small>OC Cliente relacionadas</small><strong>${escapeWarehouseEntryHtml(relatedCustomerOrders)}</strong></div>
                 <div><small>Pago de compra</small><strong>${escapeWarehouseEntryHtml(paymentSummary)}</strong></div>
                 <div><small>Artículos</small><strong>${itemCount}</strong></div><div><small>Lotes</small><strong>${lotCount}</strong></div><div><small>Documentos</small><strong>${documentCount}</strong></div>
                 <div><small>Mercadería</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_subtotal').val())}</strong></div><div><small>IGV</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_igv').val())}</strong></div><div><small>Total compra</small><strong>${formatWarehouseEntryMoney($('#warehouse_entry_grand_total').val())}</strong></div>
@@ -2843,6 +3548,43 @@ function syncWarehouseEntryPayableAmount(total = null) {
 
     payable.prop('readonly', true);
     payable.val(formatWarehouseEntryMoney(grandTotal));
+}
+
+function refreshWarehouseEntryWarehouses(selectedWarehouseId = null) {
+    const select = $('#warehouse_entry_warehouse_id');
+    if (!select.length) return;
+
+    const companyId = String($('#warehouse_entry_company_id').val() || '');
+    const selectedId = selectedWarehouseId === null ? '' : String(selectedWarehouseId || '');
+    warehouseEntryWarehousesRequest?.abort();
+    select.empty().append(new Option('Seleccione almacén', '')).prop('disabled', true).trigger('change.select2');
+
+    if (!companyId) {
+        select.trigger('change');
+        return;
+    }
+
+    warehouseEntryWarehousesRequest = $.get(`${window.routes.warehouseEntryCompanyWarehouses}/${companyId}/warehouses`)
+        .done(function (response) {
+            if (String($('#warehouse_entry_company_id').val() || '') !== companyId) return;
+            const warehouses = response.data || [];
+            warehouses.forEach(warehouse => select.append(new Option(
+                [warehouse.code, warehouse.name].filter(Boolean).join(' | '),
+                warehouse.id,
+                false,
+                String(warehouse.id) === selectedId
+            )));
+            select.prop('disabled', false).val(
+                warehouses.some(warehouse => String(warehouse.id) === selectedId) ? selectedId : ''
+            ).trigger('change.select2').trigger('change');
+        })
+        .fail(function (xhr) {
+            if (xhr.statusText === 'abort') return;
+            select.prop('disabled', true);
+            if (window.Swal) {
+                Swal.fire('Almacenes no disponibles', 'No se pudieron cargar los almacenes habilitados para la empresa.', 'warning');
+            }
+        });
 }
 
 function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
@@ -2880,10 +3622,11 @@ function refreshWarehouseEntryBankAccounts(selectedAccountId = null) {
             warehouseEntryCompanyBankAccounts = accounts;
             warehouseEntryBankAccountsCompanyId = companyId;
             accounts.forEach(function (account) {
+                const company = account.company?.business_name || account.company?.trade_name || 'Empresa';
                 const currencyCode = String(account.currency?.code || '').toUpperCase();
                 const symbol = account.currency?.symbol || currencyCode;
                 const bank = account.bank?.short_name || account.bank?.description || 'Banco';
-                const label = `${bank} | ${account.account_number} | ${currencyCode} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`;
+                const label = `${company} — ${bank} | ${account.account_number} | ${currencyCode} | Saldo ${symbol} ${formatWarehouseEntryMoney(account.current_balance)}`;
                 const option = new Option(label, account.id, false, String(account.id) === currentId);
                 $(option).attr({
                     'data-company-id': account.company_id,
@@ -3132,7 +3875,44 @@ function setWarehouseEntrySupplierLocked(locked) {
     }
 }
 
+function normalizeWarehouseEntryPaymentMethod(value) {
+    const normalized = String(value || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[-_]/g, ' ')
+        .toLocaleLowerCase();
+    if (!normalized) return '';
+    if (normalized.includes('transfer')) return 'transferencia';
+    if (normalized.includes('deposit')) return 'deposito_cuenta';
+    if (normalized.includes('efectivo')) return 'efectivo';
+    if (normalized.includes('tarjeta')) return 'tarjeta';
+    if (normalized.includes('yape') || normalized.includes('plin')) return 'yape_plin';
+    return 'otro';
+}
+
+function normalizeWarehouseEntryPaymentCondition(value) {
+    const normalized = String(value || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+    if (normalized.includes('credito')) return 'credito';
+    if (normalized.includes('contado') || normalized.includes('pagado')) return 'contado';
+    return '';
+}
+
+function warehouseEntryPaymentMethodLabel(value) {
+    return ({
+        deposito_cuenta: 'Depósito en cuenta',
+        transferencia: 'Transferencia bancaria',
+        efectivo: 'Efectivo',
+        tarjeta: 'Tarjeta',
+        yape_plin: 'Yape / Plin',
+        otro: 'Otro'
+    })[normalizeWarehouseEntryPaymentMethod(value)] || value || '-';
+}
+
 function warehouseEntryCreditDays() {
+    const enteredDays = Number($('#warehouse_entry_credit_days').val()) || 0;
+    if (enteredDays > 0) return enteredDays;
+
     const inheritedDays = Number($('#warehouse_entry_payment_condition').data('credit-days')) || 0;
     if (inheritedDays > 0) return inheritedDays;
 
@@ -3154,10 +3934,11 @@ function warehouseEntryIsCredit() {
 }
 
 function setWarehouseEntryPaymentConditionLocked(locked) {
-    $('#warehouse_entry_payment_condition').prop('readonly', locked);
+    $('#warehouse_entry_payment_condition').prop('disabled', locked).trigger('change.select2');
+    $('#warehouse_entry_credit_days').prop('readonly', locked);
     $('#warehouseEntryPaymentConditionHelp').toggleClass('d-none', !locked);
     $('#warehouse_entry_generate_account_payable').prop('disabled', locked);
-    $('#warehouse_entry_expected_payment_date').prop('readonly', locked && warehouseEntryIsCredit());
+    $('#warehouse_entry_expected_payment_date').prop('readonly', true);
 }
 
 function updateWarehouseEntryCreditSummary(recalculateDueDate = false, serverStatus = '') {
@@ -3166,14 +3947,23 @@ function updateWarehouseEntryCreditSummary(recalculateDueDate = false, serverSta
     const creditDays = warehouseEntryCreditDays();
     const linkedOrder = Boolean($('#warehouse_entry_supplier_purchase_order_id').val());
 
+    $('#warehouseEntryCreditTermsGroup').toggleClass('d-none', !isCredit);
+    $('#warehouse_entry_generate_account_payable').val(isCredit ? '1' : '0');
+    syncWarehouseEntryPayableAmount();
+    toggleWarehouseEntryBankPayment();
+
     if (!isCredit) {
         summary.addClass('d-none').empty();
-        $('#warehouse_entry_expected_payment_date').prop('readonly', false);
+        $('#warehouse_entry_credit_days, #warehouse_entry_expected_payment_date').val('');
+        $('#warehouse_entry_expected_payment_date').prop('readonly', true);
         return;
     }
 
+    if (linkedOrder && !$('#warehouse_entry_credit_days').val() && creditDays > 0) {
+        $('#warehouse_entry_credit_days').val(creditDays);
+    }
     const dueField = $('#warehouse_entry_expected_payment_date');
-    if (recalculateDueDate || !dueField.val()) {
+    if (creditDays > 0 && (recalculateDueDate || !dueField.val())) {
         const documentDate = $('#warehouse_entry_document_date').val();
         const baseDate = documentDate
             ? new Date(`${documentDate}T00:00:00`)
@@ -3181,8 +3971,10 @@ function updateWarehouseEntryCreditSummary(recalculateDueDate = false, serverSta
         baseDate.setHours(0, 0, 0, 0);
         baseDate.setDate(baseDate.getDate() + creditDays);
         dueField.val(baseDate.toISOString().slice(0, 10));
+    } else if (creditDays <= 0) {
+        dueField.val('');
     }
-    dueField.prop('readonly', linkedOrder);
+    dueField.prop('readonly', true);
 
     const dueDate = dueField.val() ? new Date(`${dueField.val()}T00:00:00`) : null;
     const today = new Date();
@@ -3238,6 +4030,54 @@ function renderWarehouseEntryExpenseTypes(selected = '') {
     $('#warehouse_entry_expense_category').val(simpleType === 'other' ? 'other_expense' : 'freight_transport');
     $('#warehouse_entry_expense_affects_cost').val('1');
     $('#warehouse_entry_expense_distribution_method').val('quantity').prop('disabled', false);
+}
+
+function normalizeWarehouseEntryExpenseAgencyName(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toUpperCase();
+}
+
+function restoreWarehouseEntryExpenseShippingAgency(expense) {
+    const select = $('#warehouse_entry_expense_shipping_agency_id');
+    const persistedAgencyId = String(expense.shipping_agency_id || '');
+    let agencyId = persistedAgencyId;
+
+    if (agencyId && select.find('option').filter(function () {
+        return String($(this).val()) === agencyId;
+    }).length !== 1) {
+        agencyId = '';
+    }
+
+    if (!persistedAgencyId && expense.provider_name) {
+        const providerName = normalizeWarehouseEntryExpenseAgencyName(expense.provider_name);
+        const matches = select.find('option[value!=""]').filter(function () {
+            return normalizeWarehouseEntryExpenseAgencyName($(this).text()) === providerName;
+        });
+        if (matches.length === 1) agencyId = String(matches.first().val());
+    }
+
+    select.val(agencyId).trigger('change.select2');
+    if (agencyId) {
+        $('#warehouse_entry_expense_provider_ruc').val(select.find('option:selected').data('ruc') || expense.provider_ruc || '');
+    }
+}
+
+function restoreWarehouseEntryExpenseDistributionMethod(distributionMethod) {
+    const select = $('#warehouse_entry_expense_distribution_method');
+    const labels = { quantity: 'Por cantidad', amount: 'Por valor', weight: 'Por peso', manual: 'Manual' };
+    const method = Object.prototype.hasOwnProperty.call(labels, distributionMethod)
+        ? distributionMethod
+        : 'quantity';
+    const hasOption = select.find('option').filter(function () {
+        return $(this).val() === method;
+    }).length > 0;
+
+    if (!hasOption) select.append(new Option(labels[method], method));
+    select.val(method).prop('disabled', false);
 }
 
 function warehouseEntryExpenseMapping(type) {
@@ -3442,6 +4282,7 @@ function confirmPettyCashExpenses() {
             petty_cash_documents_count: pettyCashDocumentsCount
         });
     });
+    warehouseEntryExpensesDirty = true;
 
     $('#warehouseEntryPettyCashModal').modal('hide');
     renderWarehouseEntryExpenses();
@@ -3589,6 +4430,7 @@ function resetWarehouseEntryExpenseEditor() {
     $('#warehouse_entry_expense_type').val('agency_freight');
     $('#warehouse_entry_expense_document_type').val('FACTURA');
     $('#warehouse_entry_expense_affects_igv').val('');
+    $('#warehouse_entry_expense_igv_recoverable').val('1');
     $('#warehouse_entry_expense_applies_detraction').prop('checked', false).prop('disabled', false);
     $('#warehouse_entry_expense_detraction_type_id').val('').trigger('change.select2');
     $('#warehouse_entry_expense_detraction_percentage').val('0.0000');
@@ -3728,6 +4570,7 @@ function addWarehouseEntryExpense() {
     const paymentProofFile = warehouseEntryExpenseEditorRemovedDocuments.payment_proof ? null : (paymentProofInputFile || previous?.payment_proof_file || null);
     const documentType = normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val());
     const affectsIgv = affectsIgvSelection === '1';
+    const igvRecoverable = affectsIgv && $('#warehouse_entry_expense_igv_recoverable').val() === '1';
     const appliesDetraction = $('#warehouse_entry_expense_applies_detraction').is(':checked');
     const detractionTypeId = $('#warehouse_entry_expense_detraction_type_id').val() || null;
     if (appliesDetraction && !detractionTypeId) return Swal.fire('Detracción requerida', 'Seleccione el tipo de detracción.', 'warning');
@@ -3768,7 +4611,7 @@ function addWarehouseEntryExpense() {
             account_number: $('#warehouse_entry_expense_company_bank_account_id option:selected').data('account-number') || '',
             bank_name: $('#warehouse_entry_expense_company_bank_account_id option:selected').data('bank') || ''
         } : null,
-        approval_status: isPettyCash ? 'approved' : (previous?.approval_status || 'pending'),
+        approval_status: ['petty_cash', 'bank'].includes(paymentSource) ? 'approved' : (previous?.approval_status || 'pending'),
         petty_cash_expense: previous?.petty_cash_expense || null,
         source_reference: previous?.source_reference || '',
         petty_cash_documents_count: previous?.petty_cash_documents_count || 0,
@@ -3778,7 +4621,7 @@ function addWarehouseEntryExpense() {
         provider_name: isPettyCash ? previous.provider_name : (type === 'agency_freight' ? $('#warehouse_entry_expense_shipping_agency_id option:selected').text().trim() : $('#warehouse_entry_expense_provider_name').val().trim()),
         provider_ruc: $('#warehouse_entry_expense_provider_ruc').val().trim(),
         document_type: documentType, document_series: $('#warehouse_entry_expense_document_series').val().trim(), document_number: $('#warehouse_entry_expense_document_number').val().trim(), document_date: $('#warehouse_entry_expense_document_date').val(),
-        currency_id: $('#warehouse_entry_currency_id').val() || '', amount, ...taxBreakdown, affects_inventory_cost: affects, distribution_method: affects ? method : '', description, distributions,
+        currency_id: $('#warehouse_entry_currency_id').val() || '', exchange_rate: $('#warehouse_entry_exchange_rate').val() || 1, amount, ...taxBreakdown, igv_recoverable: igvRecoverable, affects_inventory_cost: affects, distribution_method: affects ? method : '', description, distributions,
         applies_detraction: appliesDetraction,
         detraction_type_id: appliesDetraction ? detractionTypeId : null,
         detraction_type: appliesDetraction ? {
@@ -3801,6 +4644,7 @@ function addWarehouseEntryExpense() {
         documents: previous?.documents || []
     };
     if (editIndex === '') warehouseEntryExpenses.push(expense); else warehouseEntryExpenses[Number(editIndex)] = expense;
+    warehouseEntryExpensesDirty = true;
     resetWarehouseEntryExpenseEditor(); renderWarehouseEntryExpenses(); updateWarehouseEntryReview();
 }
 
@@ -3813,14 +4657,17 @@ function editWarehouseEntryExpense(index) {
         detraction_proof: Boolean(expense.remove_detraction_proof_document)
     };
     const category = expense.expense_category || (['flete', 'transporte', 'movilidad'].includes(expense.expense_type) ? 'freight_transport' : 'other_expense');
-    $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_payment_source').val(expense.source_type || 'manual').prop('disabled', expense.source_type === 'petty_cash').data('previous-source', expense.source_type || 'manual'); $('#warehouse_entry_expense_general_cash_box_id').val(expense.general_cash_box_id || ''); loadWarehouseEntryExpenseBankAccounts(expense.company_bank_account_id || ''); toggleWarehouseEntryExpensePaymentSource(false); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); applyWarehouseEntryExpenseOriginRules();
+    $('#warehouse_entry_expense_edit_index').val(index); $('#warehouse_entry_expense_category').val(category); renderWarehouseEntryExpenseTypes(expense.expense_type); $('#warehouse_entry_expense_cost_origin').val(expense.cost_origin || 'third_party'); $('#warehouse_entry_expense_payment_source').val(expense.source_type || 'manual').prop('disabled', expense.source_type === 'petty_cash').data('previous-source', expense.source_type || 'manual'); $('#warehouse_entry_expense_general_cash_box_id').val(expense.general_cash_box_id || ''); loadWarehouseEntryExpenseBankAccounts(expense.company_bank_account_id || ''); toggleWarehouseEntryExpensePaymentSource(false); $('#warehouse_entry_expense_provider_id').val(expense.provider_id || ''); $('#warehouse_entry_expense_provider_name').val(expense.provider_name || ''); $('#warehouse_entry_expense_provider_ruc').val(expense.provider_ruc || ''); $('#warehouse_entry_expense_amount').val(expense.total_amount ?? expense.amount); $('#warehouse_entry_expense_document_type').val(expense.document_type || ''); $('#warehouse_entry_expense_document_series').val(expense.document_series || ''); $('#warehouse_entry_expense_document_number').val(expense.document_number || ''); $('#warehouse_entry_expense_document_date').val(formatWarehouseEntryDate(expense.document_date)); $('#warehouse_entry_expense_description').val(expense.description || ''); $('#warehouse_entry_expense_affects_cost').val(expense.affects_inventory_cost ? '1' : '0'); $('#warehouse_entry_expense_affects_igv').val(expense.affects_igv ? '1' : '0'); $('#warehouse_entry_expense_igv_recoverable').val(expense.igv_recoverable === false ? '0' : '1'); applyWarehouseEntryExpenseOriginRules();
     $('#warehouse_entry_expense_applies_detraction').prop('checked', Boolean(expense.applies_detraction));
     $('#warehouse_entry_expense_detraction_type_id').val(expense.detraction_type_id || '').trigger('change.select2');
     toggleWarehouseEntryExpenseDetraction();
-    $('#warehouse_entry_expense_shipping_agency_id').val(expense.shipping_agency_id || '');
+    restoreWarehouseEntryExpenseShippingAgency(expense);
     $('#warehouse_entry_expense_document_type').val(expense.document_type);
     toggleWarehouseEntryExpenseDocumentFields();
-    toggleWarehouseEntryExpenseDistribution(); $('#warehouse_entry_expense_distribution_method').val(expense.distribution_method || ''); renderWarehouseEntryExpenseManualDistribution();
+    toggleWarehouseEntryExpenseDistribution();
+    const distributionMethod = expense.distribution_method || 'quantity';
+    restoreWarehouseEntryExpenseDistributionMethod(distributionMethod);
+    renderWarehouseEntryExpenseManualDistribution();
     (expense.distributions || []).forEach(item => $(`.warehouse-entry-expense-manual-amount[data-item-index="${item.item_index}"]`).val(item.distributed_amount));
     renderWarehouseEntryExpenseFileSelection('invoice', expense.invoice_file || warehouseEntryExpenseStoredDocument(expense, 'invoice'));
     renderWarehouseEntryExpenseFileSelection('payment_proof', expense.payment_proof_file || warehouseEntryExpenseStoredDocument(expense, 'payment_proof'));
@@ -3839,13 +4686,15 @@ function editWarehouseEntryExpense(index) {
 function removeWarehouseEntryExpense(index) {
     const expense = warehouseEntryExpenses[index];
     if (expense?.id && !Boolean(Number($('#warehouseEntryOriginalExpensesCard').data('can-destroy')))) return Swal.fire('Sin permiso', 'No tiene permiso para anular gastos registrados.', 'error');
-    warehouseEntryExpenses.splice(index, 1); renderWarehouseEntryExpenses(); updateWarehouseEntryReview();
+    warehouseEntryExpenses.splice(index, 1);
+    warehouseEntryExpensesDirty = true;
+    renderWarehouseEntryExpenses(); updateWarehouseEntryReview();
 }
 
 function reviewWarehouseEntryExpense(index) {
     const expense = warehouseEntryExpenses[index];
     const entryId = $('#warehouse_entry_id').val();
-    if (!expense?.id || !entryId || expense.source_type === 'petty_cash') return;
+    if (!expense?.id || !entryId || ['petty_cash', 'bank'].includes(expense.source_type)) return;
 
     Swal.fire({
         title: 'Revisar gasto vinculado',
@@ -3988,11 +4837,11 @@ function warehouseEntryExpenseSourceHtml(expense) {
 }
 
 function warehouseEntryExpenseIsApproved(expense) {
-    return expense.source_type === 'petty_cash' || expense.approval_status === 'approved';
+    return ['petty_cash', 'bank'].includes(expense.source_type) || expense.approval_status === 'approved';
 }
 
 function warehouseEntryExpenseApprovalHtml(expense) {
-    const status = expense.source_type === 'petty_cash' ? 'approved' : (expense.approval_status || 'pending');
+    const status = ['petty_cash', 'bank'].includes(expense.source_type) ? 'approved' : (expense.approval_status || 'pending');
     const config = {
         approved: ['is-approved', 'Aprobado'], pending: ['is-pending', 'Pendiente de aprobación'],
         observed: ['is-observed', 'Observado'], rejected: ['is-rejected', 'Rechazado']
@@ -4023,9 +4872,9 @@ function renderWarehouseEntryExpenses() {
                 + `<small class="warehouse-entry-detraction-summary">Monto detracción ${escapeWarehouseEntryHtml(currencySymbol)} ${formatWarehouseEntryMoney(expense.detraction_amount)} · Neto proveedor ${escapeWarehouseEntryHtml(currencySymbol)} ${formatWarehouseEntryMoney(expense.supplier_net_amount)}</small>`
                 + (hasDetractionProof ? '' : '<span class="warehouse-entry-soft-badge is-no-tax">Sin constancia detracción</span>')
             : '<span class="warehouse-entry-soft-badge is-no-tax">No aplica detracción</span>';
-        const canReview = Boolean(expense.id) && expense.source_type !== 'petty_cash' && Boolean(Number($('#warehouseEntryOriginalExpensesCard').data('can-approve')));
+        const canReview = Boolean(expense.id) && !['petty_cash', 'bank'].includes(expense.source_type) && Boolean(Number($('#warehouseEntryOriginalExpensesCard').data('can-approve')));
         const reviewButton = canReview ? `<button type="button" class="warehouse-entry-expense-action-button is-review btnReviewWarehouseEntryExpense" data-index="${index}" title="Revisar aprobación" aria-label="Revisar aprobación"><i class="fas fa-user-check"></i></button>` : '';
-        const approvalStatus = expense.source_type === 'petty_cash' ? 'approved' : (expense.approval_status || 'pending');
+        const approvalStatus = ['petty_cash', 'bank'].includes(expense.source_type) ? 'approved' : (expense.approval_status || 'pending');
         const attentionClass = approvalStatus === 'pending' ? 'is-pending' : (approvalStatus === 'observed' ? 'is-observed' : (approvalStatus === 'rejected' ? 'is-rejected' : ''));
         const description = String(expense.description || '').trim();
         const viewMore = description.length > 115
@@ -4111,22 +4960,44 @@ function fillWarehouseEntryForm(entry) {
     warehouseEntrySourceOrderTotal = entry.supplier_purchase_order?.grand_total !== undefined
         ? parseWarehouseEntryNumber(entry.supplier_purchase_order.grand_total)
         : null;
+    warehouseEntrySourceTaxContext = entry.supplier_purchase_order
+        ? {
+            affectIgv: Boolean(entry.supplier_purchase_order.affect_igv),
+            totals: {
+                subtotal: entry.supplier_purchase_order.subtotal,
+                igv: entry.supplier_purchase_order.igv,
+                grand_total: entry.supplier_purchase_order.grand_total
+            }
+        }
+        : null;
+    $('#warehouse_entry_mode').val(entry.entry_mode || (entry.supplier_purchase_order_id ? 'supplier_order' : 'supplier_invoice')).trigger('change.select2');
     $('#warehouse_entry_supplier_purchase_order_id').val(entry.supplier_purchase_order_id || '').trigger('change.select2');
-    $('#warehouse_entry_warehouse_id').val(entry.warehouse_id || '').trigger('change.select2').trigger('change');
     $('#warehouse_entry_company_id').val(entry.company_id || '').trigger('change.select2');
+    refreshWarehouseEntryWarehouses(entry.warehouse_id || '');
     refreshWarehouseEntryBankAccounts(entry.payment_company_bank_account_id || '');
     setWarehouseEntrySupplier(entry.supplier_id || '', entry.supplier?.ruc || '');
     setWarehouseEntrySupplierLocked(Boolean(entry.supplier_purchase_order_id));
     setWarehouseEntryPaymentConditionLocked(Boolean(entry.supplier_purchase_order_id));
+    toggleWarehouseEntryMode();
     $('#warehouse_entry_currency_id').val(entry.currency_id || '').trigger('change.select2').trigger('change');
+    $('#warehouse_entry_exchange_rate').val(entry.exchange_rate || '1.000000');
     $('#warehouse_entry_purchase_order_number').val(entry.purchase_order_number || '');
+    setWarehouseEntryCustomerOrders(entry.customer_purchase_orders || []);
     $('#warehouse_entry_document_type').val(normalizeWarehouseEntryDocumentType(entry.document_type));
     $('#warehouse_entry_document_series').val(entry.document_series || '');
     $('#warehouse_entry_document_number').val(entry.document_number || '');
     $('#warehouse_entry_document_date').val(formatWarehouseEntryDate(entry.document_date));
-    $('#warehouse_entry_payment_method').val(entry.payment_method || '');
-    $('#warehouse_entry_payment_condition').val(entry.payment_condition_label || entry.payment_condition || '');
+    $('#warehouse_entry_movement_date').val(
+        entry.movement_date ? String(entry.movement_date).replace(' ', 'T').slice(0, 16) : ''
+    );
+    $('#warehouse_entry_payment_method')
+        .val(normalizeWarehouseEntryPaymentMethod(entry.payment_method))
+        .trigger('change.select2');
+    $('#warehouse_entry_payment_condition')
+        .val(normalizeWarehouseEntryPaymentCondition(entry.payment_condition))
+        .trigger('change.select2');
     $('#warehouse_entry_payment_condition').data('credit-days', Number(entry.credit_days) || 0);
+    $('#warehouse_entry_credit_days').val(Number(entry.credit_days) > 0 ? Number(entry.credit_days) : '');
     $('#warehouse_entry_generate_account_payable').val(entry.generate_account_payable ? '1' : '0');
     $('#warehouse_entry_payable_amount').val(formatWarehouseEntryMoney(entry.payable_amount || 0));
     $('#warehouse_entry_expected_payment_date').val(formatWarehouseEntryDate(entry.expected_payment_date));
@@ -4160,6 +5031,8 @@ function fillWarehouseEntryForm(entry) {
             : 'Manual',
         document_type: normalizeWarehouseEntryExpenseDocumentValue(expense.document_type) || 'SIN_COMPROBANTE',
         affects_igv: Boolean(expense.affects_igv),
+        igv_recoverable: expense.igv_recoverable === null ? null : Boolean(expense.igv_recoverable),
+        exchange_rate: expense.exchange_rate,
         affects_inventory_cost: Boolean(expense.affects_inventory_cost),
         distributions: (expense.distributions || []).map(distribution => ({
             item_index: (entry.items || []).findIndex(item => Number(item.id) === Number(distribution.warehouse_entry_item_id)),
@@ -4167,6 +5040,8 @@ function fillWarehouseEntryForm(entry) {
         })).filter(distribution => distribution.item_index >= 0)
     }));
     renderWarehouseEntryExpenses();
+    resetWarehouseEntryExpenseEditor();
+    warehouseEntryExpensesDirty = false;
 
     clearWarehouseEntryItemRows();
     (entry.items || []).forEach(addWarehouseEntryItemRow);
@@ -4610,10 +5485,18 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     $('#vwe_currency_symbol').text(currencySymbol);
     $('#vwe_grand_total').text(formatWarehouseEntryMoney(entry.grand_total || 0));
     $('#vwe_purchase_order').text(entry.supplier_purchase_order?.code || entry.purchase_order_number || '-');
+    $('#vwe_purchase_order_label').text(entry.entry_mode === 'supplier_invoice'
+        ? 'Referencia OC (compatibilidad)'
+        : 'OC Proveedor relacionada');
     const supplierOrder = entry.supplier_purchase_order;
-    const customerOrders = supplierOrder?.customer_purchase_orders?.length
+    const legacyCustomerOrders = supplierOrder?.customer_purchase_orders?.length
         ? supplierOrder.customer_purchase_orders
         : (supplierOrder?.customer_purchase_order ? [supplierOrder.customer_purchase_order] : []);
+    const allocatedCustomerOrders = (entry.items || []).flatMap(item => (item.allocations || []))
+        .map(allocation => allocation.customer_purchase_order)
+        .filter(Boolean);
+    const customerOrders = [...(entry.customer_purchase_orders || []), ...legacyCustomerOrders, ...allocatedCustomerOrders]
+        .filter((order, index, rows) => rows.findIndex(candidate => Number(candidate.id) === Number(order.id)) === index);
     $('#vwe_customer_orders').html(customerOrders.length
         ? customerOrders.map(function (customerOrder) {
             const customerName = customerOrder.customer?.business_name
@@ -4640,8 +5523,8 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
     $('#vwe_document_number').text([entry.document_series, entry.document_number].filter(Boolean).join(' ') || '-');
     $('#vwe_document_date').text(formatWarehouseEntryDisplayDate(entry.document_date));
     $('#vwe_guide').text([entry.guide_series, entry.guide_number, entry.guide_ruc].filter(Boolean).join(' / ') || '-');
-    $('#vwe_payment_method').text(entry.payment_method || '-');
-    $('#vwe_payment_condition').text(entry.payment_condition || '-');
+    $('#vwe_payment_method').text(warehouseEntryPaymentMethodLabel(entry.payment_method));
+    $('#vwe_payment_condition').text(entry.payment_condition_label || entry.payment_condition || '-');
     $('#vwe_payable').text(entry.generate_account_payable
         ? `Si - ${formatWarehouseEntryDisplayDate(entry.expected_payment_date)}`
         : 'No');
@@ -4682,12 +5565,19 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
             ? item.lots
             : (item.lot_number ? [{ lot_code: item.lot_number, quantity: item.quantity }] : [null]);
 
-        return lots.map(function (lot) {
+        return lots.map(function (lot, lotIndex) {
             detailRowNumber += 1;
             const quantity = lot ? parseWarehouseEntryNumber(lot.quantity) : parseWarehouseEntryNumber(item.quantity);
             const rowTotal = lot
                 ? quantity * parseWarehouseEntryNumber(item.unit_price)
                 : parseWarehouseEntryNumber(item.line_total);
+            const allocations = item.allocations || [];
+            const allocationHtml = lotIndex === 0 && allocations.length
+                ? allocations.map(allocation => {
+                    const normalized = normalizeWarehouseEntryAllocation(allocation);
+                    return `<div class="small mb-1"><span class="badge badge-light border">${escapeWarehouseEntryHtml(warehouseEntryAllocationTypeLabel(normalized.allocation_type))}</span> ${escapeWarehouseEntryHtml(warehouseEntryAllocationDescription(normalized))} <strong>${formatWarehouseEntryMoney(normalized.quantity_allocated)}</strong></div>`;
+                }).join('')
+                : (lotIndex === 0 ? '<span class="text-muted">Pendiente de asignar</span>' : '<span class="text-muted">—</span>');
 
             return `
                 <tr class="${lot ? 'warehouse-entry-detail-lot-row' : ''}">
@@ -4698,6 +5588,7 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
                     <td>${escapeWarehouseEntryHtml(item.brand?.description || '-')}</td>
                     <td>${escapeWarehouseEntryHtml(item.origin || '-')}</td>
                     <td>${lot ? `<span class="warehouse-entry-lot-badge"><i class="fas fa-tag mr-1"></i>${escapeWarehouseEntryHtml(lot.lot_code || 'Sin código')}</span>` : '<span class="text-muted">Sin lote</span>'}</td>
+                    <td>${allocationHtml}</td>
                     <td class="text-right">${formatWarehouseEntryMoney(quantity)}</td>
                     <td class="text-right">${formatWarehouseEntryMoney(item.unit_price || 0)}</td>
                     <td class="text-right">${formatWarehouseEntryMoney(item.additional_cost || 0)}</td>
@@ -4707,7 +5598,7 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
         });
     }).join('');
 
-    $('#vwe_items').html(rows || '<tr><td colspan="12" class="text-center text-muted py-3">Sin articulos ingresados.</td></tr>');
+    $('#vwe_items').html(rows || '<tr><td colspan="13" class="text-center text-muted py-3">Sin articulos ingresados.</td></tr>');
     renderWarehouseEntryDetailDocuments(entry.documents || [], entry.id);
     renderWarehouseEntryDetailLotDocuments(entry.items || [], entry.id);
 }

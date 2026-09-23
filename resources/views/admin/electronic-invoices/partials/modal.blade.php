@@ -24,6 +24,13 @@
             </div>
 
             <div class="modal-body invoice-modal-body">
+                <div id="electronicInvoiceLoading" class="electronic-invoice-loading d-none" aria-hidden="true">
+                    <div class="electronic-invoice-loading-card" role="status" aria-live="polite">
+                        <span class="spinner-border text-success mb-3" aria-hidden="true"></span>
+                        <strong>Preparando facturaci&oacute;n</strong>
+                        <small id="electronicInvoiceLoadingText" class="text-muted mt-1">Cargando...</small>
+                    </div>
+                </div>
                 <div id="electronicInvoiceErrors" class="alert alert-danger d-none mb-2"></div>
 
                 <div class="invoice-shell">
@@ -236,13 +243,19 @@
                                     </select>
                                 </div>
                                 <div class="form-group col-lg-3 col-md-6">
-                                    <label>Almac&eacute;n de salida <span class="text-danger">*</span></label>
+                                    <label>Almac&eacute;n de salida <span id="ei_warehouse_required" class="text-danger">*</span></label>
                                     <select id="ei_warehouse_id" name="warehouse_id" class="form-control form-control-sm invoice-compact-input">
                                         <option value="">Seleccione almac&eacute;n</option>
                                         @foreach ($warehouses as $warehouse)
-                                            <option value="{{ $warehouse->id }}">{{ $warehouse->code }} | {{ $warehouse->name }}</option>
+                                            <option value="{{ $warehouse->id }}"
+                                                data-company-ids="{{ $warehouse->companyWarehouses->pluck('company_id')->implode(',') }}">
+                                                {{ $warehouse->code }} | {{ $warehouse->name }}
+                                            </option>
                                         @endforeach
                                     </select>
+                                    <input id="ei_dispatch_warehouse_display" type="text"
+                                        class="form-control form-control-sm invoice-compact-input d-none" readonly>
+                                    <small id="ei_dispatch_warehouse_help" class="form-text text-muted d-none"></small>
                                     <span class="invalid-feedback"></span>
                                 </div>
                                 <div class="form-group col-lg-3 col-md-6">
@@ -353,6 +366,7 @@
     <tr class="electronic-invoice-item-row">
         <td class="invoice-article-cell">
             <input type="hidden" name="items[__INDEX__][customer_purchase_order_item_id]">
+            <input type="hidden" name="items[__INDEX__][warehouse_dispatch_item_id]">
             <select name="items[__INDEX__][article_id]" class="form-control form-control-sm item-article">
                 <option value="">Manual</option>
                 @foreach ($articles as $article)
@@ -372,13 +386,14 @@
         <td><input name="items[__INDEX__][brand_name]" class="form-control form-control-sm text-uppercase"></td>
         <td><input name="items[__INDEX__][presentation_name]" class="form-control form-control-sm text-uppercase"></td>
         <td><input name="items[__INDEX__][origin]" class="form-control form-control-sm text-uppercase"></td>
-        <td><input name="items[__INDEX__][unit_code]" class="form-control form-control-sm text-uppercase" value="NIU"></td>
+        <td><input name="items[__INDEX__][unit_code]" class="form-control form-control-sm text-uppercase" value="" readonly></td>
         <td><input name="items[__INDEX__][quantity]" type="number" min="0.0000000001" step="0.0000000001" class="form-control form-control-sm item-quantity" value="1"></td>
         <td><input name="items[__INDEX__][unit_price]" type="number" min="0" step="any" class="form-control form-control-sm item-price" value="0"></td>
         <td>
-            <select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation">
+            <select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation" required>
+                <option value="">Seleccione...</option>
                 @foreach ($taxAffectations as $tax)
-                    <option value="{{ $tax->item_code }}">{{ $tax->item_code }} | {{ $tax->short_name ?? $tax->description }}</option>
+                    <option value="{{ $tax->item_code }}">{{ $tax->item_code }} | {{ $tax->description ?: $tax->short_name }}</option>
                 @endforeach
             </select>
         </td>

@@ -1,0 +1,12 @@
+{
+  "catalog_code": "19",
+  "catalog_name": "ESTADO DEL ACTIVO FIJO",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "ACTIVOS EN DESUSO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "ACTIVOS OBSOLETOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "9", "description": "RESTO DE ACTIVOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

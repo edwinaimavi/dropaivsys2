@@ -19,14 +19,14 @@ class RebuildWarehouseKardex extends Command
     public function handle(WarehouseKardexService $kardexService): int
     {
         if ($this->option('fresh')) {
-            $this->warn('Modo --fresh: se limpiaran warehouse_kardex_movements y warehouse_stocks.');
-            DB::transaction(function () {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0');
-                WarehouseKardexMovement::query()->truncate();
-                WarehouseStock::query()->truncate();
-                DB::statement('SET FOREIGN_KEY_CHECKS=1');
-            });
+            $this->error('El modo --fresh está deshabilitado con el pool global PPM porque podría desincronizar stock, Kardex y warehouse_valuation_pools. Use una reconstrucción controlada.');
+
+            return self::FAILURE;
         }
+
+        $this->error('El rebuild legacy de Kardex está deshabilitado con el pool global PPM porque puede modificar stock, Kardex y warehouse_valuation_pools sin una reconciliación controlada.');
+
+        return self::FAILURE;
 
         $entries = WarehouseEntry::query()
             ->with([

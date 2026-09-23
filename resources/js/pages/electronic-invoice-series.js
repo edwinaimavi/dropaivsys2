@@ -137,7 +137,7 @@ function loadSeries(id, editable) {
         $('#view_series_serie').text(item.serie || '-');
         $('#view_series_current_number').text(item.current_number ?? '-');
         $('#view_series_next_number').text(item.next_number ?? '-');
-        $('#view_series_environment').text(renderEnvironment(item.environment, 'display'));
+        $('#view_series_environment').text(item.environment_label || environmentLabel(item.environment));
         $('#view_series_status').text(item.status === 'ACTIVE' ? 'Activo' : 'Inactivo');
         $('#electronicInvoiceSeriesViewModal').modal('show');
     });
@@ -199,13 +199,17 @@ function showSeriesErrors(errors) {
 }
 
 function renderEnvironment(data, type) {
-    const label = data === 'production' ? 'Producción' : (data === 'internal' ? 'Interno' : 'Beta');
+    const label = environmentLabel(data);
 
     if (type !== 'display') {
         return label;
     }
 
     return `<span class="badge badge-light border rounded-pill px-3">${label}</span>`;
+}
+
+function environmentLabel(environment) {
+    return environment === 'production' ? 'Producción' : (environment === 'internal' ? 'Interno' : 'Beta');
 }
 
 function documentTypeLabel(type) {

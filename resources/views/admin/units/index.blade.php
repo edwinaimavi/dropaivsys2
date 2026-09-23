@@ -120,6 +120,8 @@
 
                             <th>DESCRIPCIÓN</th>
 
+                            <th>UNIDAD SUNAT (TABLA 06)</th>
+
                         {{--     <th>DECIMAL</th> --}}
 
                             <th>ESTADO</th>

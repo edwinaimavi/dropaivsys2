@@ -1,5 +1,5 @@
 <!-- VIEW SUPPLIER MODAL -->
-<div class="modal fade" id="viewSupplierModal" tabindex="-1" role="dialog" aria-labelledby="viewSupplierModalLabel"
+<div class="modal fade dp-detail-modal" id="viewSupplierModal" tabindex="-1" role="dialog" aria-labelledby="viewSupplierModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
@@ -7,16 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header supplier-view-header py-3 px-4">
+            <div class="modal-header dp-detail-modal-header supplier-view-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-truck"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title supplier-view-title" id="viewSupplierModalLabel">
+                            Informaci&oacute;n del Proveedor
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vs_header_subtitle">RUC y raz&oacute;n social</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title supplier-view-title mb-0" id="viewSupplierModalLabel">
-
-                    <i class="fas fa-truck mr-2"></i>
-                    Información del Proveedor
-
-                </h5>
-
-                <button type="button" class="close supplier-view-close" data-dismiss="modal" aria-label="Cerrar">
+                <button type="button" class="close dp-detail-modal-close supplier-view-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 

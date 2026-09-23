@@ -23,12 +23,7 @@
             @can('admin.electronic-invoices.update')
                 @if ($invoice->status === 'draft')
                     <button type="button" class="dropdown-item editElectronicInvoice" data-id="{{ $invoice->id }}">
-                        <i class="fas fa-check-circle text-success"></i> Completar y generar
-                    </button>
-                @endif
-                @if ($invoice->status !== 'cancelled')
-                    <button type="button" class="dropdown-item editElectronicInvoice" data-id="{{ $invoice->id }}">
-                        <i class="fas fa-edit text-primary"></i> Editar comprobante
+                        <i class="fas fa-edit text-primary"></i> Editar borrador
                     </button>
                 @endif
             @endcan
@@ -38,7 +33,7 @@
                 </button>
             @endcan
             @can('admin.electronic-invoices.send')
-                @if ($invoice->status === 'generated')
+                @if (in_array($invoice->status, ['generated', 'cancelled', 'voided'], true))
                     <button type="button"
                         class="dropdown-item {{ $apiReady ? 'sendElectronicInvoiceToApi' : 'apiNotConfiguredElectronicInvoice' }}"
                         data-id="{{ $invoice->id }}">
@@ -73,7 +68,7 @@
         @endcanany
 
         @can('admin.electronic-invoices.destroy')
-            @if ($invoice->status !== 'cancelled')
+            @if (!in_array($invoice->status, ['cancelled', 'voided', 'sent', 'accepted'], true) && !$invoice->is_voided)
                 <div class="dropdown-divider"></div>
                 <h6 class="dropdown-header">Cierre / anulación</h6>
                 <button type="button" class="dropdown-item text-danger deleteElectronicInvoice"

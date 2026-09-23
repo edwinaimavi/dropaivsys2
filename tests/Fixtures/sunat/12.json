@@ -1,0 +1,18 @@
+{
+  "catalog_code": "12",
+  "catalog_name": "TIPO DE OPERACIÓN",
+  "description": "Fixture mínimo para probar la infraestructura.",
+  "source": "sunat_pdf",
+  "items": [
+    {
+      "code": "01",
+      "description": "VENTA NACIONAL",
+      "extra_data": { "fixture": true }
+    },
+    {
+      "code": "A1",
+      "description": "CÓDIGO ALFANUMÉRICO DE PRUEBA",
+      "extra_data": null
+    }
+  ]
+}

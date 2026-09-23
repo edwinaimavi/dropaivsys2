@@ -3,9 +3,14 @@
 namespace App\Services;
 
 use App\Models\CustomerPurchaseOrder;
+use App\Models\CustomerReturn;
+use App\Models\CustomerReturnItem;
+use App\Models\WarehouseDispatch;
+use App\Models\WarehouseDispatchItem;
 use App\Models\WarehouseEntry;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CustomerPurchaseOrderStatusService
 {
@@ -26,7 +31,8 @@ class CustomerPurchaseOrderStatusService
 
         $previousStatus = (string) $order->status;
 
-        if ($this->isProtectedFinalStatus($previousStatus)) {
+        if ($this->isProtectedFinalStatus($previousStatus)
+            && ! ($previousStatus === CustomerPurchaseOrder::STATUS_ATTENDED && $this->hasDispatchHistory((int) $order->id))) {
             return $this->result(false, true, $previousStatus, $previousStatus);
         }
 
@@ -115,15 +121,18 @@ class CustomerPurchaseOrderStatusService
         $enteredByItem = $this->enteredQuantities(
             $historicalSupplierOrderIds,
             $supplierItemToCustomerItem,
-            $fallbackMap
+            $fallbackMap,
+            $customerItemIds
         );
+        $dispatchedByItem = $this->dispatchedQuantities((int) $order->id, $customerItemIds);
 
         $status = CustomerPurchaseOrder::supplyStatusFromQuantities(
             $requestedByItem,
             $purchasedByItem,
             $enteredByItem,
             filled($order->attention_document_path),
-            $activeSupplierOrderIds->isNotEmpty()
+            $activeSupplierOrderIds->isNotEmpty(),
+            $dispatchedByItem
         );
 
         return $this->apply($order, $status);
@@ -213,8 +222,17 @@ class CustomerPurchaseOrderStatusService
             ->where('entry_items.warehouse_entry_id', $entry->id)
             ->pluck('customer_items.customer_purchase_order_id');
 
+        $allocationIds = Schema::hasTable('warehouse_entry_item_allocations')
+            ? DB::table('warehouse_entry_item_allocations')
+                ->where('warehouse_entry_id', $entry->id)
+                ->where('status', 'active')
+                ->whereNull('deleted_at')
+                ->pluck('customer_purchase_order_id')
+            : collect();
+
         return $ids
             ->merge($itemIds)
+            ->merge($allocationIds)
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
@@ -224,10 +242,31 @@ class CustomerPurchaseOrderStatusService
     private function enteredQuantities(
         Collection $historicalSupplierOrderIds,
         Collection $supplierItemToCustomerItem,
-        Collection $fallbackMap
+        Collection $fallbackMap,
+        array $customerItemIds
     ): array {
-        if ($historicalSupplierOrderIds->isEmpty() && $supplierItemToCustomerItem->isEmpty()) {
+        $hasAllocations = Schema::hasTable('warehouse_entry_item_allocations');
+        if ($historicalSupplierOrderIds->isEmpty() && $supplierItemToCustomerItem->isEmpty() && ! $hasAllocations) {
             return [];
+        }
+
+        $entered = $hasAllocations
+            ? DB::table('warehouse_entry_item_allocations as allocations')
+                ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+                ->whereIn('allocations.customer_purchase_order_item_id', $customerItemIds)
+                ->whereNull('allocations.deleted_at')
+                ->whereNull('entries.deleted_at')
+                ->where('allocations.status', 'active')
+                ->where('entries.status', self::ACTIVE_ENTRY_STATUS)
+                ->groupBy('allocations.customer_purchase_order_item_id')
+                ->selectRaw('allocations.customer_purchase_order_item_id, SUM(allocations.quantity_allocated) total')
+                ->pluck('total', 'allocations.customer_purchase_order_item_id')
+                ->map(fn ($quantity) => round((float) $quantity, self::QUANTITY_SCALE))
+                ->all()
+            : [];
+
+        if ($historicalSupplierOrderIds->isEmpty() && $supplierItemToCustomerItem->isEmpty()) {
+            return $entered;
         }
 
         $entryItems = DB::table('warehouse_entry_items as items')
@@ -235,6 +274,15 @@ class CustomerPurchaseOrderStatusService
             ->whereNull('entries.deleted_at')
             ->where('entries.status', self::ACTIVE_ENTRY_STATUS)
             ->where('items.status', '!=', 'deleted')
+            ->when($hasAllocations, function ($query) {
+                $query->whereNotExists(function ($subquery) {
+                    $subquery->selectRaw('1')
+                        ->from('warehouse_entry_item_allocations as allocations')
+                        ->whereColumn('allocations.warehouse_entry_item_id', 'items.id')
+                        ->where('allocations.status', 'active')
+                        ->whereNull('allocations.deleted_at');
+                });
+            })
             ->where(function ($query) use ($historicalSupplierOrderIds, $supplierItemToCustomerItem) {
                 if ($historicalSupplierOrderIds->isNotEmpty()) {
                     $query->whereIn('entries.supplier_purchase_order_id', $historicalSupplierOrderIds->all());
@@ -252,7 +300,6 @@ class CustomerPurchaseOrderStatusService
                 'entries.supplier_purchase_order_id',
             ]);
 
-        $entered = [];
         foreach ($entryItems as $entryItem) {
             $customerItemId = $supplierItemToCustomerItem->get(
                 (int) ($entryItem->supplier_purchase_order_item_id ?? 0)
@@ -405,6 +452,56 @@ class CustomerPurchaseOrderStatusService
             CustomerPurchaseOrder::STATUS_ATTENDED,
             CustomerPurchaseOrder::STATUS_NOT_ATTENDED,
         ], true);
+    }
+
+    private function dispatchedQuantities(int $orderId, array $customerItemIds): array
+    {
+        if (! Schema::hasTable('warehouse_dispatch_items')) {
+            return [];
+        }
+
+        $dispatched = DB::table('warehouse_dispatch_items as items')
+            ->join('warehouse_dispatches as dispatches', 'dispatches.id', '=', 'items.warehouse_dispatch_id')
+            ->where('dispatches.customer_purchase_order_id', $orderId)
+            ->whereIn('items.customer_purchase_order_item_id', $customerItemIds)
+            ->where('dispatches.status', WarehouseDispatch::STATUS_CONFIRMED)
+            ->whereIn('items.status', [
+                WarehouseDispatchItem::STATUS_CONFIRMED,
+                WarehouseDispatchItem::STATUS_LEGACY_CONFIRMED,
+            ])
+            ->groupBy('items.customer_purchase_order_item_id')
+            ->selectRaw('items.customer_purchase_order_item_id, SUM(items.quantity) total')
+            ->pluck('total', 'items.customer_purchase_order_item_id')
+            ->map(fn ($quantity) => round((float) $quantity, self::QUANTITY_SCALE))
+            ->all();
+
+        if (! Schema::hasTable('customer_return_items')) {
+            return $dispatched;
+        }
+
+        $returned = DB::table('customer_return_items as return_items')
+            ->join('customer_returns as returns', 'returns.id', '=', 'return_items.customer_return_id')
+            ->join('warehouse_dispatch_items as dispatch_items', 'dispatch_items.id', '=', 'return_items.warehouse_dispatch_item_id')
+            ->where('returns.customer_purchase_order_id', $orderId)
+            ->whereIn('dispatch_items.customer_purchase_order_item_id', $customerItemIds)
+            ->where('returns.status', CustomerReturn::STATUS_CONFIRMED)
+            ->whereNull('returns.deleted_at')
+            ->where('return_items.status', CustomerReturnItem::STATUS_CONFIRMED)
+            ->groupBy('dispatch_items.customer_purchase_order_item_id')
+            ->selectRaw('dispatch_items.customer_purchase_order_item_id, SUM(return_items.quantity) total')
+            ->pluck('total', 'dispatch_items.customer_purchase_order_item_id');
+
+        foreach ($returned as $itemId => $quantity) {
+            $dispatched[$itemId] = max(round((float) ($dispatched[$itemId] ?? 0) - (float) $quantity, self::QUANTITY_SCALE), 0);
+        }
+
+        return $dispatched;
+    }
+
+    private function hasDispatchHistory(int $orderId): bool
+    {
+        return Schema::hasTable('warehouse_dispatches')
+            && DB::table('warehouse_dispatches')->where('customer_purchase_order_id', $orderId)->exists();
     }
 
     private function apply(CustomerPurchaseOrder $order, string $status): array

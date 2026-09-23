@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\User;
 use App\Models\UserRoleHistory;
 use App\Services\UserSecurityService;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Role;
 use Yajra\DataTables\Facades\DataTables;
 
@@ -29,15 +31,18 @@ class UserController extends Controller
     public function index()
     {
         $roles = Role::all();
+        $companies = Company::active()
+            ->orderBy('business_name')
+            ->get(['id', 'business_name', 'trade_name']);
 
-        return view('admin.users.index', compact('roles'));
+        return view('admin.users.index', compact('roles', 'companies'));
     }
 
     public function list()
     {
         $principalUserId = $this->security->principalUserId();
         $currentUserId = Auth::id();
-        $users = User::with('roles')
+        $users = User::with(['roles', 'companies:id'])
             ->where('status', '!=', -1)
             ->orderBy('id', 'desc')
             ->get();
@@ -100,6 +105,12 @@ class UserController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'status' => 'required|integer|in:0,1',
             'role' => 'required|exists:roles,id',
+            'company_ids' => ['required', 'array', 'min:1'],
+            'company_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('companies', 'id')->where(fn ($query) => $query->where('status', true)),
+            ],
         ]);
 
         if ($request->hasFile('image')) {
@@ -110,13 +121,15 @@ class UserController extends Controller
         $data['created_by'] = Auth::id();
         $data['updated_by'] = Auth::id();
         $roleId = (int) $data['role'];
-        unset($data['password_confirmation'], $data['role'], $data['image']);
+        $companyIds = array_map('intval', $data['company_ids']);
+        unset($data['password_confirmation'], $data['role'], $data['image'], $data['company_ids']);
 
         try {
-            DB::transaction(function () use ($data, $roleId, $request) {
+            DB::transaction(function () use ($data, $roleId, $companyIds, $request) {
                 $user = User::create($data);
                 $role = Role::findById($roleId);
                 $user->assignRole($role);
+                $user->companies()->sync($companyIds);
                 $this->recordRoleHistory($user, null, $roleId, 'assigned', $request);
             });
         } catch (\Throwable $exception) {
@@ -136,6 +149,7 @@ class UserController extends Controller
             'creator:id,name,lastname',
             'updater:id,name,lastname',
             'roles:id,name',
+            'companies:id,business_name,trade_name,status',
             'latestRoleHistory.performer:id,name,lastname',
         ]);
 
@@ -149,6 +163,12 @@ class UserController extends Controller
                 'updated_by' => $this->userDisplayName($user->updater) ?? $historical,
                 'updated_at' => $user->updated_at?->format('d/m/Y H:i') ?? $historical,
                 'current_role' => $user->roles->first()?->name ?? 'Sin rol',
+                'companies' => $user->companies->map(fn (Company $company) => [
+                    'id' => $company->id,
+                    'name' => $company->trade_name ?: $company->business_name,
+                    'business_name' => $company->business_name,
+                    'status' => (bool) $company->status,
+                ])->values(),
                 'last_role_changed_by' => $this->userDisplayName($lastRoleHistory?->performer) ?? $historical,
                 'last_role_changed_at' => $lastRoleHistory?->performed_at?->format('d/m/Y H:i') ?? $historical,
                 'is_principal' => $this->security->isPrincipal($user),
@@ -181,6 +201,12 @@ class UserController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'status' => 'required|integer|in:0,1',
             'role' => 'sometimes|nullable|exists:roles,id',
+            'company_ids' => ['required', 'array', 'min:1'],
+            'company_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('companies', 'id')->where(fn ($query) => $query->where('status', true)),
+            ],
         ]);
 
         if ($request->filled('password')) {
@@ -195,8 +221,9 @@ class UserController extends Controller
         $roleId = array_key_exists('role', $data)
             ? ($data['role'] !== null ? (int) $data['role'] : null)
             : $previousRoleId;
+        $companyIds = array_map('intval', $data['company_ids']);
         $this->security->ensureAccessChangeIsSafe($user, $actor, (int) $data['status'], $roleId);
-        unset($data['role'], $data['image']);
+        unset($data['role'], $data['image'], $data['company_ids']);
         $data['updated_by'] = Auth::id();
 
         $newPhoto = $request->hasFile('image')
@@ -208,8 +235,9 @@ class UserController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($user, $data, $roleId, $previousRoleId, $request) {
+            DB::transaction(function () use ($user, $data, $roleId, $previousRoleId, $companyIds, $request) {
                 $user->update($data);
+                $user->companies()->sync($companyIds);
                 if ($roleId === null) {
                     $user->syncRoles([]);
                 } else {
@@ -270,6 +298,12 @@ class UserController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'status' => 'sometimes|integer|in:0,1',
             'role' => 'sometimes|exists:roles,id',
+            'company_ids' => ['required', 'array', 'min:1'],
+            'company_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('companies', 'id')->where(fn ($query) => $query->where('status', true)),
+            ],
         ]);
 
         if ($request->filled('password')) {
@@ -280,18 +314,22 @@ class UserController extends Controller
             $data['password'] = Hash::make($request->password);
         }
 
+        $companyIds = array_map('intval', $data['company_ids']);
         $newPhoto = $request->hasFile('image')
             ? $request->file('image')->store('users', 'public')
             : null;
         $oldPhoto = $user->photo;
-        unset($data['image'], $data['status'], $data['role']);
+        unset($data['image'], $data['status'], $data['role'], $data['company_ids']);
         $data['updated_by'] = Auth::id();
         if ($newPhoto) {
             $data['photo'] = $newPhoto;
         }
 
         try {
-            $user->update($data);
+            DB::transaction(function () use ($user, $data, $companyIds) {
+                $user->update($data);
+                $user->companies()->sync($companyIds);
+            });
         } catch (\Throwable $exception) {
             if ($newPhoto) {
                 Storage::disk('public')->delete($newPhoto);

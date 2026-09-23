@@ -13,6 +13,7 @@ use App\Services\InvoiceCollectionService;
 use App\Services\InvoiceFromCustomerOrderService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Permission;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -110,6 +111,18 @@ it('genera la cuenta por cobrar sin crear un ingreso bancario al emitir', functi
     expect((float) $this->invoice->pending_amount)->toBe(10000.0)
         ->and($this->invoice->payment_status)->toBe('pending')
         ->and(BankMovement::count())->toBe(0);
+});
+
+it('muestra empresa banco moneda y numero en la cuenta seleccionable del modal', function () {
+    Permission::findOrCreate('admin.electronic-invoices.index', 'web');
+    $this->user->givePermissionTo('admin.electronic-invoices.index');
+
+    $this->actingAs($this->user)
+        ->get(route('admin.electronic-invoices.index'))
+        ->assertOk()
+        ->assertSee('EMISOR LOCAL S.A.C. — BPR - PEN - 001-LOCAL')
+        ->assertSee('value="'.$this->account->id.'"', false)
+        ->assertDontSee('EMISOR LOCAL S.A.C. &mdash; BPR', false);
 });
 
 it('registra cobros parciales y completa la factura con movimientos bancarios trazables', function () {

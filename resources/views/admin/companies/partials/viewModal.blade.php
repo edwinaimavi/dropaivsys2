@@ -1,15 +1,15 @@
-<div class="modal fade" id="viewCompanyModal" tabindex="-1" role="dialog" aria-labelledby="viewCompanyModalLabel"
+<div class="modal fade dp-detail-modal" id="viewCompanyModal" tabindex="-1" role="dialog" aria-labelledby="viewCompanyModalLabel"
     aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered company-view-dialog" role="document">
         <div class="modal-content company-view-modal border-0 shadow-lg">
-            <div class="modal-header company-view-header border-0">
-                <div class="d-flex align-items-center min-width-0">
-                    <span class="company-view-logo-box mr-3" id="view_company_logo_box">
+            <div class="modal-header dp-detail-modal-header company-view-header">
+                <div class="dp-detail-modal-heading min-width-0">
+                    <span class="dp-detail-modal-icon company-view-logo-box" id="view_company_logo_box">
                         <i class="fas fa-building"></i>
                     </span>
-                    <div class="company-view-identity min-width-0">
-                        <small class="company-view-eyebrow">DETALLE DE EMPRESA</small>
-                        <h4 class="modal-title font-weight-bold mb-1 text-truncate" id="view_company_business_name">-</h4>
+                    <div class="dp-detail-modal-copy company-view-identity min-width-0">
+                        <h4 class="modal-title dp-detail-modal-title" id="viewCompanyModalLabel">Informaci&oacute;n de la Empresa</h4>
+                        <small class="dp-detail-modal-subtitle text-truncate" id="view_company_business_name">-</small>
                         <div class="text-muted text-truncate" id="view_company_trade_name">-</div>
                         <div class="company-view-meta mt-2">
                             <span><i class="far fa-id-card mr-1"></i>RUC: <strong id="view_company_header_ruc">-</strong></span>
@@ -17,7 +17,7 @@
                         </div>
                     </div>
                 </div>
-                <button type="button" class="close company-view-close" data-dismiss="modal" aria-label="Cerrar">
+                <button type="button" class="close dp-detail-modal-close company-view-close" data-dismiss="modal" aria-label="Cerrar">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
@@ -52,6 +52,12 @@
                         </div>
                         <div class="col-lg-6 mt-3 mt-lg-0">
                             <div class="company-info-block"><small>Uso en módulos</small><div id="view_company_usage">-</div></div>
+                        </div>
+                        <div class="col-lg-6 mt-3">
+                            <div class="company-info-block">
+                                <small>Método de valuación SUNAT</small>
+                                <div id="view_company_inventory_valuation_method">Pendiente de configurar</div>
+                            </div>
                         </div>
                     </div>
                 </section>

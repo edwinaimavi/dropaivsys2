@@ -1,0 +1,12 @@
+{
+  "catalog_code": "13",
+  "catalog_name": "CATÁLOGO DE EXISTENCIAS",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "NACIONES UNIDAS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "3", "description": "GS1 (EAN-UCC)", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "9", "description": "OTROS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

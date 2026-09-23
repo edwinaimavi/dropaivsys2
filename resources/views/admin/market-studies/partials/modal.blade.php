@@ -461,6 +461,45 @@
                         </div>
                     </div>
 
+
+                    <div class="card border-0 shadow-sm mb-2 quick-inventory-classification">
+                        <div class="card-header py-2 bg-white font-weight-bold">
+                            <i class="fas fa-tags mr-1 text-warning"></i>Producto / servicio e inventario
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>TIPO DE ÍTEM <span class="text-danger">*</span></label>
+                                    <select name="item_kind" class="form-control form-control-sm quick-item-kind" required>
+                                        <option value="">Seleccione</option>
+                                        <option value="product">PRODUCTO</option>
+                                        <option value="service">SERVICIO</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-md-6 mb-0">
+                                    <label>PARTICIPA EN INVENTARIO <span class="text-danger">*</span></label>
+                                    <select name="is_inventory_item" class="form-control form-control-sm quick-is-inventory-item" required>
+                                        <option value="">Seleccione</option>
+                                        <option value="1">SÍ, INVENTARIABLE</option>
+                                        <option value="0">NO INVENTARIABLE</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                <div class="form-group col-12 mb-0 mt-2 d-none quick-sunat-existence-type-group">
+                                    <label>TIPO DE EXISTENCIA SUNAT <span class="text-danger">*</span></label>
+                                    <select name="sunat_existence_type_item_id"
+                                        class="form-control form-control-sm quick-sunat-existence-type"
+                                        disabled>
+                                        <option value="">Seleccione</option>
+                                    </select>
+                                    <span class="invalid-feedback"></span>
+                                </div>
+                                @include('admin.articles.partials.quickSunatInventoryIdentification')
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card border-0 shadow-sm mb-2">
                         <div class="card-header py-2 bg-white font-weight-bold">
                             <i class="fas fa-box-open mr-1 text-info"></i>

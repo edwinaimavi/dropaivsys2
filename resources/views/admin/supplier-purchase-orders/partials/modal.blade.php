@@ -664,6 +664,10 @@
                                             <th>P. REF. COMPRA</th>
                                             <th>CANTIDAD</th>
                                             <th>PRECIO</th>
+                                            <th>AFECTACI&Oacute;N</th>
+                                            <th>DESCUENTO</th>
+                                            <th>GRATUITO</th>
+                                            <th>IGV RECUP.</th>
                                             <th>P. TOTAL IGV</th>
                                             <th>B. IMPONIBLE</th>
                                             <th>% IGV</th>
@@ -673,7 +677,7 @@
                                     </thead>
                                     <tbody id="supplierOrderItemsTbody">
                                         <tr id="supplierOrderItemsEmptyRow">
-                                            <td colspan="17" class="text-center text-muted py-4">
+                                <td colspan="21" class="text-center text-muted py-4">
                                                 <i class="fas fa-box-open d-block mb-2"></i>
                                                 Carga un origen o inserta art&iacute;culos para registrar la compra.
                                             </td>
@@ -836,6 +840,10 @@
                                 <small class="text-muted item-max-price-reference d-none"></small>
                                 <span class="invalid-feedback"></span>
                             </td>
+                            <td><select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation-code"><option value="">Legacy sin snapshot</option><option value="10">10 - Gravado</option><option value="20">20 - Exonerado</option><option value="30">30 - Inafecto</option></select></td>
+                            <td><input type="number" name="items[__INDEX__][discount_amount]" class="form-control form-control-sm text-right item-discount-amount" value="0.00" min="0" step="0.01"></td>
+                            <td><select name="items[__INDEX__][is_free]" class="form-control form-control-sm item-is-free"><option value="0">No</option><option value="1">S&iacute;</option></select></td>
+                            <td><select name="items[__INDEX__][igv_recoverable]" class="form-control form-control-sm item-igv-recoverable"><option value="">Sin snapshot</option><option value="1">S&iacute;</option><option value="0">No</option></select></td>
                             <td>
                                 <input type="number"
                                     class="form-control form-control-sm text-right font-weight-bold item-line-total"
@@ -848,8 +856,9 @@
                             </td>
                             <td>
                                 <input type="number"
+                                    name="items[__INDEX__][tax_rate]"
                                     class="form-control form-control-sm text-right item-igv-percent"
-                                    value="18.00" min="0" step="0.01" readonly>
+                                    value="18.00" min="0" max="100" step="0.01">
                             </td>
                             <td>
                                 <input type="number"

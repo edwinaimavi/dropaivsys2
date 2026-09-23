@@ -102,7 +102,17 @@
                             </div>
                             <div class="card-body">
                                 <div class="row">
-                                    <div class="form-group col-md-6">
+                                    <div class="form-group col-md-4">
+                                        <label>TIPO DE INGRESO</label>
+                                        <select id="warehouse_entry_mode" name="entry_mode"
+                                            class="form-control form-control-sm js-warehouse-entry-select">
+                                            <option value="supplier_order">Desde OC proveedor</option>
+                                            <option value="supplier_invoice">Por factura de proveedor</option>
+                                        </select>
+                                        <small class="form-text text-muted">La factura es el documento principal; la OC conserva la trazabilidad.</small>
+                                    </div>
+
+                                    <div class="form-group col-md-8" id="warehouseEntrySupplierOrderGroup">
                                         <label>ORDEN DE COMPRA A PROVEEDOR</label>
                                         <select id="warehouse_entry_supplier_purchase_order_id"
                                             name="supplier_purchase_order_id"
@@ -125,11 +135,8 @@
                                     <div class="form-group col-md-3">
                                         <label>ALMAC&Eacute;N</label>
                                         <select id="warehouse_entry_warehouse_id" name="warehouse_id"
-                                            class="form-control form-control-sm js-warehouse-entry-select">
+                                            class="form-control form-control-sm js-warehouse-entry-select" disabled>
                                             <option value="">Seleccione almac&eacute;n</option>
-                                            @foreach ($warehouses as $warehouse)
-                                                <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
-                                            @endforeach
                                         </select>
                                         <span class="invalid-feedback"></span>
                                     </div>
@@ -145,6 +152,15 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                        <span class="invalid-feedback"></span>
+                                    </div>
+
+                                    <div class="form-group col-md-3" id="warehouseEntryExchangeRateGroup">
+                                        <label>TIPO DE CAMBIO</label>
+                                        <input type="number" step="0.000001" min="0.000001"
+                                            id="warehouse_entry_exchange_rate" name="exchange_rate"
+                                            class="form-control form-control-sm text-right" value="1.000000">
+                                        <small class="form-text text-muted">Soles por unidad de moneda extranjera.</small>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -184,15 +200,25 @@
 
                                     <div class="form-group col-md-3">
                                         <label>FORMA DE PAGO</label>
-                                        <input type="text" id="warehouse_entry_payment_method" name="payment_method"
-                                            class="form-control form-control-sm text-uppercase">
+                                        <select id="warehouse_entry_payment_method" name="payment_method"
+                                            class="form-control form-control-sm js-warehouse-entry-select">
+                                            <option value="">Seleccione forma de pago</option>
+                                            @foreach (\App\Models\WarehouseEntry::PAYMENT_METHODS as $value => $label)
+                                                <option value="{{ $value }}">{{ $label }}</option>
+                                            @endforeach
+                                        </select>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
                                     <div class="form-group col-md-3">
                                         <label>CONDICI&Oacute;N DE PAGO</label>
-                                        <input type="text" id="warehouse_entry_payment_condition" name="payment_condition"
-                                            class="form-control form-control-sm text-uppercase">
+                                        <select id="warehouse_entry_payment_condition" name="payment_condition"
+                                            class="form-control form-control-sm js-warehouse-entry-select">
+                                            <option value="">Seleccione condici&oacute;n</option>
+                                            @foreach (\App\Models\WarehouseEntry::PAYMENT_CONDITIONS as $value => $label)
+                                                <option value="{{ $value }}">{{ $label }}</option>
+                                            @endforeach
+                                        </select>
                                         <small id="warehouseEntryPaymentConditionHelp" class="form-text text-muted d-none">Condici&oacute;n heredada desde la OC proveedor.</small>
                                         <span class="invalid-feedback"></span>
                                     </div>
@@ -214,6 +240,13 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
+                                    <div class="form-group col-md-3">
+                                        <label>FECHA/HORA MOVIMIENTO *</label>
+                                        <input type="datetime-local" id="warehouse_entry_movement_date" name="movement_date"
+                                            class="form-control form-control-sm" value="{{ now()->format('Y-m-d\\TH:i') }}" required>
+                                        <span class="invalid-feedback"></span>
+                                    </div>
+
                                     <div class="form-group col-md-2">
                                         <label>SERIE</label>
                                         <input type="text" id="warehouse_entry_document_series" name="document_series"
@@ -228,10 +261,14 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
-                                        <label>NRO ORDEN COMPRA</label>
-                                        <input type="text" id="warehouse_entry_purchase_order_number"
-                                            name="purchase_order_number" class="form-control form-control-sm text-uppercase">
+                                    <div class="form-group col-md-5 d-none" id="warehouseEntryCustomerOrdersGroup">
+                                        <label>&Oacute;RDENES CLIENTE RELACIONADAS</label>
+                                        <input type="hidden" id="warehouse_entry_purchase_order_number" name="purchase_order_number">
+                                        <select id="warehouse_entry_customer_purchase_order_ids"
+                                            name="customer_purchase_order_ids[]" multiple
+                                            class="form-control form-control-sm js-warehouse-entry-select"
+                                            data-placeholder="Seleccione orden de compra relacionada"></select>
+                                        <small class="form-text text-muted">Puede seleccionar una o varias OC Cliente de la empresa elegida.</small>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
@@ -270,11 +307,25 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
-                                        <label>FECHA PAGO ESPERADA</label>
-                                        <input type="date" id="warehouse_entry_expected_payment_date"
-                                            name="expected_payment_date" class="form-control form-control-sm">
-                                        <span class="invalid-feedback"></span>
+                                    <div class="col-12 d-none" id="warehouseEntryCreditTermsGroup">
+                                        <div class="row">
+                                            <div class="form-group col-sm-6 col-md-3">
+                                                <label>D&Iacute;AS DE CR&Eacute;DITO</label>
+                                                <input type="number" id="warehouse_entry_credit_days" name="credit_days"
+                                                    min="1" step="1" inputmode="numeric"
+                                                    class="form-control form-control-sm" placeholder="Ej. 30">
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="form-group col-sm-6 col-md-3">
+                                                <label>FECHA DE VENCIMIENTO</label>
+                                                <input type="date" id="warehouse_entry_expected_payment_date"
+                                                    name="expected_payment_date" class="form-control form-control-sm" readonly>
+                                                <span class="invalid-feedback"></span>
+                                            </div>
+                                            <div class="col-md-6 d-flex align-items-center">
+                                                <small class="text-muted mb-3"><i class="far fa-calendar-alt mr-1"></i>La fecha de vencimiento se calcula desde la fecha del documento.</small>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div class="col-12">
@@ -323,11 +374,11 @@
                                     </div>
                                     <div id="warehouseEntryBankPaymentCreditHelp" class="warehouse-entry-bank-payment-help d-none">
                                         <i class="fas fa-clock"></i>
-                                        <span>Esta compra es a cr&eacute;dito. No se generar&aacute; egreso bancario hasta registrar el pago.</span>
+                                        <span>Esta compra es a crédito. No se generará egreso bancario hasta registrar el pago.</span>
                                     </div>
                                     <div id="warehouseEntryCreditPaymentPanel" class="warehouse-entry-credit-payment-panel d-none">
                                         <div class="warehouse-entry-credit-payment-summary-grid">
-                                            <div><small>Condici&oacute;n</small><strong id="warehouseEntryCreditCondition">-</strong></div>
+                                            <div><small>Condición</small><strong id="warehouseEntryCreditCondition">-</strong></div>
                                             <div><small>Vencimiento</small><strong id="warehouseEntryCreditDueDate">-</strong></div>
                                             <div><small>Estado</small><strong id="warehouseEntryCreditPaymentStatus">Pendiente</strong></div>
                                             <div><small>Saldo pendiente</small><strong id="warehouseEntryCreditPendingAmount">0.00</strong></div>
@@ -458,16 +509,22 @@
                                             <th>PROCEDENCIA</th>
                                             <th>C. COSTEO</th>
                                             <th>LOTES</th>
+                                            <th>DESTINO / ASIGNACI&Oacute;N</th>
                                             <th>CANT. ORDENADA</th>
                                             <th>CANT. INGRESO</th>
                                             <th>PRECIO</th>
+                                            <th>AFECTACI&Oacute;N</th>
+                                            <th>% IGV</th>
+                                            <th>DESCUENTO</th>
+                                            <th>GRATUITO</th>
+                                            <th>IGV RECUP.</th>
                                             <th>P. TOTAL</th>
                                             <th>ACCI&Oacute;N</th>
                                         </tr>
                                     </thead>
                                     <tbody id="warehouseEntryItemsTbody">
                                         <tr id="warehouseEntryItemsEmptyRow">
-                                            <td colspan="14" class="text-center text-muted py-4">
+                                            <td colspan="20" class="text-center text-muted py-4">
                                                 <i class="fas fa-box-open d-block mb-2"></i>
                                                 Carga una orden o inserta art&iacute;culos para registrar el ingreso.
                                             </td>
@@ -525,6 +582,7 @@
                                     <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-calculator"></i></span><div><strong>Importe e IGV</strong><small>Registra el total pagado y su tratamiento tributario.</small></div></div></div>
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
                                     <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
+                                    <div class="form-group col-md-3"><label>IGV RECUPERABLE *</label><select id="warehouse_entry_expense_igv_recoverable" class="form-control form-control-sm"><option value="1">S&iacute;</option><option value="0">No</option></select><small class="form-text text-muted">El IGV recuperable no se capitaliza.</small></div>
                                     <div class="col-12 mb-3">
                                         <div class="warehouse-entry-detraction-card">
                                             <div class="warehouse-entry-detraction-heading">
@@ -860,12 +918,24 @@
                                 <div class="warehouse-entry-lots-summary mt-1 text-muted small">Sin lotes</div>
                                 <div class="warehouse-entry-lots-inputs"></div>
                             </td>
+                            <td class="warehouse-entry-allocations-cell">
+                                <button type="button" class="btn btn-outline-info btn-sm btnManageWarehouseEntryAllocations">
+                                    <i class="fas fa-project-diagram mr-1"></i>Asignar destino
+                                </button>
+                                <div class="warehouse-entry-allocation-summary mt-1 small text-muted">Pendiente de asignar</div>
+                                <div class="warehouse-entry-allocation-inputs"></div>
+                            </td>
                             <td><input type="number" step="0.01" min="0" name="items[__INDEX__][ordered_quantity]" class="form-control form-control-sm text-right item-ordered-quantity" value="0.00" readonly></td>
                             <td class="warehouse-entry-item-quantity-cell">
                                 <input type="number" step="0.01" min="0.01" name="items[__INDEX__][quantity]" class="form-control form-control-sm text-right item-quantity" value="1.00">
                                 <span class="warehouse-entry-lot-quantity-display text-success font-weight-bold d-none"></span>
                             </td>
                             <td><input type="number" step="0.000001" min="0" name="items[__INDEX__][unit_price]" class="form-control form-control-sm text-right item-unit-price" value="0.00"></td>
+                            <td><select name="items[__INDEX__][tax_affectation_code]" class="form-control form-control-sm item-tax-affectation-code"><option value="">Legacy sin snapshot</option><option value="10">10 - Gravado</option><option value="20">20 - Exonerado</option><option value="30">30 - Inafecto</option></select></td>
+                            <td><input type="number" step="0.01" min="0" max="100" name="items[__INDEX__][tax_rate]" class="form-control form-control-sm text-right item-tax-rate" value="18.00"></td>
+                            <td><input type="number" step="0.01" min="0" name="items[__INDEX__][discount_amount]" class="form-control form-control-sm text-right item-discount-amount" value="0.00"></td>
+                            <td><select name="items[__INDEX__][is_free]" class="form-control form-control-sm item-is-free"><option value="0">No</option><option value="1">S&iacute;</option></select></td>
+                            <td><select name="items[__INDEX__][igv_recoverable]" class="form-control form-control-sm item-igv-recoverable"><option value="">Sin snapshot</option><option value="1">S&iacute;</option><option value="0">No</option></select></td>
                             <td class="text-right font-weight-bold item-line-total">0.00</td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-outline-danger btn-sm btnRemoveWarehouseEntryItem">
@@ -883,7 +953,7 @@
                                         <h6 class="modal-title font-weight-bold">Gestionar lotes del art&iacute;culo</h6>
                                         <small class="text-muted">Distribuye la cantidad ingresada entre uno o m&aacute;s lotes.</small>
                                     </div>
-                                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                                    <button type="button" class="close btnCloseWarehouseEntryLotsModal" aria-label="Cerrar modal de lotes"><span aria-hidden="true">&times;</span></button>
                                 </div>
                                 <div class="modal-body">
                                     <div class="warehouse-entry-lots-metrics mb-3">
@@ -904,8 +974,63 @@
                                     <div id="warehouseEntryLotsError" class="text-danger small mt-2"></div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cancelar</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm btnCloseWarehouseEntryLotsModal">Cancelar</button>
                                     <button type="button" id="btnApplyWarehouseEntryLots" class="btn btn-info btn-sm">Aplicar lotes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="warehouseEntryAllocationsModal" tabindex="-1" role="dialog" aria-hidden="true">
+                        <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+                            <div class="modal-content border-0 shadow-lg">
+                                <div class="modal-header bg-white border-bottom">
+                                    <div>
+                                        <h6 class="modal-title font-weight-bold text-dark"><i class="fas fa-project-diagram text-info mr-2"></i>Asignar destino del producto</h6>
+                                        <small class="text-muted">Distribuye la cantidad ingresada sin generar movimientos adicionales de Kardex.</small>
+                                    </div>
+                                    <button type="button" class="close text-dark btnCloseWarehouseEntryAllocationsModal" aria-label="Cerrar modal de asignaciones"><span aria-hidden="true">&times;</span></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="warehouse-entry-allocation-metrics mb-3">
+                                        <div><small>ART&Iacute;CULO</small><strong id="warehouseEntryAllocationArticle">-</strong></div>
+                                        <div><small>CANTIDAD INGRESADA</small><strong id="warehouseEntryAllocationEntered">0.00</strong></div>
+                                        <div><small>CANTIDAD ASIGNADA</small><strong id="warehouseEntryAllocationAssigned">0.00</strong></div>
+                                        <div><small>PENDIENTE</small><strong id="warehouseEntryAllocationPending">0.00</strong></div>
+                                    </div>
+                                    <div class="card border-0 bg-light mb-3">
+                                        <div class="card-body py-3">
+                                            <div class="row align-items-end">
+                                                <div class="form-group col-lg-7 mb-2">
+                                                    <label>BUSCAR OC CLIENTE PENDIENTE</label>
+                                                    <div class="input-group input-group-sm">
+                                                        <input id="warehouseEntryAllocationSearch" class="form-control" placeholder="N&uacute;mero de OC, cliente, art&iacute;culo, empresa, estado o moneda">
+                                                        <div class="input-group-append"><button type="button" id="btnSearchWarehouseEntryCustomerOrders" class="btn btn-info"><i class="fas fa-search mr-1"></i>Buscar</button></div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group col-lg-3 mb-2">
+                                                    <label>CANTIDAD A ASIGNAR</label>
+                                                    <input type="number" id="warehouseEntryAllocationQuantity" class="form-control form-control-sm text-right" min="0.0001" step="0.0001">
+                                                </div>
+                                                <div class="form-group col-lg-2 mb-2">
+                                                    <button type="button" id="btnAddWarehouseEntryFreeStock" class="btn btn-outline-success btn-sm btn-block"><i class="fas fa-box mr-1"></i>Stock libre</button>
+                                                </div>
+                                            </div>
+                                            <div id="warehouseEntryAllocationSearchResults" class="warehouse-entry-allocation-results"></div>
+                                            <button type="button" id="btnAddWarehouseEntrySupplierAllocation" class="btn btn-outline-primary btn-sm mt-2 d-none"><i class="fas fa-file-invoice mr-1"></i>Asignar saldo a OC proveedor</button>
+                                        </div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="bg-light"><tr><th>#</th><th>Destino</th><th>Orden / cliente</th><th class="text-right">Cantidad</th><th></th></tr></thead>
+                                            <tbody id="warehouseEntryAllocationsTbody"></tbody>
+                                        </table>
+                                    </div>
+                                    <div id="warehouseEntryAllocationsError" class="text-danger small mt-2"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm btnCloseWarehouseEntryAllocationsModal">Cancelar</button>
+                                    <button type="button" id="btnApplyWarehouseEntryAllocations" class="btn btn-info btn-sm"><i class="fas fa-check mr-1"></i>Aplicar asignaciones</button>
                                 </div>
                             </div>
                         </div>

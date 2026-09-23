@@ -25,6 +25,7 @@ class CustomerPurchaseOrderItem extends Model
         'unit_price',
         'subtotal',
         'tax_amount',
+        'tax_affectation_code',
         'line_total',
         'status',
     ];
@@ -75,5 +76,16 @@ class CustomerPurchaseOrderItem extends Model
     public function brand()
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function warehouseEntryAllocations()
+    {
+        return $this->hasMany(WarehouseEntryItemAllocation::class)
+            ->where('status', 'active');
+    }
+
+    public function warehouseDispatchItems()
+    {
+        return $this->hasMany(WarehouseDispatchItem::class);
     }
 }

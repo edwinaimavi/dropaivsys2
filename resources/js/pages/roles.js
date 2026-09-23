@@ -93,10 +93,11 @@ document.addEventListener("DOMContentLoaded", function () {
                         return this.value === permissionName;
                     }).prop('checked', true);
                 });
-            },
-            complete: function () {
                 updateRolePermissionSummary();
                 $('#roleModal').modal('show');
+            },
+            error: function (xhr) {
+                Swal.fire('Error', xhr.responseJSON?.message || 'No se pudieron cargar los permisos del rol.', 'error');
             }
         });
     });
@@ -186,28 +187,38 @@ function initRoleTable() {
 }
 
 function initRoleModalUi() {
-    $(document).on('change', 'input[name="permissions[]"]', updateRolePermissionSummary);
+    const $document = $(document);
+    $document.off('.rolePermissions');
+    $document.on('change.rolePermissions', 'input[name="permissions[]"]', updateRolePermissionSummary);
 
-    $('#rolePermissionSearch').on('input', function () {
+    $('#rolePermissionSearch').off('.rolePermissions').on('input.rolePermissions', function () {
         filterRolePermissions($(this).val());
     });
 
-    $('#btnSelectAllPermissions').on('click', function () {
-        getVisiblePermissionInputs().prop('checked', true);
+    $('#btnSelectAllPermissions').off('.rolePermissions').on('click.rolePermissions', function () {
+        getAllPermissionInputs().prop('checked', true);
         updateRolePermissionSummary();
     });
 
-    $('#btnClearAllPermissions').on('click', function () {
-        getVisiblePermissionInputs().prop('checked', false);
+    $('#btnClearAllPermissions').off('.rolePermissions').on('click.rolePermissions', function () {
+        getAllPermissionInputs().prop('checked', false);
         updateRolePermissionSummary();
     });
 
-    $(document).on('click', '.btnSelectPermissionGroup', function () {
-        $(this)
-            .closest('[data-permission-group]')
-            .find('[data-permission-item]:visible input[name="permissions[]"]')
-            .prop('checked', true);
+    $document.on('click.rolePermissions', '[data-scope-toggle]', function () {
+        const $button = $(this);
+        const selector = $button.data('scope-toggle') === 'module' ? '[data-permission-module]' : '[data-permission-subgroup]';
+        const $inputs = $button.closest(selector).find('input[name="permissions[]"]');
+        const shouldSelect = $inputs.filter(':checked').length !== $inputs.length;
+        $inputs.prop('checked', shouldSelect);
         updateRolePermissionSummary();
+    });
+
+    $document.on('click.rolePermissions', '[data-role-collapse]', function () {
+        const $module = $(this).closest('[data-permission-module]');
+        const collapsed = !$module.hasClass('is-collapsed');
+        $module.toggleClass('is-collapsed', collapsed);
+        $(this).attr('aria-expanded', String(!collapsed));
     });
 }
 
@@ -223,6 +234,7 @@ function resetRoleModal(resetForm = true) {
     $('#btnSaveRole').html('<i class="fas fa-save mr-1"></i>Guardar Rol');
     clearRoleValidationErrors();
     $('#rolePermissionSearch').val('');
+    $('[data-permission-module]').addClass('is-collapsed').find('[data-role-collapse]').attr('aria-expanded', 'false');
     filterRolePermissions('');
     updateRolePermissionSummary();
 }
@@ -268,41 +280,68 @@ function showRoleValidationErrors(errors) {
 }
 
 function filterRolePermissions(term) {
-    const normalizedTerm = String(term || '').toLowerCase().trim();
+    const normalizedTerm = normalizePermissionText(term);
     let visibleItems = 0;
 
-    $('[data-permission-group]').each(function () {
-        const $group = $(this);
-        let groupVisibleItems = 0;
+    $('[data-permission-module]').each(function () {
+        const $module = $(this);
+        let moduleVisibleItems = 0;
 
-        $group.find('[data-permission-item]').each(function () {
-            const $item = $(this);
-            const text = String($item.data('permission-text') || '').toLowerCase();
-            const matches = !normalizedTerm || text.includes(normalizedTerm);
+        $module.find('[data-permission-subgroup]').each(function () {
+            const $subgroup = $(this);
+            let subgroupVisibleItems = 0;
+            $subgroup.find('[data-permission-item]').each(function () {
+                const $item = $(this);
+                const matches = !normalizedTerm || normalizePermissionText($item.data('permission-text')).includes(normalizedTerm);
 
-            $item.toggle(matches);
-            if (matches) {
-                groupVisibleItems++;
-                visibleItems++;
-            }
+                $item.toggle(matches);
+                if (matches) {
+                    subgroupVisibleItems++;
+                    moduleVisibleItems++;
+                    visibleItems++;
+                }
+            });
+            $subgroup.toggle(subgroupVisibleItems > 0);
         });
 
-        $group.toggle(groupVisibleItems > 0);
+        $module.toggle(moduleVisibleItems > 0);
+        if (normalizedTerm && moduleVisibleItems > 0) {
+            $module.removeClass('is-collapsed').find('[data-role-collapse]').attr('aria-expanded', 'true');
+        }
     });
 
     $('#rolePermissionEmpty').toggle(visibleItems === 0);
 }
 
 function updateRolePermissionSummary() {
-    const total = $('input[name="permissions[]"]').length;
-    const selected = $('input[name="permissions[]"]:checked').length;
+    const $all = getAllPermissionInputs();
+    const total = $all.length;
+    const selected = $all.filter(':checked').length;
 
     $('#roleTotalPermissions').text(total);
     $('#roleSelectedPermissions').text(selected);
+
+    $('[data-permission-subgroup]').each(function () {
+        updatePermissionScope($(this), '[data-subgroup-selected]', 'Seleccionar submódulo', 'Quitar submódulo');
+    });
+    $('[data-permission-module]').each(function () {
+        updatePermissionScope($(this), '[data-module-selected]', 'Seleccionar módulo', 'Quitar módulo');
+    });
 }
 
-function getVisiblePermissionInputs() {
-    return $('[data-permission-item]:visible input[name="permissions[]"]');
+function updatePermissionScope($scope, counterSelector, selectLabel, clearLabel) {
+    const $inputs = $scope.find('input[name="permissions[]"]');
+    const selected = $inputs.filter(':checked').length;
+    $scope.find(counterSelector).first().text(selected);
+    $scope.find('[data-scope-toggle]').first().text(selected === $inputs.length && $inputs.length ? clearLabel : selectLabel);
+}
+
+function getAllPermissionInputs() {
+    return $('#rolePermissionGroups input[name="permissions[]"]');
+}
+
+function normalizePermissionText(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
 function renderRoleName(data, type) {

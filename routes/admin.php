@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\GeneralCashController;
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\CompanyWarehouseController;
 use App\Http\Controllers\Admin\CompanyBankAccountController;
 use App\Http\Controllers\Admin\CustomerBranchContactController;
 use App\Http\Controllers\Admin\CustomerController;
@@ -26,9 +27,12 @@ use App\Http\Controllers\Admin\SupplierPurchaseOrderTrackingController;
 use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\UserPreferenceController;
 use App\Http\Controllers\Admin\WarehouseEntryController;
+use App\Http\Controllers\Admin\WarehouseDispatchController;
+use App\Http\Controllers\Admin\WorkAgendaController;
 use App\Http\Controllers\Admin\CustomerBranchController;
 use App\Http\Controllers\Admin\CustomerPurchaseOrderController;
 use App\Http\Controllers\Admin\CustomerOrderProfitabilityController;
+use App\Http\Controllers\Admin\CustomerReturnController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentLookupController;
 use App\Http\Controllers\Admin\ElectronicInvoiceApiLogController;
@@ -63,6 +67,24 @@ Route::post('user-preferences/theme', [UserPreferenceController::class, 'updateT
 
 Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
 Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+
+Route::prefix('work-agenda')->name('work-agenda.')->group(function () {
+    Route::get('/', [WorkAgendaController::class, 'index'])->name('index');
+    Route::get('data', [WorkAgendaController::class, 'data'])->name('data');
+    Route::get('calendar', [WorkAgendaController::class, 'calendar'])->name('calendar');
+    Route::get('my-alerts', [WorkAgendaController::class, 'myAlerts'])->name('my-alerts');
+    Route::get('companies/{company}/responsibles', [WorkAgendaController::class, 'responsibles'])
+        ->name('responsibles');
+    Route::post('/', [WorkAgendaController::class, 'store'])->name('store');
+    Route::get('{workAgendaItem}', [WorkAgendaController::class, 'show'])->name('show');
+    Route::put('{workAgendaItem}', [WorkAgendaController::class, 'update'])->name('update');
+    Route::patch('{workAgendaItem}/status', [WorkAgendaController::class, 'updateStatus'])->name('status.update');
+    Route::patch('{workAgendaItem}/assignments/{assignment}/status', [WorkAgendaController::class, 'updateAssignmentStatus'])
+        ->name('assignments.status.update');
+    Route::post('{workAgendaItem}/assignments/{assignment}/derive', [WorkAgendaController::class, 'deriveAssignment'])
+        ->name('assignments.derive');
+    Route::delete('{workAgendaItem}', [WorkAgendaController::class, 'destroy'])->name('destroy');
+});
 
 Route::prefix('banks')->name('banks.')->group(function () {
     Route::get('/', [BankTreasuryController::class, 'index'])->name('index');
@@ -384,6 +406,16 @@ Route::get(
 )->name('articles.generateCode');
 
 Route::get(
+    'articles/sunat-existence-types',
+    [ArticleController::class, 'sunatExistenceTypes']
+)->name('articles.sunat-existence-types');
+
+Route::get(
+    'articles/sunat-inventory-catalogs',
+    [ArticleController::class, 'sunatInventoryCatalogs']
+)->name('articles.sunat-inventory-catalogs');
+
+Route::get(
     'articles/subcategories/{category}',
     [ArticleController::class, 'getSubcategories']
 )->name('articles.subcategories');
@@ -458,7 +490,7 @@ Route::get(
     'market-studies/{marketStudy}',
     [MarketStudyController::class, 'show']
 )->name('market-studies.show');
-Route::resource('market-studies', MarketStudyController::class)->except(['create']);
+Route::resource('market-studies', MarketStudyController::class)->except(['create', 'show']);
 
 Route::get(
     'market-studies/{id}/quotes',
@@ -568,6 +600,55 @@ Route::post(
 )->name('customer-purchase-orders.close-attention');
 
 Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatch-data',
+    [WarehouseDispatchController::class, 'data']
+)->name('customer-purchase-orders.dispatch-data');
+Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatch-stocks',
+    [WarehouseDispatchController::class, 'stocks']
+)->name('customer-purchase-orders.dispatch-stocks');
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches',
+    [WarehouseDispatchController::class, 'store']
+)->name('customer-purchase-orders.dispatches.store');
+Route::put(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}',
+    [WarehouseDispatchController::class, 'update']
+)->name('customer-purchase-orders.dispatches.update');
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/confirm',
+    [WarehouseDispatchController::class, 'confirm']
+)->name('customer-purchase-orders.dispatches.confirm');
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/cancel-draft',
+    [WarehouseDispatchController::class, 'cancelDraft']
+)->name('customer-purchase-orders.dispatches.cancel-draft');
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/reverse',
+    [WarehouseDispatchController::class, 'reverse']
+)->name('customer-purchase-orders.dispatches.reverse');
+Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/document',
+    [WarehouseDispatchController::class, 'document']
+)->name('customer-purchase-orders.dispatches.document');
+Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/documents',
+    [WarehouseDispatchController::class, 'documents']
+)->name('customer-purchase-orders.dispatches.documents.index');
+Route::post(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/documents',
+    [WarehouseDispatchController::class, 'storeDocuments']
+)->name('customer-purchase-orders.dispatches.documents.store');
+Route::get(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/documents/{document}',
+    [WarehouseDispatchController::class, 'showDocument']
+)->name('customer-purchase-orders.dispatches.documents.show');
+Route::delete(
+    'customer-purchase-orders/{customerPurchaseOrder}/dispatches/{dispatch}/documents/{document}',
+    [WarehouseDispatchController::class, 'deleteDocument']
+)->name('customer-purchase-orders.dispatches.documents.destroy');
+
+Route::get(
     'customer-purchase-orders/{customerPurchaseOrder}/pdf',
     [CustomerPurchaseOrderController::class, 'pdf']
 )->name('customer-purchase-orders.pdf');
@@ -657,7 +738,34 @@ Route::resource(
     SupplierPurchaseOrderController::class
 )->except(['create']);
 
+// DEVOLUCIONES FÍSICAS DE CLIENTES
+Route::prefix('customer-returns')->name('customer-returns.')->group(function () {
+    Route::get('/', [CustomerReturnController::class, 'index'])->name('index');
+    Route::get('list', [CustomerReturnController::class, 'list'])->name('list');
+    Route::get('dispatches/{dispatch}/data', [CustomerReturnController::class, 'dispatchData'])->name('dispatch-data');
+    Route::post('dispatches/{dispatch}', [CustomerReturnController::class, 'store'])->name('store');
+    Route::get('{customerReturn}', [CustomerReturnController::class, 'show'])->name('show');
+    Route::put('{customerReturn}', [CustomerReturnController::class, 'update'])->name('update');
+    Route::post('{customerReturn}/confirm', [CustomerReturnController::class, 'confirm'])->name('confirm');
+    Route::post('{customerReturn}/cancel-draft', [CustomerReturnController::class, 'cancelDraft'])->name('cancel-draft');
+    Route::post('{customerReturn}/reverse', [CustomerReturnController::class, 'reverse'])->name('reverse');
+    Route::get('{customerReturn}/documents', [CustomerReturnController::class, 'documents'])->name('documents.index');
+    Route::post('{customerReturn}/documents', [CustomerReturnController::class, 'storeDocuments'])->name('documents.store');
+    Route::get('{customerReturn}/documents/{document}', [CustomerReturnController::class, 'showDocument'])->name('documents.show');
+    Route::delete('{customerReturn}/documents/{document}', [CustomerReturnController::class, 'deleteDocument'])->name('documents.destroy');
+});
+
 // RUTAS PARA INGRESOS DE ALMACEN
+Route::get('company-warehouses', [CompanyWarehouseController::class, 'index'])
+    ->name('company-warehouses.index');
+Route::post('company-warehouses', [CompanyWarehouseController::class, 'store'])
+    ->name('company-warehouses.store');
+Route::put('company-warehouses/{companyWarehouse}', [CompanyWarehouseController::class, 'update'])
+    ->name('company-warehouses.update');
+Route::get(
+    'warehouse-entries/company/{company}/warehouses',
+    [CompanyWarehouseController::class, 'warehouses']
+)->name('warehouse-entries.company-warehouses');
 Route::get(
     'warehouse-entries/petty-cash-expenses/available',
     [WarehouseEntryController::class, 'availablePettyCashExpenses']
@@ -728,6 +836,15 @@ Route::post(
     'warehouse-entries/load-supplier-order-items',
     [WarehouseEntryController::class, 'loadSupplierPurchaseOrderItems']
 )->name('warehouse-entries.loadSupplierOrderItems');
+
+Route::get(
+    'warehouse-entries/eligible-customer-order-items',
+    [WarehouseEntryController::class, 'eligibleCustomerOrderItems']
+)->name('warehouse-entries.eligibleCustomerOrderItems');
+Route::get(
+    'warehouse-entries/eligible-customer-orders',
+    [WarehouseEntryController::class, 'eligibleCustomerOrders']
+)->name('warehouse-entries.eligibleCustomerOrders');
 
 Route::get(
     'warehouse-entries/{warehouseEntry}/documents/{document}/download',
@@ -802,6 +919,22 @@ Route::get('sunat-catalogs/list', [ElectronicInvoiceCatalogController::class, 'l
     ->name('sunat-catalogs.list');
 Route::get('sunat-catalogs', [ElectronicInvoiceCatalogController::class, 'index'])
     ->name('sunat-catalogs.index');
+Route::get('sunat-catalogs/catalogs', [ElectronicInvoiceCatalogController::class, 'catalogs'])
+    ->name('sunat-catalogs.catalogs');
+Route::post('sunat-catalogs/catalogs', [ElectronicInvoiceCatalogController::class, 'storeCatalog'])
+    ->name('sunat-catalogs.catalogs.store');
+Route::put('sunat-catalogs/catalogs/{sunatCatalog}', [ElectronicInvoiceCatalogController::class, 'updateCatalog'])
+    ->name('sunat-catalogs.catalogs.update');
+Route::patch('sunat-catalogs/catalogs/{sunatCatalog}/status', [ElectronicInvoiceCatalogController::class, 'updateCatalogStatus'])
+    ->name('sunat-catalogs.catalogs.status');
+Route::get('sunat-catalogs/catalogs/{sunatCatalog}/items', [ElectronicInvoiceCatalogController::class, 'items'])
+    ->name('sunat-catalogs.items');
+Route::post('sunat-catalogs/catalogs/{sunatCatalog}/items', [ElectronicInvoiceCatalogController::class, 'storeItem'])
+    ->name('sunat-catalogs.items.store');
+Route::put('sunat-catalogs/catalogs/{sunatCatalog}/items/{sunatCatalogItem}', [ElectronicInvoiceCatalogController::class, 'updateItem'])
+    ->name('sunat-catalogs.items.update');
+Route::patch('sunat-catalogs/catalogs/{sunatCatalog}/items/{sunatCatalogItem}/status', [ElectronicInvoiceCatalogController::class, 'updateItemStatus'])
+    ->name('sunat-catalogs.items.status');
 
 Route::get('electronic-invoice-api-logs/list', [ElectronicInvoiceApiLogController::class, 'list'])
     ->name('electronic-invoice-api-logs.list');
@@ -814,6 +947,32 @@ Route::get('kardex/stock/list', [KardexController::class, 'stock'])->name('karde
 Route::get('kardex/stock-at-date', [KardexController::class, 'stockAtDate'])->name('kardex.stock-at-date');
 Route::post('kardex/recalculate', [KardexController::class, 'recalculate'])->name('kardex.recalculate');
 Route::get('kardex/export/{format}', [KardexController::class, 'export'])->name('kardex.export');
+Route::get('kardex/formato-12-1/export/{format}', [KardexController::class, 'physicalInventoryRegisterExport'])
+    ->name('kardex.formato-12-1.export');
+Route::get('kardex/formato-12-1', [KardexController::class, 'physicalInventoryRegister'])
+    ->name('kardex.formato-12-1');
+Route::get('kardex/formato-13-1/export/{format}', [KardexController::class, 'valuedInventoryRegisterExport'])
+    ->name('kardex.formato-13-1.export');
+Route::get('kardex/formato-13-1', [KardexController::class, 'valuedInventoryRegister'])
+    ->name('kardex.formato-13-1');
+Route::get('kardex/reconciliation', [KardexController::class, 'reconciliation'])
+    ->name('kardex.reconciliation');
+Route::get('kardex/cierres-mensuales', [KardexController::class, 'periodClosures'])
+    ->name('kardex.period-closures');
+Route::post('kardex/cierres-mensuales/cerrar', [KardexController::class, 'closePeriod'])
+    ->name('kardex.period-close');
+Route::post('kardex/cierres-mensuales/reabrir', [KardexController::class, 'reopenPeriod'])
+    ->name('kardex.period-reopen');
+Route::get('kardex/ple', [KardexController::class, 'pleReadiness'])
+    ->name('kardex.ple');
+Route::get('kardex/contabilidad-inventario', [KardexController::class, 'inventoryAccounting'])
+    ->name('kardex.accounting');
+Route::post('kardex/contabilidad-inventario/cuentas', [KardexController::class, 'storeInventoryAccountingAccount'])
+    ->name('kardex.accounting.accounts');
+Route::post('kardex/contabilidad-inventario/configuracion', [KardexController::class, 'saveInventoryAccountingSettings'])
+    ->name('kardex.accounting.settings');
+Route::post('kardex/contabilidad-inventario/contabilizar', [KardexController::class, 'postInventoryAccountingPeriod'])
+    ->name('kardex.accounting.post');
 Route::get('kardex/article/{article}/history', [KardexController::class, 'articleHistory'])
     ->name('kardex.article-history');
 Route::get('kardex/{movement}', [KardexController::class, 'show'])->name('kardex.show');

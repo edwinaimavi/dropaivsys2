@@ -129,7 +129,7 @@
 
                             <th>NOMBRE COMERCIAL</th>
 
-                            <th>AFECTO IGV</th>
+                            <th>CLASIFICACIÓN</th>
 
                             <th>ESTADO</th>
 

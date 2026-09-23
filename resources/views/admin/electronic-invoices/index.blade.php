@@ -92,8 +92,7 @@
             overflow: hidden;
             border-radius: 14px;
         }
-        .invoice-modal-header,
-        .electronic-invoice-view-header {
+        .invoice-modal-header {
             background: linear-gradient(135deg, #0f766e, #14b8a6);
             padding: 12px 16px;
         }
@@ -121,8 +120,7 @@
         }
         .invoice-summary-card,
         .invoice-section,
-        .invoice-total-card,
-        .electronic-invoice-card {
+        .invoice-total-card {
             border: 1px solid #e2e8f0;
             border-radius: 9px;
             background: #fff;
@@ -233,12 +231,6 @@
             min-height: 31px;
             resize: vertical;
         }
-        .electronic-invoice-card-title {
-            color: #0f766e;
-            font-size: 12px;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
         .invoice-items-scroll {
             overflow-x: auto;
             border: 1px solid #e2e8f0;
@@ -285,8 +277,7 @@
         .invoice-total-card {
             padding: 10px;
         }
-        .invoice-total-line,
-        .electronic-invoice-total-line {
+        .invoice-total-line {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -294,8 +285,7 @@
             padding: 3px 0;
             font-size: 12px;
         }
-        .invoice-total-line strong,
-        .electronic-invoice-total-line strong {
+        .invoice-total-line strong {
             color: #0f766e;
         }
         .invoice-grand-total {
@@ -312,18 +302,6 @@
         .invoice-grand-total strong {
             color: #fff;
             font-size: 19px;
-        }
-        .electronic-invoice-view-grid small {
-            display: block;
-            color: #64748b;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-        .electronic-invoice-view-grid strong {
-            display: block;
-            color: #1e293b;
-            margin-bottom: 10px;
         }
         .sticky-modal-footer {
             position: sticky;

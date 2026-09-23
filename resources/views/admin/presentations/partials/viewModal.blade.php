@@ -1,5 +1,5 @@
 <!-- VIEW PRESENTATION MODAL -->
-<div class="modal fade" id="viewPresentationModal" tabindex="-1" role="dialog" aria-labelledby="viewPresentationModalLabel"
+<div class="modal fade dp-detail-modal" id="viewPresentationModal" tabindex="-1" role="dialog" aria-labelledby="viewPresentationModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -7,25 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header presentation-view-header py-2 px-3">
+            <div class="modal-header dp-detail-modal-header presentation-view-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-box-open"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title presentation-view-title" id="viewPresentationModalLabel">
+                            Informaci&oacute;n de Presentaci&oacute;n
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vp_header_subtitle">Cantidad, unidad y descripci&oacute;n</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title presentation-view-title mb-0" id="viewPresentationModalLabel"
-                    style="
-                        font-size:18px;
-                        font-weight:700;
-                        letter-spacing:.3px;
-                    ">
-
-                    <i class="fas fa-box-open mr-2"></i>
-                    Información de Presentación
-
-                </h5>
-
-                <button type="button" class="close presentation-view-close" data-dismiss="modal" aria-label="Cerrar"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close dp-detail-modal-close presentation-view-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 

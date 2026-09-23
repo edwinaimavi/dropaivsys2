@@ -36,6 +36,17 @@ class ElectronicInvoiceItem extends Model
     public function customerPurchaseOrderItem() { return $this->belongsTo(CustomerPurchaseOrderItem::class); }
     public function warehouseEntryItem() { return $this->belongsTo(WarehouseEntryItem::class); }
     public function kardexMovement() { return $this->belongsTo(WarehouseKardexMovement::class); }
+    public function dispatchAllocations()
+    {
+        return $this->hasMany(ElectronicInvoiceItemDispatchAllocation::class);
+    }
+    public function dispatchItems()
+    {
+        return $this->belongsToMany(
+            WarehouseDispatchItem::class,
+            'electronic_invoice_item_dispatch_allocations'
+        )->withPivot('quantity')->wherePivotNull('deleted_at')->withTimestamps();
+    }
     public function kardexMovements()
     {
         return $this->morphMany(WarehouseKardexMovement::class, 'sourceItem');

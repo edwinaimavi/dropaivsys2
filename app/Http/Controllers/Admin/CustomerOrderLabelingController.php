@@ -87,7 +87,7 @@ class CustomerOrderLabelingController extends Controller
             ->map(function (CustomerPurchaseOrder $order) {
                 $statusLabel = $order->status === 'partial_entered'
                     ? 'INGRESO PARCIAL'
-                    : 'ABASTECIDA';
+                    : ($order->status === 'attended' ? 'ATENDIDA / DESPACHADA' : 'ABASTECIDA EN ALMACÉN');
 
                 return [
                     'id' => $order->id,

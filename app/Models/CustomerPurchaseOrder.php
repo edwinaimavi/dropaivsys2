@@ -24,24 +24,27 @@ class CustomerPurchaseOrder extends Model
 
     public const STATUS_PARTIAL_ENTERED = 'partial_entered';
 
+    public const STATUS_PARTIAL_DISPATCHED = 'partial_dispatched';
+
     public static function statusPresentation(?string $status): array
     {
         return match (strtolower(trim((string) $status))) {
-            'registered' => ['label' => 'Registrada', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
-            'draft' => ['label' => 'Registrada', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
+            'registered' => ['label' => 'Registrada', 'description' => 'Orden registrada, pendiente de compra al proveedor.', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
+            'draft' => ['label' => 'Registrada', 'description' => 'Orden registrada, pendiente de compra al proveedor.', 'class' => 'cop-status-registered', 'icon' => 'fa-clipboard'],
             'sent' => ['label' => 'Enviada', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-paper-plane'],
             'approved' => ['label' => 'Aprobada', 'class' => 'cop-status-attended', 'icon' => 'fa-check-circle'],
             'received' => ['label' => 'Recibida', 'class' => 'cop-status-entered', 'icon' => 'fa-box'],
-            'in_purchase', 'en_compra' => ['label' => 'En compra', 'class' => 'cop-status-in-purchase', 'icon' => 'fa-shopping-cart'],
+            'in_purchase', 'en_compra' => ['label' => 'Compra en proceso', 'description' => 'Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.', 'class' => 'cop-status-in-purchase', 'icon' => 'fa-shopping-cart'],
             'partial_purchase' => ['label' => 'Compra parcial', 'class' => 'cop-status-partial-purchase', 'icon' => 'fa-cart-plus'],
-            'entered' => ['label' => 'Abastecida', 'class' => 'cop-status-entered', 'icon' => 'fa-warehouse'],
-            'partial_entered' => ['label' => 'Ingreso parcial', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-box'],
-            'attended' => ['label' => 'Atendida', 'class' => 'cop-status-attended', 'icon' => 'fa-check'],
+            'entered' => ['label' => 'Abastecida en almacén', 'description' => 'Mercadería ingresada, falta atención o despacho.', 'class' => 'cop-status-entered', 'icon' => 'fa-warehouse'],
+            'partial_entered' => ['label' => 'Ingreso parcial', 'description' => 'Llegó parte de la mercadería al almacén.', 'class' => 'cop-status-partial-entered', 'icon' => 'fa-box'],
+            'partial_dispatched' => ['label' => 'Despacho parcial', 'description' => 'Parte de la mercadería ya salió del almacén; aún queda saldo por despachar.', 'class' => 'cop-status-partial-dispatched', 'icon' => 'fa-truck-loading'],
+            'attended' => ['label' => 'Atendida / Despachada', 'description' => 'Mercadería despachada o atención cerrada.', 'class' => 'cop-status-attended', 'icon' => 'fa-check'],
             'not_attended' => ['label' => 'No atendida', 'class' => 'cop-status-not-attended', 'icon' => 'fa-times'],
-            'cancelled' => ['label' => 'Anulada', 'class' => 'cop-status-cancelled', 'icon' => 'fa-ban'],
+            'cancelled' => ['label' => 'Anulada', 'description' => 'Orden anulada.', 'class' => 'cop-status-cancelled', 'icon' => 'fa-ban'],
             'completed' => ['label' => 'Completada', 'class' => 'cop-status-completed', 'icon' => 'fa-check-double'],
-            'delivered' => ['label' => 'Entregada', 'class' => 'cop-status-completed', 'icon' => 'fa-truck'],
-            'invoiced' => ['label' => 'Facturada', 'class' => 'cop-status-entered', 'icon' => 'fa-file-invoice'],
+            'delivered' => ['label' => 'Entregada', 'description' => 'Recepción confirmada por el cliente.', 'class' => 'cop-status-completed', 'icon' => 'fa-truck'],
+            'invoiced' => ['label' => 'Facturada', 'description' => 'Comprobante emitido.', 'class' => 'cop-status-entered', 'icon' => 'fa-file-invoice'],
             default => ['label' => 'Sin estado', 'class' => 'cop-status-unknown', 'icon' => 'fa-minus'],
         };
     }
@@ -80,6 +83,7 @@ class CustomerPurchaseOrder extends Model
         'seller_email',
         'seller_observation',
         'subtotal_exonerated',
+        'subtotal_unaffected',
         'subtotal_taxed',
         'igv',
         'grand_total',
@@ -102,6 +106,7 @@ class CustomerPurchaseOrder extends Model
         'delivery_end_date' => 'date',
         'affect_igv' => 'boolean',
         'subtotal_exonerated' => 'decimal:10',
+        'subtotal_unaffected' => 'decimal:10',
         'subtotal_taxed' => 'decimal:10',
         'igv' => 'decimal:10',
         'grand_total' => 'decimal:10',
@@ -149,6 +154,30 @@ class CustomerPurchaseOrder extends Model
     public function profitabilityAnalyses()
     {
         return $this->hasMany(CustomerOrderProfitabilityAnalysis::class);
+    }
+
+    public function warehouseEntryAllocations()
+    {
+        return $this->hasMany(WarehouseEntryItemAllocation::class)
+            ->where('status', 'active');
+    }
+
+    public function warehouseEntries()
+    {
+        return $this->belongsToMany(
+            WarehouseEntry::class,
+            'customer_purchase_order_warehouse_entry'
+        )->withTimestamps();
+    }
+
+    public function warehouseDispatches()
+    {
+        return $this->hasMany(WarehouseDispatch::class);
+    }
+
+    public function customerReturns()
+    {
+        return $this->hasMany(CustomerReturn::class);
     }
 
     public function electronicInvoices()
@@ -216,8 +245,18 @@ class CustomerPurchaseOrder extends Model
         array $purchased,
         array $entered,
         bool $hasAttentionClosureDocument = false,
-        bool $hasSupplierPurchaseOrder = false
+        bool $hasSupplierPurchaseOrder = false,
+        array $dispatched = []
     ): string {
+        $hasDispatch = round((float) collect($dispatched)->sum(), 4) > 0;
+        if ($hasDispatch) {
+            $allDispatched = collect($requested)->every(
+                fn ($quantity, $itemId) => round((float) ($dispatched[$itemId] ?? 0), 4) >= round((float) $quantity, 4)
+            );
+
+            return $allDispatched ? self::STATUS_ATTENDED : self::STATUS_PARTIAL_DISPATCHED;
+        }
+
         $allEntered = collect($requested)->every(fn ($quantity, $itemId) => round((float) ($entered[$itemId] ?? 0), 4) >= round((float) $quantity, 4));
         if ($allEntered) {
             return $hasAttentionClosureDocument

@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -57,6 +58,59 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function companies(): BelongsToMany
+    {
+        return $this->belongsToMany(Company::class)->withTimestamps();
+    }
+
+    public function belongsToCompany(int $companyId): bool
+    {
+        if ($companyId <= 0) {
+            return false;
+        }
+
+        if ($this->relationLoaded('companies')) {
+            return $this->companies->contains('id', $companyId);
+        }
+
+        return $this->companies()->whereKey($companyId)->exists();
+    }
+
+    public function createdWorkAgendaItems(): HasMany
+    {
+        return $this->hasMany(WorkAgendaItem::class, 'created_by_user_id');
+    }
+
+    public function responsibleWorkAgendaItems(): HasMany
+    {
+        return $this->hasMany(WorkAgendaItem::class, 'responsible_user_id');
+    }
+
+    public function workAgendaAssignments(): HasMany
+    {
+        return $this->hasMany(WorkAgendaItemAssignment::class);
+    }
+
+    public function createdAssistanceNotes(): HasMany
+    {
+        return $this->hasMany(AssistanceNote::class, 'created_by_user_id');
+    }
+
+    public function responsibleAssistanceNotes(): HasMany
+    {
+        return $this->hasMany(AssistanceNote::class, 'responsible_user_id');
+    }
+
+    public function sharedAssistanceNotes(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            AssistanceNote::class,
+            'assistance_note_shares',
+            'user_id',
+            'assistance_note_id'
+        )->withPivot(['company_id', 'shared_by_user_id', 'created_at']);
     }
 
     public function preference()

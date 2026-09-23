@@ -315,6 +315,7 @@ function resetCompanyForm() {
 
     $('#company_id').val('');
     $('#company_status').val('1');
+    $('#company_inventory_valuation_method_item_id').val('');
     $('#companyCurrentLogo').text('');
     lastCompanyRucLookup = '';
     $('#companyRucExtraData').addClass('d-none');
@@ -374,6 +375,7 @@ function editCompany(id) {
             $('#company_phone').val(company.phone || '');
             $('#company_email').val(company.email || '');
             $('#company_status').val(company.status ? '1' : '0');
+            $('#company_inventory_valuation_method_item_id').val(company.inventory_valuation_method_item_id || '');
             setCompanyLogoPreview(company.logo_url, company.logo ? 'Logo actual registrado' : '');
             $('#companyModal').modal('show');
         })
@@ -408,6 +410,9 @@ function viewCompany(id) {
             $('#view_company_created_at').text(company.created_at || '-');
             $('#view_company_updated_at').text(company.updated_at || '-');
             $('#view_company_usage').text((company.usage || []).length ? company.usage.join(', ') : 'Sin relaciones detectadas');
+            $('#view_company_inventory_valuation_method').text(company.inventory_valuation_method
+                ? `${company.inventory_valuation_method.code} — ${company.inventory_valuation_method.description}`
+                : 'Pendiente de configurar');
             $('#view_company_bank_accounts').html(renderCompanyBankAccounts(company.bank_accounts || []));
             $('#btnManageCompanyBankAccounts').data('company', {
                 id: company.id,

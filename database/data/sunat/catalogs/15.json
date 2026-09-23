@@ -1,0 +1,20 @@
+{
+  "catalog_code": "15",
+  "catalog_name": "TIPO DE TITULO",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "01", "description": "VALORES EMITIDOS O GARANTIZADOS POR EL ESTADO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "02", "description": "VALORES EMITIDOS O GARANTIZADOS POR EL SISTEMA FINANCIERO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "03", "description": "VALORES EMITIDOS POR LA EMPRESA", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "04", "description": "OTROS INSTRUMENTOS FINANCIEROS REPRESENTATIVOS DE DEUDA", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "05", "description": "CERTIFICADOS DE SUSCRIPCION PREFERENTE", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "06", "description": "ACCIONES REPRESENTATIVAS DE CAPITAL SOCIAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "07", "description": "ACCIONES DE INVERSION", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "08", "description": "CERTIFICADO DE PARTICIPACION DE FONDOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "09", "description": "ASOCIACIONES EN PARTICIPACION Y CONSORCIOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "10", "description": "OTROS INSTRUMENTOS FINANCIEROS REPRESENTATIVOS DE DERECHO PATRIMONIAL", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "99", "description": "OTROS TITULOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

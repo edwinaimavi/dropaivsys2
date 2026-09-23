@@ -5,6 +5,8 @@ use App\Models\Category;
 use App\Models\DocumentType;
 use App\Models\Presentation;
 use App\Models\Subcategory;
+use App\Models\SunatCatalog;
+use App\Models\SunatCatalogItem;
 use App\Models\Unit;
 use App\Services\ArticleCodeGenerator;
 use Illuminate\Support\Facades\Storage;
@@ -36,6 +38,26 @@ beforeEach(function () {
         'unit_id' => $this->unit->id,
         'status' => 'ACTIVE',
     ]);
+    $catalog05 = SunatCatalog::create([
+        'code' => '05', 'name' => 'TIPO DE EXISTENCIA', 'is_active' => true,
+    ]);
+    $this->sunatExistenceType = SunatCatalogItem::create([
+        'sunat_catalog_id' => $catalog05->id,
+        'catalog_code' => '05',
+        'item_code' => '01',
+        'description' => 'MERCADERÍAS',
+        'status' => 'ACTIVE',
+    ]);
+    $catalog13 = SunatCatalog::create([
+        'code' => '13', 'name' => 'CATÁLOGO DE EXISTENCIAS', 'is_active' => true,
+    ]);
+    $this->sunatInventoryCatalog = SunatCatalogItem::create([
+        'sunat_catalog_id' => $catalog13->id,
+        'catalog_code' => '13',
+        'item_code' => '9',
+        'description' => 'OTROS',
+        'status' => 'ACTIVE',
+    ]);
 });
 
 function articlePayloadForValidationTest(string $code, ?string $institutionalCode, string $legalName): array
@@ -52,8 +74,14 @@ function articlePayloadForValidationTest(string $code, ?string $institutionalCod
         'legal_name' => $legalName,
         'commercial_name' => "COMERCIAL $code",
         'billing_name' => "FACTURACIÓN $code",
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => 1,
+        'sunat_existence_type_item_id' => test()->sunatExistenceType->id,
+        'sunat_inventory_catalog_item_id' => test()->sunatInventoryCatalog->id,
+        'sunat_inventory_catalog_code' => $code,
         'minimum_stock' => 0,
         'is_taxable' => 1,
+        'sales_tax_affectation_code' => '10',
         'has_batch' => 0,
         'has_expiration' => 0,
         'status' => 'ACTIVE',
@@ -258,6 +286,7 @@ it('reintenta el correlativo cuando el indice unico detecta una colision', funct
         'billing_name' => 'ARTÍCULO EN COLISIÓN',
         'minimum_stock' => 0,
         'is_taxable' => 1,
+        'sales_tax_affectation_code' => '10',
         'has_batch' => 0,
         'has_expiration' => 0,
         'status' => 'ACTIVE',
@@ -291,6 +320,7 @@ it('limita a tres los reintentos y devuelve el mensaje de codigo automatico desa
             'billing_name' => 'ARTÍCULO EN COLISIÓN PERSISTENTE',
             'minimum_stock' => 0,
             'is_taxable' => 1,
+        'sales_tax_affectation_code' => '10',
             'has_batch' => 0,
             'has_expiration' => 0,
             'status' => 'ACTIVE',
@@ -304,4 +334,46 @@ it('limita a tres los reintentos y devuelve el mensaje de codigo automatico desa
     }
 
     expect(Article::count())->toBe(1);
+});
+
+it('sincroniza el código SUNAT propio con el correlativo automático confirmado por el servidor', function () {
+    $payload = articlePayloadForValidationTest('ART99999', null, 'ARTÍCULO CÓDIGO SUNAT SEGURO');
+    $payload['code_mode'] = 'automatic';
+    $payload['sunat_inventory_catalog_use_internal_code'] = 1;
+    $payload['sunat_inventory_catalog_code'] = 'ART99999';
+
+    $this->postJson(route('admin.articles.store'), $payload)->assertCreated();
+
+    $article = Article::where('legal_name', 'ARTÍCULO CÓDIGO SUNAT SEGURO')->firstOrFail();
+    expect($article->code)->toBe('ART00001')
+        ->and($article->sunat_inventory_catalog_code)->toBe($article->code);
+});
+
+
+it('no amarra la afectación de venta ni el stock mínimo al maestro de artículos', function () {
+    $payload = articlePayloadForValidationTest('ART-LIMPIO', null, 'ARTÍCULO MAESTRO LIMPIO');
+    unset(
+        $payload['sales_tax_affectation_code'],
+        $payload['is_taxable'],
+        $payload['minimum_stock']
+    );
+
+    $response = $this->postJson(route('admin.articles.store'), $payload)
+        ->assertCreated();
+
+    $article = Article::findOrFail($response->json('data.id'));
+    expect($article->sales_tax_affectation_code)->toBeNull()
+        ->and((float) $article->minimum_stock)->toBe(0.0);
+
+    $updatePayload = $payload;
+    $updatePayload['legal_name'] = 'ARTÍCULO MAESTRO LIMPIO EDITADO';
+    $updatePayload['commercial_name'] = 'COMERCIAL EDITADO';
+    $updatePayload['billing_name'] = 'FACTURACIÓN EDITADO';
+
+    $this->putJson(route('admin.articles.update', $article), $updatePayload)
+        ->assertOk();
+
+    $article->refresh();
+    expect($article->sales_tax_affectation_code)->toBeNull()
+        ->and((float) $article->minimum_stock)->toBe(0.0);
 });

@@ -4,6 +4,7 @@ use App\Models\ElectronicInvoice;
 use App\Models\ElectronicInvoiceSetting;
 use App\Models\WarehouseKardexMovement;
 use App\Models\WarehouseStock;
+use App\Models\WarehouseValuationPool;
 use App\Services\WarehouseKardexService;
 use App\Services\ElectronicBilling\ApiPeruBillingService;
 use App\Http\Controllers\Admin\ElectronicInvoiceSettingController;
@@ -33,6 +34,10 @@ function electronicInvoiceStockFixture(float $invoiceQuantity = 4, string $statu
         'code' => 'ALM-TEST', 'name' => 'ALMACÉN TEST', 'status' => 'ACTIVE',
         'created_at' => $now, 'updated_at' => $now,
     ]);
+    DB::table('company_warehouses')->insert([
+        'company_id' => $companyId, 'warehouse_id' => $warehouseId, 'is_active' => true,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $warehouseEntryId = DB::table('warehouse_entries')->insertGetId([
         'entry_number' => 'ING-TEST-001', 'warehouse_id' => $warehouseId,
         'company_id' => $companyId, 'supplier_id' => $supplierId, 'currency_id' => $currencyId,
@@ -42,6 +47,16 @@ function electronicInvoiceStockFixture(float $invoiceQuantity = 4, string $statu
         'abbreviation' => 'UND', 'description' => 'UNIDAD', 'status' => 'ACTIVE',
         'created_at' => $now, 'updated_at' => $now,
     ]);
+    $catalog06Id = DB::table('sunat_catalogs')->insertGetId([
+        'code' => '06', 'name' => 'UNIDAD DE MEDIDA', 'is_active' => true,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $sunatUnitId = DB::table('sunat_catalog_items')->insertGetId([
+        'sunat_catalog_id' => $catalog06Id, 'catalog_code' => '06', 'item_code' => 'NIU',
+        'description' => 'UNIDAD (BIENES)', 'status' => 'ACTIVE',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    DB::table('units')->where('id', $unitId)->update(['sunat_unit_item_id' => $sunatUnitId]);
     $categoryId = DB::table('categories')->insertGetId([
         'description' => 'CATEGORÍA TEST', 'code' => 'CAT-TEST', 'type' => 'PRODUCTO COMERCIAL',
         'status' => 'ACTIVE', 'created_at' => $now, 'updated_at' => $now,
@@ -49,16 +64,28 @@ function electronicInvoiceStockFixture(float $invoiceQuantity = 4, string $statu
     $articleId = DB::table('articles')->insertGetId([
         'code' => 'ART-TEST', 'category_id' => $categoryId, 'unit_id' => $unitId,
         'legal_name' => 'ARTÍCULO TEST', 'billing_name' => 'ARTÍCULO TEST', 'status' => 'ACTIVE',
+        'item_kind' => 'product', 'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('ART-TEST'),
         'created_at' => $now, 'updated_at' => $now,
     ]);
     $stock = WarehouseStock::create([
-        'stock_key' => "{$warehouseId}|{$articleId}|LOTE-01|2027-12-31",
+        'company_id' => $companyId,
+        'stock_key' => "{$companyId}|{$warehouseId}|{$articleId}|LOTE-01|2027-12-31",
         'warehouse_id' => $warehouseId, 'article_id' => $articleId, 'unit_id' => $unitId,
         'lot_number' => 'LOTE-01', 'expiration_date' => '2027-12-31',
         'current_quantity' => 10, 'reserved_quantity' => 0, 'average_unit_cost' => 10,
         'total_cost' => 100, 'status' => 'ACTIVE',
     ]);
+    WarehouseValuationPool::create([
+        'company_id' => $companyId,
+        'warehouse_id' => $warehouseId,
+        'article_id' => $articleId,
+        'current_quantity' => 10,
+        'average_unit_cost' => 10,
+        'total_cost' => 100,
+    ]);
     $invoice = ElectronicInvoice::create([
+        'company_id' => $companyId,
         'warehouse_entry_id' => $warehouseEntryId, 'warehouse_id' => $warehouseId, 'currency_id' => $currencyId,
         'document_type' => '01', 'serie' => 'F001', 'correlativo' => '00000001',
         'full_number' => 'F001-00000001', 'issue_date' => now()->toDateString(),
@@ -103,6 +130,23 @@ test('draft electronic invoice does not move stock', function () {
         ->and(WarehouseKardexMovement::count())->toBe(0);
 });
 
+test('factura servicios y productos no inventariables sin tocar stock ni Kardex', function (string $kind) {
+    ['invoice' => $invoice, 'item' => $item, 'stock' => $stock] = electronicInvoiceStockFixture();
+    DB::table('articles')->where('id', $item->article_id)->update([
+        'item_kind' => $kind,
+        'is_inventory_item' => false,
+    ]);
+
+    app(WarehouseKardexService::class)->registerExitFromElectronicInvoice($invoice);
+
+    expect((float) $stock->fresh()->current_quantity)->toBe(10.0)
+        ->and(WarehouseKardexMovement::count())->toBe(0)
+        ->and($invoice->fresh()->stock_moved_at)->toBeNull();
+})->with([
+    'servicio' => ['service'],
+    'producto no inventariable' => ['product'],
+]);
+
 test('electronic invoice is blocked when stock is insufficient', function () {
     ['invoice' => $invoice, 'stock' => $stock] = electronicInvoiceStockFixture(11);
 
@@ -120,7 +164,8 @@ test('internal invoice can exist without api configuration', function () {
     expect($service->canSendToApi($invoice))->toBeFalse()
         ->and($service->externalStatus($invoice))->toBe('not_configured')
         ->and($service->send($invoice)['message'])->toBe('API de facturación aún no configurada.')
-        ->and($service->buildPayload($invoice))->toHaveKeys(['tipoDoc', 'serie', 'correlativo', 'details']);
+        ->and($service->buildPayload($invoice))->toHaveKeys(['tipoDoc', 'serie', 'correlativo', 'details'])
+        ->and($invoice->items()->value('unit_code'))->toBe('NIU');
 });
 
 test('electronic billing credentials are encrypted and never returned by show endpoint', function () {

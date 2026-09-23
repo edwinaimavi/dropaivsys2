@@ -1005,6 +1005,9 @@ function renderCategoryDetail(category) {
     const empty = '-';
     const statusLabel = categoryStatusLabel(category.status);
 
+    $('#vcat_header_subtitle').text(
+        [category.code, category.description].filter(Boolean).join(' · ') || empty
+    );
     $('#vc_description').text(category.description || empty);
     $('#vc_type').text(category.type || empty);
     $('#vc_id').text(category.id || empty);

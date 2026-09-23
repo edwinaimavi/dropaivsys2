@@ -345,6 +345,8 @@
             quoteArticleGenerateCode: "{{ route('admin.quotes.articles.generate-code') }}",
 
             quoteArticleQuickStore: "{{ route('admin.quotes.articles.quick-store') }}",
+            sunatExistenceTypes: "{{ route('admin.articles.sunat-existence-types') }}",
+            sunatInventoryCatalogs: "{{ route('admin.articles.sunat-inventory-catalogs') }}",
 
             quoteBrandSearch: "{{ route('admin.quotes.brands.search') }}",
 

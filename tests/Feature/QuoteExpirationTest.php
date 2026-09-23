@@ -5,11 +5,24 @@ use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
     Carbon::setTestNow('2026-06-26 09:00:00');
 
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
     $this->user = User::factory()->create();
+    $permissions = [
+        'admin.quotes.index',
+        'admin.quotes.store',
+        'admin.quotes.update',
+    ];
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+    $this->user->givePermissionTo($permissions);
+
     $now = now();
 
     $this->companyId = DB::table('companies')->insertGetId([
@@ -137,6 +150,8 @@ test('new quotes are emitted by backend even when frontend sends draft', functio
         'unit_id' => $unitId,
         'legal_name' => 'ARTÍCULO DE PRUEBA',
         'billing_name' => 'ARTÍCULO DE PRUEBA',
+        'sales_tax_affectation_code' => '20',
+        'is_taxable' => false,
         'status' => 'ACTIVE',
         'created_at' => now(),
         'updated_at' => now(),
@@ -162,6 +177,7 @@ test('new quotes are emitted by backend even when frontend sends draft', functio
             'quantity' => 2,
             'unit_price' => 25,
             'line_total' => 50,
+            'tax_affectation_code' => '20',
         ]],
     ];
 

@@ -3,11 +3,20 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Article extends Model
 {
     use SoftDeletes;
+
+    public const KIND_PRODUCT = 'product';
+
+    public const KIND_SERVICE = 'service';
+
+    public const SALES_TAX_TAXABLE = '10';
+    public const SALES_TAX_EXONERATED = '20';
+    public const SALES_TAX_UNAFFECTED = '30';
 
     protected $fillable = [
 
@@ -25,7 +34,16 @@ class Article extends Model
         'commercial_name',
         'billing_name',
 
+        'item_kind',
+        'is_inventory_item',
+        'sunat_existence_type_item_id',
+        'sunat_inventory_catalog_item_id',
+        'sunat_inventory_catalog_code',
+        'sunat_standard_catalog_item_id',
+        'sunat_standard_code',
+
         'is_taxable',
+        'sales_tax_affectation_code',
 
         'minimum_stock',
 
@@ -47,7 +65,43 @@ class Article extends Model
         'has_batch'      => 'boolean',
         'has_expiration' => 'boolean',
         'minimum_stock'  => 'decimal:2',
+        'is_inventory_item' => 'boolean',
     ];
+
+    public function hasPendingInventoryClassification(): bool
+    {
+        return $this->item_kind === null && $this->is_inventory_item === null;
+    }
+
+    public function isProduct(): bool
+    {
+        return $this->item_kind === self::KIND_PRODUCT;
+    }
+
+    public function isService(): bool
+    {
+        return $this->item_kind === self::KIND_SERVICE;
+    }
+
+    public function salesTaxAffectationLabel(): string
+    {
+        return match ($this->sales_tax_affectation_code) {
+            self::SALES_TAX_TAXABLE => '10 — GRAVADO',
+            self::SALES_TAX_EXONERATED => '20 — EXONERADO',
+            self::SALES_TAX_UNAFFECTED => '30 — INAFECTO',
+            default => 'PENDIENTE',
+        };
+    }
+
+    public function isInventoryItem(): bool
+    {
+        return $this->isProduct() && $this->is_inventory_item === true;
+    }
+
+    public function isExplicitInventoryItem(): bool
+    {
+        return $this->isInventoryItem();
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -78,6 +132,21 @@ class Article extends Model
     public function brand()
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function sunatExistenceType(): BelongsTo
+    {
+        return $this->belongsTo(SunatCatalogItem::class, 'sunat_existence_type_item_id');
+    }
+
+    public function sunatInventoryCatalogItem(): BelongsTo
+    {
+        return $this->belongsTo(SunatCatalogItem::class, 'sunat_inventory_catalog_item_id');
+    }
+
+    public function sunatStandardCatalogItem(): BelongsTo
+    {
+        return $this->belongsTo(SunatCatalogItem::class, 'sunat_standard_catalog_item_id');
     }
 
     public function creator()

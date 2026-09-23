@@ -115,6 +115,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $('#address').val(button.data('address'));
         $('select[name="status"]').val(button.data('status'));
         $('#role').val(button.data('role'));
+        setUserCompanySelection(button.attr('data-company-ids'));
         $('#imgPreview').attr('src', getValidUserImage(photo));
         $('#password').prop('required', false).val('');
         $('#password_confirmation').prop('required', false).val('');
@@ -151,6 +152,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $('#vu_created_at').text(button.attr('data-created-at') || '-');
         $('#vu_updated_at').text(button.attr('data-updated-at') || '-');
         setUserPrincipalIndicator(isPrincipal);
+        $('#vu_companies').text('Cargando...').removeClass('users-detail-historical');
         setUserAuditLoading();
 
         $('#vu_status')
@@ -187,9 +189,16 @@ document.addEventListener("DOMContentLoaded", function () {
                 setUserHistoricalValue('#vu_role_changed_at', audit.last_role_changed_at, historical);
                 $('#vu_created_at').text(audit.created_at || historical);
                 $('#vu_updated_at').text(audit.updated_at || historical);
+                const companyNames = Array.isArray(audit.companies)
+                    ? audit.companies.map(company => company.name).filter(Boolean)
+                    : [];
+                $('#vu_companies')
+                    .text(companyNames.length ? companyNames.join(' · ') : 'Sin empresas asignadas')
+                    .toggleClass('users-detail-historical', companyNames.length === 0);
                 setUserPrincipalIndicator(Boolean(audit.is_principal));
             })
             .fail(function () {
+                $('#vu_companies').text('No disponible').addClass('users-detail-historical');
                 setUserAuditFallback();
                 Swal.fire({
                     icon: 'warning',
@@ -324,9 +333,21 @@ function resetUserModal() {
     $('#error-messages').addClass('d-none').empty();
     $('#imgPreview').attr('src', defaultUserImage);
     $('#image').val('');
+    $('.user-company-checkbox').prop('checked', false);
     clearTimeout(userDniLookupTimer);
     lastUserDniLookup = '';
     setUserDniLookupLoading(false);
+}
+
+function setUserCompanySelection(companyIds) {
+    const selectedIds = String(companyIds || '')
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean);
+
+    $('.user-company-checkbox').each(function () {
+        $(this).prop('checked', selectedIds.includes(String($(this).val())));
+    });
 }
 
 function configurePrincipalUserForm(isPrincipal) {

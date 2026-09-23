@@ -1,5 +1,5 @@
 <!-- VIEW UNIT MODAL -->
-<div class="modal fade" id="viewUnitModal" tabindex="-1" role="dialog" aria-labelledby="viewUnitModalLabel"
+<div class="modal fade dp-detail-modal" id="viewUnitModal" tabindex="-1" role="dialog" aria-labelledby="viewUnitModalLabel"
     aria-hidden="true">
 
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -7,25 +7,18 @@
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
 
             <!-- HEADER -->
-            <div class="modal-header unit-view-header py-2 px-3">
+            <div class="modal-header dp-detail-modal-header unit-view-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon"><i class="fas fa-balance-scale"></i></span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title unit-view-title" id="viewUnitModalLabel">
+                            Informaci&oacute;n de Unidad
+                        </h5>
+                        <small class="dp-detail-modal-subtitle" id="vu_header_subtitle">Abreviatura y descripci&oacute;n</small>
+                    </div>
+                </div>
 
-                <h5 class="modal-title unit-view-title mb-0" id="viewUnitModalLabel"
-                    style="
-                        font-size:18px;
-                        font-weight:700;
-                        letter-spacing:.3px;
-                    ">
-
-                    <i class="fas fa-balance-scale mr-2"></i>
-                    Información de Unidad
-
-                </h5>
-
-                <button type="button" class="close unit-view-close" data-dismiss="modal" aria-label="Cerrar"
-                    style="
-                        opacity:1;
-                        font-size:22px;
-                    ">
+                <button type="button" class="close dp-detail-modal-close unit-view-close" data-dismiss="modal" aria-label="Cerrar">
 
                     <span aria-hidden="true">&times;</span>
 
@@ -210,6 +203,15 @@
 
                                             </td>
 
+                                        </tr>
+
+                                        <tr>
+                                            <th class="text-muted py-2" style="font-size:12px;font-weight:600;">
+                                                Unidad SUNAT (Tabla 06)
+                                            </th>
+                                            <td id="vu_sunat_unit" class="text-dark py-2" style="font-size:13px;font-weight:500;">
+                                                PENDIENTE
+                                            </td>
                                         </tr>
 
                                 {{--         <tr>

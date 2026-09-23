@@ -59,6 +59,80 @@ it('permite compra y pago en dólares sin exigir un tipo de cambio global', func
         ->and($result['exchange_rate'])->toBeNull();
 });
 
+it('calcula el saldo de compra desde el total menos los pagos aplicados', function (float $paid, float $expectedBalance) {
+    $pen = new Currency(['code' => 'PEN']);
+    $payments = collect();
+    if ($paid > 0) {
+        $payment = new SupplierPurchaseOrderAdvancePayment([
+            'purchase_currency_id' => 1,
+            'applied_amount' => $paid,
+            'amount' => $paid,
+            'amount_pen' => $paid,
+            'status' => 'ACTIVE',
+        ]);
+        $payment->setRelation('currency', $pen);
+        $payment->setRelation('purchaseCurrency', $pen);
+        $payments->push($payment);
+    }
+    $order = new SupplierPurchaseOrder([
+        'grand_total' => 100,
+        'total_purchase_currency' => 100,
+        'apply_advance' => false,
+        'advance_amount' => 0,
+        'advance_paid_amount' => 0,
+        'advance_status' => SupplierPurchaseOrder::ADVANCE_NOT_REQUIRED,
+        'payment_condition' => 'credito_30_dias',
+    ]);
+    $order->setRelation('currency', $pen);
+    $order->setRelation('paymentCurrency', $pen);
+    $order->setRelation('advancePayments', $payments);
+
+    $summary = (new SupplierPurchaseOrderFinancialService)->paymentSummary($order);
+
+    expect($summary['order_total'])->toBe(100.0)
+        ->and($summary['paid_total'])->toBe($paid)
+        ->and($summary['balance'])->toEqual($expectedBalance)
+        ->and($summary['required_advance_balance'])->toBe(0.0);
+})->with([
+    'sin pagos' => [0.0, 100.0],
+    'pago parcial' => [40.0, 60.0],
+    'pago total' => [100.0, 0.0],
+    'sobrepago no produce saldo negativo' => [120.0, 0.0],
+]);
+
+it('no descuenta dos veces un anticipo que ya forma parte del pagado aplicado', function () {
+    $pen = new Currency(['code' => 'PEN']);
+    $payment = new SupplierPurchaseOrderAdvancePayment([
+        'purchase_currency_id' => 1,
+        'applied_amount' => 50,
+        'amount' => 50,
+        'amount_pen' => 50,
+        'status' => 'ACTIVE',
+    ]);
+    $payment->setRelation('currency', $pen);
+    $payment->setRelation('purchaseCurrency', $pen);
+    $order = new SupplierPurchaseOrder([
+        'grand_total' => 100,
+        'total_purchase_currency' => 100,
+        'apply_advance' => true,
+        'advance_type' => 'fixed_amount',
+        'advance_amount' => 20,
+        'advance_paid_amount' => 50,
+        'advance_status' => SupplierPurchaseOrder::ADVANCE_PAID,
+        'payment_condition' => 'credito_30_dias',
+    ]);
+    $order->setRelation('currency', $pen);
+    $order->setRelation('paymentCurrency', $pen);
+    $order->setRelation('advancePayments', collect([$payment]));
+
+    $summary = (new SupplierPurchaseOrderFinancialService)->paymentSummary($order);
+
+    expect($summary['paid_total'])->toBe(50.0)
+        ->and($summary['balance'])->toBe(50.0)
+        ->and($summary['advance_required'])->toBe(20.0)
+        ->and($summary['required_advance_balance'])->toBe(0.0);
+});
+
 it('calcula cada pago con su propio tipo de cambio', function () {
     $service = new SupplierPurchaseOrderFinancialService;
 

@@ -1,0 +1,31 @@
+{
+  "catalog_code": "01",
+  "catalog_name": "TIPO DE MEDIO DE PAGO",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "001", "description": "DEPOSITO EN CUENTA", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "002", "description": "GIRO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "003", "description": "TRANSFERENCIA DE FONDOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "004", "description": "ORDEN DE PAGO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "005", "description": "TARJETA DE DÉBITO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "006", "description": "TARJETA DE CREDITO EMITIDA EN EL PAIS POR UNA EMPRESA DEL SISTEMA FINANCIERO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "007", "description": "CHEQUES CON LA CLAUSULA DE \"NO NEGOCIABLE\", \"INTRANSFERIBLES\", \"NO A LA ORDEN\" U OTRA EQUIVALENTE, A QUE SE REFIERE EL INCISO G) DEL ARTICULO 5° DE LA LEY", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "008", "description": "EFECTIVO, POR OPERACIONES EN LAS QUE NO EXISTE OBLIGACION DE UTILIZAR MEDIO DE PAGO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "009", "description": "EFECTIVO, EN LOS DEMAS CASOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "010", "description": "MEDIOS DE PAGO USADOS EN COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "011", "description": "DOCUMENTOS EMITIDOS POR LAS EDPYMES Y LAS COOPERATIVAS DE AHORRO Y CRÉDITO NO AUTORIZADAS A CAPTAR DEPÓSITOS DEL PÚBLICO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "012", "description": "TARJETA DE CREDITO EMITIDA EN EL PAIS O EN EL EXTERIOR POR UNA EMPRESA NO PERTENECIENTE AL SISTEMA FINANCIERO, CUYO OBJETO PRINCIPAL SEA LA EMISIÓN Y ADMINISTRACIÓN DE TARJETAS DE CRÉDITO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "013", "description": "TARJETAS DE CREDITO EMITIDAS EN EL EXTERIOR POR EMPRESAS BANCARIAS O FINANCIERAS NO DOMICILIADAS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "101", "description": "TRANSFERENCIAS - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "102", "description": "CHEQUES BANCARIOS - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "103", "description": "ORDEN DE PAGO SIMPLE - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "104", "description": "ORDEN DE PAGO DOCUMENTARIO - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "105", "description": "REMESA SIMPLE - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "106", "description": "REMESA DOCUMENTARIA - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "107", "description": "CARTA DE CREDITO SIMPLE - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "108", "description": "CARTA DE CREDITO DOCUMENTARIO - COMERCIO EXTERIOR", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "999", "description": "OTROS MEDIOS DE PAGO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

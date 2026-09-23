@@ -1,0 +1,12 @@
+{
+  "catalog_code": "32",
+  "catalog_name": "MODALIDAD DEL SERVICIO PRESTADO POR EL SUJETO NO DOMICILIADO",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "SERVICIO PRESTADO INTEGRAMENTE EN EL PERÚ", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "SERVICIO PRESTADO PARTE EN EL PERÚ Y PARTE EN EL EXTRANJERO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "3", "description": "SERVICIO PRESTADO EXCLUSIVAMENTE EN EL EXTRANJERO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

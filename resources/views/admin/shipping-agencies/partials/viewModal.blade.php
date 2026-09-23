@@ -1,21 +1,20 @@
-<div class="modal fade" id="viewShippingAgencyModal" tabindex="-1" role="dialog"
+<div class="modal fade dp-detail-modal" id="viewShippingAgencyModal" tabindex="-1" role="dialog"
     aria-labelledby="viewShippingAgencyModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
         <div class="modal-content border-0 shadow overflow-hidden" style="border-radius:14px;">
-            <div class="modal-header border-0" style="background:linear-gradient(135deg,#198754,#116c43);">
-                <div class="d-flex align-items-center">
-                    <div class="mr-3 d-flex align-items-center justify-content-center"
-                        style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;">
+            <div class="modal-header dp-detail-modal-header">
+                <div class="dp-detail-modal-heading">
+                    <span class="dp-detail-modal-icon">
                         <i class="fas fa-shipping-fast"></i>
-                    </div>
-                    <div>
-                        <h5 class="modal-title text-white mb-0 font-weight-bold" id="viewShippingAgencyModalLabel">
-                            Detalle de Agencia de Env&iacute;o
+                    </span>
+                    <div class="dp-detail-modal-copy">
+                        <h5 class="modal-title dp-detail-modal-title" id="viewShippingAgencyModalLabel">
+                            Informaci&oacute;n de Agencia de Env&iacute;o
                         </h5>
-                        <small class="text-white-50">Sedes y contactos de despacho</small>
+                        <small class="dp-detail-modal-subtitle" id="vsa_header_subtitle">C&oacute;digo y raz&oacute;n social</small>
                     </div>
                 </div>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
+                <button type="button" class="close dp-detail-modal-close" data-dismiss="modal" aria-label="Cerrar">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>

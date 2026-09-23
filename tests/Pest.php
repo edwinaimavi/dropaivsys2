@@ -45,3 +45,77 @@ function something()
 {
     // ..
 }
+
+function testSunatUnitItemId(): int
+{
+    $db = \Illuminate\Support\Facades\DB::class;
+    $catalogId = $db::table('sunat_catalogs')->where('code', '06')->value('id');
+    if (! $catalogId) {
+        $catalogId = $db::table('sunat_catalogs')->insertGetId([
+            'code' => '06', 'name' => 'UNIDAD DE MEDIDA', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    $itemId = $db::table('sunat_catalog_items')->where('catalog_code', '06')->where('item_code', 'NIU')->value('id');
+    if (! $itemId) {
+        $itemId = $db::table('sunat_catalog_items')->insertGetId([
+            'sunat_catalog_id' => $catalogId, 'catalog_code' => '06', 'item_code' => 'NIU',
+            'description' => 'UNIDAD (BIENES)', 'status' => 'ACTIVE',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    return (int) $itemId;
+}
+
+function testSunatInventoryMasterIds(): array
+{
+    $db = \Illuminate\Support\Facades\DB::class;
+    $now = now();
+
+    $catalog05Id = $db::table('sunat_catalogs')->where('code', '05')->value('id');
+    if (! $catalog05Id) {
+        $catalog05Id = $db::table('sunat_catalogs')->insertGetId([
+            'code' => '05', 'name' => 'TIPO DE EXISTENCIA', 'is_active' => true,
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+    }
+    $type05Id = $db::table('sunat_catalog_items')->where('catalog_code', '05')->where('item_code', '01')->value('id');
+    if (! $type05Id) {
+        $type05Id = $db::table('sunat_catalog_items')->insertGetId([
+            'sunat_catalog_id' => $catalog05Id, 'catalog_code' => '05', 'item_code' => '01',
+            'description' => 'MERCADERÍAS', 'status' => 'ACTIVE',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+    }
+
+    $catalog13Id = $db::table('sunat_catalogs')->where('code', '13')->value('id');
+    if (! $catalog13Id) {
+        $catalog13Id = $db::table('sunat_catalogs')->insertGetId([
+            'code' => '13', 'name' => 'CATÁLOGO DE EXISTENCIAS', 'is_active' => true,
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+    }
+    $other13Id = $db::table('sunat_catalog_items')->where('catalog_code', '13')->where('item_code', '9')->value('id');
+    if (! $other13Id) {
+        $other13Id = $db::table('sunat_catalog_items')->insertGetId([
+            'sunat_catalog_id' => $catalog13Id, 'catalog_code' => '13', 'item_code' => '9',
+            'description' => 'OTROS', 'status' => 'ACTIVE',
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+    }
+
+    return [
+        'sunat_existence_type_item_id' => (int) $type05Id,
+        'sunat_inventory_catalog_item_id' => (int) $other13Id,
+    ];
+}
+
+function testSunatInventoryArticleFields(string $code): array
+{
+    return array_merge(testSunatInventoryMasterIds(), [
+        'sunat_inventory_catalog_code' => $code,
+        'sales_tax_affectation_code' => '10',
+        'is_taxable' => true,
+    ]);
+}

@@ -6,15 +6,31 @@ it('presenta los estados de rentabilidad en español sin exponer códigos intern
     expect(CustomerPurchaseOrder::statusPresentation($status)['label'])->toBe($label);
 })->with([
     ['registered', 'Registrada'],
-    ['in_purchase', 'En compra'],
+    ['in_purchase', 'Compra en proceso'],
     ['partial_purchase', 'Compra parcial'],
     ['partial_entered', 'Ingreso parcial'],
-    ['entered', 'Abastecida'],
-    ['attended', 'Atendida'],
+    ['partial_dispatched', 'Despacho parcial'],
+    ['entered', 'Abastecida en almacén'],
+    ['attended', 'Atendida / Despachada'],
+    ['delivered', 'Entregada'],
+    ['invoiced', 'Facturada'],
     ['cancelled', 'Anulada'],
     ['completed', 'Completada'],
     ['sent', 'Enviada'],
     ['approved', 'Aprobada'],
+]);
+
+it('presenta la ayuda funcional de los estados operativos de OC Cliente', function (string $status, string $description) {
+    expect(CustomerPurchaseOrder::statusPresentation($status)['description'])->toBe($description);
+})->with([
+    ['registered', 'Orden registrada, pendiente de compra al proveedor.'],
+    ['in_purchase', 'Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.'],
+    ['partial_entered', 'Llegó parte de la mercadería al almacén.'],
+    ['partial_dispatched', 'Parte de la mercadería ya salió del almacén; aún queda saldo por despachar.'],
+    ['entered', 'Mercadería ingresada, falta atención o despacho.'],
+    ['attended', 'Mercadería despachada o atención cerrada.'],
+    ['delivered', 'Recepción confirmada por el cliente.'],
+    ['invoiced', 'Comprobante emitido.'],
 ]);
 
 it('recognizes every supported in-purchase status representation', function (string $status) {
@@ -87,6 +103,17 @@ it('only marks a fully supplied order as attended when it has a closure document
     expect(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered))
         ->toBe(CustomerPurchaseOrder::STATUS_ENTERED)
         ->and(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered, true))
+        ->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
+});
+
+it('distingue despacho parcial y despacho completo sin usar facturación', function () {
+    $requested = [1 => 10, 2 => 5];
+    $purchased = [1 => 10, 2 => 5];
+    $entered = [1 => 10, 2 => 5];
+
+    expect(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered, false, true, [1 => 4]))
+        ->toBe(CustomerPurchaseOrder::STATUS_PARTIAL_DISPATCHED)
+        ->and(CustomerPurchaseOrder::supplyStatusFromQuantities($requested, $purchased, $entered, false, true, [1 => 10, 2 => 5]))
         ->toBe(CustomerPurchaseOrder::STATUS_ATTENDED);
 });
 

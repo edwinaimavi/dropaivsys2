@@ -3,16 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\RolePermissionPresentationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Spatie\Permission\Models\Role;
-use Yajra\DataTables\Facades\DataTables;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Yajra\DataTables\Facades\DataTables;
 
 class RoleController extends Controller
 {
-   public function __construct()
+    public function __construct()
     {
         $this->middleware('can:admin.roles.index')->only('index', 'list');
         $this->middleware('can:admin.roles.store')->only('store');
@@ -20,10 +21,13 @@ class RoleController extends Controller
         $this->middleware('can:admin.roles.destroy')->only('destroy');
         $this->middleware('can:admin.roles.show')->only(['show', 'getPermissions']);
     }
-    public function index()
+
+    public function index(RolePermissionPresentationService $presentationService)
     {
-        $permissions = Permission::all();
-        return view('admin.roles.index', compact('permissions'));
+        $permissions = Permission::query()->orderBy('id')->get();
+        $permissionPresentation = $presentationService->present($permissions);
+
+        return view('admin.roles.index', compact('permissions', 'permissionPresentation'));
     }
 
     public function getPermissions($id)
@@ -35,20 +39,20 @@ class RoleController extends Controller
     }
 
     public function list()
-        {
-            /* $permissions = Permission::all(); */
-            
-            $roles = Role::withCount('permissions')->orderBy('id', 'desc')->get();
+    {
+        /* $permissions = Permission::all(); */
 
-            return DataTables::of($roles)
+        $roles = Role::withCount('permissions')->orderBy('id', 'desc')->get();
+
+        return DataTables::of($roles)
             ->addIndexcolumn()
-            ->addColumn('acciones',function ($role){
-               return view('admin.roles.partials.acciones',compact('role'))->render();
+            ->addColumn('acciones', function ($role) {
+                return view('admin.roles.partials.acciones', compact('role'))->render();
 
             })
             ->rawColumns(['acciones'])
             ->make(true);
-        }
+    }
 
     public function create()
     {
@@ -60,7 +64,7 @@ class RoleController extends Controller
      */
     public function store(Request $request)
     {
-         $data = $request->validate([
+        $data = $request->validate([
             'name' => [
                 'required',
                 'string',
@@ -92,13 +96,11 @@ class RoleController extends Controller
             'guard_name' => 'web',
         ]);
 
-    
-
-        if (!empty($data['permissions'])) {
+        if (! empty($data['permissions'])) {
             $permissions = Permission::where('guard_name', 'web')
                 ->whereIn('name', $data['permissions'])
                 ->pluck('id');
-        
+
             $role->permissions()->sync($permissions);
         }
 
@@ -158,23 +160,23 @@ class RoleController extends Controller
             'permissions.*.exists' => 'Uno de los permisos seleccionados no es válido.',
         ]);
 
-            $role->update([
-                'name' => $data['name'],
-                'guard_name' => $guardName,
-            ]);
+        $role->update([
+            'name' => $data['name'],
+            'guard_name' => $guardName,
+        ]);
 
-            if (!empty($data['permissions'])) {
-                $permissions = Permission::where('guard_name', $guardName)
-                    ->whereIn('name', $data['permissions'])
-                    ->pluck('id');
-                $role->permissions()->sync($permissions);
-            } else {
-                $role->permissions()->detach(); // para quitar todos si viene vacío
-            }
+        if (! empty($data['permissions'])) {
+            $permissions = Permission::where('guard_name', $guardName)
+                ->whereIn('name', $data['permissions'])
+                ->pluck('id');
+            $role->permissions()->sync($permissions);
+        } else {
+            $role->permissions()->detach(); // para quitar todos si viene vacío
+        }
 
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-            return response()->json(['message' => 'Rol actualizado correctamente.']);
+        return response()->json(['message' => 'Rol actualizado correctamente.']);
     }
 
     /**

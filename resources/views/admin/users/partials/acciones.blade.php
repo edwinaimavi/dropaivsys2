@@ -20,6 +20,7 @@
                 data-id="{{ $user->id }}" data-dni="{{ $user->dni }}" data-name="{{ $user->name }}"
                 data-lastname="{{ $user->lastname }}" data-email="{{ $user->email }}" data-phone="{{ $user->phone }}"
                 data-address="{{ $user->address }}" data-status="{{ $statusOriginal }}" data-role="{{ $rol }}"
+                data-company-ids="{{ $user->companies->pluck('id')->implode(',') }}"
                 data-photo="{{ $rutaFoto }}" data-is-principal="{{ $isPrincipal ? 1 : 0 }}">
                 <i class="fas fa-pen text-primary"></i> Editar usuario
             </button>

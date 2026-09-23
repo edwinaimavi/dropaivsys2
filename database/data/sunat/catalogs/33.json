@@ -1,0 +1,15 @@
+{
+  "catalog_code": "33",
+  "catalog_name": "EXONERACIONES DE OPERACIONES DE NO DOMICILIADOS (ART. 19 DE LA LEY DEL IMPUESTO A LA RENTA)",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "Los intereses provenientes de créditos de fomento otorgados directamente o mediante proveedores o intermediarios financieros por organismos internacionales o instituciones gubernamentales extranjeras.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "Las rentas de los inmuebles de propiedad de organismos internacionales que les sirvan de sede.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "3", "description": "Las remuneraciones que perciban, por el ejercicio de su cargo en el país, los funcionarios y empleados considerados como tales dentro de la estructura organizacional de los gobiernos extranjeros, instituciones oficiales extranjeras y organismos internacionales, siempre que los convenios constitutivos así lo establezcan.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "4", "description": "Los ingresos brutos que perciben las representaciones deportivas nacionales de países extranjeros por sus actuaciones en el país.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "5", "description": "Las regalías por asesoramiento técnico, económico, financiero, o de otra índole, prestados desde el exterior por entidades estatales u organismos internacionales.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "6", "description": "Los ingresos extranjeros por los espectáculos en vivo de teatro, zarzuela, conciertos de música clásica, ópera, opereta, ballet y folclor, calificados como espectáculos públicos culturales por el Instituto Nacional de Cultura, realizados en el país. brutos que perciben las representaciones de países.", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

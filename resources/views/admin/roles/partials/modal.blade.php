@@ -1,53 +1,3 @@
-@php
-    $moduleLabels = [
-        'role' => 'Roles',
-        'rol' => 'Roles',
-        'user' => 'Usuarios',
-        'usuario' => 'Usuarios',
-        'customer' => 'Clientes',
-        'cliente' => 'Clientes',
-        'supplier' => 'Proveedores',
-        'proveedor' => 'Proveedores',
-        'category' => 'Categor&iacute;as',
-        'categoria' => 'Categor&iacute;as',
-        'unit' => 'Unidades',
-        'unidad' => 'Unidades',
-        'presentation' => 'Presentaciones',
-        'presentacion' => 'Presentaciones',
-        'brand' => 'Marcas',
-        'marca' => 'Marcas',
-        'article' => 'Art&iacute;culos',
-        'articulo' => 'Art&iacute;culos',
-        'market' => 'Estudios de Mercado',
-        'study' => 'Estudios de Mercado',
-        'quote' => 'Cotizaciones',
-        'cotizacion' => 'Cotizaciones',
-        'purchase' => '&Oacute;rdenes de Compra',
-        'order' => '&Oacute;rdenes de Compra',
-        'warehouse' => 'Almac&eacute;n',
-        'almacen' => 'Almac&eacute;n',
-        'kardex' => 'Kardex',
-        'petty' => 'Caja Chica',
-        'general cash' => 'Caja General',
-        'general-cash' => 'Caja General',
-    ];
-
-    $permissionGroups = $permissions->groupBy(function ($permission) use ($moduleLabels) {
-        $text = mb_strtolower(($permission->name ?? '') . ' ' . ($permission->description ?? ''));
-
-        foreach ($moduleLabels as $needle => $label) {
-            if (str_contains($text, $needle)) {
-                return $label;
-            }
-        }
-
-        $parts = preg_split('/[\s\.\-_]+/', $permission->name ?? '');
-        $fallback = $parts ? end($parts) : 'otros';
-
-        return ucfirst(str_replace(['_', '-'], ' ', $fallback ?: 'Otros'));
-    })->sortKeys();
-@endphp
-
 <div class="modal fade roles-modal" id="roleModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered role-modal-dialog" role="document">
         <div class="modal-content border-0 shadow-lg role-modal-content">
@@ -145,34 +95,37 @@
                                     </div>
 
                                     <div class="roles-permission-groups" id="rolePermissionGroups">
-                                        @foreach ($permissionGroups as $groupName => $groupPermissions)
-                                            <section class="roles-permission-group" data-permission-group>
-                                                <div class="roles-permission-group-header">
-                                                    <div>
-                                                        <div class="roles-permission-group-title">{!! $groupName !!}</div>
-                                                        <div class="roles-permission-group-count">{{ $groupPermissions->count() }} permisos</div>
-                                                    </div>
-                                                    <button type="button" class="btn btn-outline-success btn-sm btnSelectPermissionGroup">
-                                                        <i class="fas fa-check mr-1"></i>
-                                                        Seleccionar grupo
+                                        @foreach ($permissionPresentation['modules'] as $module)
+                                            <section class="roles-permission-module is-collapsed" data-permission-module data-module-key="{{ $module['key'] }}">
+                                                <header class="roles-permission-module-header">
+                                                    <button type="button" class="roles-module-collapse" data-role-collapse aria-expanded="false">
+                                                        <span class="roles-module-icon"><i class="{{ $module['icon'] }}"></i></span>
+                                                        <span><strong>{{ mb_strtoupper($module['label']) }}</strong><small><span data-module-selected>0</span> / {{ $module['total'] }} permisos seleccionados</small></span>
+                                                        <i class="fas fa-chevron-down roles-collapse-chevron"></i>
                                                     </button>
-                                                </div>
-                                                <div class="roles-permission-grid">
-                                                    @foreach ($groupPermissions as $permission)
-                                                        <div class="roles-permission-item"
-                                                            data-permission-item
-                                                            data-permission-text="{{ mb_strtolower(($permission->description ?: $permission->name) . ' ' . $permission->name . ' ' . $permission->guard_name) }}">
-                                                            <div class="custom-control custom-switch">
-                                                                <input type="checkbox" class="custom-control-input"
-                                                                    value="{{ $permission->name }}"
-                                                                    id="permission_{{ $permission->id }}"
-                                                                    name="permissions[]">
-                                                                <label class="custom-control-label" for="permission_{{ $permission->id }}">
-                                                                    {{ $permission->description ?: $permission->name }}
-                                                                    <small>{{ $permission->guard_name }} | {{ $permission->name }}</small>
-                                                                </label>
+                                                    <button type="button" class="btn btn-outline-success btn-sm roles-scope-toggle" data-scope-toggle="module">Seleccionar módulo</button>
+                                                </header>
+                                                <div class="roles-module-body" data-role-collapse-body>
+                                                    @foreach ($module['subgroups'] as $subgroup)
+                                                        <section class="roles-permission-subgroup" data-permission-subgroup>
+                                                            <header class="roles-permission-subgroup-header">
+                                                                <div><strong>{{ $subgroup['label'] }}</strong><small><span data-subgroup-selected>0</span> / {{ $subgroup['total'] }} seleccionados</small></div>
+                                                                <button type="button" class="btn btn-link btn-sm roles-scope-toggle" data-scope-toggle="subgroup">Seleccionar submódulo</button>
+                                                            </header>
+                                                            <div class="roles-permission-grid">
+                                                                @foreach ($subgroup['permissions'] as $permission)
+                                                                    <div class="roles-permission-item" data-permission-item data-permission-text="{{ mb_strtolower($permission['search_text']) }}">
+                                                                        <div class="custom-control custom-switch">
+                                                                            <input type="checkbox" class="custom-control-input" value="{{ $permission['name'] }}" id="permission_{{ $permission['id'] }}" name="permissions[]">
+                                                                            <label class="custom-control-label" for="permission_{{ $permission['id'] }}">
+                                                                                {{ $permission['label'] }}
+                                                                                <small>{{ $permission['guard'] }} | {{ $permission['name'] }}@if($permission['route_name']) · ruta: {{ $permission['route_name'] }}@endif</small>
+                                                                            </label>
+                                                                        </div>
+                                                                    </div>
+                                                                @endforeach
                                                             </div>
-                                                        </div>
+                                                        </section>
                                                     @endforeach
                                                 </div>
                                             </section>

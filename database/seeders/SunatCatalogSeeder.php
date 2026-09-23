@@ -2,70 +2,79 @@
 
 namespace Database\Seeders;
 
-use App\Models\Company;
-use App\Models\ElectronicInvoiceSeries;
+use App\Models\SunatCatalog;
 use App\Models\SunatCatalogItem;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class SunatCatalogSeeder extends Seeder
 {
     public function run(): void
     {
-        $items = [
-            ['document_type', '01', 'FACTURA', 'Factura'],
-            ['document_type', '03', 'BOLETA DE VENTA', 'Boleta'],
-            ['document_type', '07', 'NOTA DE CREDITO', 'Nota credito'],
-            ['document_type', '08', 'NOTA DE DEBITO', 'Nota debito'],
-            ['identity_document_type', '1', 'DNI', 'DNI'],
-            ['identity_document_type', '6', 'RUC', 'RUC'],
-            ['operation_type', '0101', 'VENTA INTERNA', 'Venta interna'],
-            ['tax_affectation', '10', 'GRAVADO - OPERACION ONEROSA', 'Gravado'],
-            ['tax_affectation', '20', 'EXONERADO - OPERACION ONEROSA', 'Exonerado'],
-            ['tax_affectation', '30', 'INAFECTO - OPERACION ONEROSA', 'Inafecto'],
-            ['tax', '1000', 'IGV', 'IGV'],
-            ['tax', '9997', 'EXO', 'EXO'],
-            ['tax', '9998', 'INA', 'INA'],
-            ['currency', 'PEN', 'SOLES', 'PEN'],
-            ['currency', 'USD', 'DOLARES', 'USD'],
-            ['unit', 'NIU', 'UNIDAD', 'Unidad'],
-            ['unit', 'ZZ', 'SERVICIO', 'Servicio'],
-            ['unit', 'KG', 'KILOGRAMO', 'Kilogramo'],
-            ['unit', 'G', 'GRAMO', 'Gramo'],
-            ['unit', 'L', 'LITRO', 'Litro'],
-        ];
+        $files = glob(database_path('data/sunat/catalogs/*.json')) ?: [];
 
-        foreach ($items as [$catalogCode, $itemCode, $description, $shortName]) {
-            SunatCatalogItem::updateOrCreate(
-                [
-                    'catalog_code' => $catalogCode,
-                    'item_code' => $itemCode,
-                ],
-                [
-                    'description' => $description,
-                    'short_name' => $shortName,
-                    'status' => 'ACTIVE',
-                ]
-            );
-        }
+        $this->seedFiles($files);
+    }
 
-        Company::query()->get()->each(function (Company $company) {
-            foreach ([['01', 'F001', 'Serie facturas beta'], ['03', 'B001', 'Serie boletas beta']] as [$type, $serie, $description]) {
-                ElectronicInvoiceSeries::firstOrCreate(
+    /**
+     * @param  array<int, string>  $files
+     */
+    public function seedFiles(array $files): void
+    {
+        foreach ($files as $file) {
+            $payload = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+            $this->validatePayload($payload, $file);
+
+            DB::transaction(function () use ($payload) {
+                $catalog = SunatCatalog::updateOrCreate(
+                    ['code' => (string) $payload['catalog_code']],
                     [
-                        'company_id' => $company->id,
-                        'document_type' => $type,
-                        'serie' => $serie,
-                        'environment' => 'beta',
-                    ],
-                    [
-                        'current_number' => 0,
-                        'next_number' => 1,
-                        'description' => $description,
-                        'is_default' => true,
-                        'status' => 'ACTIVE',
+                        'name' => $payload['catalog_name'],
+                        'description' => $payload['description'] ?? null,
+                        'source' => $payload['source'] ?? 'sunat_pdf',
+                        'is_active' => $payload['is_active'] ?? true,
                     ]
                 );
+
+                foreach ($payload['items'] as $item) {
+                    SunatCatalogItem::updateOrCreate(
+                        [
+                            'catalog_code' => $catalog->code,
+                            'item_code' => (string) $item['code'],
+                        ],
+                        [
+                            'sunat_catalog_id' => $catalog->id,
+                            'description' => $item['description'],
+                            'short_name' => $item['short_name'] ?? null,
+                            'extra_data' => $item['extra_data'] ?? null,
+                            'source' => $item['source'] ?? $catalog->source,
+                            'is_official' => $item['is_official'] ?? true,
+                            'status' => ($item['is_active'] ?? true) ? 'ACTIVE' : 'INACTIVE',
+                        ]
+                    );
+                }
+            });
+        }
+    }
+
+    private function validatePayload(mixed $payload, string $file): void
+    {
+        if (! is_array($payload)
+            || ! isset($payload['catalog_code'], $payload['catalog_name'], $payload['items'])
+            || ! is_string($payload['catalog_code'])
+            || ! is_string($payload['catalog_name'])
+            || ! is_array($payload['items'])) {
+            throw new RuntimeException("El archivo SUNAT [{$file}] no cumple el esquema requerido.");
+        }
+
+        foreach ($payload['items'] as $index => $item) {
+            if (! is_array($item)
+                || ! isset($item['code'], $item['description'])
+                || ! is_string($item['code'])
+                || ! is_string($item['description'])) {
+                throw new RuntimeException("El elemento {$index} del archivo SUNAT [{$file}] no es válido.");
             }
-        });
+        }
     }
 }

@@ -20,6 +20,10 @@ use App\Models\Subcategory;
 use App\Models\Unit;
 use App\Models\User;
 use App\Services\InvoiceFromCustomerOrderService;
+use App\Services\ElectronicInvoiceFormDataService;
+use App\Services\WarehouseDispatchService;
+use App\Services\CustomerReturnService;
+use App\Services\ArticleSalesTaxPolicy;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -40,10 +44,11 @@ class CustomerPurchaseOrderController extends Controller
         self::STATUS_PARTIAL_PURCHASE,
         self::STATUS_IN_PURCHASE,
         self::STATUS_PARTIAL_ENTERED,
+        self::STATUS_ENTERED,
+        self::STATUS_PARTIAL_DISPATCHED,
     ];
 
     private const FINAL_STATUSES = [
-        self::STATUS_ENTERED,
         self::STATUS_ATTENDED,
         self::STATUS_NOT_ATTENDED,
         self::STATUS_CANCELLED,
@@ -60,6 +65,8 @@ class CustomerPurchaseOrderController extends Controller
     private const STATUS_PARTIAL_ENTERED = 'partial_entered';
 
     private const STATUS_ENTERED = CustomerPurchaseOrder::STATUS_ENTERED;
+
+    private const STATUS_PARTIAL_DISPATCHED = CustomerPurchaseOrder::STATUS_PARTIAL_DISPATCHED;
 
     private const STATUS_CANCELLED = 'cancelled';
 
@@ -81,7 +88,7 @@ class CustomerPurchaseOrderController extends Controller
         $this->middleware('can:admin.customer-purchase-orders.show')->only(['show', 'pdf']);
     }
 
-    public function index()
+    public function index(ElectronicInvoiceFormDataService $formDataService)
     {
         $companies = Company::query()
             ->where('status', true)
@@ -109,6 +116,7 @@ class CustomerPurchaseOrderController extends Controller
             ->get();
 
         $units = Unit::query()
+            ->with('sunatUnit')
             ->where('status', 'ACTIVE')
             ->orderBy('description')
             ->get();
@@ -154,7 +162,13 @@ class CustomerPurchaseOrderController extends Controller
             ->orderBy('description')
             ->get(['id', 'description']);
 
-        return view('admin.customer-purchase-orders.index', compact(
+        $sellerUsers = User::query()
+            ->where('status', 1)
+            ->orderBy('name')
+            ->orderBy('lastname')
+            ->get(['id', 'dni', 'name', 'lastname', 'phone', 'email']);
+
+        $viewData = compact(
             'companies',
             'customers',
             'quotes',
@@ -165,8 +179,21 @@ class CustomerPurchaseOrderController extends Controller
             'categories',
             'subcategories',
             'articles',
-            'documentTypes'
-        ));
+            'documentTypes',
+            'sellerUsers'
+        );
+
+        if (request()->user()?->can('admin.customer-purchase-orders.invoice')) {
+            $viewData = array_merge($viewData, $formDataService->get(compact(
+                'companies',
+                'customers',
+                'currencies',
+                'articles',
+                'quotes'
+            )));
+        }
+
+        return view('admin.customer-purchase-orders.index', $viewData);
     }
 
     public function list(Request $request)
@@ -177,6 +204,7 @@ class CustomerPurchaseOrderController extends Controller
                 'customer:id,business_name,full_name,first_name,last_name',
                 'customerBranch:id,branch_name',
                 'currency:id,code,symbol,description',
+                'items:id,customer_purchase_order_id,article_id,billing_name_snapshot,quantity,status',
                 'electronicInvoices.items',
                 'electronicInvoices.collections.account.bank',
                 'electronicInvoices.collections.creator',
@@ -197,6 +225,7 @@ class CustomerPurchaseOrderController extends Controller
             'registered' => $orders->whereIn('status', ['approved', self::STATUS_REGISTERED]),
             'in_purchase' => $orders->whereIn('status', [self::STATUS_PARTIAL_PURCHASE, self::STATUS_IN_PURCHASE]),
             'partial_entered' => $orders->where('status', self::STATUS_PARTIAL_ENTERED),
+            'partial_dispatched' => $orders->where('status', self::STATUS_PARTIAL_DISPATCHED),
             'attended' => $orders->whereIn('status', [self::STATUS_ATTENDED, self::STATUS_NOT_ATTENDED]),
             'entered' => $orders->where('status', self::STATUS_ENTERED),
             'overdue' => $orders
@@ -209,13 +238,13 @@ class CustomerPurchaseOrderController extends Controller
         $orders
             ->orderByRaw(
                 'CASE
-                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered", "entered", "partial_dispatched")
                         AND delivery_end_date < ? THEN 0
-                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered", "entered", "partial_dispatched")
                         AND delivery_end_date = ? THEN 1
-                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered")
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered", "entered", "partial_dispatched")
                         AND delivery_end_date > ? THEN 2
-                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered") THEN 3
+                    WHEN status IN ("approved", "registered", "partial_purchase", "in_purchase", "partial_entered", "entered", "partial_dispatched") THEN 3
                     ELSE 4
                 END ASC',
                 [$today, $today, $today]
@@ -329,15 +358,18 @@ class CustomerPurchaseOrderController extends Controller
                 return trim($symbol.' '.$this->formatDecimal($order->grand_total));
             })
             ->addColumn('delivery_period', fn (CustomerPurchaseOrder $order) => $this->deliveryPeriodHtml($order))
+            ->addColumn('operational_progress', fn (CustomerPurchaseOrder $order) => $this->operationalProgressHtml($order))
             ->editColumn('status', function (CustomerPurchaseOrder $order) {
                 $statuses = [
                     'approved' => [
                         'label' => 'Registrada',
+                        'description' => 'Orden registrada, pendiente de compra al proveedor.',
                         'class' => 'badge-secondary text-white',
                         'icon' => 'fas fa-clipboard-check',
                     ],
                     self::STATUS_REGISTERED => [
                         'label' => 'Registrada',
+                        'description' => 'Orden registrada, pendiente de compra al proveedor.',
                         'class' => 'badge-secondary text-white',
                         'icon' => 'fas fa-clipboard-check',
                     ],
@@ -347,22 +379,32 @@ class CustomerPurchaseOrderController extends Controller
                         'icon' => 'fas fa-shopping-basket',
                     ],
                     self::STATUS_IN_PURCHASE => [
-                        'label' => 'En compra',
+                        'label' => 'Compra en proceso',
+                        'description' => 'Ya existe una compra a proveedor vinculada, pero la mercadería aún no ha ingresado completa al almacén.',
                         'class' => 'badge-warning text-dark',
                         'icon' => 'fas fa-shopping-cart',
                     ],
                     self::STATUS_PARTIAL_ENTERED => [
                         'label' => 'Ingreso parcial',
+                        'description' => 'Llegó parte de la mercadería al almacén.',
                         'class' => 'badge-info text-white',
                         'icon' => 'fas fa-dolly-flatbed',
                     ],
                     self::STATUS_ENTERED => [
-                        'label' => 'Abastecida',
+                        'label' => 'Abastecida en almacén',
+                        'description' => 'Mercadería ingresada, falta atención o despacho.',
                         'class' => 'badge-success text-white',
                         'icon' => 'fas fa-warehouse',
                     ],
+                    self::STATUS_PARTIAL_DISPATCHED => [
+                        'label' => 'Despacho parcial',
+                        'description' => 'Parte de la mercadería ya salió del almacén; aún queda saldo por despachar.',
+                        'class' => 'badge-warning text-dark',
+                        'icon' => 'fas fa-truck-loading',
+                    ],
                     self::STATUS_ATTENDED => [
-                        'label' => 'Atendida',
+                        'label' => 'Atendida / Despachada',
+                        'description' => 'Mercadería despachada o atención cerrada.',
                         'class' => 'badge-primary text-white',
                         'icon' => 'fas fa-check-circle',
                     ],
@@ -372,17 +414,20 @@ class CustomerPurchaseOrderController extends Controller
                         'icon' => 'fas fa-times-circle',
                     ],
                     self::STATUS_CANCELLED => [
-                        'label' => 'Cancelada',
+                        'label' => 'Anulada',
+                        'description' => 'Orden anulada.',
                         'class' => 'badge-danger text-white',
                         'icon' => 'fas fa-times-circle',
                     ],
                     self::STATUS_DELIVERED => [
                         'label' => 'Entregada',
+                        'description' => 'Recepción confirmada por el cliente.',
                         'class' => 'badge-primary text-white',
                         'icon' => 'fas fa-truck',
                     ],
                     self::STATUS_INVOICED => [
                         'label' => 'Facturada',
+                        'description' => 'Comprobante emitido.',
                         'class' => 'badge-info text-white',
                         'icon' => 'fas fa-file-invoice-dollar',
                     ],
@@ -396,13 +441,14 @@ class CustomerPurchaseOrderController extends Controller
 
                 return sprintf(
                     '<div class="d-flex justify-content-center">
-                        <span class="badge %s rounded-pill px-3 py-2 shadow-sm font-weight-bold"
+                        <span class="badge %s rounded-pill px-3 py-2 shadow-sm font-weight-bold" title="%s"
                             style="min-width:120px;font-size:11px;letter-spacing:.2px;">
                             <i class="%s mr-1" aria-hidden="true"></i>
                             %s
                         </span>
                     </div>',
                     $status['class'],
+                    e($status['description'] ?? ''),
                     $status['icon'],
                     e($status['label'])
                 );
@@ -434,12 +480,13 @@ class CustomerPurchaseOrderController extends Controller
                 if (! $order->getAttribute('billing_summary')) {
                     $order->setAttribute('billing_summary', app(InvoiceFromCustomerOrderService::class)->summary($order));
                 }
+
                 return view(
                     'admin.customer-purchase-orders.partials.acciones',
                     compact('order')
                 )->render();
             })
-            ->rawColumns(['purchase_order_number', 'customer', 'delivery_period', 'status', 'billing_status', 'acciones'])
+            ->rawColumns(['purchase_order_number', 'customer', 'delivery_period', 'operational_progress', 'status', 'billing_status', 'acciones'])
             ->make(true);
     }
 
@@ -447,9 +494,11 @@ class CustomerPurchaseOrderController extends Controller
     {
         $start = $order->delivery_start_date;
         $end = $order->delivery_end_date;
+        $statusPresentation = CustomerPurchaseOrder::statusPresentation($order->status);
+        $statusDescription = $statusPresentation['description'] ?? '';
 
         if (! $start || ! $end) {
-            return '<div class="delivery-period-card delivery-period-muted">
+            return '<div class="delivery-period-card delivery-period-muted" title="'.e($statusDescription).'">
                 <span class="delivery-period-badge">Sin plazo definido</span>
             </div>';
         }
@@ -465,12 +514,11 @@ class CustomerPurchaseOrderController extends Controller
         if (in_array($order->status, self::FINAL_STATUSES, true)) {
             $visualState = 'completed';
             $message = match ($order->status) {
-                self::STATUS_ENTERED => 'Entrega completada',
-                self::STATUS_ATTENDED => 'Atendida',
+                self::STATUS_ATTENDED => 'Atendida / Despachada',
                 self::STATUS_NOT_ATTENDED => 'Atención cerrada',
-                self::STATUS_CANCELLED => 'Cancelada',
+                self::STATUS_CANCELLED => 'Anulada',
                 self::STATUS_DELIVERED => 'Entregada',
-                self::STATUS_INVOICED => 'Finalizada',
+                self::STATUS_INVOICED => 'Facturada',
                 default => 'Finalizada',
             };
             $completedAt = $order->attention_closed_at ?? $order->updated_at;
@@ -480,6 +528,23 @@ class CustomerPurchaseOrderController extends Controller
                 if ($lateDays > 0) {
                     $note = "Regularizado con {$lateDays} {$dayLabel($lateDays)} de atraso";
                 }
+            }
+        } elseif ($order->status === self::STATUS_ENTERED) {
+            $message = 'Abastecida en almacén · atención pendiente';
+
+            if ($remainingDays < 0) {
+                $visualState = 'danger';
+                $expiredDays = abs($remainingDays);
+                $message .= " · plazo vencido hace {$expiredDays} {$dayLabel($expiredDays)}";
+            } elseif ($remainingDays === 0) {
+                $visualState = 'warning';
+                $message .= ' · vence hoy';
+            } elseif ($remainingDays <= 5) {
+                $visualState = 'warning';
+                $message .= " · vence en {$remainingDays} {$dayLabel($remainingDays)}";
+            } else {
+                $visualState = 'info';
+                $message .= " · vence en {$remainingDays} {$dayLabel($remainingDays)}";
             }
         } elseif ($order->status === self::STATUS_PARTIAL_ENTERED) {
             if ($remainingDays < 0) {
@@ -496,6 +561,16 @@ class CustomerPurchaseOrderController extends Controller
                 $visualState = 'info';
                 $message = "Ingreso parcial · vence en {$remainingDays} {$dayLabel($remainingDays)}";
             }
+        } elseif ($order->status === self::STATUS_PARTIAL_DISPATCHED) {
+            $visualState = $remainingDays < 0 ? 'danger' : 'warning';
+            $message = 'Despacho parcial · saldo pendiente';
+            if ($remainingDays < 0) {
+                $message .= ' · plazo vencido hace '.abs($remainingDays).' '.$dayLabel(abs($remainingDays));
+            } elseif ($remainingDays === 0) {
+                $message .= ' · vence hoy';
+            } else {
+                $message .= " · vence en {$remainingDays} {$dayLabel($remainingDays)}";
+            }
         } elseif ($remainingDays < 0) {
             $visualState = 'danger';
             $expiredDays = abs($remainingDays);
@@ -511,7 +586,7 @@ class CustomerPurchaseOrderController extends Controller
         }
 
         return sprintf(
-            '<div class="delivery-period-card delivery-period-%s">
+            '<div class="delivery-period-card delivery-period-%s" title="%s">
                 <div><strong>Desde:</strong> %s</div>
                 <div><strong>Hasta:</strong> %s</div>
                 <div class="delivery-period-days"><strong>Plazo:</strong> %d %s calendario</div>
@@ -519,6 +594,7 @@ class CustomerPurchaseOrderController extends Controller
                 %s
             </div>',
             $visualState,
+            e($statusDescription),
             e($start->format('d/m/Y')),
             e($end->format('d/m/Y')),
             $configuredDays,
@@ -750,14 +826,14 @@ class CustomerPurchaseOrderController extends Controller
             'items.brand',
         ]);
 
-        $affectIgv = (bool) $quote->affect_igv;
-
-        $items = $quote->items->map(function (QuoteItem $item) use ($affectIgv) {
+        $items = $quote->items->map(function (QuoteItem $item) use ($quote) {
             $quantity = (string) $item->quantity;
             $unitPrice = (string) $item->unit_price;
             $lineTotal = bcmul($quantity, $unitPrice, 10);
-            $subtotal = $affectIgv ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
-            $taxAmount = $affectIgv ? bcsub($lineTotal, $subtotal, 10) : '0';
+            $taxAffectation = $item->tax_affectation_code
+                ?: ($quote->affect_igv ? ArticleSalesTaxPolicy::TAXABLE : ArticleSalesTaxPolicy::EXONERATED);
+            $subtotal = $taxAffectation === ArticleSalesTaxPolicy::TAXABLE ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
+            $taxAmount = $taxAffectation === ArticleSalesTaxPolicy::TAXABLE ? bcsub($lineTotal, $subtotal, 10) : '0';
 
             return [
                 'quote_item_id' => $item->id,
@@ -781,6 +857,7 @@ class CustomerPurchaseOrderController extends Controller
                 'unit_price' => $unitPrice,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
+                'tax_affectation_code' => $taxAffectation,
                 'line_total' => $lineTotal,
             ];
         })->values();
@@ -792,7 +869,7 @@ class CustomerPurchaseOrderController extends Controller
             'company_id' => $quote->company_id,
             'currency_id' => $quote->currency_id,
             'billing_type' => $quote->billing_type,
-            'affect_igv' => $affectIgv,
+            'affect_igv' => $items->contains(fn (array $item) => $item['tax_affectation_code'] === ArticleSalesTaxPolicy::TAXABLE),
             'items' => $items,
         ]);
     }
@@ -806,6 +883,7 @@ class CustomerPurchaseOrderController extends Controller
     {
         $user = User::query()
             ->select('id', 'dni', 'name', 'lastname', 'phone', 'email')
+            ->where('status', 1)
             ->where('dni', $dni)
             ->first();
 
@@ -843,6 +921,24 @@ class CustomerPurchaseOrderController extends Controller
             'items.unit',
             'items.presentation',
             'items.brand',
+            'supplierPurchaseOrders.supplier',
+            'supplierPurchaseOrders.currency',
+            'supplierPurchaseOrders.warehouseEntries',
+            'warehouseEntryAllocations.warehouseEntry.supplier',
+            'warehouseEntryAllocations.warehouseEntry.currency',
+            'warehouseEntryAllocations.warehouseEntry.warehouse',
+            'warehouseEntryAllocations.warehouseEntryItem.article',
+            'warehouseEntryAllocations.supplierPurchaseOrder.supplier',
+            'warehouseDispatches' => fn ($query) => $query
+                ->withCount(['documents' => fn ($documents) => $documents->where('status', 'ACTIVE')])
+                ->latest('dispatch_date')
+                ->latest('id'),
+            'warehouseDispatches.warehouse',
+            'warehouseDispatches.responsibleUser',
+            'warehouseDispatches.creator',
+            'warehouseDispatches.cancelledBy',
+            'warehouseDispatches.items.customerPurchaseOrderItem.article',
+            'warehouseDispatches.customerReturns' => fn ($query) => $query->withSum('items as total_quantity', 'quantity')->latest('return_date'),
             'electronicInvoices.items',
             'electronicInvoices.creator',
             'electronicInvoices.collections.account.bank',
@@ -850,6 +946,28 @@ class CustomerPurchaseOrderController extends Controller
             'electronicInvoices.collections.creator',
         ]);
         $this->appendSupplyProgress($customerPurchaseOrder);
+        $returnService = app(CustomerReturnService::class);
+        $customerPurchaseOrder->warehouseDispatches->each(function ($dispatch) use ($customerPurchaseOrder, $returnService) {
+            $dispatch->setAttribute('document_url', $dispatch->document_path
+                ? route('admin.customer-purchase-orders.dispatches.document', [$customerPurchaseOrder, $dispatch])
+                : null);
+            $gross = round((float) $dispatch->items->sum('quantity'), 4);
+            $returnable = round((float) $returnService->returnableQuantities($dispatch)->sum(), 4);
+            $returned = round($gross - $returnable, 4);
+            $dispatch->setAttribute('returned_quantity', $returned);
+            $dispatch->setAttribute('net_delivered_quantity', max(round($gross - $returned, 4), 0));
+            $dispatch->setAttribute('returnable_quantity', $returnable);
+            $dispatch->setAttribute('can_return', $dispatch->isConfirmed() && $returnable > 0
+                && Auth::user()?->can('devoluciones_clientes.crear'));
+            $dispatch->customerReturns->each(function ($return) {
+                $return->setAttribute('can_view', Auth::user()?->can('devoluciones_clientes.ver') ?? false);
+                $return->setAttribute('can_edit', $return->isDraft() && (Auth::user()?->can('devoluciones_clientes.editar') ?? false));
+                $return->setAttribute('can_confirm', $return->isDraft() && (Auth::user()?->can('devoluciones_clientes.confirmar') ?? false));
+                $return->setAttribute('can_cancel', $return->isDraft() && (Auth::user()?->can('devoluciones_clientes.cancelar') ?? false));
+                $return->setAttribute('can_reverse', $return->isConfirmed() && (Auth::user()?->can('devoluciones_clientes.reversar') ?? false));
+                $return->setAttribute('can_documents', Auth::user()?->can('devoluciones_clientes.documentos') ?? false);
+            });
+        });
         $customerPurchaseOrder->electronicInvoices->each(function ($invoice) {
             $invoice->setAttribute('pdf_url', route('admin.electronic-invoices.pdf', $invoice));
             $invoice->collections->each(function ($collection) {
@@ -1096,13 +1214,19 @@ class CustomerPurchaseOrderController extends Controller
             'acquisition_chart_number' => ['nullable', 'string', 'max:100'],
             'process_type' => ['nullable', 'string', 'max:100'],
             'billing_type' => ['required', Rule::in(['local', 'export'])],
-            'affect_igv' => ['required', 'boolean'],
+            'affect_igv' => ['nullable', 'boolean'],
             'observations' => ['nullable', 'string'],
             'seller_type' => ['nullable', Rule::in(['USER', 'EXTERNAL'])],
             'seller_user_id' => [
                 'nullable',
                 Rule::requiredIf($request->input('seller_type') === 'USER'),
-                'exists:users,id',
+                Rule::exists('users', 'id')->where(function ($query) use ($order) {
+                    $query->where('status', 1);
+
+                    if ($order?->seller_user_id) {
+                        $query->orWhere('id', $order->seller_user_id);
+                    }
+                }),
             ],
             'seller_dni' => ['nullable', 'digits:8'],
             'seller_names' => ['nullable', 'string', 'max:150'],
@@ -1148,6 +1272,7 @@ class CustomerPurchaseOrderController extends Controller
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.line_total' => ['required', 'numeric', 'min:0'],
+            'items.*.tax_affectation_code' => ['required', Rule::in(ArticleSalesTaxPolicy::ALLOWED)],
             'items.*.status' => ['nullable', 'string', 'max:30'],
             'documents' => ['nullable', 'array'],
             'documents.*.file' => [
@@ -1162,16 +1287,42 @@ class CustomerPurchaseOrderController extends Controller
         ], [
             'purchase_order_number.required' => 'El N° de Orden de Compra es obligatorio.',
             'purchase_order_number.unique' => 'Ya se registró una Orden de Compra del Cliente con este Nro de Orden de Compra.',
+            'seller_user_id.required' => 'Seleccione un usuario interno o elija “No está registrado / buscar por DNI”.',
+            'seller_user_id.exists' => 'El usuario interno seleccionado no está disponible.',
         ]);
+
+        if (($validated['seller_type'] ?? null) === 'USER') {
+            $sellerUser = User::query()
+                ->select('id', 'dni', 'name', 'lastname', 'phone', 'email', 'status')
+                ->find($validated['seller_user_id']);
+
+            $canKeepExistingInactiveUser = $order
+                && (int) $order->seller_user_id === (int) $sellerUser?->id;
+
+            if (! $sellerUser || ((int) $sellerUser->status !== 1 && ! $canKeepExistingInactiveUser)) {
+                throw ValidationException::withMessages([
+                    'seller_user_id' => 'El usuario interno seleccionado no está disponible.',
+                ]);
+            }
+
+            $validated['seller_dni'] = $sellerUser->dni;
+            $validated['seller_names'] = $sellerUser->name;
+            $validated['seller_lastnames'] = $sellerUser->lastname;
+            $validated['seller_full_name'] = trim($sellerUser->name.' '.$sellerUser->lastname);
+            $validated['seller_phone'] = $sellerUser->phone;
+            $validated['seller_email'] = $sellerUser->email;
+        }
 
         $storedDocumentPaths = [];
 
         try {
             return DB::transaction(function () use ($validated, $order, $request, &$storedDocumentPaths) {
                 $isCreating = $order === null;
-                $affectIgv = (bool) ($validated['affect_igv'] ?? false);
-                $preparedItems = $this->prepareItems($validated['items'], $affectIgv);
-                $totals = $this->calculateTotals($preparedItems, $affectIgv);
+                $preparedItems = $this->prepareItems($validated['items'], $order);
+                $totals = $this->calculateTotals($preparedItems);
+                $affectIgv = collect($preparedItems)->contains(
+                    fn (array $item) => $item['tax_affectation_code'] === ArticleSalesTaxPolicy::TAXABLE
+                );
                 $deliveryStartDate = null;
                 $deliveryEndDate = null;
 
@@ -1244,6 +1395,7 @@ class CustomerPurchaseOrderController extends Controller
                         : null,
                     'seller_observation' => $this->upperOrNull($validated['seller_observation'] ?? null),
                     'subtotal_exonerated' => $totals['subtotal_exonerated'],
+                    'subtotal_unaffected' => $totals['subtotal_unaffected'],
                     'subtotal_taxed' => $totals['subtotal_taxed'],
                     'igv' => $totals['igv'],
                     'grand_total' => $totals['grand_total'],
@@ -1376,10 +1528,10 @@ class CustomerPurchaseOrderController extends Controller
         }
     }
 
-    private function prepareItems(array $items, bool $affectIgv): array
+    private function prepareItems(array $items, ?CustomerPurchaseOrder $order = null): array
     {
         $quoteItems = QuoteItem::query()
-            ->with('article')
+            ->with(['article', 'quote'])
             ->whereIn(
                 'id',
                 collect($items)->pluck('quote_item_id')->filter()->all()
@@ -1387,17 +1539,47 @@ class CustomerPurchaseOrderController extends Controller
             ->get()
             ->keyBy('id');
 
+        $existingItems = collect();
+        if ($order) {
+            $existingItems = $order->items()
+                ->whereIn('id', collect($items)->pluck('id')->filter()->all())
+                ->get()
+                ->keyBy('id');
+        }
+
         return collect($items)
-            ->map(function (array $item) use ($quoteItems, $affectIgv) {
+            ->map(function (array $item) use ($quoteItems, $existingItems, $order) {
                 $quoteItem = isset($item['quote_item_id'])
                     ? $quoteItems->get($item['quote_item_id'])
                     : null;
+                $existingItem = isset($item['id']) ? $existingItems->get($item['id']) : null;
+
+                $submittedAffectation = trim((string) ($item['tax_affectation_code'] ?? ''));
+
+                if (in_array($submittedAffectation, ArticleSalesTaxPolicy::ALLOWED, true)) {
+                    // La afectación pertenece a ESTA línea de la orden.
+                    $taxAffectation = $submittedAffectation;
+                } elseif ($existingItem) {
+                    $taxAffectation = $existingItem->tax_affectation_code
+                        ?: ($order?->affect_igv ? ArticleSalesTaxPolicy::TAXABLE : ArticleSalesTaxPolicy::EXONERATED);
+                } elseif ($quoteItem) {
+                    $taxAffectation = $quoteItem->tax_affectation_code
+                        ?: ($quoteItem->quote?->affect_igv ? ArticleSalesTaxPolicy::TAXABLE : ArticleSalesTaxPolicy::EXONERATED);
+                } else {
+                    throw ValidationException::withMessages([
+                        'items' => 'Debe indicar la afectación tributaria de cada línea de la orden.',
+                    ]);
+                }
 
                 $quantity = (string) $item['quantity'];
                 $unitPrice = (string) $item['unit_price'];
                 $lineTotal = bcmul($quantity, $unitPrice, 10);
-                $subtotal = $affectIgv ? bcdiv($lineTotal, '1.18', 10) : $lineTotal;
-                $taxAmount = $affectIgv ? bcsub($lineTotal, $subtotal, 10) : '0';
+                $subtotal = $taxAffectation === ArticleSalesTaxPolicy::TAXABLE
+                    ? bcdiv($lineTotal, '1.18', 10)
+                    : $lineTotal;
+                $taxAmount = $taxAffectation === ArticleSalesTaxPolicy::TAXABLE
+                    ? bcsub($lineTotal, $subtotal, 10)
+                    : '0';
 
                 return [
                     '_item_id' => $item['id'] ?? null,
@@ -1435,6 +1617,7 @@ class CustomerPurchaseOrderController extends Controller
                     'unit_price' => $unitPrice,
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
+                    'tax_affectation_code' => $taxAffectation,
                     'line_total' => $lineTotal,
                     'status' => $item['status'] ?? 'active',
                 ];
@@ -1442,18 +1625,31 @@ class CustomerPurchaseOrderController extends Controller
             ->all();
     }
 
-    private function calculateTotals(array $items, bool $affectIgv): array
+    private function calculateTotals(array $items): array
     {
-        $grandTotal = array_reduce(
-            $items,
-            fn (string $total, array $item) => bcadd($total, (string) $item['line_total'], 10),
-            '0'
-        );
-        $subtotalTaxed = $affectIgv ? bcdiv($grandTotal, '1.18', 10) : '0';
-        $igv = $affectIgv ? bcsub($grandTotal, $subtotalTaxed, 10) : '0';
+        $grandTotal = '0';
+        $subtotalTaxed = '0';
+        $subtotalExonerated = '0';
+        $subtotalUnaffected = '0';
+        $igv = '0';
+
+        foreach ($items as $item) {
+            $lineTotal = (string) $item['line_total'];
+            $grandTotal = bcadd($grandTotal, $lineTotal, 10);
+
+            if ($item['tax_affectation_code'] === ArticleSalesTaxPolicy::TAXABLE) {
+                $subtotalTaxed = bcadd($subtotalTaxed, (string) $item['subtotal'], 10);
+                $igv = bcadd($igv, (string) $item['tax_amount'], 10);
+            } elseif ($item['tax_affectation_code'] === ArticleSalesTaxPolicy::EXONERATED) {
+                $subtotalExonerated = bcadd($subtotalExonerated, $lineTotal, 10);
+            } elseif ($item['tax_affectation_code'] === ArticleSalesTaxPolicy::UNAFFECTED) {
+                $subtotalUnaffected = bcadd($subtotalUnaffected, $lineTotal, 10);
+            }
+        }
 
         return [
-            'subtotal_exonerated' => $affectIgv ? '0' : $grandTotal,
+            'subtotal_exonerated' => $subtotalExonerated,
+            'subtotal_unaffected' => $subtotalUnaffected,
             'subtotal_taxed' => $subtotalTaxed,
             'igv' => $igv,
             'grand_total' => $grandTotal,
@@ -1497,6 +1693,7 @@ class CustomerPurchaseOrderController extends Controller
             self::STATUS_IN_PURCHASE,
             self::STATUS_PARTIAL_ENTERED,
             self::STATUS_ENTERED,
+            self::STATUS_PARTIAL_DISPATCHED,
             self::STATUS_CANCELLED,
             self::STATUS_DELIVERED,
             self::STATUS_INVOICED,
@@ -1564,10 +1761,8 @@ class CustomerPurchaseOrderController extends Controller
 
     private function appendSupplyProgress(CustomerPurchaseOrder $order): void
     {
-        $itemIds = $order->items
-            ->where('status', '!=', 'deleted')
-            ->pluck('id')
-            ->all();
+        $activeItems = $order->items->where('status', '!=', 'deleted');
+        $itemIds = $activeItems->pluck('id')->all();
 
         if (empty($itemIds)) {
             return;
@@ -1583,7 +1778,18 @@ class CustomerPurchaseOrderController extends Controller
             ->selectRaw('items.customer_purchase_order_item_id, SUM(items.quantity) as purchase_quantity')
             ->pluck('purchase_quantity', 'customer_purchase_order_item_id');
 
-        $enteredByItem = DB::table('warehouse_entry_items as entry_items')
+        $enteredByItem = DB::table('warehouse_entry_item_allocations as allocations')
+            ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+            ->whereIn('allocations.customer_purchase_order_item_id', $itemIds)
+            ->whereNull('allocations.deleted_at')
+            ->whereNull('entries.deleted_at')
+            ->where('allocations.status', 'active')
+            ->where('entries.status', 'registered')
+            ->groupBy('allocations.customer_purchase_order_item_id')
+            ->selectRaw('allocations.customer_purchase_order_item_id, SUM(allocations.quantity_allocated) as entered_quantity')
+            ->pluck('entered_quantity', 'customer_purchase_order_item_id');
+
+        $legacyEntered = DB::table('warehouse_entry_items as entry_items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
             ->join('supplier_purchase_order_items as supplier_items', 'supplier_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
             ->join('supplier_purchase_orders as supplier_orders', 'supplier_orders.id', '=', 'supplier_items.supplier_purchase_order_id')
@@ -1594,15 +1800,32 @@ class CustomerPurchaseOrderController extends Controller
             ->where('supplier_orders.status', '!=', 'cancelled')
             ->where('entry_items.status', '!=', 'deleted')
             ->where('supplier_items.status', '!=', 'deleted')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('warehouse_entry_item_allocations as allocations')
+                    ->whereColumn('allocations.warehouse_entry_item_id', 'entry_items.id')
+                    ->where('allocations.status', 'active')
+                    ->whereNull('allocations.deleted_at');
+            })
             ->groupBy('supplier_items.customer_purchase_order_item_id')
             ->selectRaw('supplier_items.customer_purchase_order_item_id, SUM(entry_items.quantity) as entered_quantity')
             ->pluck('entered_quantity', 'customer_purchase_order_item_id');
 
-        $order->items->each(function ($item) use ($purchaseByItem, $enteredByItem) {
+        $legacyEntered->each(function ($quantity, $itemId) use ($enteredByItem) {
+            $enteredByItem->put($itemId, (float) $enteredByItem->get($itemId, 0) + (float) $quantity);
+        });
+
+        $dispatchService = app(WarehouseDispatchService::class);
+        $dispatchedByItem = $dispatchService->dispatchedQuantities($order);
+
+        $activeItems->each(function ($item) use ($purchaseByItem, $enteredByItem, $dispatchedByItem) {
             $requested = round((float) $item->quantity, 2);
             $purchase = round((float) ($purchaseByItem[$item->id] ?? 0), 2);
             $entered = round((float) ($enteredByItem[$item->id] ?? 0), 2);
-            $pending = max(round($requested - $purchase, 2), 0);
+            $dispatched = round((float) ($dispatchedByItem[$item->id] ?? 0), 2);
+            $pending = max(round($requested - $entered, 2), 0);
+            $pendingDispatch = max(round($requested - $dispatched, 2), 0);
+            $availableDispatch = max(min(round($entered - $dispatched, 2), $pendingDispatch), 0);
             $status = match (true) {
                 $entered >= $requested => 'entered',
                 $entered > 0 => 'partial_entered',
@@ -1610,12 +1833,40 @@ class CustomerPurchaseOrderController extends Controller
                 $purchase > 0 => 'partial_purchase',
                 default => 'registered',
             };
+            $operationalStatus = match (true) {
+                $dispatched >= $requested => 'attended',
+                $dispatched > 0 => 'partial_dispatched',
+                default => $status,
+            };
 
             $item->setAttribute('requested_quantity', $requested);
             $item->setAttribute('purchase_quantity', $purchase);
             $item->setAttribute('entered_quantity', $entered);
+            $item->setAttribute('dispatched_quantity', $dispatched);
             $item->setAttribute('pending_quantity', $pending);
+            $item->setAttribute('pending_dispatch_quantity', $pendingDispatch);
+            $item->setAttribute('available_dispatch_quantity', $availableDispatch);
             $item->setAttribute('supply_status', $status);
+            $item->setAttribute('operational_status', $operationalStatus);
         });
+
+        $order->setAttribute('requested_quantity_total', round((float) $activeItems->sum('requested_quantity'), 2));
+        $order->setAttribute('entered_quantity_total', round((float) $activeItems->sum('entered_quantity'), 2));
+        $order->setAttribute('dispatched_quantity_total', round((float) $activeItems->sum('dispatched_quantity'), 2));
+        $order->setAttribute('pending_dispatch_quantity_total', round((float) $activeItems->sum('pending_dispatch_quantity'), 2));
+        $order->setAttribute('can_dispatch', $activeItems->contains(fn ($item) => (float) $item->available_dispatch_quantity > 0));
+    }
+
+    private function operationalProgressHtml(CustomerPurchaseOrder $order): string
+    {
+        $this->appendSupplyProgress($order);
+
+        return sprintf(
+            '<div class="small text-left" style="min-width:145px"><div><strong>Solicitado:</strong> %s</div><div class="text-info"><strong>En almacén:</strong> %s</div><div class="text-success"><strong>Despachado:</strong> %s</div><div class="text-danger"><strong>Pendiente:</strong> %s</div></div>',
+            number_format((float) $order->requested_quantity_total, 2),
+            number_format((float) $order->entered_quantity_total, 2),
+            number_format((float) $order->dispatched_quantity_total, 2),
+            number_format((float) $order->pending_dispatch_quantity_total, 2)
+        );
     }
 }

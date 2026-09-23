@@ -60,6 +60,41 @@ class CustomerOrderProfitabilityService
                 'payment_currencies.symbol as payment_currency_symbol'
             )
             ->get();
+        $customerAllocations = DB::table('warehouse_entry_item_allocations as allocations')
+                ->join('warehouse_entry_items as entry_items', 'entry_items.id', '=', 'allocations.warehouse_entry_item_id')
+                ->join('warehouse_entries as entries', 'entries.id', '=', 'allocations.warehouse_entry_id')
+                ->join('currencies as purchase_currencies', 'purchase_currencies.id', '=', 'entries.currency_id')
+                ->leftJoin('supplier_purchase_orders as orders', 'orders.id', '=', 'allocations.supplier_purchase_order_id')
+                ->leftJoin('suppliers', 'suppliers.id', '=', 'entries.supplier_id')
+                ->where('allocations.customer_purchase_order_id', $order->id)
+                ->where('allocations.status', 'active')
+                ->whereNull('allocations.deleted_at')
+                ->whereNull('entries.deleted_at')
+                ->where('entries.status', 'registered')
+                ->where('entry_items.status', '!=', 'deleted')
+                ->get([
+                    'allocations.id as allocation_id',
+                    'allocations.warehouse_entry_item_id',
+                    'allocations.customer_purchase_order_item_id',
+                    'allocations.supplier_purchase_order_id',
+                    'allocations.supplier_purchase_order_item_id',
+                    'allocations.article_id',
+                    'allocations.quantity_allocated',
+                    'allocations.unit_cost',
+                    'allocations.total_cost',
+                    'entries.id as warehouse_entry_id',
+                    'entries.entry_number',
+                    'entries.document_date as order_date',
+                    'entries.affect_igv as order_affect_igv',
+                    DB::raw('COALESCE(orders.grand_total, entries.grand_total) as order_grand_total'),
+                    'entries.bank_payment_exchange_rate as order_exchange_rate',
+                    'orders.code as order_code',
+                    'orders.total_pen as order_total_pen',
+                    'orders.total_payment_currency as order_total_payment_currency',
+                    'suppliers.business_name as supplier_name',
+                    'purchase_currencies.code as purchase_currency_code',
+                    'purchase_currencies.symbol as purchase_currency_symbol',
+                ]);
         $warehousePurchaseAmounts = DB::table('warehouse_entry_items as entry_items')
             ->join('warehouse_entries as entries', 'entries.id', '=', 'entry_items.warehouse_entry_id')
             ->join('supplier_purchase_order_items as purchase_items', 'purchase_items.id', '=', 'entry_items.supplier_purchase_order_item_id')
@@ -75,6 +110,26 @@ class CustomerOrderProfitabilityService
             ->selectRaw('SUM(CASE WHEN entries.affect_igv = 1 THEN 0 ELSE entry_items.line_total END) as unaffected_total')
             ->get()
             ->keyBy('supplier_purchase_order_item_id');
+        if ($customerAllocations->isNotEmpty()) {
+            $supplierItems = $customerAllocations->map(function ($allocation) {
+                $total = (float) $allocation->total_cost;
+                $affectsIgv = (bool) $allocation->order_affect_igv;
+                $allocation->id = 'allocation-'.$allocation->allocation_id;
+                $allocation->quantity = $allocation->quantity_allocated;
+                $allocation->unit_price = $allocation->unit_cost;
+                $allocation->line_total = $total;
+                $allocation->total_with_igv = $total;
+                $allocation->subtotal = $affectsIgv ? round($total / 1.18, 6) : $total;
+                $allocation->taxable_base = $allocation->subtotal;
+                $allocation->payment_currency_code = $allocation->purchase_currency_code;
+                $allocation->payment_currency_symbol = $allocation->purchase_currency_symbol;
+                $allocation->order_code = $allocation->order_code ?: $allocation->entry_number;
+                $allocation->order_status = 'registered';
+
+                return $allocation;
+            });
+            $warehousePurchaseAmounts = collect();
+        }
         $supplierOrdersWithEntries = $warehousePurchaseAmounts
             ->pluck('supplier_purchase_order_id')
             ->map(fn ($id) => (int) $id)
@@ -95,15 +150,21 @@ class CustomerOrderProfitabilityService
             $this->applyConsideredPurchaseAmounts($item, $usesIgvStructure);
         });
         $supplierOrderIds = $supplierItems->pluck('supplier_purchase_order_id')->unique();
-        $entryIds = DB::table('warehouse_entries as entries')
+        $entryIds = $customerAllocations->isNotEmpty()
+            ? $customerAllocations->pluck('warehouse_entry_id')->unique()
+            : DB::table('warehouse_entries as entries')
             ->leftJoin('warehouse_entry_items as items', 'items.warehouse_entry_id', '=', 'entries.id')
             ->where(function ($query) use ($supplierItems, $supplierOrderIds) {
                 $query->whereIn('items.supplier_purchase_order_item_id', $supplierItems->pluck('id'))
                     ->orWhereIn('entries.supplier_purchase_order_id', $supplierOrderIds);
             })->whereNull('entries.deleted_at')->where('entries.status', 'registered')
-            ->pluck('entries.id')->unique();
+                ->pluck('entries.id')->unique();
         $approvalColumnAvailable = $this->warehouseExpenseApprovalColumnAvailable();
-        $costsQuery = WarehouseEntryExpense::query()->with(['documents', 'warehouseEntry:id,entry_number,document_date'])
+        $costsQuery = WarehouseEntryExpense::query()->with([
+            'documents',
+            'warehouseEntry:id,entry_number,document_date',
+            'distributions:id,warehouse_entry_expense_id,warehouse_entry_item_id,distributed_amount',
+        ])
             ->whereIn('warehouse_entry_id', $entryIds)
             ->where('status', 'ACTIVE');
 
@@ -118,6 +179,44 @@ class CustomerOrderProfitabilityService
         }
 
         $costs = $costsQuery->get();
+
+        if ($customerAllocations->isNotEmpty() && $costs->isNotEmpty()) {
+            $customerQuantityByEntryItem = $customerAllocations
+                ->groupBy('warehouse_entry_item_id')
+                ->map->sum('quantity_allocated');
+            $entryItems = DB::table('warehouse_entry_items')
+                ->whereIn('warehouse_entry_id', $entryIds)
+                ->where('status', '!=', 'deleted')
+                ->get(['id', 'warehouse_entry_id', 'quantity']);
+            $ratioByEntryItem = $entryItems->mapWithKeys(fn ($item) => [
+                $item->id => (float) $item->quantity > 0
+                    ? min((float) $customerQuantityByEntryItem->get($item->id, 0) / (float) $item->quantity, 1)
+                    : 0,
+            ]);
+            $ratioByEntry = $entryItems->groupBy('warehouse_entry_id')->map(function ($items) use ($customerQuantityByEntryItem) {
+                $total = (float) $items->sum('quantity');
+                $customer = (float) $items->sum(fn ($item) => $customerQuantityByEntryItem->get($item->id, 0));
+
+                return $total > 0 ? min($customer / $total, 1) : 0;
+            });
+
+            $costs = $costs->map(function (WarehouseEntryExpense $cost) use ($ratioByEntryItem, $ratioByEntry) {
+                $originalAmount = (float) ($cost->amount ?: $cost->total_amount);
+                $allocatedAmount = $cost->distributions->isNotEmpty()
+                    ? (float) $cost->distributions->sum(fn ($distribution) =>
+                        (float) $distribution->distributed_amount * (float) $ratioByEntryItem->get($distribution->warehouse_entry_item_id, 0))
+                    : $originalAmount * (float) $ratioByEntry->get($cost->warehouse_entry_id, 0);
+                $factor = $originalAmount > 0 ? min($allocatedAmount / $originalAmount, 1) : 0;
+                $copy = clone $cost;
+                foreach (['amount', 'distributed_amount', 'taxable_amount', 'igv_amount', 'total_amount'] as $field) {
+                    if ($copy->{$field} !== null) {
+                        $copy->setAttribute($field, round((float) $copy->{$field} * $factor, 6));
+                    }
+                }
+
+                return $copy;
+            })->filter(fn (WarehouseEntryExpense $cost) => (float) ($cost->amount ?: $cost->total_amount) > 0.000001)->values();
+        }
 
         if (! $approvalColumnAvailable) {
             // Antes del flujo de aprobación todos los costos existentes eran definitivos.
@@ -196,8 +295,15 @@ class CustomerOrderProfitabilityService
             }
         });
         $purchasedByItem = $supplierItems->filter->customer_purchase_order_item_id->groupBy('customer_purchase_order_item_id')->map->sum('quantity');
-        $enteredBySupplierItem = DB::table('warehouse_entry_items')->whereIn('supplier_purchase_order_item_id', $supplierItems->pluck('id'))->where('status', '!=', 'deleted')->groupBy('supplier_purchase_order_item_id')->selectRaw('supplier_purchase_order_item_id, SUM(quantity) total')->pluck('total', 'supplier_purchase_order_item_id');
-        $enteredByCustomerItem = $supplierItems->groupBy('customer_purchase_order_item_id')->map(fn ($rows) => $rows->sum(fn ($row) => (float) ($enteredBySupplierItem[$row->id] ?? 0)));
+        if ($customerAllocations->isNotEmpty()) {
+            $enteredByCustomerItem = $customerAllocations
+                ->groupBy('customer_purchase_order_item_id')
+                ->map->sum('quantity_allocated');
+            $purchasedByItem = $enteredByCustomerItem;
+        } else {
+            $enteredBySupplierItem = DB::table('warehouse_entry_items')->whereIn('supplier_purchase_order_item_id', $supplierItems->pluck('id'))->where('status', '!=', 'deleted')->groupBy('supplier_purchase_order_item_id')->selectRaw('supplier_purchase_order_item_id, SUM(quantity) total')->pluck('total', 'supplier_purchase_order_item_id');
+            $enteredByCustomerItem = $supplierItems->groupBy('customer_purchase_order_item_id')->map(fn ($rows) => $rows->sum(fn ($row) => (float) ($enteredBySupplierItem[$row->id] ?? 0)));
+        }
         $warnings = [];
         if ($supplierItems->isEmpty()) {
             $warnings[] = 'Esta OC aún no tiene compras a proveedor vinculadas.';
@@ -296,9 +402,19 @@ class CustomerOrderProfitabilityService
             ];
         }
 
-        $storedBase = round((float) $order->subtotal_taxed + (float) $order->subtotal_exonerated, 2);
-        $itemsBase = round((float) collect($activeSaleItems)->sum(function ($item) {
+        $storedBase = round(
+            (float) $order->subtotal_taxed
+            + (float) $order->subtotal_exonerated
+            + (float) ($order->subtotal_unaffected ?? 0),
+            2
+        );
+        $itemsBase = round((float) collect($activeSaleItems)->sum(function ($item) use ($order) {
             $total = (float) ($item->line_total ?: ((float) $item->quantity * (float) $item->unit_price));
+            $taxAffectation = (string) ($item->tax_affectation_code ?: ($order->affect_igv ? '10' : '20'));
+
+            if ($taxAffectation !== '10') {
+                return $total;
+            }
 
             return (float) ($item->subtotal ?: ($total / (1 + (self::IGV_RATE / 100))));
         }), 2);

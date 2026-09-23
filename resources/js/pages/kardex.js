@@ -68,10 +68,12 @@ function initKardexTable() {
             { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right', render: renderKardexBalanceNumber },
             { data: 'average_unit_cost_display', name: 'average_unit_cost', className: 'text-right', render: renderKardexMoneyCell },
             { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right', render: renderKardexMoneyCell },
+            { data: 'created_by_label', name: 'created_by_label', orderable: false, searchable: false },
+            { data: 'updated_by_label', name: 'updated_by_label', orderable: false, searchable: false },
             { data: 'status', name: 'status' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],
-        responsive: true,
+        responsive: false,
         autoWidth: false,
         language: {
             url: '/vendor/datatables/js/i18n/es-ES.json'
@@ -202,13 +204,13 @@ function renderKardexArticleCell(data, type) {
     const name = escapeKardexHtml((parts.slice(1).join('|') || parts[0] || '-').trim());
 
     if (!code || code === name) {
-        return `<div class="kardex-article-cell"><span class="kardex-article-name">${name}</span></div>`;
+        return `<div class="kardex-article-cell"><span class="kardex-article-name" title="${name}">${name}</span></div>`;
     }
 
     return `
         <div class="kardex-article-cell">
             <span class="kardex-article-code">${code}</span>
-            <span class="kardex-article-name">${name}</span>
+            <span class="kardex-article-name" title="${name}">${name}</span>
         </div>
     `;
 }
@@ -220,7 +222,7 @@ function renderKardexDocumentPill(data, type) {
 
     const value = escapeKardexHtml(data || '-');
 
-    return `<span class="kardex-document-pill"><i class="fas fa-file-invoice mr-1"></i>${value}</span>`;
+    return `<span class="kardex-document-pill" title="${value}"><i class="fas fa-file-invoice mr-1"></i><span class="kardex-document-text">${value}</span></span>`;
 }
 
 function renderKardexEntryNumber(data, type) {
@@ -263,7 +265,11 @@ function formatKardexOperation(value) {
         sale_exit: 'Salida por Venta',
         transfer: 'Transferencia',
         warehouse_entry_linked_cost: 'Costo vinculado al ingreso',
-        warehouse_entry_linked_cost_cancel: 'Reversa de costo vinculado'
+        warehouse_entry_linked_cost_cancel: 'Reversa de costo vinculado',
+        customer_order_dispatch: 'Despacho de OC Cliente',
+        customer_order_dispatch_cancel: 'Reversa de despacho de OC Cliente',
+        customer_return: 'Devolución cliente',
+        customer_return_reversal: 'Anulación de devolución de cliente'
     };
 
     return map[value] || value || '-';

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Article;
 use App\Models\CustomerPurchaseOrder;
 use App\Models\User;
 use App\Services\CustomerPurchaseOrderStatusService;
@@ -20,6 +21,7 @@ beforeEach(function () {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+    $this->user->companies()->attach($this->companyId);
     $this->customerId = DB::table('customers')->insertGetId([
         'person_type' => 'juridica',
         'business_name' => 'CLIENTE STATUS TEST',
@@ -49,9 +51,11 @@ beforeEach(function () {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+    $sunatUnitItemId = testSunatUnitItemId();
     $unitId = DB::table('units')->insertGetId([
         'abbreviation' => 'UND',
         'description' => 'UNIDAD',
+        'sunat_unit_item_id' => $sunatUnitItemId,
         'status' => 'ACTIVE',
         'created_at' => $now,
         'updated_at' => $now,
@@ -86,6 +90,9 @@ beforeEach(function () {
         'brand_id' => $brandId,
         'legal_name' => 'ARTÍCULO STATUS',
         'billing_name' => 'ARTÍCULO STATUS',
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('STATUS-ART'),
         'status' => 'ACTIVE',
         'created_at' => $now,
         'updated_at' => $now,
@@ -98,6 +105,9 @@ beforeEach(function () {
         'brand_id' => $brandId,
         'legal_name' => 'SEGUNDO ARTÍCULO STATUS',
         'billing_name' => 'SEGUNDO ARTÍCULO STATUS',
+        'item_kind' => Article::KIND_PRODUCT,
+        'is_inventory_item' => true,
+        ...testSunatInventoryArticleFields('STATUS-ART-2'),
         'status' => 'ACTIVE',
         'created_at' => $now,
         'updated_at' => $now,
@@ -252,6 +262,7 @@ it('conserva el vínculo de detalle y recalcula al editar cantidades de la OC cl
                 'quantity' => 12,
                 'unit_price' => 1,
                 'line_total' => 12,
+                'tax_affectation_code' => '10',
                 'status' => 'active',
             ]],
         ]
@@ -278,6 +289,14 @@ it('recalcula automáticamente al crear editar y anular un ingreso de almacén',
         'code' => 'STATUS-WH',
         'name' => 'ALMACÉN STATUS',
         'status' => 'ACTIVE',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('company_warehouses')->insert([
+        'company_id' => $this->companyId,
+        'warehouse_id' => $warehouseId,
+        'sunat_establishment_code' => null,
+        'is_active' => true,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
@@ -326,8 +345,8 @@ it('repara una OC específica mediante el comando seguro y muestra el cambio', f
     expect($exitCode)->toBe(0)
         ->and(Artisan::output())->toContain('P-STATUS-')
         ->toContain('4505463671')
-        ->toContain('En compra (in_purchase)')
-        ->toContain('Abastecida (entered)');
+        ->toContain('Compra en proceso (in_purchase)')
+        ->toContain('Abastecida en almacén (entered)');
 
     expect($order->fresh()->status)->toBe(CustomerPurchaseOrder::STATUS_ENTERED);
 });
@@ -359,6 +378,46 @@ it('el listado y el filtro abastecidas usan el estado sincronizado', function ()
     expect(collect($response->json('data'))->pluck('id'))->toContain($order->id);
 });
 
+it('mantiene una OC abastecida en el flujo activo sin presentarla como entregada o finalizada', function () {
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    Permission::findOrCreate('admin.customer-purchase-orders.index', 'web');
+    $this->user->givePermissionTo('admin.customer-purchase-orders.index');
+    [$order] = statusTestCustomerOrder($this, 10, CustomerPurchaseOrder::STATUS_ENTERED);
+    $order->update([
+        'delivery_start_date' => today()->subDays(5),
+        'delivery_end_date' => today()->subDay(),
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('admin.customer-purchase-orders.index'))
+        ->assertOk()
+        ->assertSeeText('Compra en proceso')
+        ->assertSeeText('Ingreso parcial')
+        ->assertSeeText('Abastecidas en almacén')
+        ->assertSeeText('Atendidas / Despachadas');
+
+    $activeResponse = $this->actingAs($this->user)
+        ->getJson(route('admin.customer-purchase-orders.list'))
+        ->assertOk();
+    $activeRow = collect($activeResponse->json('data'))->firstWhere('id', $order->id);
+
+    expect($activeRow)->not->toBeNull()
+        ->and($activeRow['status'])->toContain('Abastecida en almacén')
+        ->and($activeRow['status'])->toContain('Mercadería ingresada, falta atención o despacho.')
+        ->and($activeRow['delivery_period'])->toContain('Abastecida en almacén')
+        ->and($activeRow['delivery_period'])->toContain('atención pendiente')
+        ->and($activeRow['delivery_period'])->not->toContain('Entrega completada')
+        ->and($activeRow['delivery_period'])->not->toContain('Entregada')
+        ->and($activeRow['delivery_period'])->not->toContain('Finalizada');
+
+    $overdueResponse = $this->actingAs($this->user)->getJson(route(
+        'admin.customer-purchase-orders.list',
+        ['status_filter' => 'overdue']
+    ))->assertOk();
+
+    expect(collect($overdueResponse->json('data'))->pluck('id'))->toContain($order->id);
+});
+
 function statusTestCustomerOrder(object $test, float $quantity, string $status, ?string $number = null): array
 {
     static $sequence = 0;
@@ -381,6 +440,7 @@ function statusTestCustomerOrder(object $test, float $quantity, string $status, 
         'article_id' => $test->articleId,
         'billing_name_snapshot' => 'ARTÍCULO STATUS',
         'quantity' => $quantity,
+        'tax_affectation_code' => '10',
         'status' => 'active',
         'created_at' => now(),
         'updated_at' => now(),
@@ -405,6 +465,9 @@ function statusTestSupplierOrder(
         'currency_id' => $test->currencyId,
         'customer_purchase_order_id' => $customerOrderId,
         'order_type' => 'articles',
+        'payment_method' => 'transferencia',
+        'payment_condition' => 'credito',
+        'credit_days' => 1,
         'status' => 'registered',
         'created_at' => now(),
         'updated_at' => now(),

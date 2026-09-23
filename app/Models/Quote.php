@@ -50,6 +50,7 @@ class Quote extends Model
         'contact_number',
 
         'subtotal_exonerated',
+        'subtotal_unaffected',
         'subtotal_taxed',
         'igv',
         'grand_total',
@@ -62,6 +63,7 @@ class Quote extends Model
 
     protected $casts = [
         'affect_igv' => 'boolean',
+        'subtotal_unaffected' => 'decimal:2',
         'validity_date' => 'date',
     ];
 

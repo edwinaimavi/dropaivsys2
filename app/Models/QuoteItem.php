@@ -36,6 +36,7 @@ class QuoteItem extends Model
         'discount_amount',
 
         'line_total',
+        'tax_affectation_code',
 
         'is_winner'
     ];

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\WarehouseEntryController;
 use App\Models\Bank;
+use App\Models\BankMovement;
 use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Currency;
@@ -12,6 +13,7 @@ use App\Models\User;
 use App\Models\WarehouseEntry;
 use App\Models\WarehouseEntryExpense;
 use App\Models\WarehouseEntryExpenseDocument;
+use App\Services\WarehouseEntryExpenseBankService;
 use Database\Seeders\DetractionTypeSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -100,7 +102,7 @@ function warehouseSourceExpensePayload(string $source, string $responsible, arra
     ], $extra);
 }
 
-it('registra fuentes manual, Caja General y Banco como pendientes sin afectar saldos', function () {
+it('autoaprueba Banco y mantiene pendientes las demas fuentes sin duplicar el egreso', function () {
     $cashBalance = $this->box->current_balance;
     $bankBalance = $this->account->current_balance;
     $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
@@ -115,14 +117,42 @@ it('registra fuentes manual, Caja General y Banco como pendientes sin afectar sa
     ], [], []);
 
     $expenses = $this->entry->expenses()->orderBy('id')->get();
+    $bankExpense = $expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_BANK);
+    $bankMovement = BankMovement::findOrFail($bankExpense->bank_movement_id);
     expect($expenses)->toHaveCount(3)
-        ->and($expenses->pluck('approval_status')->unique()->all())->toBe([WarehouseEntryExpense::APPROVAL_PENDING])
+        ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_MANUAL)->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_PENDING)
+        ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_GENERAL_CASH)->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_PENDING)
         ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_GENERAL_CASH)->general_cash_box_id)->toBe($this->box->id)
         ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_GENERAL_CASH)->general_cash_movement_id)->toBeNull()
-        ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_BANK)->company_bank_account_id)->toBe($this->account->id)
-        ->and($expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_BANK)->bank_movement_id)->toBeNull()
+        ->and($bankExpense->company_bank_account_id)->toBe($this->account->id)
+        ->and($bankExpense->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_APPROVED)
+        ->and($bankExpense->approved_by)->toBe($this->user->id)
+        ->and($bankExpense->approved_at)->not->toBeNull()
+        ->and($bankMovement->direction)->toBe(BankMovement::DIRECTION_OUT)
+        ->and($bankMovement->movement_type)->toBe('EGRESO')
+        ->and($bankMovement->source_type)->toBe('WAREHOUSE_ENTRY_EXPENSE')
+        ->and($bankMovement->source_id)->toBe($bankExpense->id)
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->count())->toBe(1)
         ->and($this->box->fresh()->current_balance)->toBe($cashBalance)
-        ->and($this->account->fresh()->current_balance)->toBe($bankBalance);
+        ->and((float) $this->account->fresh()->current_balance)->toBe((float) $bankBalance - 25);
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'RESPONSABLE MANUAL', [
+            'id' => $expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_MANUAL)->id,
+        ]),
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_GENERAL_CASH, 'RESPONSABLE CAJA', [
+            'id' => $expenses->firstWhere('source_type', WarehouseEntryExpense::SOURCE_GENERAL_CASH)->id,
+            'general_cash_box_id' => $this->box->id,
+        ]),
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'id' => $bankExpense->id,
+            'company_bank_account_id' => $this->account->id,
+        ]),
+    ], [], []);
+
+    expect(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->count())->toBe(1)
+        ->and($bankExpense->fresh()->bank_movement_id)->toBe($bankMovement->id)
+        ->and((float) $this->account->fresh()->current_balance)->toBe((float) $bankBalance - 25);
 
     $this->getJson(route('admin.warehouse-entries.show', $this->entry))
         ->assertOk()
@@ -177,7 +207,7 @@ it('devuelve todas las cuentas activas de la empresa sin filtrar por moneda ni s
         ->assertJsonMissing(['id' => $inactiveAccount->id]);
 });
 
-it('exige para Banco una cuenta activa de la empresa y permite otra moneda', function () {
+it('exige para Banco una cuenta activa de la empresa y moneda compatible antes de guardar', function () {
     $otherCompany = Company::create([
         'business_name' => 'OTRA EMPRESA S.A.C.', 'ruc' => '20977777772', 'status' => true,
     ]);
@@ -214,12 +244,14 @@ it('exige para Banco una cuenta activa de la empresa y permite otra moneda', fun
         ->and(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($inactiveAccount->id), [], []))
         ->toThrow(\Illuminate\Validation\ValidationException::class, 'Seleccione una cuenta bancaria activa de la empresa DROPAIV FUENTES S.A.C.');
 
-    $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($otherCurrencyAccount->id), [], []);
+    expect(fn () => $sync->invoke(app(WarehouseEntryController::class), $this->entry, $payload($otherCurrencyAccount->id), [], []))
+        ->toThrow(\Illuminate\Validation\ValidationException::class, 'La moneda de la cuenta bancaria debe coincidir con la moneda del gasto.');
 
-    expect($this->entry->expenses()->sole()->company_bank_account_id)->toBe($otherCurrencyAccount->id);
+    expect($this->entry->expenses()->count())->toBe(0)
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->count())->toBe(0);
 });
 
-it('conserva trazabilidad al aprobar un gasto manual', function () {
+it('regulariza un gasto bancario una sola vez mediante el servicio y conserva su trazabilidad', function () {
     $expense = $this->entry->expenses()->create([
         ...warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
             'company_bank_account_id' => $this->account->id,
@@ -231,17 +263,179 @@ it('conserva trazabilidad al aprobar un gasto manual', function () {
         'created_by' => $this->user->id,
     ]);
 
-    $this->postJson(route('admin.warehouse-entries.expenses.approval', [$this->entry, $expense]), [
-        'approval_status' => WarehouseEntryExpense::APPROVAL_APPROVED,
-        'approval_observation' => 'Sustento conforme',
-    ])->assertOk()->assertJsonPath('data.approval_status', WarehouseEntryExpense::APPROVAL_APPROVED);
+    $service = app(WarehouseEntryExpenseBankService::class);
+    $service->approveAndSync($expense, $this->user->id, 'REGULARIZACIÓN DE PRUEBA');
 
     $expense->refresh();
+    $movement = BankMovement::findOrFail($expense->bank_movement_id);
     expect($expense->approved_by)->toBe($this->user->id)
         ->and($expense->approved_at)->not->toBeNull()
-        ->and($expense->approval_observation)->toBe('SUSTENTO CONFORME')
-        ->and($expense->bank_movement_id)->toBeNull()
+        ->and($expense->approval_observation)->toBeNull()
+        ->and($movement->direction)->toBe(BankMovement::DIRECTION_OUT)
+        ->and($movement->source_type)->toBe('WAREHOUSE_ENTRY_EXPENSE')
+        ->and($movement->source_id)->toBe($expense->id)
+        ->and($movement->source_code)->toBe($this->entry->entry_number.'-GASTO-'.$expense->id)
+        ->and((float) $movement->amount)->toBe(25.0)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(975.0);
+
+    $service->approveAndSync($expense, $this->user->id, 'REINTENTO DE REGULARIZACIÓN');
+
+    expect(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->count())->toBe(1)
+        ->and($expense->fresh()->bank_movement_id)->toBe($movement->id)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(975.0);
+
+    Permission::findOrCreate('admin.banks.view', 'web');
+    Permission::findOrCreate('admin.banks.movements', 'web');
+    $this->user->givePermissionTo(['admin.banks.view', 'admin.banks.movements']);
+    $this->getJson(route('admin.banks.show', $this->account))
+        ->assertOk()
+        ->assertJsonPath('data.movements.0.source_url', route('admin.warehouse-entries.index', [
+            'from_warehouse_entry' => $this->entry->id,
+            'auto_open' => 1,
+        ]));
+});
+
+it('no genera movimiento bancario para gastos observados o rechazados', function (string $approvalStatus) {
+    $expense = $this->entry->expenses()->create([
+        ...warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'company_bank_account_id' => $this->account->id,
+            'amount' => 20,
+        ]),
+        ...WarehouseEntryExpense::documentMetadata('SIN_COMPROBANTE'),
+        'currency_id' => $this->currency->id, 'taxable_amount' => 20, 'igv_amount' => 0,
+        'total_amount' => 20, 'supplier_net_amount' => 20, 'status' => 'ACTIVE',
+        'approval_status' => WarehouseEntryExpense::APPROVAL_PENDING,
+        'created_by' => $this->user->id,
+    ]);
+
+    $this->postJson(route('admin.warehouse-entries.expenses.approval', [$this->entry, $expense]), [
+        'approval_status' => $approvalStatus,
+        'approval_observation' => 'Sustento pendiente de corrección',
+    ])->assertOk();
+
+    expect($expense->fresh()->bank_movement_id)->toBeNull()
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')->count())->toBe(0)
         ->and((float) $this->account->fresh()->current_balance)->toBe(1000.0);
+})->with([
+    'observado' => WarehouseEntryExpense::APPROVAL_OBSERVED,
+    'rechazado' => WarehouseEntryExpense::APPROVAL_REJECTED,
+]);
+
+it('reversa el movimiento anterior y crea uno vigente al corregir el monto', function () {
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'company_bank_account_id' => $this->account->id,
+            'amount' => 20,
+        ]),
+    ], [], []);
+    $expense = $this->entry->expenses()->sole();
+    $originalMovement = $expense->fresh()->bankMovement;
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'id' => $expense->id,
+            'company_bank_account_id' => $this->account->id,
+            'amount' => 30,
+        ]),
+    ], [], []);
+
+    $expense->refresh();
+    $currentMovement = $expense->bankMovement;
+    expect($expense->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_APPROVED)
+        ->and($originalMovement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
+        ->and($originalMovement->fresh()->reversal)->not->toBeNull()
+        ->and($currentMovement->id)->not->toBe($originalMovement->id)
+        ->and((float) $currentMovement->amount)->toBe(30.0)
+        ->and($currentMovement->status)->toBe(BankMovement::STATUS_REGISTERED)
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(970.0);
+});
+
+it('reversa el movimiento anterior y conserva historia al cambiar la cuenta bancaria', function () {
+    $otherAccount = CompanyBankAccount::create([
+        'company_id' => $this->company->id,
+        'bank_id' => $this->account->bank_id,
+        'currency_id' => $this->currency->id,
+        'account_holder' => 'DROPAIV FUENTES S.A.C.',
+        'account_number' => '001-SECOND',
+        'current_balance' => 500,
+        'is_detraction' => 'NO',
+        'status' => 'ACTIVE',
+    ]);
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'company_bank_account_id' => $this->account->id,
+            'amount' => 25,
+        ]),
+    ], [], []);
+    $expense = $this->entry->expenses()->sole();
+    $originalMovement = $expense->bankMovement;
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'id' => $expense->id,
+            'company_bank_account_id' => $otherAccount->id,
+            'amount' => 25,
+        ]),
+    ], [], []);
+
+    $expense->refresh();
+    expect($expense->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_APPROVED)
+        ->and($expense->company_bank_account_id)->toBe($otherAccount->id)
+        ->and($expense->bank_movement_id)->not->toBe($originalMovement->id)
+        ->and($originalMovement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
+        ->and($originalMovement->fresh()->reversal)->not->toBeNull()
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')
+            ->where('source_id', $expense->id)->count())->toBe(2)
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')
+            ->where('source_id', $expense->id)
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)->count())->toBe(1)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(1000.0)
+        ->and((float) $otherAccount->fresh()->current_balance)->toBe(475.0);
+});
+
+it('reversa el movimiento vigente cuando el gasto cambia de Banco a otra fuente', function () {
+    $sync = new ReflectionMethod(WarehouseEntryController::class, 'syncEntryExpenses');
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_BANK, 'RESPONSABLE BANCO', [
+            'company_bank_account_id' => $this->account->id,
+            'amount' => 20,
+        ]),
+    ], [], []);
+    $expense = $this->entry->expenses()->sole();
+    $originalMovement = $expense->fresh()->bankMovement;
+
+    $sync->invoke(app(WarehouseEntryController::class), $this->entry, [
+        warehouseSourceExpensePayload(WarehouseEntryExpense::SOURCE_MANUAL, 'RESPONSABLE MANUAL', [
+            'id' => $expense->id,
+            'amount' => 20,
+        ]),
+    ], [], []);
+
+    $expense->refresh();
+    expect($expense->source_type)->toBe(WarehouseEntryExpense::SOURCE_MANUAL)
+        ->and($expense->approval_status)->toBe(WarehouseEntryExpense::APPROVAL_PENDING)
+        ->and($expense->bank_movement_id)->toBeNull()
+        ->and($originalMovement->fresh()->status)->toBe(BankMovement::STATUS_CANCELLED)
+        ->and($originalMovement->fresh()->reversal)->not->toBeNull()
+        ->and(BankMovement::where('source_type', 'WAREHOUSE_ENTRY_EXPENSE')
+            ->where('status', '!=', BankMovement::STATUS_CANCELLED)->count())->toBe(0)
+        ->and((float) $this->account->fresh()->current_balance)->toBe(1000.0);
+});
+
+it('presenta Banco como aprobado en los KPI y sin accion de revision', function () {
+    $javascript = file_get_contents(resource_path('js/pages/warehouse-entry.js'));
+
+    expect($javascript)
+        ->toContain("approval_status: ['petty_cash', 'bank'].includes(paymentSource) ? 'approved'")
+        ->toContain("return ['petty_cash', 'bank'].includes(expense.source_type) || expense.approval_status === 'approved';")
+        ->toContain("!['petty_cash', 'bank'].includes(expense.source_type)")
+        ->toContain('const pendingExpenses = registeredExpenses.filter(expense => !warehouseEntryExpenseIsApproved(expense)')
+        ->toContain("$('#warehouseEntryExpensePendingTotal').text(formatWarehouseEntryMoney(pending));")
+        ->toContain("$('#warehouseEntryExpenseApprovedTotal').text(formatWarehouseEntryMoney(approved));");
 });
 
 it('guarda el importe completo cuando el costo no aplica detracción', function () {

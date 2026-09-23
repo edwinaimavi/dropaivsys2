@@ -1,0 +1,14 @@
+{
+  "catalog_code": "30",
+  "catalog_name": "CLASIFICACION DE LOS BIENES Y SERVICIOS ADQUIRIDOS",
+  "description": null,
+  "source": "sunat_pdf",
+  "is_active": true,
+  "items": [
+    { "code": "1", "description": "MERCADERIA, MATERIA PRIMA, SUMINISTRO, ENVASES Y EMBALAJES", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "2", "description": "ACTIVO FIJO", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "3", "description": "OTROS ACTIVOS NO CONSIDERADOS EN LOS NUMERALES 1 Y 2", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "4", "description": "GASTOS DE EDUCACIÓN, RECREACIÓN, SALUD, CULTURALES. REPRESENTACIÓN, CAPACITACIÓN, DE VIAJE, MANTENIMIENTO DE VEHÍCULO Y DE PREMIOS", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true },
+    { "code": "5", "description": "OTROS GASTOS NO INCLUIDOS EN EL NUMERAL 4", "short_name": null, "extra_data": null, "source": "sunat_pdf", "is_official": true, "is_active": true }
+  ]
+}

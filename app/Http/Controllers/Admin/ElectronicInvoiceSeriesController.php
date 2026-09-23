@@ -78,9 +78,15 @@ class ElectronicInvoiceSeriesController extends Controller
 
     public function show(ElectronicInvoiceSeries $electronicInvoiceSeries)
     {
+        $electronicInvoiceSeries->load('company');
+        $electronicInvoiceSeries->setAttribute(
+            'environment_label',
+            $this->environmentLabel($electronicInvoiceSeries->environment)
+        );
+
         return response()->json([
             'status' => 'success',
-            'data' => $electronicInvoiceSeries->load('company'),
+            'data' => $electronicInvoiceSeries,
         ]);
     }
 
@@ -238,5 +244,14 @@ class ElectronicInvoiceSeriesController extends Controller
     private function documentTypeLabel(string $type): string
     {
         return ['01' => 'Factura', '03' => 'Boleta', '07' => 'Nota de Credito', '08' => 'Nota de Debito'][$type] ?? $type;
+    }
+
+    private function environmentLabel(string $environment): string
+    {
+        return match ($environment) {
+            'production' => 'Producción',
+            'internal' => 'Interno',
+            default => 'Beta',
+        };
     }
 }
