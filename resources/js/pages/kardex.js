@@ -51,44 +51,48 @@ function initKardexTable() {
         },
         columns: [
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
-            { data: 'movement_date', name: 'movement_date' },
+            { data: 'movement_date', name: 'movement_date', className: 'text-nowrap' },
             { data: 'movement_number', name: 'movement_number', render: renderKardexMovementNumber },
-            { data: 'warehouse', name: 'warehouse.name', orderable: false },
+            { data: 'warehouse', name: 'warehouse.name', orderable: false, render: renderKardexClampedText },
             { data: 'article', name: 'article.billing_name', orderable: false, render: renderKardexArticleCell },
-            { data: 'lot_number', name: 'lot_number', defaultContent: '-' },
-            { data: 'expiration_date', name: 'expiration_date' },
+            { data: 'lot_number', name: 'lot_number', defaultContent: '-', render: renderKardexEllipsisText },
+            { data: 'expiration_date', name: 'expiration_date', className: 'text-nowrap' },
             { data: 'movement_type', name: 'movement_type' },
             { data: 'document', name: 'document', orderable: false, searchable: false, render: renderKardexDocumentPill },
-            { data: 'quantity_in', name: 'quantity_in', className: 'text-right', render: renderKardexEntryNumber },
-            { data: 'entry_unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'entry_total_cost', name: 'total_cost_in', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'quantity_out', name: 'quantity_out', className: 'text-right', render: renderKardexExitNumber },
-            { data: 'exit_unit_cost', name: 'unit_cost', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'exit_total_cost', name: 'total_cost_out', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right', render: renderKardexBalanceNumber },
-            { data: 'average_unit_cost_display', name: 'average_unit_cost', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right', render: renderKardexMoneyCell },
-            { data: 'created_by_label', name: 'created_by_label', orderable: false, searchable: false },
-            { data: 'updated_by_label', name: 'updated_by_label', orderable: false, searchable: false },
+            { data: 'quantity_in', name: 'quantity_in', className: 'text-right kardex-cell-number', render: renderKardexEntryNumber },
+            { data: 'entry_unit_cost', name: 'unit_cost', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'entry_total_cost', name: 'total_cost_in', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'quantity_out', name: 'quantity_out', className: 'text-right kardex-cell-number', render: renderKardexExitNumber },
+            { data: 'exit_unit_cost', name: 'unit_cost', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'exit_total_cost', name: 'total_cost_out', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'balance_quantity', name: 'balance_quantity', className: 'text-right kardex-cell-number', render: renderKardexBalanceNumber },
+            { data: 'average_unit_cost_display', name: 'average_unit_cost', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'balance_total_cost', name: 'balance_total_cost', className: 'text-right kardex-cell-number', render: renderKardexMoneyCell },
+            { data: 'created_by_label', name: 'created_by_label', orderable: false, searchable: false, render: renderKardexEllipsisText },
+            { data: 'updated_by_label', name: 'updated_by_label', orderable: false, searchable: false, render: renderKardexEllipsisText },
             { data: 'status', name: 'status' },
             { data: 'acciones', name: 'acciones', orderable: false, searchable: false }
         ],
         responsive: false,
         autoWidth: false,
+        scrollX: true,
+        scrollY: '52vh',
+        scrollCollapse: true,
+        pageLength: 10,
         language: {
             url: '/vendor/datatables/js/i18n/es-ES.json'
         },
         dom: `
-            <'row mb-3'
-                <'col-sm-12 col-md-6'l>
-                <'col-sm-12 col-md-6 text-md-end'f>
+            <'kardex-dt-toolbar row align-items-center'
+                <'col-12 col-md-4 col-xl-3'l>
+                <'col-12 col-md-8 col-xl-5'f>
+                <'col-12 col-xl-4'B>
             >
-            <'row'<'col-sm-12'tr>>
-            <'row mt-3'
+            <'row m-0'<'col-12 p-0'tr>>
+            <'kardex-dt-footer row align-items-center'
                 <'col-sm-12 col-md-5'i>
                 <'col-sm-12 col-md-7 d-flex justify-content-center justify-content-md-end'p>
             >
-            <'row mt-3'<'col-sm-12 text-center'B>>
         `,
         buttons: (window.routes.kardexCanExport ? ['excel', 'pdf', 'print'] : []).map(function (format) {
             const presentation = {
@@ -101,7 +105,18 @@ function initKardexTable() {
                 className: `btn ${presentation[2]} btn-sm`,
                 action: function () { window.open(`${window.routes.kardexExport}/${format}?${kardexFilterQuery()}`, '_blank'); }
             };
-        })
+        }),
+        initComplete: function () {
+            const $wrapper = $('#tableKardex_wrapper');
+            $wrapper.find('.dataTables_filter input')
+                .attr('placeholder', 'Buscar en movimientos...')
+                .attr('aria-label', 'Buscar en movimientos Kardex');
+            $wrapper.find('.dataTables_scrollBody')
+                .attr('tabindex', '0')
+                .attr('role', 'region')
+                .attr('aria-label', 'Movimientos Kardex con desplazamiento horizontal y vertical');
+            this.api().columns.adjust();
+        }
     });
 }
 
@@ -223,6 +238,26 @@ function renderKardexDocumentPill(data, type) {
     const value = escapeKardexHtml(data || '-');
 
     return `<span class="kardex-document-pill" title="${value}"><i class="fas fa-file-invoice mr-1"></i><span class="kardex-document-text">${value}</span></span>`;
+}
+
+function renderKardexClampedText(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    const value = escapeKardexHtml(data || '-');
+
+    return `<span class="kardex-text-clamp" title="${value}">${value}</span>`;
+}
+
+function renderKardexEllipsisText(data, type) {
+    if (type !== 'display') {
+        return data;
+    }
+
+    const value = escapeKardexHtml(data || '-');
+
+    return `<span class="kardex-text-ellipsis" title="${value}">${value}</span>`;
 }
 
 function renderKardexEntryNumber(data, type) {
