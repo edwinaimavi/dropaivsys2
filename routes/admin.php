@@ -951,6 +951,8 @@ Route::get('kardex/formato-12-1/export/{format}', [KardexController::class, 'phy
     ->name('kardex.formato-12-1.export');
 Route::get('kardex/formato-12-1', [KardexController::class, 'physicalInventoryRegister'])
     ->name('kardex.formato-12-1');
+Route::get('kardex/inventory-register/articles', [KardexController::class, 'inventoryRegisterArticles'])
+    ->name('kardex.inventory-register.articles');
 Route::get('kardex/formato-13-1/export/{format}', [KardexController::class, 'valuedInventoryRegisterExport'])
     ->name('kardex.formato-13-1.export');
 Route::get('kardex/formato-13-1', [KardexController::class, 'valuedInventoryRegister'])

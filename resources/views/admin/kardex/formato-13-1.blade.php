@@ -64,13 +64,19 @@
                         </div>
                         <div class="form-group col-md-2">
                             <label for="article_id">ART&Iacute;CULO</label>
-                            <select id="article_id" name="article_id" class="form-control">
+                            <select id="article_id" name="article_id" class="form-control"
+                                    data-articles-url="{{ route('admin.kardex.inventory-register.articles') }}">
                                 <option value="">Todos</option>
                                 @foreach ($articles as $article)
                                     <option value="{{ $article->article_id }}" @selected((int) $articleId === (int) $article->article_id)>
                                         {{ $article->article_code_snapshot }} | {{ $article->article_description_snapshot }}
                                     </option>
                                 @endforeach
+                                @if ($articles->isEmpty())
+                                    <option value="" disabled>
+                                        {{ $companyId && $warehouseId ? 'Sin artículos con movimientos o saldo inicial en el período' : 'Seleccione empresa y almacén' }}
+                                    </option>
+                                @endif
                             </select>
                         </div>
                     </div>
@@ -258,4 +264,105 @@
             .sunat-title { margin-top: 0; }
         }
     </style>
+@endpush
+
+@push('js')
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const company = document.getElementById('company_id');
+            const year = document.getElementById('year');
+            const month = document.getElementById('month');
+            const warehouse = document.getElementById('warehouse_id');
+            const article = document.getElementById('article_id');
+
+            if (!company || !year || !month || !warehouse || !article) {
+                return;
+            }
+
+            let requestController = null;
+            const initialArticleId = String(@json($articleId ?: ''));
+
+            const resetArticles = (message = null, selectedId = '') => {
+                article.innerHTML = '';
+
+                const allOption = new Option('Todos', '', false, !selectedId);
+                article.add(allOption);
+
+                if (message) {
+                    const messageOption = new Option(message, '', false, false);
+                    messageOption.disabled = true;
+                    article.add(messageOption);
+                }
+            };
+
+            const loadArticles = async (preferredArticleId = '') => {
+                const companyId = company.value;
+                const warehouseId = warehouse.value;
+                const yearValue = year.value;
+                const monthValue = month.value;
+
+                if (!companyId || !warehouseId || !yearValue || !monthValue) {
+                    resetArticles('Seleccione empresa y almacén');
+                    article.disabled = false;
+                    return;
+                }
+
+                requestController?.abort();
+                requestController = new AbortController();
+
+                const currentValue = preferredArticleId || article.value || '';
+                resetArticles('Cargando artículos...', currentValue);
+                article.disabled = true;
+
+                const params = new URLSearchParams({
+                    company_id: companyId,
+                    warehouse_id: warehouseId,
+                    year: yearValue,
+                    month: monthValue,
+                });
+
+                try {
+                    const response = await fetch(`${article.dataset.articlesUrl}?${params.toString()}`, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: requestController.signal,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const payload = await response.json();
+                    const articles = Array.isArray(payload.articles) ? payload.articles : [];
+
+                    resetArticles(
+                        articles.length ? null : 'Sin artículos con movimientos o saldo inicial en el período',
+                        currentValue
+                    );
+
+                    articles.forEach((item) => {
+                        const id = String(item.id);
+                        article.add(new Option(item.label, id, false, id === currentValue));
+                    });
+
+                    if (currentValue && !articles.some((item) => String(item.id) === currentValue)) {
+                        article.value = '';
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        resetArticles('No se pudieron cargar los artículos');
+                    }
+                } finally {
+                    article.disabled = false;
+                }
+            };
+
+            [company, year, month, warehouse].forEach((control) => {
+                control.addEventListener('change', () => loadArticles(''));
+            });
+
+            if (company.value && warehouse.value) {
+                loadArticles(initialArticleId);
+            }
+        });
+    </script>
 @endpush

@@ -21,6 +21,7 @@ use App\Services\WarehousePleReadinessService;
 use App\Services\InventoryAccountingService;
 use App\Services\ArticleInventoryPolicy;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,6 +41,7 @@ class KardexController extends Controller
             'articleHistory',
             'physicalInventoryRegister',
             'valuedInventoryRegister',
+            'inventoryRegisterArticles',
             'reconciliation',
             'periodClosures',
             'pleReadiness',
@@ -135,19 +137,9 @@ class KardexController extends Controller
             ->orderBy('name')
             ->get(['id', 'code', 'name']);
 
-        $articles = collect();
-        if ($companyId && $warehouseId) {
-            $articles = WarehouseKardexMovement::query()
-                ->where('company_id', $companyId)
-                ->where('warehouse_id', $warehouseId)
-                ->where('status', '!=', 'cancelled')
-                ->orderByDesc('movement_date')
-                ->orderByDesc('id')
-                ->get(['article_id', 'article_code_snapshot', 'article_description_snapshot'])
-                ->unique('article_id')
-                ->sortBy('article_description_snapshot')
-                ->values();
-        }
+        $articles = ($companyId && $warehouseId)
+            ? $this->inventoryRegisterArticleOptions($companyId, $warehouseId, $year, $month)
+            : collect();
 
         $report = null;
         if ($shouldGenerate) {
@@ -220,19 +212,9 @@ class KardexController extends Controller
             ->orderBy('name')
             ->get(['id', 'code', 'name']);
 
-        $articles = collect();
-        if ($companyId && $warehouseId) {
-            $articles = WarehouseKardexMovement::query()
-                ->where('company_id', $companyId)
-                ->where('warehouse_id', $warehouseId)
-                ->where('status', '!=', 'cancelled')
-                ->orderByDesc('movement_date')
-                ->orderByDesc('id')
-                ->get(['article_id', 'article_code_snapshot', 'article_description_snapshot'])
-                ->unique('article_id')
-                ->sortBy('article_description_snapshot')
-                ->values();
-        }
+        $articles = ($companyId && $warehouseId)
+            ? $this->inventoryRegisterArticleOptions($companyId, $warehouseId, $year, $month)
+            : collect();
 
         $report = null;
         if ($shouldGenerate) {
@@ -270,6 +252,48 @@ class KardexController extends Controller
             'month',
             'report'
         ));
+    }
+
+    public function inventoryRegisterArticles(Request $request)
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+
+        $companyId = $request->integer('company_id');
+        abort_unless(
+            $companyId && $user->companies()->whereKey($companyId)->where('status', true)->exists(),
+            404
+        );
+
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->where('status', true)],
+            'year' => ['required', 'integer', 'between:2000,2100'],
+            'month' => ['required', 'integer', 'between:1,12'],
+            'warehouse_id' => [
+                'required',
+                'integer',
+                Rule::exists('company_warehouses', 'warehouse_id')->where(
+                    fn ($query) => $query->where('company_id', $companyId)->where('is_active', true)
+                ),
+            ],
+        ]);
+
+        $articles = $this->inventoryRegisterArticleOptions(
+            (int) $validated['company_id'],
+            (int) $validated['warehouse_id'],
+            (int) $validated['year'],
+            (int) $validated['month']
+        );
+
+        return response()->json([
+            'articles' => $articles->map(fn ($article) => [
+                'id' => (int) $article->article_id,
+                'code' => $article->article_code_snapshot,
+                'description' => $article->article_description_snapshot,
+                'label' => trim(($article->article_code_snapshot ?: 'Artículo '.$article->article_id)
+                    .' | '.($article->article_description_snapshot ?: 'Sin descripción')),
+            ])->values(),
+        ]);
     }
 
     public function physicalInventoryRegisterExport(
@@ -936,6 +960,78 @@ class KardexController extends Controller
             ->orderByDesc('movement_date')
             ->limit(100)
             ->get();
+    }
+
+    private function inventoryRegisterArticleOptions(
+        int $companyId,
+        int $warehouseId,
+        int $year,
+        int $month
+    ) {
+        $periodStart = CarbonImmutable::create($year, $month, 1)->startOfDay();
+        $periodEndExclusive = $periodStart->addMonth();
+
+        $eligibleArticleIds = WarehouseKardexMovement::query()
+            ->where('company_id', $companyId)
+            ->where('warehouse_id', $warehouseId)
+            ->where('status', '!=', 'cancelled')
+            ->whereNotNull('article_id')
+            ->where('movement_date', '<', $periodEndExclusive)
+            ->select('article_id')
+            ->selectRaw(
+                'SUM(CASE WHEN movement_date >= ? THEN 1 ELSE 0 END) AS period_movement_count',
+                [$periodStart]
+            )
+            ->selectRaw(
+                'SUM(CASE WHEN movement_date < ? THEN COALESCE(quantity_in, 0) - COALESCE(quantity_out, 0) ELSE 0 END) AS opening_quantity',
+                [$periodStart]
+            )
+            ->selectRaw(
+                'SUM(CASE WHEN movement_date < ? THEN COALESCE(total_cost_in, 0) - COALESCE(total_cost_out, 0) ELSE 0 END) AS opening_value',
+                [$periodStart]
+            )
+            ->groupBy('article_id')
+            ->havingRaw(
+                'SUM(CASE WHEN movement_date >= ? THEN 1 ELSE 0 END) > 0 '
+                .'OR ABS(SUM(CASE WHEN movement_date < ? THEN COALESCE(quantity_in, 0) - COALESCE(quantity_out, 0) ELSE 0 END)) > 0.00005 '
+                .'OR ABS(SUM(CASE WHEN movement_date < ? THEN COALESCE(total_cost_in, 0) - COALESCE(total_cost_out, 0) ELSE 0 END)) > 0.005',
+                [$periodStart, $periodStart, $periodStart]
+            )
+            ->pluck('article_id');
+
+        if ($eligibleArticleIds->isEmpty()) {
+            return collect();
+        }
+
+        return WarehouseKardexMovement::query()
+            ->with('article:id,code,billing_name')
+            ->where('company_id', $companyId)
+            ->where('warehouse_id', $warehouseId)
+            ->where('status', '!=', 'cancelled')
+            ->whereIn('article_id', $eligibleArticleIds)
+            ->where('movement_date', '<', $periodEndExclusive)
+            ->orderByDesc('movement_date')
+            ->orderByDesc('id')
+            ->get([
+                'id',
+                'article_id',
+                'movement_date',
+                'article_code_snapshot',
+                'article_description_snapshot',
+            ])
+            ->unique('article_id')
+            ->map(function (WarehouseKardexMovement $movement) {
+                $movement->article_code_snapshot = $movement->article_code_snapshot
+                    ?: $movement->article?->code;
+                $movement->article_description_snapshot = $movement->article_description_snapshot
+                    ?: $movement->article?->billing_name;
+
+                return $movement;
+            })
+            ->sortBy(fn (WarehouseKardexMovement $movement) => mb_strtolower(
+                (string) ($movement->article_description_snapshot ?: $movement->article_code_snapshot)
+            ))
+            ->values();
     }
 
     private function validatedInventoryRegisterExportFilters(Request $request, string $format): array
