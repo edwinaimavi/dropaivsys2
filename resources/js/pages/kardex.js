@@ -1,4 +1,5 @@
 let tableKardex;
+let kardexGridNavigation;
 
 document.addEventListener('DOMContentLoaded', function () {
     initKardexSelect2();
@@ -107,6 +108,7 @@ function initKardexTable() {
             };
         }),
         initComplete: function () {
+            const api = this.api();
             const $wrapper = $('#tableKardex_wrapper');
             $wrapper.find('.dataTables_filter input')
                 .attr('placeholder', 'Buscar en movimientos...')
@@ -115,8 +117,250 @@ function initKardexTable() {
                 .attr('tabindex', '0')
                 .attr('role', 'region')
                 .attr('aria-label', 'Movimientos Kardex con desplazamiento horizontal y vertical');
-            this.api().columns.adjust();
+            api.columns.adjust();
+            initKardexGridNavigation(api);
         }
+    });
+}
+
+function initKardexGridNavigation(api) {
+    const wrapper = document.getElementById('tableKardex_wrapper');
+    const navigation = document.querySelector('.kardex-grid-navigation');
+    const scrollBody = wrapper?.querySelector('.dataTables_scrollBody');
+    const scrollFrame = wrapper?.querySelector('.dataTables_scroll');
+    const proxy = navigation?.querySelector('.kardex-scroll-proxy');
+    const proxyTrack = navigation?.querySelector('.kardex-scroll-proxy-track');
+
+    if (!wrapper || !navigation || !scrollBody || !scrollFrame || !proxy || !proxyTrack) {
+        return;
+    }
+
+    let syncingFromBody = false;
+    let syncingFromProxy = false;
+    let resizeFrame;
+
+    kardexGridNavigation = { api, wrapper, navigation, scrollBody, scrollFrame, proxy, proxyTrack };
+
+    scrollBody.addEventListener('scroll', function () {
+        if (!syncingFromProxy) {
+            syncingFromBody = true;
+            setKardexScrollRatio(proxy, getKardexScrollRatio(scrollBody));
+            syncingFromBody = false;
+        }
+
+        updateKardexGridState();
+    }, { passive: true });
+
+    proxy.addEventListener('scroll', function () {
+        if (!syncingFromBody) {
+            syncingFromProxy = true;
+            setKardexScrollRatio(scrollBody, getKardexScrollRatio(proxy));
+            syncingFromProxy = false;
+        }
+
+        updateKardexGridState();
+    }, { passive: true });
+
+    navigation.querySelectorAll('.kardex-grid-zone').forEach(function (button) {
+        button.addEventListener('click', function () {
+            scrollKardexToColumn(Number(button.dataset.kardexColumn));
+        });
+    });
+
+    $(api.table().node()).on('draw.dt.kardexGrid column-sizing.dt.kardexGrid', function () {
+        window.requestAnimationFrame(refreshKardexGridNavigation);
+    });
+
+    window.addEventListener('resize', function () {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = window.requestAnimationFrame(refreshKardexGridNavigation);
+    }, { passive: true });
+
+    if (window.ResizeObserver) {
+        kardexGridNavigation.resizeObserver = new ResizeObserver(function () {
+            window.cancelAnimationFrame(resizeFrame);
+            resizeFrame = window.requestAnimationFrame(refreshKardexGridNavigation);
+        });
+        kardexGridNavigation.resizeObserver.observe(scrollBody);
+        kardexGridNavigation.resizeObserver.observe(scrollBody.querySelector('table'));
+    }
+
+    refreshKardexGridNavigation();
+}
+
+function refreshKardexGridNavigation() {
+    if (!kardexGridNavigation) {
+        return;
+    }
+
+    const { navigation, scrollBody, proxy, proxyTrack } = kardexGridNavigation;
+    const hasOverflow = scrollBody.scrollWidth > scrollBody.clientWidth + 1;
+
+    navigation.classList.toggle('is-visible', hasOverflow);
+    proxyTrack.style.width = `${scrollBody.scrollWidth}px`;
+    setKardexScrollRatio(proxy, getKardexScrollRatio(scrollBody));
+
+    applyKardexStickyColumns();
+    updateKardexGridState();
+}
+
+function getKardexStickyColumnIndexes() {
+    const availableWidth = kardexGridNavigation?.scrollBody.clientWidth || window.innerWidth;
+
+    if (availableWidth >= 980) {
+        return [0, 1, 2, 3, 4];
+    }
+
+    if (availableWidth >= 680) {
+        return [2, 3, 4];
+    }
+
+    if (availableWidth >= 480) {
+        return [2, 4];
+    }
+
+    return [4];
+}
+
+function applyKardexStickyColumns() {
+    const { wrapper, scrollBody } = kardexGridNavigation;
+    const stickyIndexes = getKardexStickyColumnIndexes();
+    const headCells = getKardexLogicalHeaderCells(wrapper);
+    const bodyRows = scrollBody.querySelectorAll('tbody tr');
+    let left = 0;
+
+    wrapper.querySelectorAll('.kardex-sticky-left, .kardex-sticky-right, .kardex-sticky-left-edge').forEach(function (cell) {
+        cell.classList.remove('kardex-sticky-left', 'kardex-sticky-right', 'kardex-sticky-left-edge', 'kardex-shadow-visible');
+        cell.style.removeProperty('left');
+    });
+
+    stickyIndexes.forEach(function (columnIndex, position) {
+        const cells = [];
+        const headCell = headCells.get(columnIndex);
+
+        if (headCell) {
+            cells.push(headCell);
+        }
+
+        bodyRows.forEach(function (row) {
+            if (row.children[columnIndex]) {
+                cells.push(row.children[columnIndex]);
+            }
+        });
+
+        cells.forEach(function (cell) {
+            cell.classList.add('kardex-sticky-left');
+            cell.style.left = `${left}px`;
+            cell.classList.toggle('kardex-sticky-left-edge', position === stickyIndexes.length - 1);
+        });
+
+        left += getKardexColumnWidth(columnIndex);
+    });
+
+    const actionsHeader = headCells.get(21);
+    if (actionsHeader) {
+        actionsHeader.classList.add('kardex-sticky-right');
+    }
+    bodyRows.forEach(function (row) {
+        row.children[21]?.classList.add('kardex-sticky-right');
+    });
+
+    kardexGridNavigation.stickyWidth = left;
+}
+
+function getKardexLogicalHeaderCells(wrapper) {
+    const cells = new Map();
+    let logicalIndex = 0;
+
+    wrapper.querySelectorAll('.dataTables_scrollHead thead tr:first-child th').forEach(function (cell) {
+        const span = Number(cell.getAttribute('colspan')) || 1;
+        if (span === 1) {
+            cells.set(logicalIndex, cell);
+        }
+        logicalIndex += span;
+    });
+
+    return cells;
+}
+
+function getKardexColumnWidth(columnIndex) {
+    const { scrollBody } = kardexGridNavigation;
+    const dataCell = scrollBody.querySelector(`tbody tr td:nth-child(${columnIndex + 1})`);
+    const column = scrollBody.querySelector(`colgroup col:nth-child(${columnIndex + 1})`);
+
+    return dataCell?.getBoundingClientRect().width || column?.getBoundingClientRect().width || 0;
+}
+
+function getKardexColumnLeft(columnIndex) {
+    let left = 0;
+
+    for (let index = 0; index < columnIndex; index += 1) {
+        left += getKardexColumnWidth(index);
+    }
+
+    return left;
+}
+
+function getKardexScrollRatio(element) {
+    const maxScroll = Math.max(0, element.scrollWidth - element.clientWidth);
+
+    return maxScroll ? element.scrollLeft / maxScroll : 0;
+}
+
+function setKardexScrollRatio(element, ratio) {
+    const maxScroll = Math.max(0, element.scrollWidth - element.clientWidth);
+    element.scrollLeft = maxScroll * ratio;
+}
+
+function scrollKardexToColumn(columnIndex) {
+    if (!kardexGridNavigation) {
+        return;
+    }
+
+    const { scrollBody } = kardexGridNavigation;
+    const maxScroll = Math.max(0, scrollBody.scrollWidth - scrollBody.clientWidth);
+    const target = columnIndex === 0
+        ? 0
+        : getKardexColumnLeft(columnIndex) - (kardexGridNavigation.stickyWidth || 0);
+
+    scrollBody.scrollTo({ left: Math.min(maxScroll, Math.max(0, target)), behavior: 'smooth' });
+}
+
+function updateKardexGridState() {
+    if (!kardexGridNavigation) {
+        return;
+    }
+
+    const { navigation, scrollBody, scrollFrame } = kardexGridNavigation;
+    const maxScroll = Math.max(0, scrollBody.scrollWidth - scrollBody.clientWidth);
+    const hasLeftOverflow = scrollBody.scrollLeft > 1;
+    const hasRightOverflow = scrollBody.scrollLeft < maxScroll - 1;
+    const visibleStart = scrollBody.scrollLeft + (kardexGridNavigation.stickyWidth || 0) + 12;
+    let activeColumn = 0;
+
+    navigation.querySelectorAll('.kardex-grid-zone').forEach(function (button) {
+        const columnIndex = Number(button.dataset.kardexColumn);
+        if (getKardexColumnLeft(columnIndex) <= visibleStart) {
+            activeColumn = columnIndex;
+        }
+    });
+
+    navigation.querySelectorAll('.kardex-grid-zone').forEach(function (button) {
+        const active = Number(button.dataset.kardexColumn) === activeColumn;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+
+    scrollFrame.classList.toggle('kardex-has-left-overflow', hasLeftOverflow);
+    scrollFrame.classList.toggle('kardex-has-right-overflow', hasRightOverflow);
+    kardexGridNavigation.proxy.setAttribute('aria-valuemin', '0');
+    kardexGridNavigation.proxy.setAttribute('aria-valuemax', String(Math.round(maxScroll)));
+    kardexGridNavigation.proxy.setAttribute('aria-valuenow', String(Math.round(scrollBody.scrollLeft)));
+    scrollFrame.querySelectorAll('.kardex-sticky-left-edge').forEach(function (cell) {
+        cell.classList.toggle('kardex-shadow-visible', hasLeftOverflow);
+    });
+    scrollFrame.querySelectorAll('.kardex-sticky-right').forEach(function (cell) {
+        cell.classList.toggle('kardex-shadow-visible', hasRightOverflow);
     });
 }
 

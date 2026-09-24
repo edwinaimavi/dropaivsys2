@@ -225,9 +225,17 @@
             </div>
         </div>
         <div class="card-body">
-            <div class="kardex-scroll-hint">
-                <i class="fas fa-arrows-alt-h" aria-hidden="true"></i>
-                <span>Desliza horizontalmente para ver todas las columnas</span>
+            <div class="kardex-grid-navigation" aria-label="Navegaci&oacute;n horizontal de Movimientos Kardex">
+                <div class="kardex-grid-zones" role="group" aria-label="Ir a un bloque de columnas">
+                    <button type="button" class="kardex-grid-zone is-active" data-kardex-column="0" aria-pressed="true">Datos</button>
+                    <button type="button" class="kardex-grid-zone" data-kardex-column="9" aria-pressed="false">Entradas</button>
+                    <button type="button" class="kardex-grid-zone" data-kardex-column="12" aria-pressed="false">Salidas</button>
+                    <button type="button" class="kardex-grid-zone" data-kardex-column="15" aria-pressed="false">Saldos</button>
+                    <button type="button" class="kardex-grid-zone" data-kardex-column="18" aria-pressed="false">Auditor&iacute;a</button>
+                </div>
+                <div class="kardex-scroll-proxy" tabindex="0" role="scrollbar" aria-label="Desplazamiento horizontal de Movimientos Kardex" aria-orientation="horizontal">
+                    <div class="kardex-scroll-proxy-track"></div>
+                </div>
             </div>
             <div class="kardex-table-wrap">
                 <table id="tableKardex" class="table table-hover align-middle text-center">
@@ -500,9 +508,38 @@
         }
 
         .kardex-table-wrap .dataTables_scroll {
+            position: relative;
             border-top: 1px solid #e7eef0;
             border-bottom: 1px solid #e7eef0;
             background: #fff;
+        }
+
+        .kardex-table-wrap .dataTables_scroll::before,
+        .kardex-table-wrap .dataTables_scroll::after {
+            content: "";
+            position: absolute;
+            z-index: 8;
+            top: 0;
+            bottom: 0;
+            width: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .16s ease;
+        }
+
+        .kardex-table-wrap .dataTables_scroll::before {
+            left: 0;
+            background: linear-gradient(90deg, rgba(42, 62, 67, .12), transparent);
+        }
+
+        .kardex-table-wrap .dataTables_scroll::after {
+            right: 0;
+            background: linear-gradient(270deg, rgba(42, 62, 67, .12), transparent);
+        }
+
+        .kardex-table-wrap .dataTables_scroll.kardex-has-left-overflow::before,
+        .kardex-table-wrap .dataTables_scroll.kardex-has-right-overflow::after {
+            opacity: 1;
         }
 
         .kardex-table-wrap .dataTables_scrollHead {
@@ -539,14 +576,84 @@
             outline-offset: -2px;
         }
 
-        .kardex-scroll-hint {
+        .kardex-grid-navigation {
             display: none;
             align-items: center;
-            gap: 7px;
+            gap: 12px;
             margin-bottom: 8px;
-            color: #718087;
-            font-size: 11px;
-            font-weight: 650;
+            padding: 7px 9px;
+            border: 1px solid #e4ecee;
+            border-radius: 9px;
+            background: linear-gradient(180deg, #fbfdfd, #f7faf9);
+        }
+
+        .kardex-grid-navigation.is-visible {
+            display: flex;
+        }
+
+        .kardex-grid-zones {
+            display: flex;
+            flex: 0 0 auto;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .kardex-grid-zone {
+            padding: 4px 10px;
+            border: 1px solid #dce7e8;
+            border-radius: 999px;
+            background: #fff;
+            color: #65737a;
+            font-size: 10.5px;
+            font-weight: 750;
+            line-height: 1.25;
+            transition: border-color .15s ease, background .15s ease, color .15s ease;
+        }
+
+        .kardex-grid-zone:hover,
+        .kardex-grid-zone:focus-visible {
+            border-color: #9fcfc9;
+            color: #0f766d;
+            outline: none;
+        }
+
+        .kardex-grid-zone.is-active {
+            border-color: #b9dbd7;
+            background: #eaf5f3;
+            color: #0f766d;
+        }
+
+        .kardex-scroll-proxy {
+            min-width: 90px;
+            flex: 1 1 auto;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: #9ebfba #e8f0ef;
+        }
+
+        .kardex-scroll-proxy::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .kardex-scroll-proxy::-webkit-scrollbar-track {
+            border-radius: 999px;
+            background: #e8f0ef;
+        }
+
+        .kardex-scroll-proxy::-webkit-scrollbar-thumb {
+            border: 2px solid #e8f0ef;
+            border-radius: 999px;
+            background: #9ebfba;
+        }
+
+        .kardex-scroll-proxy:focus-visible {
+            outline: 2px solid rgba(17, 134, 122, .25);
+            outline-offset: 2px;
+        }
+
+        .kardex-scroll-proxy-track {
+            height: 1px;
         }
 
         .kardex-table-wrap table.dataTable {
@@ -643,11 +750,50 @@
             overflow: hidden;
         }
 
+        .kardex-table-wrap .kardex-sticky-left,
+        .kardex-table-wrap .kardex-sticky-right {
+            position: sticky !important;
+            background: #fff;
+        }
+
+        .kardex-table-wrap tbody .kardex-sticky-left,
+        .kardex-table-wrap tbody .kardex-sticky-right {
+            z-index: 3;
+        }
+
+        .kardex-table-wrap thead .kardex-sticky-left,
+        .kardex-table-wrap thead .kardex-sticky-right {
+            z-index: 7 !important;
+            background: #f8fbfb !important;
+        }
+
+        .kardex-table-wrap .kardex-sticky-right {
+            right: 0;
+        }
+
+        .kardex-table-wrap .kardex-sticky-left-edge.kardex-shadow-visible {
+            box-shadow: 9px 0 13px -11px rgba(30, 54, 59, .8);
+        }
+
+        .kardex-table-wrap .kardex-sticky-right.kardex-shadow-visible {
+            box-shadow: -9px 0 13px -11px rgba(30, 54, 59, .8);
+        }
+
         .kardex-table-wrap table.dataTable tbody tr:nth-child(even) {
             background: #fcfdfd;
         }
 
+        .kardex-table-wrap table.dataTable tbody tr:nth-child(even) .kardex-sticky-left,
+        .kardex-table-wrap table.dataTable tbody tr:nth-child(even) .kardex-sticky-right {
+            background: #fcfdfd;
+        }
+
         .kardex-table-wrap table.dataTable tbody tr:hover {
+            background: #f5faf9;
+        }
+
+        .kardex-table-wrap table.dataTable tbody tr:hover .kardex-sticky-left,
+        .kardex-table-wrap table.dataTable tbody tr:hover .kardex-sticky-right {
             background: #f5faf9;
         }
 
@@ -989,12 +1135,31 @@
         }
 
         @media (max-width: 1199.98px) {
-            .kardex-scroll-hint {
-                display: flex;
-            }
-
             .kardex-table-card .kardex-dt-toolbar > [class*="col-"] {
                 margin-bottom: 7px;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            .kardex-grid-navigation.is-visible {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .kardex-grid-zones {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding-bottom: 2px;
+            }
+
+            .kardex-grid-zone {
+                flex: 0 0 auto;
+            }
+
+            .kardex-scroll-proxy {
+                flex-basis: auto;
+                width: 100%;
             }
         }
 
@@ -1007,45 +1172,6 @@
                 text-align: right;
             }
 
-            .kardex-table-wrap table.dataTable tbody td:nth-child(1),
-            .kardex-table-wrap table.dataTable tbody td:nth-child(2),
-            .kardex-table-wrap table.dataTable tbody td:nth-child(3),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(1),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(2),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(3) {
-                position: sticky;
-                z-index: 2;
-                background: #fff;
-            }
-
-            .kardex-table-wrap table.dataTable tbody td:nth-child(1),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(1) {
-                left: 0;
-            }
-
-            .kardex-table-wrap table.dataTable tbody td:nth-child(2),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(2) {
-                left: 48px;
-            }
-
-            .kardex-table-wrap table.dataTable tbody td:nth-child(3),
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(3) {
-                left: 144px;
-                box-shadow: 7px 0 12px -10px rgba(34, 62, 68, .65);
-            }
-
-            .kardex-table-wrap table.dataTable tbody tr:nth-child(even) td:nth-child(-n+3) {
-                background: #fcfdfd;
-            }
-
-            .kardex-table-wrap table.dataTable tbody tr:hover td:nth-child(-n+3) {
-                background: #f5faf9;
-            }
-
-            .kardex-table-wrap .dataTables_scrollHead thead tr:first-child th:nth-child(-n+3) {
-                z-index: 6;
-                background: #f8fbfb;
-            }
         }
 
         .kardex-dashboard .badge-purple {
