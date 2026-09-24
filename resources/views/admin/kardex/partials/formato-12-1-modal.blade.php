@@ -170,7 +170,7 @@
                                             <td></td>
                                             <td></td>
                                             <td>SALDO INICIAL</td>
-                                            <td>SALDO INICIAL</td>
+                                            <td></td>
                                             <td class="number">0.0000</td>
                                             <td class="number">0.0000</td>
                                             <td class="number">{{ $register['opening_balance'] }}</td>
