@@ -1875,6 +1875,7 @@ function resetWarehouseEntryForm() {
     $('#warehouse_entry_mode').val('supplier_order').trigger('change.select2');
     $('#warehouse_entry_document_type').val('FACTURA');
     $('#warehouse_entry_movement_date').val(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    $('#warehouseEntryMovementDateWarning').addClass('d-none');
     $('#warehouse_entry_exchange_rate').val('1.000000');
     $('#warehouse_entry_affect_igv').val('1');
     $('#warehouse_entry_generate_account_payable').val('0');
@@ -5051,9 +5052,9 @@ function fillWarehouseEntryForm(entry) {
     $('#warehouse_entry_document_series').val(entry.document_series || '');
     $('#warehouse_entry_document_number').val(entry.document_number || '');
     $('#warehouse_entry_document_date').val(formatWarehouseEntryDate(entry.document_date));
-    $('#warehouse_entry_movement_date').val(
-        entry.movement_date ? String(entry.movement_date).replace(' ', 'T').slice(0, 16) : ''
-    );
+    const movementDate = formatWarehouseEntryMovementDateTime(entry.movement_date);
+    $('#warehouse_entry_movement_date').val(movementDate);
+    $('#warehouseEntryMovementDateWarning').toggleClass('d-none', movementDate !== '');
     $('#warehouse_entry_payment_method')
         .val(normalizeWarehouseEntryPaymentMethod(entry.payment_method))
         .trigger('change.select2');
@@ -6017,6 +6018,12 @@ function formatWarehouseEntryDate(value) {
     }
 
     return String(value).substring(0, 10);
+}
+
+function formatWarehouseEntryMovementDateTime(value) {
+    const match = String(value || '').trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+
+    return match ? `${match[1]}T${match[2]}` : '';
 }
 
 function formatWarehouseEntryDisplayDate(value) {

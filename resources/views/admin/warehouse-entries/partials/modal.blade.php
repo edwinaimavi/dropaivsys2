@@ -98,6 +98,15 @@
     .warehouse-entry-expense-body .form-group {
         margin-bottom: .65rem;
     }
+
+    .warehouse-entry-movement-date-warning {
+        margin-top: 4px;
+        padding-left: 7px;
+        border-left: 2px solid #c59b54;
+        color: #756951;
+        font-size: 10.5px;
+        line-height: 1.3;
+    }
 </style>
 
 <div class="modal fade" id="warehouseEntryModal" tabindex="-1" role="dialog" aria-hidden="true">
@@ -366,6 +375,9 @@
                                         <label>FECHA/HORA MOVIMIENTO *</label>
                                         <input type="datetime-local" id="warehouse_entry_movement_date" name="movement_date"
                                             class="form-control form-control-sm" value="{{ now()->format('Y-m-d\\TH:i') }}" required>
+                                        <small id="warehouseEntryMovementDateWarning" class="warehouse-entry-movement-date-warning d-none">
+                                            <i class="fas fa-info-circle mr-1"></i>Este ingreso hist&oacute;rico no tiene fecha/hora de movimiento registrada. Completa el dato antes de actualizar.
+                                        </small>
                                         <span class="invalid-feedback"></span>
                                     </div>
 

@@ -35,6 +35,7 @@ use App\Models\WarehouseEntryExpenseDocument;
 use App\Models\WarehouseEntryItemAllocation;
 use App\Models\WarehouseEntryItemLotDocument;
 use App\Models\WarehouseEntryPaymentDocument;
+use App\Models\WarehouseKardexMovement;
 use App\Services\CustomerPurchaseOrderStatusService;
 use App\Services\CompanyWarehouseService;
 use App\Services\PettyCashWarehouseExpenseService;
@@ -1033,7 +1034,6 @@ class WarehouseEntryController extends Controller
             'payment_documents_summary',
             $this->warehouseEntryPaymentDocumentsSummary($paymentsAndDocuments)
         );
-
         if (! Auth::user()?->can('admin.warehouse-entries.expenses.index')) {
             $warehouseEntry->unsetRelation('expenses');
         } else {
@@ -1052,9 +1052,14 @@ class WarehouseEntryController extends Controller
             });
         }
 
+        $warehouseEntryData = $warehouseEntry->toArray();
+        $warehouseEntryData['movement_date'] = $this->normalizeWarehouseEntryInventoryDateTime(
+            $this->effectiveWarehouseEntryMovementDate($warehouseEntry)
+        );
+
         return response()->json([
             'status' => 'success',
-            'data' => $warehouseEntry,
+            'data' => $warehouseEntryData,
             'warehouse_name' => $warehouseEntry->warehouse?->name ?? 'SIN ALMACEN',
         ]);
     }
@@ -2883,7 +2888,9 @@ class WarehouseEntryController extends Controller
             'warehouse_id' => (int) $entry->warehouse_id,
             'currency_id' => (int) $entry->currency_id,
             'exchange_rate' => $this->normalizeWarehouseEntryInventoryNumber($entry->exchange_rate ?? 1, 6),
-            'movement_date' => $this->normalizeWarehouseEntryInventoryDateTime($entry->movement_date),
+            'movement_date' => $this->normalizeWarehouseEntryInventoryDateTime(
+                $this->effectiveWarehouseEntryMovementDate($entry)
+            ),
             'items' => $entry->items
                 ->map(fn ($item) => $this->normalizeWarehouseEntryInventoryItem([
                     'id' => $item->id,
@@ -2931,6 +2938,22 @@ class WarehouseEntryController extends Controller
         ];
 
         return $original !== $submitted;
+    }
+
+    private function effectiveWarehouseEntryMovementDate(WarehouseEntry $entry): mixed
+    {
+        if ($entry->movement_date) {
+            return $entry->movement_date;
+        }
+
+        return WarehouseKardexMovement::query()
+            ->where('source_type', WarehouseEntry::class)
+            ->where('source_id', $entry->id)
+            ->where('operation_type', 'warehouse_entry')
+            ->where('status', 'registered')
+            ->orderBy('movement_date')
+            ->orderBy('id')
+            ->value('movement_date');
     }
 
     private function normalizeWarehouseEntryInventoryItem(array $item): array
