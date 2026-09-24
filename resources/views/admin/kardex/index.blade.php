@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('subtitle', 'Kardex de Almac&eacute;n')
+@section('subtitle', 'Kardex de Almacén')
 
 @section('header')
     <div class="container-fluid">
@@ -18,10 +18,12 @@
             </div>
             @can('admin.kardex.index')
                 <div class="d-flex flex-wrap justify-content-end mt-2 mt-md-0">
-                    <a href="{{ route('admin.kardex.formato-12-1') }}" class="btn btn-outline-info btn-sm shadow-sm mr-2 mb-1">
+                    <button type="button" id="btnOpenFormat12Modal"
+                            class="btn btn-outline-info btn-sm shadow-sm mr-2 mb-1"
+                            data-url="{{ route('admin.kardex.formato-12-1') }}">
                         <i class="fas fa-file-alt mr-1"></i>
                         Formato 12.1 &mdash; Unidades F&iacute;sicas
-                    </a>
+                    </button>
                     <a href="{{ route('admin.kardex.formato-13-1') }}" class="btn btn-outline-success btn-sm shadow-sm mb-1">
                         <i class="fas fa-file-invoice-dollar mr-1"></i>
                         Formato 13.1 &mdash; Inventario Valorizado
@@ -295,6 +297,39 @@
     </div>
 
     @include('admin.kardex.partials.viewModal')
+
+    <div class="modal fade" id="format12Modal" tabindex="-1" role="dialog" aria-labelledby="format12ModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable format12-modal-dialog" role="document">
+            <div class="modal-content format12-modal-content-shell">
+                <div class="modal-header format12-modal-header">
+                    <div class="d-flex align-items-center">
+                        <span class="format12-modal-icon mr-3" aria-hidden="true">
+                            <i class="fas fa-file-alt"></i>
+                        </span>
+                        <div>
+                            <h5 class="modal-title" id="format12ModalTitle">Formato 12.1</h5>
+                            <div class="format12-modal-subtitle">Registro de Inventario Permanente en Unidades Físicas</div>
+                            <small>Consulta mensual construida desde los movimientos históricos del Kardex.</small>
+                        </div>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="format12ModalBody">
+                    <div class="format12-modal-content" data-format12-modal-content>
+                        <div class="format12-modal-loading">
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span>Preparando el registro...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer format12-modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
     </div>
 @stop
 
@@ -1318,6 +1353,183 @@
 
             .kardex-filter-actions {
                 justify-content: flex-start !important;
+            }
+        }
+        #tableKardex thead th.kardex-group-entry,
+        #tableKardex_wrapper .dataTables_scrollHead thead th.kardex-group-entry {
+            background: #256B52 !important;
+            background-color: #256B52 !important;
+            background-image: none !important;
+            color: #FFFFFF !important;
+            opacity: 1 !important;
+            filter: none !important;
+            font-weight: 800 !important;
+            font-size: 11px;
+            letter-spacing: .45px;
+            text-align: center !important;
+        }
+
+        #tableKardex thead th.kardex-group-exit,
+        #tableKardex_wrapper .dataTables_scrollHead thead th.kardex-group-exit {
+            background: #A34843 !important;
+            background-color: #A34843 !important;
+            background-image: none !important;
+            color: #FFFFFF !important;
+            opacity: 1 !important;
+            filter: none !important;
+            font-weight: 800 !important;
+            font-size: 11px;
+            letter-spacing: .45px;
+            text-align: center !important;
+        }
+
+        #tableKardex thead th.kardex-group-balance,
+        #tableKardex_wrapper .dataTables_scrollHead thead th.kardex-group-balance {
+            background: #216873 !important;
+            background-color: #216873 !important;
+            background-image: none !important;
+            color: #FFFFFF !important;
+            opacity: 1 !important;
+            filter: none !important;
+            font-weight: 800 !important;
+            font-size: 11px;
+            letter-spacing: .45px;
+            text-align: center !important;
+        }
+
+        #tableKardex_wrapper .dataTables_scrollBody thead {
+            visibility: hidden !important;
+        }
+
+        #tableKardex_wrapper .dataTables_scrollBody thead tr,
+        #tableKardex_wrapper .dataTables_scrollBody thead th {
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            border-top: 0 !important;
+            border-bottom: 0 !important;
+            background: transparent !important;
+            color: transparent !important;
+            line-height: 0 !important;
+        }
+
+        #format12Modal .format12-modal-dialog {
+            width: min(95vw, 1600px);
+            max-width: 1600px;
+            min-height: calc(100% - 3.5rem);
+            margin: 1.75rem auto;
+        }
+
+        #format12Modal .format12-modal-content-shell {
+            max-height: 90vh;
+            overflow: hidden;
+            border: 0;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(35, 51, 58, .18);
+        }
+
+        #format12Modal .format12-modal-header {
+            align-items: flex-start;
+            padding: 14px 18px;
+            border-bottom: 1px solid #e4ebed;
+            background: #fff;
+        }
+
+        #format12Modal .format12-modal-header .close {
+            margin: -5px -5px -5px auto;
+            color: #64727a;
+        }
+
+        #format12Modal .format12-modal-icon {
+            display: inline-flex;
+            width: 38px;
+            height: 38px;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9px;
+            background: #e9f4f2;
+            color: #167b70;
+            font-size: 15px;
+        }
+
+        #format12Modal .modal-title {
+            color: #26343d;
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+
+        #format12Modal .format12-modal-subtitle {
+            margin-top: 2px;
+            color: #4d5d64;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        #format12Modal .format12-modal-header small {
+            display: block;
+            margin-top: 2px;
+            color: #7a878d;
+            font-size: 10.5px;
+        }
+
+        #format12Modal .modal-body {
+            padding: 14px 16px;
+            overflow-x: hidden;
+            background: #f4f7f8;
+        }
+
+        #format12Modal .format12-modal-footer {
+            padding: 8px 16px;
+            border-top: 1px solid #e4ebed;
+            background: #fff;
+        }
+
+        #format12Modal .format12-modal-loading {
+            display: flex;
+            min-height: 260px;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #64747b;
+            font-size: 12px;
+        }
+
+        #format12Modal .format12-modal-loading .spinner-border {
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-bottom: 10px;
+            color: #178579;
+        }
+
+        #format12Modal .select2-container {
+            width: 100% !important;
+        }
+
+        @media (max-width: 767.98px) {
+            #format12Modal .format12-modal-dialog {
+                width: calc(100vw - 16px);
+                min-height: calc(100% - 16px);
+                margin: 8px auto;
+            }
+
+            #format12Modal .format12-modal-content-shell {
+                max-height: calc(100vh - 16px);
+            }
+
+            #format12Modal .format12-modal-header {
+                padding: 12px;
+            }
+
+            #format12Modal .format12-modal-icon {
+                display: none;
+            }
+
+            #format12Modal .modal-body {
+                padding: 10px;
             }
         }
     </style>

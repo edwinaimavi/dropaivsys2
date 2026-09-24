@@ -1,9 +1,11 @@
 let tableKardex;
 let kardexGridNavigation;
+let format12ModalState;
 
 document.addEventListener('DOMContentLoaded', function () {
     initKardexSelect2();
     initKardexTable();
+    initFormat12Modal();
 
     $(document).on('click', '#btnFilterKardex', function () {
         tableKardex.ajax.reload();
@@ -362,6 +364,270 @@ function updateKardexGridState() {
     scrollFrame.querySelectorAll('.kardex-sticky-right').forEach(function (cell) {
         cell.classList.toggle('kardex-shadow-visible', hasRightOverflow);
     });
+}
+
+function initFormat12Modal() {
+    const trigger = document.getElementById('btnOpenFormat12Modal');
+    const modal = document.getElementById('format12Modal');
+    const content = modal?.querySelector('[data-format12-modal-content]');
+
+    if (!trigger || !modal || !content) {
+        return;
+    }
+
+    format12ModalState = {
+        baseUrl: trigger.dataset.url,
+        content,
+        loaded: false,
+        requestController: null,
+        articleController: null,
+    };
+
+    trigger.addEventListener('click', function () {
+        $(modal).modal('show');
+
+        if (!format12ModalState.loaded) {
+            loadFormat12Modal(format12ModalState.baseUrl, 'Preparando el registro...');
+        }
+    });
+
+    $(modal)
+        .off('hidden.bs.modal.format12')
+        .on('hidden.bs.modal.format12', function () {
+            format12ModalState.requestController?.abort();
+            format12ModalState.articleController?.abort();
+            if ($.fn.select2) {
+                $(modal).find('select.select2-hidden-accessible').select2('close');
+            }
+            document.body.classList.remove('format12-modal-printing');
+        });
+}
+
+async function loadFormat12Modal(url, loadingMessage = 'Consultando registro...') {
+    if (!format12ModalState) {
+        return;
+    }
+
+    format12ModalState.requestController?.abort();
+    format12ModalState.articleController?.abort();
+
+    const controller = new AbortController();
+    const requestUrl = new URL(url, window.location.origin);
+    requestUrl.searchParams.set('modal', '1');
+    format12ModalState.requestController = controller;
+    format12ModalState.loaded = false;
+
+    if ($.fn.select2) {
+        $(format12ModalState.content).find('select.select2-hidden-accessible').select2('destroy');
+    }
+
+    format12ModalState.content.innerHTML = format12LoadingMarkup(loadingMessage);
+
+    try {
+        const response = await fetch(requestUrl.toString(), {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            let message = 'No se pudo cargar el Formato 12.1.';
+            try {
+                const payload = await response.json();
+                message = Object.values(payload.errors || {})[0]?.[0] || payload.message || message;
+            } catch (error) {
+                // La respuesta no contiene JSON de validación.
+            }
+            throw new Error(message);
+        }
+
+        format12ModalState.content.innerHTML = await response.text();
+        format12ModalState.loaded = true;
+        initFormat12ModalContent();
+        $('#format12Modal').modal('handleUpdate');
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            return;
+        }
+
+        format12ModalState.content.innerHTML = `
+            <div class="format12-empty-state">
+                <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+                <h6>No se pudo abrir el registro</h6>
+                <p>${escapeKardexHtml(error.message)}</p>
+                <button type="button" class="btn btn-outline-info btn-sm mt-3" data-format12-retry>Reintentar</button>
+            </div>
+        `;
+        format12ModalState.content.querySelector('[data-format12-retry]')?.addEventListener('click', function () {
+            loadFormat12Modal(format12ModalState.baseUrl, 'Preparando el registro...');
+        });
+    } finally {
+        if (format12ModalState.requestController === controller) {
+            format12ModalState.requestController = null;
+        }
+    }
+}
+
+function initFormat12ModalContent() {
+    const root = format12ModalState?.content.querySelector('[data-format12-root]');
+    const form = root?.querySelector('[data-format12-form]');
+
+    if (!root || !form) {
+        return;
+    }
+
+    const validation = root.querySelector('[data-format12-validation]');
+    const controls = {
+        company: form.querySelector('#company_id'),
+        year: form.querySelector('#year'),
+        month: form.querySelector('#month'),
+        warehouse: form.querySelector('#warehouse_id'),
+        article: form.querySelector('#article_id'),
+    };
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        if (!validateFormat12Filters(controls, validation)) {
+            return;
+        }
+
+        const params = new URLSearchParams(new FormData(form));
+        params.set('consult', '1');
+        params.set('modal', '1');
+        loadFormat12Modal(`${format12ModalState.baseUrl}?${params.toString()}`);
+    });
+
+    root.querySelector('[data-format12-clear]')?.addEventListener('click', function () {
+        loadFormat12Modal(format12ModalState.baseUrl, 'Restableciendo filtros...');
+    });
+
+    root.querySelector('[data-format12-print]')?.addEventListener('click', function () {
+        document.body.classList.add('format12-modal-printing');
+        window.addEventListener('afterprint', function () {
+            document.body.classList.remove('format12-modal-printing');
+        }, { once: true });
+        window.print();
+    });
+
+    const articleDependencies = [controls.company, controls.year, controls.month, controls.warehouse].filter(Boolean);
+    $(articleDependencies)
+        .off('change.format12ModalArticles')
+        .on('change.format12ModalArticles', function () {
+            loadFormat12Articles(root, controls);
+        });
+
+    if ($.fn.select2) {
+        $(root).find('select').each(function () {
+            const $select = $(this);
+            if (!$select.hasClass('select2-hidden-accessible')) {
+                $select.select2({
+                    width: '100%',
+                    dropdownParent: $('#format12Modal'),
+                });
+            }
+        });
+    }
+}
+
+function validateFormat12Filters(controls, validation) {
+    const missing = [];
+
+    if (!controls.company?.value) missing.push('empresa');
+    if (!controls.year?.value) missing.push('año');
+    if (!controls.month?.value) missing.push('mes');
+    if (!controls.warehouse?.value) missing.push('almacén');
+
+    if (!missing.length) {
+        validation?.classList.add('d-none');
+        return true;
+    }
+
+    if (validation) {
+        validation.textContent = `Completa los filtros obligatorios: ${missing.join(', ')}.`;
+        validation.classList.remove('d-none');
+    }
+
+    return false;
+}
+
+async function loadFormat12Articles(root, controls) {
+    const { company, year, month, warehouse, article } = controls;
+
+    if (!article) {
+        return;
+    }
+
+    const resetArticles = function (message = null) {
+        article.innerHTML = '';
+        article.add(new Option('Todos', '', false, true));
+
+        if (message) {
+            const option = new Option(message, '', false, false);
+            option.disabled = true;
+            article.add(option);
+        }
+
+        $(article).trigger('change.select2');
+    };
+
+    if (!company?.value || !warehouse?.value || !year?.value || !month?.value) {
+        resetArticles('Seleccione empresa y almacén');
+        article.disabled = false;
+        return;
+    }
+
+    format12ModalState.articleController?.abort();
+    const controller = new AbortController();
+    format12ModalState.articleController = controller;
+    resetArticles('Cargando artículos...');
+    article.disabled = true;
+
+    const params = new URLSearchParams({
+        company_id: company.value,
+        warehouse_id: warehouse.value,
+        year: year.value,
+        month: month.value,
+    });
+
+    try {
+        const response = await fetch(`${root.dataset.articlesUrl}?${params.toString()}`, {
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const articles = Array.isArray(payload.articles) ? payload.articles : [];
+        resetArticles(articles.length ? null : 'Sin artículos con movimientos o saldo inicial en el período');
+        articles.forEach(function (item) {
+            article.add(new Option(item.label, String(item.id)));
+        });
+        $(article).trigger('change.select2');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            resetArticles('No se pudieron cargar los artículos');
+        }
+    } finally {
+        if (format12ModalState.articleController === controller) {
+            format12ModalState.articleController = null;
+            article.disabled = false;
+        }
+    }
+}
+
+function format12LoadingMarkup(message) {
+    return `
+        <div class="format12-modal-loading">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <span>${escapeKardexHtml(message)}</span>
+        </div>
+    `;
 }
 
 function loadKardexMovementDetail(id) {

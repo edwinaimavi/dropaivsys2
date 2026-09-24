@@ -166,7 +166,7 @@ class KardexController extends Controller
             );
         }
 
-        return view('admin.kardex.formato-12-1', compact(
+        $viewData = compact(
             'companies',
             'warehouses',
             'articles',
@@ -176,7 +176,16 @@ class KardexController extends Controller
             'year',
             'month',
             'report'
-        ));
+        );
+
+        if ($request->boolean('modal')) {
+            return view('admin.kardex.partials.formato-12-1-modal', [
+                ...$viewData,
+                'embedded' => true,
+            ]);
+        }
+
+        return view('admin.kardex.formato-12-1', $viewData);
     }
 
     public function valuedInventoryRegister(
