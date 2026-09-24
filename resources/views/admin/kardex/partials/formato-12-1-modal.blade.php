@@ -141,6 +141,11 @@
                             </table>
                         </div>
 
+                        <div class="format12-order-note no-print">
+                            <i class="fas fa-info-circle" aria-hidden="true"></i>
+                            <span>Las filas se presentan según la fecha del movimiento Kardex. La fecha mostrada corresponde a la fecha de emisión del documento.</span>
+                        </div>
+
                         <div class="table-responsive format12-detail-wrap">
                             <table class="table table-bordered table-sm register-detail mb-0">
                                 <thead>
@@ -152,7 +157,7 @@
                                         <th rowspan="2">SALDO FINAL</th>
                                     </tr>
                                     <tr>
-                                        <th>FECHA</th>
+                                        <th title="Fecha de emisión del documento">FECHA EMISIÓN</th>
                                         <th>TIPO TABLA 10</th>
                                         <th>SERIE</th>
                                         <th>NÚMERO</th>
@@ -245,6 +250,8 @@
         .sunat-title { margin-bottom: 14px; color: #394950; font-size: 12px; letter-spacing: .025em; line-height: 1.5; }
         .sunat-title strong { color: #176b72; font-size: 16px; }
         .format12-meta-wrap, .format12-detail-wrap { width: 100%; overflow-x: auto; }
+        .format12-order-note { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; padding: 6px 8px; border: 1px solid #e1e9eb; border-radius: 6px; background: #f8fafb; color: #66757d; font-size: 10.5px; line-height: 1.35; }
+        .format12-order-note i { color: #47828a; flex: 0 0 auto; }
         .register-meta { min-width: 760px; }
         .register-meta th { width: 20%; background: #f3f6f7; font-size: 10px; }
         .register-meta td { font-size: 11px; }
