@@ -74,6 +74,11 @@ class WarehouseEntryExpense extends Model
         return in_array(self::normalizeDocumentType($documentType), self::OFFICIAL_DOCUMENT_TYPES, true);
     }
 
+    public static function canAffectInventoryCost(?string $documentType): bool
+    {
+        return in_array(self::normalizeDocumentType($documentType), ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'], true);
+    }
+
     public static function normalizeDocumentType(?string $documentType): string
     {
         $normalized = strtoupper(trim((string) $documentType));

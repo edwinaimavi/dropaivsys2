@@ -3187,7 +3187,14 @@ class WarehouseEntryController extends Controller
                     "expenses.$index.provider_name" => 'Ingrese el responsable o persona que cobró.',
                 ]);
             }
-            $affectsCost = filter_var($data['affects_inventory_cost'], FILTER_VALIDATE_BOOLEAN);
+            $eligibleForInventoryCost = WarehouseEntryExpense::canAffectInventoryCost(
+                $data['document_type'] ?? null
+            );
+            $requestedAffectsCost = filter_var(
+                $data['affects_inventory_cost'] ?? false,
+                FILTER_VALIDATE_BOOLEAN
+            );
+            $affectsCost = $eligibleForInventoryCost && $requestedAffectsCost;
             $method = $affectsCost ? ($data['distribution_method'] ?? null) : null;
             if ($affectsCost && $items->isEmpty()) {
                 throw ValidationException::withMessages(["expenses.$index.distribution_method" => 'Debe existir al menos un artículo para distribuir el gasto.']);
@@ -3569,6 +3576,12 @@ class WarehouseEntryController extends Controller
         $affectsIgv = filter_var($data['affects_igv'] ?? null, FILTER_VALIDATE_BOOLEAN);
         $documentType = WarehouseEntryExpense::normalizeDocumentType($data['document_type'] ?? null);
         $data['document_type'] = $documentType;
+        $data['affects_inventory_cost'] = WarehouseEntryExpense::canAffectInventoryCost($documentType)
+            && filter_var($data['affects_inventory_cost'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (! $data['affects_inventory_cost']) {
+            $data['distribution_method'] = null;
+            $data['distributions'] = [];
+        }
         if ($affectsIgv && ! WarehouseEntryExpense::supportsIgv($documentType)) {
             $message = in_array($documentType, ['RECIBO_HONORARIOS', 'RECIBO_INTERNO', 'SIN_COMPROBANTE', ''], true)
                 ? 'Los recibos o costos sin comprobante no generan IGV aprovechable para el análisis.'
@@ -3606,9 +3619,9 @@ class WarehouseEntryController extends Controller
         };
 
         $mapping = match ($simpleType) {
-            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
-            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
-            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party', 'affects_inventory_cost' => true],
+            'agency_freight' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party'],
+            'pickup_transfer' => ['expense_category' => 'freight_transport', 'cost_origin' => 'third_party'],
+            'other' => ['expense_category' => 'other_expense', 'cost_origin' => 'third_party'],
             default => [],
         };
 
@@ -3616,13 +3629,14 @@ class WarehouseEntryController extends Controller
             $data = array_merge($data, $mapping, ['expense_type' => $simpleType]);
         }
 
-        $affectsInventoryCost = filter_var(
-            $data['affects_inventory_cost'] ?? true,
-            FILTER_VALIDATE_BOOLEAN
-        );
+        $affectsInventoryCost = WarehouseEntryExpense::canAffectInventoryCost($data['document_type'])
+            && filter_var($data['affects_inventory_cost'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $data['affects_inventory_cost'] = $affectsInventoryCost;
         if ($affectsInventoryCost && blank($data['distribution_method'] ?? null)) {
             $data['distribution_method'] = 'quantity';
+        } elseif (! $affectsInventoryCost) {
+            $data['distribution_method'] = null;
+            $data['distributions'] = [];
         }
         if (array_key_exists('affects_igv', $data)) {
             $data['affects_igv'] = filter_var($data['affects_igv'], FILTER_VALIDATE_BOOLEAN);

@@ -1,3 +1,105 @@
+<style>
+    .warehouse-entry-inventory-cost-card {
+        height: 100%;
+        padding: 9px 11px;
+        border: 1px solid #dfe7e9;
+        border-radius: 9px;
+        background: #f8fafb;
+    }
+
+    .warehouse-entry-inventory-cost-card .warehouse-entry-inventory-cost-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 3px;
+    }
+
+    .warehouse-entry-inventory-cost-card .warehouse-entry-inventory-cost-status {
+        min-width: 22px;
+        color: #52666d;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .35px;
+    }
+
+    .warehouse-entry-inventory-cost-card .form-text {
+        margin-top: 2px;
+        line-height: 1.3;
+    }
+
+    .warehouse-entry-data-groups .form-group {
+        margin-bottom: .65rem;
+    }
+
+    .warehouse-entry-data-group-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 3px 0 9px;
+        padding: 7px 9px;
+        border: 1px solid #e4eaec;
+        border-radius: 7px;
+        background: #f8fafb;
+    }
+
+    .warehouse-entry-data-group-title > span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 25px;
+        height: 25px;
+        border-radius: 6px;
+        background: #e9f1f3;
+        color: #3f747c;
+        flex: 0 0 auto;
+    }
+
+    .warehouse-entry-data-group-title strong,
+    .warehouse-entry-data-group-title small {
+        display: block;
+    }
+
+    .warehouse-entry-data-group-title strong {
+        color: #35474d;
+        font-size: 11px;
+        letter-spacing: .4px;
+    }
+
+    .warehouse-entry-data-group-title small {
+        color: #738087;
+        font-size: 10.5px;
+        line-height: 1.25;
+    }
+
+    .warehouse-entry-data-group-title.is-identification { order: 10; }
+    .warehouse-entry-data-identification { order: 11; }
+    .warehouse-entry-data-group-title.is-document { order: 20; }
+    .warehouse-entry-data-document { order: 21; }
+    .warehouse-entry-data-group-title.is-payment { order: 30; }
+    .warehouse-entry-data-payment { order: 31; }
+    .warehouse-entry-data-group-title.is-guide { order: 40; }
+    .warehouse-entry-data-guide { order: 41; }
+    .warehouse-entry-data-group-title.is-observations { order: 50; }
+    .warehouse-entry-data-observations { order: 51; }
+
+    .warehouse-entry-expense-tax-help {
+        display: block;
+        margin-top: 4px;
+        padding: 6px 7px;
+        border-left: 2px solid #9bbbc0;
+        border-radius: 0 5px 5px 0;
+        background: #f8fafb;
+        color: #66757d;
+        font-size: 10.5px;
+        line-height: 1.35;
+    }
+
+    .warehouse-entry-expense-body .form-group {
+        margin-bottom: .65rem;
+    }
+</style>
+
 <div class="modal fade" id="warehouseEntryModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
         <form id="warehouseEntryForm" class="modal-content border-0 shadow-lg warehouse-entry-modal" novalidate>
@@ -101,8 +203,28 @@
                                 </h6>
                             </div>
                             <div class="card-body">
-                                <div class="row">
-                                    <div class="form-group col-md-4">
+                                <div class="row warehouse-entry-data-groups">
+                                    <div class="col-12 warehouse-entry-data-group-title is-identification">
+                                        <span><i class="fas fa-warehouse"></i></span>
+                                        <div><strong>IDENTIFICACI&Oacute;N DEL INGRESO</strong><small>Empresa, almac&eacute;n y origen de la recepci&oacute;n.</small></div>
+                                    </div>
+                                    <div class="col-12 warehouse-entry-data-group-title is-document">
+                                        <span><i class="fas fa-file-invoice"></i></span>
+                                        <div><strong>DOCUMENTO DEL PROVEEDOR</strong><small>Datos tributarios y comprobante que sustenta la compra.</small></div>
+                                    </div>
+                                    <div class="col-12 warehouse-entry-data-group-title is-payment">
+                                        <span><i class="fas fa-money-check-alt"></i></span>
+                                        <div><strong>MOVIMIENTO Y PAGO</strong><small>Fecha f&iacute;sica del ingreso y condiciones financieras.</small></div>
+                                    </div>
+                                    <div class="col-12 warehouse-entry-data-group-title is-guide">
+                                        <span><i class="fas fa-route"></i></span>
+                                        <div><strong>GU&Iacute;A Y REFERENCIAS</strong><small>Informaci&oacute;n complementaria del traslado.</small></div>
+                                    </div>
+                                    <div class="col-12 warehouse-entry-data-group-title is-observations">
+                                        <span><i class="fas fa-comment-alt"></i></span>
+                                        <div><strong>OBSERVACIONES</strong><small>Notas adicionales relacionadas con el ingreso.</small></div>
+                                    </div>
+                                    <div class="form-group col-md-4 warehouse-entry-data-identification">
                                         <label>TIPO DE INGRESO</label>
                                         <select id="warehouse_entry_mode" name="entry_mode"
                                             class="form-control form-control-sm js-warehouse-entry-select">
@@ -112,7 +234,7 @@
                                         <small class="form-text text-muted">La factura es el documento principal; la OC conserva la trazabilidad.</small>
                                     </div>
 
-                                    <div class="form-group col-md-8" id="warehouseEntrySupplierOrderGroup">
+                                    <div class="form-group col-md-8 warehouse-entry-data-identification" id="warehouseEntrySupplierOrderGroup">
                                         <label>ORDEN DE COMPRA A PROVEEDOR</label>
                                         <select id="warehouse_entry_supplier_purchase_order_id"
                                             name="supplier_purchase_order_id"
@@ -132,7 +254,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-identification">
                                         <label>ALMAC&Eacute;N</label>
                                         <select id="warehouse_entry_warehouse_id" name="warehouse_id"
                                             class="form-control form-control-sm js-warehouse-entry-select" disabled>
@@ -141,7 +263,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-identification">
                                         <label>MONEDA</label>
                                         <select id="warehouse_entry_currency_id" name="currency_id"
                                             class="form-control form-control-sm js-warehouse-entry-select">
@@ -155,7 +277,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3" id="warehouseEntryExchangeRateGroup">
+                                    <div class="form-group col-md-3 warehouse-entry-data-identification" id="warehouseEntryExchangeRateGroup">
                                         <label>TIPO DE CAMBIO</label>
                                         <input type="number" step="0.000001" min="0.000001"
                                             id="warehouse_entry_exchange_rate" name="exchange_rate"
@@ -164,7 +286,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-identification">
                                         <label>EMPRESA</label>
                                         <select id="warehouse_entry_company_id" name="company_id"
                                             class="form-control form-control-sm js-warehouse-entry-select">
@@ -176,7 +298,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-document">
                                         <label>PROVEEDOR</label>
                                         <input type="hidden" id="warehouse_entry_supplier_id_hidden" name="supplier_id" disabled>
                                         <select id="warehouse_entry_supplier_id" name="supplier_id"
@@ -191,14 +313,14 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-document">
                                         <label>RUC PROVEEDOR</label>
                                         <input type="text" id="warehouse_entry_supplier_ruc"
                                             class="form-control form-control-sm" readonly>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-payment">
                                         <label>FORMA DE PAGO</label>
                                         <select id="warehouse_entry_payment_method" name="payment_method"
                                             class="form-control form-control-sm js-warehouse-entry-select">
@@ -210,7 +332,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-payment">
                                         <label>CONDICI&Oacute;N DE PAGO</label>
                                         <select id="warehouse_entry_payment_condition" name="payment_condition"
                                             class="form-control form-control-sm js-warehouse-entry-select">
@@ -223,7 +345,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-document">
                                         <label>TIPO DOCUMENTO</label>
                                         <select id="warehouse_entry_document_type" name="document_type"
                                             class="form-control form-control-sm text-uppercase">
@@ -233,35 +355,35 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-document">
                                         <label>FECHA DOCUMENTO</label>
                                         <input type="date" id="warehouse_entry_document_date" name="document_date"
                                             class="form-control form-control-sm">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-payment">
                                         <label>FECHA/HORA MOVIMIENTO *</label>
                                         <input type="datetime-local" id="warehouse_entry_movement_date" name="movement_date"
                                             class="form-control form-control-sm" value="{{ now()->format('Y-m-d\\TH:i') }}" required>
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-2">
+                                    <div class="form-group col-md-2 warehouse-entry-data-document">
                                         <label>SERIE</label>
                                         <input type="text" id="warehouse_entry_document_series" name="document_series"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-document">
                                         <label>N&deg; COMPROBANTE</label>
                                         <input type="text" id="warehouse_entry_document_number" name="document_number"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-5 d-none" id="warehouseEntryCustomerOrdersGroup">
+                                    <div class="form-group col-md-5 d-none warehouse-entry-data-guide" id="warehouseEntryCustomerOrdersGroup">
                                         <label>&Oacute;RDENES CLIENTE RELACIONADAS</label>
                                         <input type="hidden" id="warehouse_entry_purchase_order_number" name="purchase_order_number">
                                         <select id="warehouse_entry_customer_purchase_order_ids"
@@ -272,7 +394,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-2">
+                                    <div class="form-group col-md-2 warehouse-entry-data-document">
                                         <label>AFECTO IGV</label>
                                         <select id="warehouse_entry_affect_igv" name="affect_igv"
                                             class="form-control form-control-sm">
@@ -282,14 +404,14 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-guide">
                                         <label>VENDEDOR</label>
                                         <input type="text" id="warehouse_entry_seller_name" name="seller_name"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-payment">
                                         <label>CUENTA POR PAGAR</label>
                                         <select id="warehouse_entry_generate_account_payable" name="generate_account_payable"
                                             class="form-control form-control-sm">
@@ -299,7 +421,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-3">
+                                    <div class="form-group col-md-3 warehouse-entry-data-payment">
                                         <label>MONTO</label>
                                         <input type="number" step="0.01" min="0" id="warehouse_entry_payable_amount"
                                             name="payable_amount" class="form-control form-control-sm text-right" value="0.00" readonly>
@@ -307,7 +429,7 @@
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="col-12 d-none" id="warehouseEntryCreditTermsGroup">
+                                    <div class="col-12 d-none warehouse-entry-data-payment" id="warehouseEntryCreditTermsGroup">
                                         <div class="row">
                                             <div class="form-group col-sm-6 col-md-3">
                                                 <label>D&Iacute;AS DE CR&Eacute;DITO</label>
@@ -328,32 +450,32 @@
                                         </div>
                                     </div>
 
-                                    <div class="col-12">
+                                    <div class="col-12 warehouse-entry-data-payment">
                                         <div id="warehouseEntryCreditSummary" class="alert alert-info d-none py-2 px-3 mb-3"></div>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-guide">
                                         <label>SERIE GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_series" name="guide_series"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-guide">
                                         <label>N&deg; GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_number" name="guide_number"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-4">
+                                    <div class="form-group col-md-4 warehouse-entry-data-guide">
                                         <label>RUC GU&Iacute;A</label>
                                         <input type="text" id="warehouse_entry_guide_ruc" name="guide_ruc"
                                             class="form-control form-control-sm text-uppercase">
                                         <span class="invalid-feedback"></span>
                                     </div>
 
-                                    <div class="form-group col-md-12">
+                                    <div class="form-group col-md-12 warehouse-entry-data-observations">
                                         <label>OBSERVACIONES</label>
                                         <textarea id="warehouse_entry_observations" name="observations"
                                             class="form-control form-control-sm text-uppercase" rows="2"></textarea>
@@ -570,7 +692,7 @@
                                     <input type="hidden" id="warehouse_entry_expense_edit_index">
                                     <select id="warehouse_entry_expense_category" class="d-none"><option value="freight_transport">Transporte</option><option value="other_expense">Otros</option></select>
                                     <select id="warehouse_entry_expense_cost_origin" class="d-none"><option value="third_party">Tercero</option></select>
-                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-wallet"></i></span><div><strong>Fuente y tipo de gasto</strong><small>Identifica de dónde proviene el pago y quién realizó el servicio.</small></div></div></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-wallet"></i></span><div><strong>Origen del gasto</strong><small>Identifica de dónde proviene el pago y quién realizó el servicio.</small></div></div></div>
                                     <div class="form-group col-md-3"><label>FUENTE DE PAGO *</label><select id="warehouse_entry_expense_payment_source" class="form-control form-control-sm"><option value="manual">No registrado / pendiente</option><option value="general_cash">Caja General</option><option value="bank">Banco</option><option value="petty_cash" disabled>Caja Chica (usar botón Jalar)</option></select><small class="form-text text-muted">Los registros directos quedan pendientes de aprobación.</small></div>
                                     <div id="warehouseEntryExpenseGeneralCashGroup" class="form-group col-md-4 d-none"><label>CAJA GENERAL *</label><select id="warehouse_entry_expense_general_cash_box_id" class="form-control form-control-sm"><option value="">Seleccione Caja General</option>@foreach($generalCashBoxes as $box)<option value="{{ $box->id }}" data-company-id="{{ $box->company_id }}" data-currency-id="{{ $box->currency_id }}" data-code="{{ $box->code }}" data-responsible="{{ trim(($box->responsible?->name ?? '').' '.($box->responsible?->lastname ?? '')) }}">{{ $box->code }} | {{ $box->name }} | {{ $box->currency?->code }}</option>@endforeach</select></div>
                                     <div id="warehouseEntryExpenseBankGroup" class="form-group col-md-4 d-none"><label>CUENTA BANCARIA *</label><select id="warehouse_entry_expense_company_bank_account_id" class="form-control form-control-sm"><option value="">Seleccione cuenta bancaria</option></select><small id="warehouseEntryExpenseBankAccountHelp" class="form-text text-muted">Seleccione Banco como fuente de pago para ver las cuentas activas de la empresa.</small></div>
@@ -579,10 +701,27 @@
                                     <div id="warehouseEntryExpenseResponsibleGroup" class="form-group col-md-4 d-none"><label>RESPONSABLE / PERSONA QUE COBRÓ *</label><input id="warehouse_entry_expense_provider_name" class="form-control form-control-sm text-uppercase" placeholder="Nombre de persona, motorizado, taxi, personal o responsable"></div>
                                     <select id="warehouse_entry_expense_provider_id" class="d-none"><option value=""></option></select>
                                     <input type="hidden" id="warehouse_entry_expense_provider_ruc">
-                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-calculator"></i></span><div><strong>Importe e IGV</strong><small>Registra el total pagado y su tratamiento tributario.</small></div></div></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-calculator"></i></span><div><strong>Importe y tratamiento tributario</strong><small>Registra el total pagado y define claramente cómo se trata el IGV.</small></div></div></div>
                                     <div class="form-group col-md-2"><label>IMPORTE *</label><input type="number" min="0" step="0.01" id="warehouse_entry_expense_amount" class="form-control form-control-sm text-right"></div>
-                                    <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indique si el importe incluye IGV.</small></div>
-                                    <div class="form-group col-md-3"><label>IGV RECUPERABLE *</label><select id="warehouse_entry_expense_igv_recoverable" class="form-control form-control-sm"><option value="1">S&iacute;</option><option value="0">No</option></select><small class="form-text text-muted">El IGV recuperable no se capitaliza.</small></div>
+                                    <div class="form-group col-md-3"><label>AFECTO IGV *</label><select id="warehouse_entry_expense_affects_igv" class="form-control form-control-sm"><option value="">Seleccione</option><option value="1">Sí</option><option value="0">No</option></select><small id="warehouseEntryExpenseIgvHelp" class="form-text text-muted">Indica si el importe del gasto incluye IGV.</small></div>
+                                    <div class="form-group col-md-7"><label>IGV RECUPERABLE *</label><select id="warehouse_entry_expense_igv_recoverable" class="form-control form-control-sm"><option value="1">S&iacute;</option><option value="0">No</option></select><small class="warehouse-entry-expense-tax-help"><strong>S&iacute;:</strong> el IGV se usa como cr&eacute;dito fiscal y NO aumenta el costo del producto.<br><strong>No:</strong> el IGV no se recupera y puede formar parte del costo si el gasto se incluye en la valorizaci&oacute;n del inventario.</small></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-boxes"></i></span><div><strong>Valorizaci&oacute;n del inventario</strong><small>Decide si el gasto debe incrementar el costo de los productos recibidos.</small></div></div></div>
+                                    <div class="form-group col-12">
+                                        <div class="warehouse-entry-inventory-cost-card">
+                                            <div class="warehouse-entry-inventory-cost-heading">
+                                                <strong>Incluir en el costo del producto</strong>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="custom-control custom-switch mr-2">
+                                                        <input type="checkbox" class="custom-control-input" id="warehouse_entry_expense_affects_cost_toggle">
+                                                        <label class="custom-control-label" for="warehouse_entry_expense_affects_cost_toggle"><span class="sr-only">Incluir en el costo del producto</span></label>
+                                                    </div>
+                                                    <span id="warehouseEntryExpenseInventoryCostStatus" class="warehouse-entry-inventory-cost-status">NO</span>
+                                                </div>
+                                            </div>
+                                            <small class="form-text text-muted">Act&iacute;valo si este gasto debe incrementar el costo de los productos recibidos.</small>
+                                            <small id="warehouseEntryExpenseInventoryCostHelp" class="form-text text-muted">Puedes incluir este gasto en la valorizaci&oacute;n del inventario.</small>
+                                        </div>
+                                    </div>
                                     <div class="col-12 mb-3">
                                         <div class="warehouse-entry-detraction-card">
                                             <div class="warehouse-entry-detraction-heading">
@@ -645,15 +784,14 @@
                                             <small class="warehouse-entry-detraction-note"><i class="fas fa-info-circle mr-1"></i>La detracci&oacute;n no reduce el costo del gasto; solo separa el importe a depositar seg&uacute;n SUNAT.</small>
                                         </div>
                                     </div>
-                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-file-invoice"></i></span><div><strong>Documento</strong><small>Detalla el comprobante o sustento que identifica el gasto.</small></div></div></div>
+                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-file-invoice"></i></span><div><strong>Documento y sustentos</strong><small>Detalla el comprobante y adjunta las constancias que respaldan el gasto.</small></div></div></div>
                                     <div class="form-group col-md-3"><label>DOCUMENTO</label><select id="warehouse_entry_expense_document_type" class="form-control form-control-sm"><optgroup label="DOCUMENTOS OFICIALES"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option><option value="RECIBO_HONORARIOS">Recibo por honorarios</option></optgroup><optgroup label="DOCUMENTOS NO OFICIALES"><option value="RECIBO_INTERNO">Recibo interno</option><option value="SIN_COMPROBANTE">Sin comprobante</option></optgroup></select></div>
                                     <div class="form-group col-md-2"><label>SERIE</label><input id="warehouse_entry_expense_document_series" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>NÚMERO</label><input id="warehouse_entry_expense_document_number" class="form-control form-control-sm text-uppercase"></div>
                                     <div class="form-group col-md-2"><label>FECHA *</label><input type="date" id="warehouse_entry_expense_document_date" class="form-control form-control-sm"></div>
-                                    <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="1">Sí</option></select>
+                                    <select id="warehouse_entry_expense_affects_cost" class="d-none"><option value="0" selected>No</option><option value="1">Sí</option></select>
                                     <select id="warehouse_entry_expense_distribution_method" class="d-none"><option value="quantity">Por cantidad</option></select>
                                     <div class="form-group col-12"><label>DESCRIPCIÓN / OBSERVACIÓN</label><input id="warehouse_entry_expense_description" class="form-control form-control-sm" placeholder="Obligatoria sin comprobante oficial adjunto"><small class="text-muted">Si no cuenta con un comprobante oficial adjunto, describa el motivo y responsable.</small></div>
-                                    <div class="col-12"><div class="warehouse-entry-expense-subsection-title"><span><i class="fas fa-paperclip"></i></span><div><strong>Sustentos</strong><small>Adjunta el comprobante y la constancia de pago cuando corresponda.</small></div></div></div>
                                     <div class="col-lg-6 mb-2">
                                         <div class="warehouse-entry-expense-document-card is-invoice">
                                             <div class="warehouse-entry-expense-document-heading"><span><i class="fas fa-file-invoice-dollar"></i></span><div><strong>Comprobante oficial</strong><small>Factura, boleta o recibo por honorarios.</small></div></div>

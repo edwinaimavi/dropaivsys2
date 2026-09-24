@@ -167,7 +167,7 @@ function linkedCostValuationPoolFixture(string $suffix): array
         'cost_origin' => 'third_party',
         'expense_type' => 'agency_freight',
         'provider_name' => 'TRANSPORTE '.$suffix,
-        'document_type' => 'SIN_COMPROBANTE',
+        'document_type' => 'FACTURA',
         'currency_id' => $currencyId,
         'amount' => 50,
         'affects_igv' => false,
@@ -194,7 +194,7 @@ function linkedCostValuationPoolFixture(string $suffix): array
         'total_cost' => 200,
     ]);
 
-    return compact('entry', 'stockA', 'stockB', 'pool', 'distribution');
+    return compact('entry', 'item', 'expense', 'stockA', 'stockB', 'pool', 'distribution');
 }
 
 it('agrega el costo vinculado al pool sin aumentar cantidad física o contable', function () {
@@ -274,5 +274,87 @@ it('no agrega dos veces el mismo costo vinculado', function () {
     expect((float) $fixture['pool']->fresh()->current_quantity)->toBe(10.0)
         ->and((float) $fixture['pool']->fresh()->total_cost)->toBe(250.0)
         ->and((float) $fixture['pool']->fresh()->average_unit_cost)->toBe(25.0)
+        ->and(WarehouseKardexMovement::where('operation_type', 'warehouse_entry_linked_cost')->count())->toBe(2);
+});
+
+it('revierte el costo vinculado cuando una factura capitalizable cambia a documento no elegible', function () {
+    $fixture = linkedCostValuationPoolFixture('ELIGIBILITY');
+    $service = app(WarehouseKardexService::class);
+
+    $service->syncLinkedCosts($fixture['entry']);
+    $fixture['expense']->update([
+        'document_type' => 'SIN_COMPROBANTE',
+        'affects_inventory_cost' => false,
+        'distribution_method' => null,
+    ]);
+    $fixture['expense']->distributions()->delete();
+    $service->syncLinkedCosts($fixture['entry']->fresh());
+
+    expect((float) $fixture['pool']->fresh()->current_quantity)->toBe(10.0)
+        ->and((float) $fixture['pool']->fresh()->total_cost)->toBe(200.0)
+        ->and((float) $fixture['pool']->fresh()->average_unit_cost)->toBe(20.0)
+        ->and(WarehouseKardexMovement::query()
+            ->where('operation_type', 'warehouse_entry_linked_cost')
+            ->where('status', 'registered')
+            ->count())->toBe(0)
+        ->and(WarehouseKardexMovement::where('operation_type', 'warehouse_entry_linked_cost_cancel')->count())->toBe(2);
+});
+
+it('valoriza 1000 unidades a 12.60 incluyendo solo el flete marcado', function () {
+    $fixture = linkedCostValuationPoolFixture('BOSS');
+    $fixture['item']->update(['quantity' => 1000, 'unit_price' => 12, 'line_total' => 12000]);
+    $fixture['stockA']->update(['current_quantity' => 500, 'average_unit_cost' => 12, 'total_cost' => 6000]);
+    $fixture['stockB']->update(['current_quantity' => 500, 'average_unit_cost' => 12, 'total_cost' => 6000]);
+    $fixture['pool']->update(['current_quantity' => 1000, 'average_unit_cost' => 12, 'total_cost' => 12000]);
+    WarehouseKardexMovement::query()
+        ->where('source_id', $fixture['entry']->id)
+        ->where('operation_type', 'warehouse_entry')
+        ->update([
+            'quantity_in' => 500,
+            'balance_quantity' => 500,
+            'unit_cost' => 12,
+            'total_cost_in' => 6000,
+            'average_unit_cost' => 12,
+            'balance_total_cost' => 6000,
+        ]);
+    $fixture['expense']->update([
+        'amount' => 600,
+        'taxable_amount' => 600,
+        'total_amount' => 600,
+    ]);
+    $fixture['distribution']->update(['distributed_amount' => 600]);
+
+    foreach ([50, 80, 1000] as $position => $amount) {
+        WarehouseEntryExpense::create([
+            'warehouse_entry_id' => $fixture['entry']->id,
+            'source_type' => WarehouseEntryExpense::SOURCE_MANUAL,
+            'expense_category' => 'other_expense',
+            'cost_origin' => 'third_party',
+            'expense_type' => 'other',
+            'provider_name' => 'GASTO INFORMATIVO '.$position,
+            'document_type' => 'SIN_COMPROBANTE',
+            'amount' => $amount,
+            'affects_igv' => false,
+            'taxable_amount' => $amount,
+            'igv_amount' => 0,
+            'total_amount' => $amount,
+            'affects_inventory_cost' => false,
+            'distribution_method' => null,
+            'description' => 'GASTO NO CAPITALIZABLE '.$position,
+            'status' => 'ACTIVE',
+            'approval_status' => WarehouseEntryExpense::APPROVAL_APPROVED,
+        ]);
+    }
+
+    app(WarehouseKardexService::class)->syncLinkedCosts($fixture['entry']->fresh());
+    $pool = $fixture['pool']->fresh();
+
+    expect((float) $pool->current_quantity)->toBe(1000.0)
+        ->and((float) $pool->total_cost)->toBe(12600.0)
+        ->and((float) $pool->average_unit_cost)->toBe(12.6)
+        ->and(WarehouseEntryExpense::where('warehouse_entry_id', $fixture['entry']->id)->count())->toBe(4)
+        ->and(WarehouseEntryExpense::where('warehouse_entry_id', $fixture['entry']->id)
+            ->where('affects_inventory_cost', false)
+            ->count())->toBe(3)
         ->and(WarehouseKardexMovement::where('operation_type', 'warehouse_entry_linked_cost')->count())->toBe(2);
 });

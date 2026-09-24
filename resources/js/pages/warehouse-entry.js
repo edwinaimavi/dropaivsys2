@@ -390,6 +390,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_expense_type', function () { renderWarehouseEntryExpenseTypes($(this).val()); });
     $(document).on('change', '#warehouse_entry_expense_shipping_agency_id', function () { $('#warehouse_entry_expense_provider_ruc').val($(this).find('option:selected').data('ruc') || ''); });
     $(document).on('change', '#warehouse_entry_expense_document_type', toggleWarehouseEntryExpenseDocumentFields);
+    $(document).on('change', '#warehouse_entry_expense_affects_igv', refreshWarehouseEntryExpenseIgvControl);
     $(document).on('change', '#warehouse_entry_expense_cost_origin', applyWarehouseEntryExpenseOriginRules);
     $(document).on('change', '#warehouse_entry_expense_payment_source', function () {
         toggleWarehouseEntryExpensePaymentSource(true);
@@ -397,7 +398,11 @@ document.addEventListener('DOMContentLoaded', function () {
     $(document).on('change', '#warehouse_entry_expense_applies_detraction', toggleWarehouseEntryExpenseDetraction);
     $(document).on('change', '#warehouse_entry_expense_detraction_type_id', calculateWarehouseEntryExpenseDetraction);
     $(document).on('input', '#warehouse_entry_expense_amount', calculateWarehouseEntryExpenseDetraction);
-    $(document).on('change', '#warehouse_entry_expense_affects_cost', toggleWarehouseEntryExpenseDistribution);
+    $(document).on('change', '#warehouse_entry_expense_affects_cost', refreshWarehouseEntryExpenseInventoryCostControl);
+    $(document).on('change', '#warehouse_entry_expense_affects_cost_toggle', function () {
+        setWarehouseEntryExpenseInventoryCost($(this).is(':checked'));
+        toggleWarehouseEntryExpenseDistribution();
+    });
     $(document).on('change', '#warehouse_entry_expense_distribution_method', renderWarehouseEntryExpenseManualDistribution);
     $(document).on('change', '.warehouse-entry-expense-file-input[data-expense-document-type]', handleWarehouseEntryExpenseFileChange);
     $(document).on('click', '.btnRemoveWarehouseEntryExpenseDocument', function () { clearWarehouseEntryExpenseFile($(this).data('expense-document-type')); });
@@ -4014,7 +4019,9 @@ function updateWarehouseEntryCreditSummary(recalculateDueDate = false, serverSta
 }
 
 function toggleWarehouseEntryExpenseDistribution() {
-    const affects = $('#warehouse_entry_expense_affects_cost').val() === '1' && $('#warehouse_entry_expense_cost_origin').val() !== 'included_in_purchase_price';
+    const affects = canWarehouseEntryExpenseAffectInventoryCost($('#warehouse_entry_expense_document_type').val())
+        && warehouseEntryExpenseInventoryCostSelected()
+        && $('#warehouse_entry_expense_cost_origin').val() !== 'included_in_purchase_price';
     $('#warehouse_entry_expense_distribution_method').prop('disabled', !affects).val(affects ? $('#warehouse_entry_expense_distribution_method').val() : '');
     if (!affects) $('#warehouseEntryExpenseManualDistribution').addClass('d-none').empty();
 }
@@ -4028,8 +4035,9 @@ function renderWarehouseEntryExpenseTypes(selected = '') {
     $('#warehouseEntryExpenseAgencyGroup').toggleClass('d-none', !isAgency);
     $('#warehouseEntryExpenseResponsibleGroup').toggleClass('d-none', isAgency);
     $('#warehouse_entry_expense_category').val(simpleType === 'other' ? 'other_expense' : 'freight_transport');
-    $('#warehouse_entry_expense_affects_cost').val('1');
-    $('#warehouse_entry_expense_distribution_method').val('quantity').prop('disabled', false);
+    $('#warehouse_entry_expense_affects_cost').val('0');
+    $('#warehouse_entry_expense_distribution_method').val('').prop('disabled', true);
+    applyWarehouseEntryExpenseInventoryCostEligibility();
 }
 
 function normalizeWarehouseEntryExpenseAgencyName(value) {
@@ -4082,13 +4090,13 @@ function restoreWarehouseEntryExpenseDistributionMethod(distributionMethod) {
 
 function warehouseEntryExpenseMapping(type) {
     if (type === 'agency_freight') {
-        return { group: 'transporte', category: 'transporte', cost_type: 'flete_agencia', origin: 'agencia_envio', cost_origin: 'agencia_envio', expense_category: 'freight_transport', affects_inventory_cost: true };
+        return { group: 'transporte', category: 'transporte', cost_type: 'flete_agencia', origin: 'agencia_envio', cost_origin: 'agencia_envio', expense_category: 'freight_transport', affects_inventory_cost: false };
     }
     if (type === 'pickup_transfer') {
-        return { group: 'transporte', category: 'transporte', cost_type: 'recojo_traslado', origin: 'responsable_externo', cost_origin: 'responsable_externo', expense_category: 'freight_transport', affects_inventory_cost: true };
+        return { group: 'transporte', category: 'transporte', cost_type: 'recojo_traslado', origin: 'responsable_externo', cost_origin: 'responsable_externo', expense_category: 'freight_transport', affects_inventory_cost: false };
     }
     if (type === 'other') {
-        return { group: 'otros_gastos', category: 'otros_gastos', cost_type: 'otros_gastos', origin: 'responsable_externo', cost_origin: 'responsable_externo', expense_category: 'other_expense', affects_inventory_cost: true };
+        return { group: 'otros_gastos', category: 'otros_gastos', cost_type: 'otros_gastos', origin: 'responsable_externo', cost_origin: 'responsable_externo', expense_category: 'other_expense', affects_inventory_cost: false };
     }
     return null;
 }
@@ -4102,6 +4110,10 @@ function normalizeWarehouseEntryExpenseDocumentValue(documentType) {
 }
 
 function isWarehouseEntryOfficialExpenseDocument(documentType) {
+    return ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'].includes(normalizeWarehouseEntryExpenseDocumentValue(documentType));
+}
+
+function canWarehouseEntryExpenseAffectInventoryCost(documentType) {
     return ['FACTURA', 'BOLETA', 'RECIBO_HONORARIOS'].includes(normalizeWarehouseEntryExpenseDocumentValue(documentType));
 }
 
@@ -4270,8 +4282,8 @@ function confirmPettyCashExpenses() {
             currency_id: pettyCashExpense.petty_cash_box?.currency_id || $('#warehouse_entry_currency_id').val() || '',
             amount,
             ...tax,
-            affects_inventory_cost: true,
-            distribution_method: 'quantity',
+            affects_inventory_cost: false,
+            distribution_method: '',
             description: pettyCashExpense.concept || '',
             distributions: [],
             invoice_file: null,
@@ -4298,9 +4310,50 @@ function toggleWarehouseEntryExpenseDocumentFields() {
     if (withoutDocument) $('#warehouse_entry_expense_document_series, #warehouse_entry_expense_document_number').val('');
     $('#warehouse_entry_expense_affects_igv').prop('disabled', !supportsIgv);
     if (!supportsIgv) $('#warehouse_entry_expense_affects_igv').val('0');
-    $('#warehouseEntryExpenseIgvHelp').text(supportsIgv
-        ? 'Indique si el importe incluye IGV.'
-        : 'Este documento no genera IGV aprovechable para el análisis.');
+    $('#warehouseEntryExpenseIgvHelp').text(documentType === 'RECIBO_HONORARIOS'
+        ? 'Recibo por honorarios: no aplica IGV.'
+        : (supportsIgv
+            ? 'Indica si el importe del gasto incluye IGV.'
+            : 'Este tipo de documento no aplica IGV.'));
+    refreshWarehouseEntryExpenseIgvControl();
+    applyWarehouseEntryExpenseInventoryCostEligibility();
+}
+
+function refreshWarehouseEntryExpenseIgvControl() {
+    const supportsIgv = ['FACTURA', 'BOLETA'].includes(
+        normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val())
+    );
+    const affectsIgv = supportsIgv && $('#warehouse_entry_expense_affects_igv').val() === '1';
+    $('#warehouse_entry_expense_igv_recoverable').prop('disabled', !affectsIgv);
+    if (!affectsIgv) $('#warehouse_entry_expense_igv_recoverable').val('0');
+}
+
+function warehouseEntryExpenseInventoryCostSelected() {
+    return $('#warehouse_entry_expense_affects_cost').val() === '1';
+}
+
+function setWarehouseEntryExpenseInventoryCost(value) {
+    const selected = value === true || value === 1 || value === '1';
+    $('#warehouse_entry_expense_affects_cost').val(selected ? '1' : '0');
+    $('#warehouse_entry_expense_affects_cost_toggle').prop('checked', selected);
+    $('#warehouseEntryExpenseInventoryCostStatus').text(selected ? 'SÍ' : 'NO');
+}
+
+function refreshWarehouseEntryExpenseInventoryCostControl() {
+    const included = $('#warehouse_entry_expense_cost_origin').val() === 'included_in_purchase_price';
+    const eligible = canWarehouseEntryExpenseAffectInventoryCost($('#warehouse_entry_expense_document_type').val()) && !included;
+    setWarehouseEntryExpenseInventoryCost(eligible && warehouseEntryExpenseInventoryCostSelected());
+    $('#warehouse_entry_expense_affects_cost_toggle').prop('disabled', !eligible);
+    $('#warehouseEntryExpenseInventoryCostHelp').text(included
+        ? 'Ya está incluido en el precio de compra; no se agrega nuevamente al costo.'
+        : (eligible
+            ? 'Puedes incluir este gasto en la valorización del inventario.'
+            : 'Este tipo de documento no permite incluir el gasto en el costo del producto.'));
+    toggleWarehouseEntryExpenseDistribution();
+}
+
+function applyWarehouseEntryExpenseInventoryCostEligibility() {
+    refreshWarehouseEntryExpenseInventoryCostControl();
 }
 
 function calculateWarehouseEntryExpenseTax(amount, affectsIgv) {
@@ -4346,9 +4399,9 @@ function warehouseEntryExpenseTypeLabel(type) {
 function applyWarehouseEntryExpenseOriginRules() {
     const included = $('#warehouse_entry_expense_cost_origin').val() === 'included_in_purchase_price';
     $('#warehouse_entry_expense_amount').prop('readonly', included).attr('placeholder', included ? 'Sin importe adicional' : '').val(included ? '0.00' : $('#warehouse_entry_expense_amount').val());
-    $('#warehouse_entry_expense_affects_cost').prop('disabled', included).val(included ? '0' : $('#warehouse_entry_expense_affects_cost').val());
+    if (included) $('#warehouse_entry_expense_affects_cost').val('0');
     if (included && !$('#warehouse_entry_expense_description').val().trim()) $('#warehouse_entry_expense_description').val('El proveedor asumió el flete / costo incluido en la compra.');
-    toggleWarehouseEntryExpenseDistribution();
+    applyWarehouseEntryExpenseInventoryCostEligibility();
 }
 
 function toggleWarehouseEntryExpensePaymentSource(clearInactiveFields = false) {
@@ -4424,7 +4477,7 @@ function resetWarehouseEntryExpenseEditor() {
     $('#warehouse_entry_expense_provider_id,#warehouse_entry_expense_provider_name,#warehouse_entry_expense_document_series,#warehouse_entry_expense_document_number,#warehouse_entry_expense_document_date,#warehouse_entry_expense_description,#warehouse_entry_expense_invoice_file,#warehouse_entry_expense_payment_proof_file,#warehouse_entry_expense_detraction_proof_file,#warehouse_entry_expense_shipping_agency_id').val('');
     $('#warehouse_entry_expense_provider_ruc,#warehouse_entry_expense_amount,#warehouse_entry_expense_general_cash_box_id,#warehouse_entry_expense_company_bank_account_id').val('');
     $('#warehouse_entry_expense_payment_source').val('manual').prop('disabled', false).data('previous-source', 'manual');
-    $('#warehouse_entry_expense_affects_cost').val('1');
+    $('#warehouse_entry_expense_affects_cost').val('0');
     $('#warehouse_entry_expense_category').val('freight_transport');
     $('#warehouse_entry_expense_cost_origin').val('third_party');
     $('#warehouse_entry_expense_type').val('agency_freight');
@@ -4437,7 +4490,7 @@ function resetWarehouseEntryExpenseEditor() {
     $('#warehouse_entry_expense_detraction_amount,#warehouse_entry_expense_supplier_net_amount').val('0.00');
     $('#warehouse_entry_expense_amount,#warehouse_entry_expense_affects_igv,#warehouse_entry_expense_document_type,#warehouse_entry_expense_document_series,#warehouse_entry_expense_document_number,#warehouse_entry_expense_document_date,#warehouse_entry_expense_provider_name,#warehouse_entry_expense_shipping_agency_id,#warehouse_entry_expense_invoice_file,#warehouse_entry_expense_payment_proof_file,#warehouse_entry_expense_detraction_proof_file').prop('disabled', false);
     renderWarehouseEntryExpenseTypes('agency_freight');
-    $('#warehouse_entry_expense_distribution_method').val('quantity').prop('disabled', false);
+    $('#warehouse_entry_expense_distribution_method').val('').prop('disabled', true);
     toggleWarehouseEntryExpenseDocumentFields();
     $('#warehouseEntryExpenseManualDistribution').addClass('d-none').empty();
     $('#btnAddWarehouseEntryExpense').html('<i class="fas fa-plus mr-1"></i>Agregar costo');
@@ -4541,7 +4594,10 @@ function addWarehouseEntryExpense() {
     const paymentSource = isPettyCash ? 'petty_cash' : ($('#warehouse_entry_expense_payment_source').val() || 'manual');
     const amount = parseWarehouseEntryNumber($('#warehouse_entry_expense_amount').val());
     const affectsIgvSelection = $('#warehouse_entry_expense_affects_igv').val();
-    const affects = true;
+    const documentType = normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val());
+    const affects = canWarehouseEntryExpenseAffectInventoryCost(documentType)
+        && warehouseEntryExpenseInventoryCostSelected()
+        && $('#warehouse_entry_expense_cost_origin').val() !== 'included_in_purchase_price';
     const method = $('#warehouse_entry_expense_distribution_method').val();
     const invoiceInputFile = $('#warehouse_entry_expense_invoice_file')[0]?.files?.[0] || null;
     const paymentProofInputFile = $('#warehouse_entry_expense_payment_proof_file')[0]?.files?.[0] || null;
@@ -4568,7 +4624,6 @@ function addWarehouseEntryExpense() {
     const description = $('#warehouse_entry_expense_description').val().trim();
     const invoiceFile = warehouseEntryExpenseEditorRemovedDocuments.invoice ? null : (invoiceInputFile || previous?.invoice_file || null);
     const paymentProofFile = warehouseEntryExpenseEditorRemovedDocuments.payment_proof ? null : (paymentProofInputFile || previous?.payment_proof_file || null);
-    const documentType = normalizeWarehouseEntryExpenseDocumentValue($('#warehouse_entry_expense_document_type').val());
     const affectsIgv = affectsIgvSelection === '1';
     const igvRecoverable = affectsIgv && $('#warehouse_entry_expense_igv_recoverable').val() === '1';
     const appliesDetraction = $('#warehouse_entry_expense_applies_detraction').is(':checked');
@@ -4665,8 +4720,14 @@ function editWarehouseEntryExpense(index) {
     $('#warehouse_entry_expense_document_type').val(expense.document_type);
     toggleWarehouseEntryExpenseDocumentFields();
     toggleWarehouseEntryExpenseDistribution();
-    const distributionMethod = expense.distribution_method || 'quantity';
-    restoreWarehouseEntryExpenseDistributionMethod(distributionMethod);
+    const canRestoreDistribution = canWarehouseEntryExpenseAffectInventoryCost(expense.document_type)
+        && warehouseEntryExpenseInventoryCostSelected()
+        && $('#warehouse_entry_expense_cost_origin').val() !== 'included_in_purchase_price';
+    if (canRestoreDistribution) {
+        restoreWarehouseEntryExpenseDistributionMethod(expense.distribution_method || 'quantity');
+    } else {
+        $('#warehouse_entry_expense_distribution_method').val('').prop('disabled', true);
+    }
     renderWarehouseEntryExpenseManualDistribution();
     (expense.distributions || []).forEach(item => $(`.warehouse-entry-expense-manual-amount[data-item-index="${item.item_index}"]`).val(item.distributed_amount));
     renderWarehouseEntryExpenseFileSelection('invoice', expense.invoice_file || warehouseEntryExpenseStoredDocument(expense, 'invoice'));
@@ -4861,6 +4922,9 @@ function renderWarehouseEntryExpenses() {
         const currencySymbol = $('.warehouse-entry-currency-symbol').first().text().trim() || 'S/';
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
         const igvBadge = expense.affects_igv ? '<span class="warehouse-entry-soft-badge is-tax">Afecto IGV</span>' : '<span class="warehouse-entry-soft-badge is-no-tax">Sin IGV</span>';
+        const inventoryCostBadge = expense.affects_inventory_cost
+            ? '<span class="warehouse-entry-soft-badge is-official">Sí incluye en costo del producto</span>'
+            : '<span class="warehouse-entry-soft-badge is-no-tax">No incluye en costo del producto</span>';
         const detractionType = expense.detraction_type || {};
         const detractionLabel = [detractionType.code, detractionType.name].filter(Boolean).join(' · ');
         const detractionPercentageLabel = parseWarehouseEntryNumber(expense.detraction_percentage)
@@ -4891,7 +4955,7 @@ function renderWarehouseEntryExpenses() {
                 <section class="warehouse-entry-expense-finance" title="${escapeWarehouseEntryHtml(igvTitle)}">
                     <span class="warehouse-entry-expense-block-label">Importe registrado</span>
                     <strong><small>${escapeWarehouseEntryHtml(currencySymbol)}</small>${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</strong>
-                    <div>${igvBadge}<span class="warehouse-entry-soft-badge ${officialDocument ? 'is-official' : 'is-unofficial'}">${escapeWarehouseEntryHtml(classification)}</span>${detractionHtml}</div>
+                    <div>${igvBadge}<span class="warehouse-entry-soft-badge ${officialDocument ? 'is-official' : 'is-unofficial'}">${escapeWarehouseEntryHtml(classification)}</span>${inventoryCostBadge}${detractionHtml}</div>
                 </section>
                 <section class="warehouse-entry-expense-source">
                     <span class="warehouse-entry-expense-block-label">Origen de pago</span>
@@ -5033,7 +5097,12 @@ function fillWarehouseEntryForm(entry) {
         affects_igv: Boolean(expense.affects_igv),
         igv_recoverable: expense.igv_recoverable === null ? null : Boolean(expense.igv_recoverable),
         exchange_rate: expense.exchange_rate,
-        affects_inventory_cost: Boolean(expense.affects_inventory_cost),
+        affects_inventory_cost: canWarehouseEntryExpenseAffectInventoryCost(expense.document_type)
+            && Boolean(expense.affects_inventory_cost),
+        distribution_method: canWarehouseEntryExpenseAffectInventoryCost(expense.document_type)
+            && Boolean(expense.affects_inventory_cost)
+                ? expense.distribution_method
+                : null,
         distributions: (expense.distributions || []).map(distribution => ({
             item_index: (entry.items || []).findIndex(item => Number(item.id) === Number(distribution.warehouse_entry_item_id)),
             distributed_amount: distribution.distributed_amount
@@ -5540,7 +5609,7 @@ function renderWarehouseEntryDetail(entry, warehouseName) {
         const officialDocument = isWarehouseEntryOfficialExpenseDocument(expense.document_type);
         const document = [warehouseEntryExpenseDocumentLabel(expense.document_type), expense.document_series, expense.document_number].filter(Boolean).join(' ');
         const igvTitle = `Base: ${formatWarehouseEntryMoney(expense.taxable_amount ?? expense.amount)} | IGV: ${formatWarehouseEntryMoney(expense.igv_amount ?? 0)}`;
-        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td><span class="badge badge-${officialDocument ? 'success' : 'warning'}">${warehouseEntryExpenseClassification(expense)}</span></td><td>${warehouseEntryExpenseSourceHtml(expense)}</td><td>${warehouseEntryExpenseApprovalHtml(expense)}</td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-light">No</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td></tr>`;
+        return `<tr><td>${expense.expense_category === 'freight_transport' ? 'Flete / Transporte' : 'Otro gasto'}</td><td>${warehouseEntryExpenseTypeLabels[expense.expense_type] || expense.expense_type}</td><td>${escapeWarehouseEntryHtml(expense.provider_name || expense.provider?.short_name || expense.provider_ruc || 'Sin proveedor')}</td><td>${escapeWarehouseEntryHtml(document)}</td><td class="text-right font-weight-bold">${formatWarehouseEntryMoney(expense.total_amount ?? expense.amount)}</td><td title="${escapeWarehouseEntryHtml(igvTitle)}">${expense.affects_igv ? '<span class="badge badge-success">Afecto IGV</span>' : '<span class="badge badge-light">Sin IGV</span>'}</td><td><span class="badge badge-${officialDocument ? 'success' : 'warning'}">${warehouseEntryExpenseClassification(expense)}</span></td><td>${warehouseEntryExpenseSourceHtml(expense)}</td><td>${warehouseEntryExpenseApprovalHtml(expense)}</td><td>${expense.affects_inventory_cost ? '<span class="badge badge-success">Sí incluye en costo</span>' : '<span class="badge badge-light">No incluye en costo</span>'}</td><td>${expense.affects_inventory_cost ? expenseMethods[expense.distribution_method] || '-' : 'Informativo'}</td><td>${renderWarehouseEntryExpenseDocumentLinks(expense)}</td></tr>`;
     }).join('') : '<tr><td colspan="12" class="text-center text-muted py-3">Sin costos vinculados.</td></tr>');
     const approvedExpenses = expenses.filter(warehouseEntryExpenseIsApproved);
     const freightExpenses = approvedExpenses.filter(isWarehouseEntryOfficialTransportExpense).reduce((sum, expense) => sum + parseWarehouseEntryNumber(expense.amount), 0);
